@@ -302,13 +302,24 @@ task build:macos-arm64
 
 ### BirdNET v3.0
 
+> **Note**: BirdNET v3.0 is currently in **developer preview** and not yet available for production use.
+
 - **Model type**: `birdnet-v30`
+- **Status**: Developer preview only
 - **Regional variants available** (e.g., EUNA for Europe/North America)
 
 ### Google Perch v2
 
 - **Model type**: `perch-v2`
 - **Sample rate**: 32kHz
+
+## Roadmap
+
+Planned features for future releases:
+
+- [ ] **Range Filter** - Geographic and temporal species filtering using BirdNET's meta model to eliminate impossible species based on location and time of year
+- [ ] **Progress indicators** - Real-time progress bars for batch processing
+- [ ] **Parallel file processing** - Process multiple audio files concurrently
 
 ## License
 

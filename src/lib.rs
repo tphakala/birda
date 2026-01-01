@@ -4,6 +4,7 @@
 
 #![warn(missing_docs)]
 
+pub mod constants;
 pub mod error;
 
 pub use error::{Error, Result};

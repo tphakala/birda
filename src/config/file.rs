@@ -40,7 +40,8 @@ pub fn save_config(config: &Config, path: &Path) -> Result<()> {
         })?;
     }
 
-    let contents = toml::to_string_pretty(config).map_err(|e| Error::ConfigSerialize { source: e })?;
+    let contents =
+        toml::to_string_pretty(config).map_err(|e| Error::ConfigSerialize { source: e })?;
 
     std::fs::write(path, contents).map_err(|e| Error::ConfigWrite {
         path: path.to_path_buf(),
@@ -80,6 +81,7 @@ mod tests {
 [models.test-model]
 path = "/path/to/model.onnx"
 labels = "/path/to/labels.txt"
+type = "birdnet-v24"
 
 [defaults]
 min_confidence = 0.25

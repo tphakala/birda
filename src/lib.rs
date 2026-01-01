@@ -16,7 +16,10 @@ pub mod pipeline;
 
 use clap::Parser;
 use cli::{AnalyzeArgs, Cli, Command};
-use config::{Config, InferenceDevice, ModelConfig, ModelType, load_default_config, save_default_config};
+use config::{
+    Config, InferenceDevice, ModelConfig, ModelType, config_file_path, load_default_config,
+    save_default_config,
+};
 use inference::BirdClassifier;
 use pipeline::{ProcessCheck, collect_input_files, output_dir_for, process_file, should_process};
 use std::path::PathBuf;
@@ -188,8 +191,19 @@ fn handle_config_command(action: cli::ConfigAction) -> Result<()> {
 
     match action {
         ConfigAction::Init => {
-            let path = config::config_file_path()?;
-            println!("Would create config at: {}", path.display());
+            let path = config_file_path()?;
+            if path.exists() {
+                println!("Configuration file already exists: {}", path.display());
+                println!("Use 'birda models add' to add models.");
+            } else {
+                let config = Config::default();
+                let saved_path = save_default_config(&config)?;
+                println!("Created configuration file: {}", saved_path.display());
+                println!("\nNext steps:");
+                println!(
+                    "  birda models add <name> --path <model.onnx> --labels <labels.txt> --type <type> --default"
+                );
+            }
             Ok(())
         }
         ConfigAction::Show => {
@@ -215,11 +229,7 @@ fn handle_models_command(action: cli::ModelsAction, config: &config::Config) -> 
             } else {
                 println!("Configured models:");
                 for (name, model) in &config.models {
-                    let default_marker = config
-                        .defaults
-                        .model
-                        .as_ref()
-                        .is_some_and(|d| d == name);
+                    let default_marker = config.defaults.model.as_ref().is_some_and(|d| d == name);
                     println!(
                         "  {} ({}){}",
                         name,

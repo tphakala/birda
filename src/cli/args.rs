@@ -39,7 +39,7 @@ pub enum Command {
 }
 
 /// Config subcommand actions.
-#[derive(Debug, Subcommand)]
+#[derive(Debug, Clone, Copy, Subcommand)]
 pub enum ConfigAction {
     /// Create default configuration file.
     Init,

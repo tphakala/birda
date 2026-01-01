@@ -61,4 +61,8 @@ pub enum Error {
         /// Path to the missing labels file.
         path: std::path::PathBuf,
     },
+
+    /// No input files provided.
+    #[error("no input files provided")]
+    NoInputFiles,
 }

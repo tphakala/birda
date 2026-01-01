@@ -320,6 +320,7 @@ task build:macos-arm64
 
 ### Google Perch v2
 
+- **ONNX Model**: [Perch-onnx on Hugging Face](https://huggingface.co/justinchuby/Perch-onnx) (ONNX conversion by Justin Chu)
 - **Model type**: `perch-v2`
 - **Sample rate**: 32kHz
 

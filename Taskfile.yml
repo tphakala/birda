@@ -4,13 +4,12 @@ version: "3"
 
 vars:
   BINARY_NAME: birda
-  # Platforms supported by ONNX Runtime
-  TARGETS:
-    - x86_64-unknown-linux-gnu
-    - aarch64-unknown-linux-gnu
-    - x86_64-apple-darwin
-    - aarch64-apple-darwin
-    - x86_64-pc-windows-msvc
+
+# Cross-compilation notes:
+# - Linux ARM64: requires `gcc-aarch64-linux-gnu` package
+# - macOS targets: requires macOS SDK (osxcross) or build on macOS
+# - Windows GNU: requires `mingw-w64` package
+# - ONNX Runtime: downloads platform-specific binaries automatically
 
 tasks:
   default:
@@ -65,14 +64,14 @@ tasks:
     cmds:
       - cargo build --release
 
-  build:all:
-    desc: Build for all supported platforms
+  # Native builds (recommended - no cross-compilation complexity)
+  build:native:
+    desc: Build release for current platform only
     cmds:
-      - task: build:linux-x64
-      - task: build:linux-arm64
-      - task: build:macos-x64
-      - task: build:macos-arm64
-      - task: build:windows-x64
+      - cargo build --release
+
+  # Cross-compilation targets
+  # These require appropriate toolchains installed
 
   build:linux-x64:
     desc: Build for Linux x86_64
@@ -83,15 +82,17 @@ tasks:
       - cargo build --release --target {{.TARGET}}
 
   build:linux-arm64:
-    desc: Build for Linux ARM64
+    desc: Build for Linux ARM64 (requires gcc-aarch64-linux-gnu)
     vars:
       TARGET: aarch64-unknown-linux-gnu
+    env:
+      CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
     cmds:
       - rustup target add {{.TARGET}} 2>/dev/null || true
       - cargo build --release --target {{.TARGET}}
 
   build:macos-x64:
-    desc: Build for macOS x86_64 (Intel)
+    desc: Build for macOS x86_64 (requires osxcross or native macOS)
     vars:
       TARGET: x86_64-apple-darwin
     cmds:
@@ -99,7 +100,7 @@ tasks:
       - cargo build --release --target {{.TARGET}}
 
   build:macos-arm64:
-    desc: Build for macOS ARM64 (Apple Silicon)
+    desc: Build for macOS ARM64 (requires osxcross or native macOS)
     vars:
       TARGET: aarch64-apple-darwin
     cmds:
@@ -107,12 +108,20 @@ tasks:
       - cargo build --release --target {{.TARGET}}
 
   build:windows-x64:
-    desc: Build for Windows x86_64
+    desc: Build for Windows x86_64 (requires mingw-w64)
     vars:
-      TARGET: x86_64-pc-windows-msvc
+      TARGET: x86_64-pc-windows-gnu
+    env:
+      CARGO_TARGET_X86_64_PC_WINDOWS_GNU_LINKER: x86_64-w64-mingw32-gcc
     cmds:
       - rustup target add {{.TARGET}} 2>/dev/null || true
       - cargo build --release --target {{.TARGET}}
+
+  # Build all that work on current platform
+  build:all-native:
+    desc: Build for all Linux targets (from Linux host)
+    cmds:
+      - task: build:linux-x64
 
   clean:
     desc: Clean build artifacts
@@ -170,3 +179,14 @@ tasks:
     desc: Run before committing (alias for check)
     cmds:
       - task: check
+
+  # Cross-compilation setup helpers
+  setup:cross-linux-arm64:
+    desc: Install Linux ARM64 cross-compiler (Debian/Ubuntu)
+    cmds:
+      - sudo apt-get install -y gcc-aarch64-linux-gnu
+
+  setup:cross-windows:
+    desc: Install Windows cross-compiler (Debian/Ubuntu)
+    cmds:
+      - sudo apt-get install -y mingw-w64

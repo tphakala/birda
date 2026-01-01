@@ -190,6 +190,28 @@ jobs:
           echo "=== Collected libraries ==="
           ls -la lib-staging/
 
+          # Verify critical libraries were extracted
+          REQUIRED_LIBS=(
+            "libonnxruntime.so"
+            "libonnxruntime_providers_cuda.so"
+            "libonnxruntime_providers_shared.so"
+            "libcudart.so"
+            "libcublas.so"
+            "libcublasLt.so"
+            "libcufft.so"
+            "libcurand.so"
+            "libcudnn.so"
+          )
+
+          for lib in "${REQUIRED_LIBS[@]}"; do
+            if ! ls lib-staging/${lib}* 1> /dev/null 2>&1; then
+              echo "ERROR: Required library ${lib} not found!"
+              exit 1
+            fi
+          done
+
+          echo "All required libraries present"
+
       - name: Build release binary (CUDA)
         env:
           ORT_LIB_LOCATION: ${{ github.workspace }}/onnxruntime-linux-x64-gpu-${{ env.ONNXRUNTIME_VERSION }}/lib
@@ -315,6 +337,34 @@ jobs:
           # List collected DLLs
           Write-Host "=== Collected DLLs ==="
           Get-ChildItem lib-staging/
+
+          # Verify critical libraries were extracted
+          $requiredDlls = @(
+            "onnxruntime.dll",
+            "onnxruntime_providers_cuda.dll",
+            "onnxruntime_providers_shared.dll",
+            "cudart64_12.dll",
+            "cublas64_12.dll",
+            "cublasLt64_12.dll",
+            "cufft64_11.dll",
+            "curand64_10.dll",
+            "cudnn64_9.dll"
+          )
+
+          $missing = @()
+          foreach ($dll in $requiredDlls) {
+            if (-not (Test-Path "lib-staging/$dll")) {
+              $missing += $dll
+            }
+          }
+
+          if ($missing.Count -gt 0) {
+            Write-Host "ERROR: Required libraries not found:"
+            $missing | ForEach-Object { Write-Host "  - $_" }
+            exit 1
+          }
+
+          Write-Host "All required libraries present"
 
       - name: Build release binary (CUDA)
         shell: pwsh

@@ -35,7 +35,7 @@ pub fn run() -> Result<()> {
     init_logging(cli.analyze.verbose, cli.analyze.quiet);
 
     // Initialize ONNX Runtime (auto-detects bundled libraries)
-    birdnet_onnx::init_runtime().map_err(|e| Error::Inference {
+    birdnet_onnx::init_runtime().map_err(|e| Error::ClassifierBuild {
         reason: e.to_string(),
     })?;
 

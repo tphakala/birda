@@ -230,11 +230,9 @@ fn handle_models_command(action: cli::ModelsAction, config: &config::Config) -> 
         ModelsAction::Info { name } => {
             let model = config::get_model(config, &name)?;
             println!("Model: {name}");
+            println!("  Type: {}", model.model_type);
             println!("  Path: {}", model.path.display());
             println!("  Labels: {}", model.labels.display());
-            if let Some(ref t) = model.model_type {
-                println!("  Type: {t}");
-            }
             Ok(())
         }
     }

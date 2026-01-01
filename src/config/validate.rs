@@ -53,7 +53,8 @@ fn validate_defaults(config: &Config) -> Result<()> {
 }
 
 /// Validate a model configuration and check files exist.
-pub fn validate_model_config(name: &str, model: &ModelConfig) -> Result<()> {
+#[allow(clippy::needless_pass_by_value)]
+pub fn validate_model_config(_name: &str, model: &ModelConfig) -> Result<()> {
     if !model.path.exists() {
         return Err(Error::ModelFileNotFound {
             path: model.path.clone(),
@@ -66,19 +67,7 @@ pub fn validate_model_config(name: &str, model: &ModelConfig) -> Result<()> {
         });
     }
 
-    // Validate model type if specified
-    if let Some(ref model_type) = model.model_type {
-        match model_type.as_str() {
-            "v24" | "v30" | "perch" => {}
-            other => {
-                return Err(Error::ConfigValidation {
-                    message: format!(
-                        "model '{name}' has invalid type '{other}', expected: v24, v30, perch"
-                    ),
-                });
-            }
-        }
-    }
+    // Model type validation is handled by the ModelType enum
 
     Ok(())
 }

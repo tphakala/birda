@@ -35,9 +35,9 @@ pub struct ModelConfig {
     /// Path to the labels file.
     pub labels: PathBuf,
 
-    /// Optional model type override (v24, v30, perch).
+    /// Model type (birdnet-v24, birdnet-v30, perch-v2).
     #[serde(rename = "type")]
-    pub model_type: Option<String>,
+    pub model_type: ModelType,
 }
 
 /// Default analysis settings.
@@ -157,6 +157,31 @@ impl std::str::FromStr for OutputFormat {
             "audacity" => Ok(Self::Audacity),
             "kaleidoscope" => Ok(Self::Kaleidoscope),
             other => Err(format!("unknown output format: {other}")),
+        }
+    }
+}
+
+/// Supported model types.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, clap::ValueEnum)]
+#[serde(rename_all = "kebab-case")]
+pub enum ModelType {
+    /// `BirdNET` v2.4 model.
+    #[value(name = "birdnet-v24")]
+    BirdnetV24,
+    /// `BirdNET` v3.0 model.
+    #[value(name = "birdnet-v30")]
+    BirdnetV30,
+    /// Google Perch v2 model.
+    #[value(name = "perch-v2")]
+    PerchV2,
+}
+
+impl std::fmt::Display for ModelType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::BirdnetV24 => write!(f, "birdnet-v24"),
+            Self::BirdnetV30 => write!(f, "birdnet-v30"),
+            Self::PerchV2 => write!(f, "perch-v2"),
         }
     }
 }

@@ -304,6 +304,7 @@ task build:macos-arm64
 ### BirdNET v2.4
 
 - **Download**: [BirdNET-Analyzer Releases](https://github.com/kahst/BirdNET-Analyzer/releases)
+- **ONNX Model**: [BirdNET-onnx on Hugging Face](https://huggingface.co/justinchuby/BirdNET-onnx) (optimized ONNX conversion)
 - **Labels**: `BirdNET_GLOBAL_6K_V2.4_Labels.txt`
 - **Model type**: `birdnet-v24`
 - **Sample rate**: 48kHz
@@ -338,6 +339,7 @@ MIT License - see [LICENSE](LICENSE) for details.
 ## Acknowledgments
 
 - [BirdNET](https://github.com/kahst/BirdNET-Analyzer) by the K. Lisa Yang Center for Conservation Bioacoustics
+- [Justin Chuby](https://huggingface.co/justinchuby/BirdNET-onnx) for converting BirdNET TFLite model to optimized ONNX format
 - [Perch](https://github.com/google-research/perch) by Google Research for bioacoustic analysis
 - [ONNX Runtime](https://onnxruntime.ai/) for cross-platform inference
 - [Symphonia](https://github.com/pdeljanov/Symphonia) for audio decoding

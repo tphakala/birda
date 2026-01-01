@@ -1,0 +1,137 @@
+name: Update Third-Party Licenses
+
+on:
+  push:
+    paths:
+      - 'Cargo.lock'
+      - 'Cargo.toml'
+      - 'about.toml'
+  workflow_dispatch:
+
+jobs:
+  update-licenses:
+    name: Update Licenses
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install cargo-about
+        run: cargo install cargo-about
+
+      - name: Generate Rust dependency licenses
+        run: |
+          cargo about generate about.hbs > RUST_LICENSES.txt
+
+      - name: Combine all licenses
+        run: |
+          cat > THIRD_PARTY_LICENSES.txt << 'HEADER'
+          ================================================================================
+          THIRD-PARTY SOFTWARE LICENSES
+          ================================================================================
+
+          This software bundles third-party libraries. Their licenses are listed below.
+
+          ================================================================================
+          SECTION 1: RUST DEPENDENCIES
+          ================================================================================
+
+          HEADER
+
+          cat RUST_LICENSES.txt >> THIRD_PARTY_LICENSES.txt
+
+          cat >> THIRD_PARTY_LICENSES.txt << 'GPU_HEADER'
+
+          ================================================================================
+          SECTION 2: GPU LIBRARIES (included in CUDA builds only)
+          ================================================================================
+
+          The GPU builds include the following libraries:
+
+          --------------------------------------------------------------------------------
+          ONNX Runtime
+          --------------------------------------------------------------------------------
+
+          License: MIT License
+          Copyright (c) Microsoft Corporation
+
+          https://github.com/microsoft/onnxruntime
+
+          Permission is hereby granted, free of charge, to any person obtaining a copy
+          of this software and associated documentation files (the "Software"), to deal
+          in the Software without restriction, including without limitation the rights
+          to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+          copies of the Software, and to permit persons to whom the Software is
+          furnished to do so, subject to the following conditions:
+
+          The above copyright notice and this permission notice shall be included in all
+          copies or substantial portions of the Software.
+
+          THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+          IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+          FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+          AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+          LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+          OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+          SOFTWARE.
+
+          --------------------------------------------------------------------------------
+          NVIDIA CUDA Toolkit Libraries
+          --------------------------------------------------------------------------------
+
+          License: NVIDIA CUDA Toolkit End User License Agreement
+          https://docs.nvidia.com/cuda/eula/index.html
+
+          Redistribution of the following CUDA libraries is permitted under Section 2.1
+          of the NVIDIA CUDA Toolkit EULA:
+          - CUDA Runtime (cudart)
+          - cuBLAS
+          - cuFFT
+          - cuRAND
+
+          Copyright (c) NVIDIA Corporation. All rights reserved.
+
+          --------------------------------------------------------------------------------
+          NVIDIA cuDNN
+          --------------------------------------------------------------------------------
+
+          License: NVIDIA cuDNN Software License Agreement
+          https://docs.nvidia.com/deeplearning/cudnn/sla/index.html
+
+          Redistribution is permitted under Section 2.1 of the cuDNN SLA when bundled
+          with applications that use cuDNN.
+
+          Copyright (c) NVIDIA Corporation. All rights reserved.
+
+          GPU_HEADER
+
+          rm RUST_LICENSES.txt
+
+      - name: Check for changes
+        id: check
+        run: |
+          if git diff --quiet THIRD_PARTY_LICENSES.txt; then
+            echo "changed=false" >> $GITHUB_OUTPUT
+          else
+            echo "changed=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create Pull Request
+        if: steps.check.outputs.changed == 'true'
+        uses: peter-evans/create-pull-request@v7
+        with:
+          commit-message: "chore: update third-party licenses"
+          title: "chore: update third-party licenses"
+          body: |
+            This PR updates the THIRD_PARTY_LICENSES.txt file with the latest
+            license information from Rust dependencies.
+
+            Auto-generated by the licenses workflow.
+          branch: update-licenses
+          labels: dependencies

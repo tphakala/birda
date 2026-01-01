@@ -1,0 +1,22 @@
+# cargo-about configuration
+# https://github.com/EmbarkStudios/cargo-about
+
+[about]
+accepted = [
+    "MIT",
+    "Apache-2.0",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Zlib",
+    "CC0-1.0",
+    "Unlicense",
+    "MPL-2.0",
+    "Unicode-3.0",
+    "Unicode-DFS-2016",
+]
+
+# Workarounds for crates with non-standard license files
+[[clarify.ring]]
+expression = "MIT AND ISC AND OpenSSL"
+license-files = [{ path = "LICENSE", hash = 0xbd0eed23 }]

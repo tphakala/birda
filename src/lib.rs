@@ -11,6 +11,7 @@ pub mod constants;
 pub mod error;
 pub mod locking;
 pub mod output;
+pub mod pipeline;
 
 use clap::Parser;
 use cli::{Cli, Command};

@@ -16,7 +16,7 @@ pub mod pipeline;
 
 use clap::Parser;
 use cli::{AnalyzeArgs, Cli, Command};
-use config::{Config, InferenceDevice, load_default_config};
+use config::{Config, InferenceDevice, ModelConfig, ModelType, load_default_config, save_default_config};
 use inference::BirdClassifier;
 use pipeline::{ProcessCheck, collect_input_files, output_dir_for, process_file, should_process};
 use std::path::PathBuf;
@@ -215,11 +215,28 @@ fn handle_models_command(action: cli::ModelsAction, config: &config::Config) -> 
             } else {
                 println!("Configured models:");
                 for (name, model) in &config.models {
-                    println!("  {name}: {}", model.path.display());
+                    let default_marker = config
+                        .defaults
+                        .model
+                        .as_ref()
+                        .is_some_and(|d| d == name);
+                    println!(
+                        "  {} ({}){}",
+                        name,
+                        model.model_type,
+                        if default_marker { " [default]" } else { "" }
+                    );
                 }
             }
             Ok(())
         }
+        ModelsAction::Add {
+            name,
+            path,
+            labels,
+            r#type,
+            default,
+        } => handle_models_add(name, path, labels, r#type, default),
         ModelsAction::Check => {
             for (name, model) in &config.models {
                 config::validate_model_config(name, model)?;
@@ -236,4 +253,56 @@ fn handle_models_command(action: cli::ModelsAction, config: &config::Config) -> 
             Ok(())
         }
     }
+}
+
+/// Handle the `models add` command.
+fn handle_models_add(
+    name: String,
+    path: PathBuf,
+    labels: PathBuf,
+    model_type: ModelType,
+    set_default: bool,
+) -> Result<()> {
+    // Validate files exist
+    if !path.exists() {
+        return Err(Error::ModelFileNotFound { path });
+    }
+    if !labels.exists() {
+        return Err(Error::LabelsFileNotFound { path: labels });
+    }
+
+    // Load existing config
+    let mut config = load_default_config()?;
+
+    // Check if model already exists
+    if config.models.contains_key(&name) {
+        return Err(Error::ModelAlreadyExists { name });
+    }
+
+    // Add the model
+    config.models.insert(
+        name.clone(),
+        ModelConfig {
+            path: path.clone(),
+            labels: labels.clone(),
+            model_type,
+        },
+    );
+
+    // Set as default if requested
+    if set_default {
+        config.defaults.model = Some(name.clone());
+    }
+
+    // Save config
+    let config_path = save_default_config(&config)?;
+
+    // Print success message
+    println!("Added model '{name}' ({model_type})");
+    println!("  Model: {}", path.display());
+    println!("  Labels: {}", labels.display());
+    println!("  Default: {}", if set_default { "yes" } else { "no" });
+    println!("\nConfiguration saved to: {}", config_path.display());
+
+    Ok(())
 }

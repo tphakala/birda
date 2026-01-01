@@ -1,7 +1,6 @@
 # cargo-about configuration
 # https://github.com/EmbarkStudios/cargo-about
 
-[about]
 accepted = [
     "MIT",
     "Apache-2.0",

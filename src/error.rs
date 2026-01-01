@@ -133,4 +133,18 @@ pub enum Error {
         #[source]
         source: std::io::Error,
     },
+
+    /// Failed to build classifier.
+    #[error("failed to build classifier: {reason}")]
+    ClassifierBuild {
+        /// Description of the build failure.
+        reason: String,
+    },
+
+    /// Inference failed.
+    #[error("inference failed: {reason}")]
+    Inference {
+        /// Description of the inference failure.
+        reason: String,
+    },
 }

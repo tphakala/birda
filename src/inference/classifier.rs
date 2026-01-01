@@ -1,0 +1,96 @@
+//! Inference classifier wrapper around birdnet-onnx.
+
+use crate::config::{InferenceDevice, ModelConfig as BirdaModelConfig};
+use crate::error::{Error, Result};
+use birdnet_onnx::{Classifier, ClassifierBuilder, PredictionResult};
+use tracing::info;
+
+/// Wrapper around birdnet-onnx Classifier with birda configuration.
+pub struct BirdClassifier {
+    inner: Classifier,
+}
+
+impl BirdClassifier {
+    /// Build a classifier from birda model configuration.
+    pub fn from_config(
+        model_config: &BirdaModelConfig,
+        device: InferenceDevice,
+        min_confidence: f32,
+        top_k: usize,
+    ) -> Result<Self> {
+        let mut builder = ClassifierBuilder::new()
+            .model_path(model_config.path.to_string_lossy().to_string())
+            .labels_path(model_config.labels.to_string_lossy().to_string())
+            .top_k(top_k)
+            .min_confidence(min_confidence);
+
+        // Add execution provider based on device setting
+        builder = match device {
+            InferenceDevice::Gpu => {
+                info!("Using CUDA GPU for inference");
+                builder.execution_provider(
+                    birdnet_onnx::execution_providers::CUDAExecutionProvider::default(),
+                )
+            }
+            InferenceDevice::Cpu => {
+                info!("Using CPU for inference");
+                builder
+            }
+            InferenceDevice::Auto => {
+                info!("Using auto device selection (GPU if available)");
+                builder.execution_provider(
+                    birdnet_onnx::execution_providers::CUDAExecutionProvider::default(),
+                )
+            }
+        };
+
+        let inner = builder.build().map_err(|e| Error::ClassifierBuild {
+            reason: e.to_string(),
+        })?;
+
+        info!(
+            "Loaded model: {:?}, sample_rate: {}, segment_duration: {}s",
+            inner.config().model_type,
+            inner.config().sample_rate,
+            inner.config().segment_duration
+        );
+
+        Ok(Self { inner })
+    }
+
+    /// Get the model configuration.
+    pub fn config(&self) -> &birdnet_onnx::ModelConfig {
+        self.inner.config()
+    }
+
+    /// Get the expected sample rate for this model.
+    pub fn sample_rate(&self) -> u32 {
+        self.inner.config().sample_rate
+    }
+
+    /// Get the expected segment duration in seconds.
+    pub fn segment_duration(&self) -> f32 {
+        self.inner.config().segment_duration
+    }
+
+    /// Get the expected sample count per segment.
+    pub fn sample_count(&self) -> usize {
+        self.inner.config().sample_count
+    }
+
+    /// Run inference on a single audio segment.
+    pub fn predict(&self, segment: &[f32]) -> Result<PredictionResult> {
+        self.inner.predict(segment).map_err(|e| Error::Inference {
+            reason: e.to_string(),
+        })
+    }
+
+    /// Run inference on a batch of audio segments.
+    pub fn predict_batch(&self, segments: &[&[f32]]) -> Result<Vec<PredictionResult>> {
+        self.inner
+            .predict_batch(segments)
+            .map_err(|e| Error::Inference {
+                reason: e.to_string(),
+            })
+    }
+}

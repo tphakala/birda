@@ -9,6 +9,7 @@ pub mod cli;
 pub mod config;
 pub mod constants;
 pub mod error;
+pub mod inference;
 pub mod locking;
 pub mod output;
 pub mod pipeline;

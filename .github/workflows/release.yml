@@ -433,11 +433,31 @@ jobs:
           # Create archive
           Compress-Archive -Path "dist/*" -DestinationPath "${{ env.ARTIFACT }}.zip"
 
-      - name: Upload artifact
+      - name: Build installer with Inno Setup
+        shell: pwsh
+        run: |
+          # Get version from Cargo.toml
+          $version = (Select-String -Path "Cargo.toml" -Pattern '^version = "(.+)"' | ForEach-Object { $_.Matches.Groups[1].Value })
+          Write-Host "Building installer for version: $version"
+
+          # Inno Setup is pre-installed on Windows runners
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" `
+            /DMyAppVersion="$version" `
+            /O"." `
+            /F"${{ env.ARTIFACT }}-setup" `
+            "installer\windows\birda.iss"
+
+      - name: Upload ZIP artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ env.ARTIFACT }}
           path: ${{ env.ARTIFACT }}.zip
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ARTIFACT }}-setup
+          path: ${{ env.ARTIFACT }}-setup.exe
 
   # ==========================================================================
   # Create GitHub Release with all artifacts
@@ -472,11 +492,15 @@ jobs:
             | `birda-windows-x64.zip` | Windows CPU-only | ~5 MB |
             | `birda-linux-x64-cuda.tar.gz` | Linux with GPU support (bundled CUDA) | ~400 MB |
             | `birda-windows-x64-cuda.zip` | Windows with GPU support (bundled CUDA) | ~400 MB |
+            | `birda-windows-x64-cuda-setup.exe` | Windows GPU installer (adds to PATH) | ~400 MB |
 
             ### GPU Builds
 
             GPU builds include bundled ONNX Runtime, CUDA, and cuDNN libraries - no separate installation required.
-            Just extract and run `./birda` directly.
+
+            **Windows Installer:** Use the `-setup.exe` for automatic installation with optional PATH configuration.
+
+            **Portable:** Extract ZIP/tar.gz and run `birda` directly.
 
             **Requirements:** NVIDIA GPU with CUDA compute capability 5.0+
 
@@ -484,3 +508,4 @@ jobs:
           files: |
             artifacts/**/*.tar.gz
             artifacts/**/*.zip
+            artifacts/**/*.exe

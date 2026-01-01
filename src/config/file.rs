@@ -30,6 +30,31 @@ pub fn load_default_config() -> Result<Config> {
     super::config_file_path().map_or_else(|_| Ok(Config::default()), |path| load_config_file(&path))
 }
 
+/// Save configuration to a TOML file.
+pub fn save_config(config: &Config, path: &Path) -> Result<()> {
+    // Create parent directories if they don't exist
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| Error::ConfigWrite {
+            path: path.to_path_buf(),
+            source: e,
+        })?;
+    }
+
+    let contents = toml::to_string_pretty(config).map_err(|e| Error::ConfigSerialize { source: e })?;
+
+    std::fs::write(path, contents).map_err(|e| Error::ConfigWrite {
+        path: path.to_path_buf(),
+        source: e,
+    })
+}
+
+/// Save configuration to the default platform-specific path.
+pub fn save_default_config(config: &Config) -> Result<std::path::PathBuf> {
+    let path = super::config_file_path()?;
+    save_config(config, &path)?;
+    Ok(path)
+}
+
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::float_cmp)]
 mod tests {

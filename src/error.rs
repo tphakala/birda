@@ -106,4 +106,31 @@ pub enum Error {
         /// Description of the resampling failure.
         reason: String,
     },
+
+    /// Failed to acquire lock.
+    #[error("file is locked by another process: {path}")]
+    FileLocked {
+        /// Path to the lock file.
+        path: std::path::PathBuf,
+    },
+
+    /// Failed to create lock file.
+    #[error("failed to create lock file '{path}'")]
+    LockCreate {
+        /// Path to the lock file.
+        path: std::path::PathBuf,
+        /// Underlying I/O error.
+        #[source]
+        source: std::io::Error,
+    },
+
+    /// Failed to remove lock file.
+    #[error("failed to remove lock file '{path}'")]
+    LockRemove {
+        /// Path to the lock file.
+        path: std::path::PathBuf,
+        /// Underlying I/O error.
+        #[source]
+        source: std::io::Error,
+    },
 }

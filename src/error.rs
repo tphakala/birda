@@ -9,4 +9,8 @@ pub enum Error {
     /// I/O operation failed.
     #[error("I/O error: {0}")]
     Io(#[from] std::io::Error),
+
+    /// Configuration directory could not be determined.
+    #[error("could not determine configuration directory for this platform")]
+    ConfigDirNotFound,
 }

@@ -1,0 +1,172 @@
+# https://taskfile.dev
+
+version: "3"
+
+vars:
+  BINARY_NAME: birda
+  # Platforms supported by ONNX Runtime
+  TARGETS:
+    - x86_64-unknown-linux-gnu
+    - aarch64-unknown-linux-gnu
+    - x86_64-apple-darwin
+    - aarch64-apple-darwin
+    - x86_64-pc-windows-msvc
+
+tasks:
+  default:
+    desc: Run all checks (fmt, clippy, test)
+    cmds:
+      - task: check
+
+  check:
+    desc: Run all quality checks
+    cmds:
+      - task: fmt:check
+      - task: clippy
+      - task: test
+
+  fmt:
+    desc: Format code with rustfmt
+    cmds:
+      - cargo fmt
+
+  fmt:check:
+    desc: Check code formatting
+    cmds:
+      - cargo fmt --check
+
+  clippy:
+    desc: Run clippy linter with strict warnings
+    cmds:
+      - cargo clippy -- -D warnings
+
+  clippy:fix:
+    desc: Run clippy and apply automatic fixes
+    cmds:
+      - cargo clippy --fix --allow-dirty --allow-staged
+
+  test:
+    desc: Run all tests
+    cmds:
+      - cargo test
+
+  test:verbose:
+    desc: Run tests with verbose output
+    cmds:
+      - cargo test -- --nocapture
+
+  build:
+    desc: Build for current platform (debug)
+    cmds:
+      - cargo build
+
+  build:release:
+    desc: Build for current platform (release)
+    cmds:
+      - cargo build --release
+
+  build:all:
+    desc: Build for all supported platforms
+    cmds:
+      - task: build:linux-x64
+      - task: build:linux-arm64
+      - task: build:macos-x64
+      - task: build:macos-arm64
+      - task: build:windows-x64
+
+  build:linux-x64:
+    desc: Build for Linux x86_64
+    vars:
+      TARGET: x86_64-unknown-linux-gnu
+    cmds:
+      - rustup target add {{.TARGET}} 2>/dev/null || true
+      - cargo build --release --target {{.TARGET}}
+
+  build:linux-arm64:
+    desc: Build for Linux ARM64
+    vars:
+      TARGET: aarch64-unknown-linux-gnu
+    cmds:
+      - rustup target add {{.TARGET}} 2>/dev/null || true
+      - cargo build --release --target {{.TARGET}}
+
+  build:macos-x64:
+    desc: Build for macOS x86_64 (Intel)
+    vars:
+      TARGET: x86_64-apple-darwin
+    cmds:
+      - rustup target add {{.TARGET}} 2>/dev/null || true
+      - cargo build --release --target {{.TARGET}}
+
+  build:macos-arm64:
+    desc: Build for macOS ARM64 (Apple Silicon)
+    vars:
+      TARGET: aarch64-apple-darwin
+    cmds:
+      - rustup target add {{.TARGET}} 2>/dev/null || true
+      - cargo build --release --target {{.TARGET}}
+
+  build:windows-x64:
+    desc: Build for Windows x86_64
+    vars:
+      TARGET: x86_64-pc-windows-msvc
+    cmds:
+      - rustup target add {{.TARGET}} 2>/dev/null || true
+      - cargo build --release --target {{.TARGET}}
+
+  clean:
+    desc: Clean build artifacts
+    cmds:
+      - cargo clean
+
+  doc:
+    desc: Generate documentation
+    cmds:
+      - cargo doc --no-deps
+
+  doc:open:
+    desc: Generate and open documentation
+    cmds:
+      - cargo doc --no-deps --open
+
+  run:
+    desc: Run birda with arguments
+    cmds:
+      - cargo run -- {{.CLI_ARGS}}
+
+  install:
+    desc: Install birda to ~/.cargo/bin
+    cmds:
+      - cargo install --path .
+
+  # CI-specific tasks
+  ci:
+    desc: Run full CI pipeline
+    cmds:
+      - task: fmt:check
+      - task: clippy
+      - task: test
+      - task: build:release
+      - task: doc
+
+  ci:lint:
+    desc: Run linting checks for CI
+    cmds:
+      - task: fmt:check
+      - task: clippy
+
+  ci:test:
+    desc: Run tests for CI
+    cmds:
+      - cargo test --no-fail-fast
+
+  # Development helpers
+  watch:
+    desc: Watch for changes and run checks
+    cmds:
+      - cargo watch -c -x "fmt" -x "clippy" -x "test"
+
+  pre-commit:
+    desc: Run before committing (alias for check)
+    cmds:
+      - task: check

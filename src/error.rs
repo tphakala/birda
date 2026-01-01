@@ -65,4 +65,38 @@ pub enum Error {
     /// No input files provided.
     #[error("no input files provided")]
     NoInputFiles,
+
+    /// Failed to open audio file.
+    #[error("failed to open audio file '{path}'")]
+    AudioOpen {
+        /// Path to the audio file.
+        path: std::path::PathBuf,
+        /// Underlying error.
+        #[source]
+        source: Box<dyn std::error::Error + Send + Sync>,
+    },
+
+    /// Unsupported audio format.
+    #[error("unsupported audio format: {format}")]
+    UnsupportedAudioFormat {
+        /// The unsupported format.
+        format: String,
+    },
+
+    /// Failed to decode audio.
+    #[error("failed to decode audio from '{path}'")]
+    AudioDecode {
+        /// Path to the audio file.
+        path: std::path::PathBuf,
+        /// Underlying error.
+        #[source]
+        source: Box<dyn std::error::Error + Send + Sync>,
+    },
+
+    /// No audio tracks found.
+    #[error("no audio tracks found in '{path}'")]
+    NoAudioTracks {
+        /// Path to the audio file.
+        path: std::path::PathBuf,
+    },
 }

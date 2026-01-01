@@ -62,6 +62,31 @@ pub enum Error {
         path: std::path::PathBuf,
     },
 
+    /// Model already exists in configuration.
+    #[error("model '{name}' already exists in configuration")]
+    ModelAlreadyExists {
+        /// Name of the existing model.
+        name: String,
+    },
+
+    /// Failed to write configuration file.
+    #[error("failed to write config file '{path}'")]
+    ConfigWrite {
+        /// Path to the config file.
+        path: std::path::PathBuf,
+        /// Underlying I/O error.
+        #[source]
+        source: std::io::Error,
+    },
+
+    /// Failed to serialize configuration.
+    #[error("failed to serialize config")]
+    ConfigSerialize {
+        /// Underlying serialization error.
+        #[source]
+        source: toml::ser::Error,
+    },
+
     /// No input files provided.
     #[error("no input files provided")]
     NoInputFiles,

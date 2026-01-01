@@ -1,6 +1,6 @@
 //! CLI argument definitions.
 
-use crate::config::OutputFormat;
+use crate::config::{ModelType, OutputFormat};
 use clap::{Args, Parser, Subcommand};
 use std::path::PathBuf;
 
@@ -54,6 +54,23 @@ pub enum ConfigAction {
 pub enum ModelsAction {
     /// List configured models.
     List,
+    /// Add a new model to configuration.
+    Add {
+        /// Name for this model (e.g., "birdnet", "perch").
+        name: String,
+        /// Path to the ONNX model file.
+        #[arg(long)]
+        path: PathBuf,
+        /// Path to the labels file.
+        #[arg(long)]
+        labels: PathBuf,
+        /// Model type.
+        #[arg(long, value_enum)]
+        r#type: ModelType,
+        /// Set as the default model.
+        #[arg(long)]
+        default: bool,
+    },
     /// Verify model files exist and are valid.
     Check,
     /// Show details for a specific model.

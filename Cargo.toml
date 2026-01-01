@@ -15,7 +15,7 @@ default = ["cuda"]
 cuda = ["birdnet-onnx/cuda"]
 
 [dependencies]
-birdnet-onnx = "1.0.1"
+birdnet-onnx = "1.0.2"
 symphonia = { version = "0.5", features = ["aac", "mp3", "flac", "wav", "pcm"] }
 rubato = "0.16"
 clap = { version = "4", features = ["derive", "env"] }

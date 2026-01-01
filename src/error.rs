@@ -99,4 +99,11 @@ pub enum Error {
         /// Path to the audio file.
         path: std::path::PathBuf,
     },
+
+    /// Failed to resample audio.
+    #[error("failed to resample audio: {reason}")]
+    Resample {
+        /// Description of the resampling failure.
+        reason: String,
+    },
 }

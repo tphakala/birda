@@ -174,7 +174,10 @@ fn init_logging(verbose: u8, quiet: bool) {
         }
     };
 
-    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(level));
+    // Suppress verbose ort logging (ONNX Runtime) unless explicitly requested
+    let filter_str = format!("{level},ort=warn");
+
+    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(&filter_str));
 
     fmt().with_env_filter(filter).init();
 }

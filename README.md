@@ -70,7 +70,7 @@ Download a BirdNET model and labels file, then add it:
 
 ```bash
 birda models add birdnet \
-  --path /path/to/BirdNET_GLOBAL_6K_V2.4_Model_FP32.onnx \
+  --path /path/to/birdnet.onnx \
   --labels /path/to/BirdNET_GLOBAL_6K_V2.4_Labels.txt \
   --type birdnet-v24 \
   --default
@@ -164,7 +164,7 @@ Configuration file location:
 
 ```toml
 [models.birdnet]
-path = "/path/to/BirdNET_GLOBAL_6K_V2.4_Model_FP32.onnx"
+path = "/path/to/birdnet.onnx"
 labels = "/path/to/BirdNET_GLOBAL_6K_V2.4_Labels.txt"
 type = "birdnet-v24"
 

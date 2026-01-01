@@ -108,7 +108,7 @@ This creates the config file at `%APPDATA%\birda\config\config.toml`.
 Download the ONNX model and labels:
 
 - **ONNX Model**: [BirdNET-onnx on Hugging Face](https://huggingface.co/justinchuby/BirdNET-onnx)
-  - Download `BirdNET_GLOBAL_6K_V2.4_Model_FP32.onnx`
+  - Download `birdnet.onnx`
 - **Labels**: [BirdNET-Analyzer Releases](https://github.com/kahst/BirdNET-Analyzer/releases)
   - Download `BirdNET_GLOBAL_6K_V2.4_Labels.txt`
 
@@ -118,7 +118,7 @@ Save both files to a permanent location (e.g., `C:\Models\BirdNET\`).
 
 ```powershell
 birda models add birdnet `
-  --path "C:\Models\BirdNET\BirdNET_GLOBAL_6K_V2.4_Model_FP32.onnx" `
+  --path "C:\Models\BirdNET\birdnet.onnx" `
   --labels "C:\Models\BirdNET\BirdNET_GLOBAL_6K_V2.4_Labels.txt" `
   --type birdnet-v24 `
   --default
@@ -237,7 +237,7 @@ Example configuration:
 
 ```toml
 [models.birdnet]
-path = "C:\\Models\\BirdNET\\BirdNET_GLOBAL_6K_V2.4_Model_FP32.onnx"
+path = "C:\\Models\\BirdNET\\birdnet.onnx"
 labels = "C:\\Models\\BirdNET\\BirdNET_GLOBAL_6K_V2.4_Labels.txt"
 type = "birdnet-v24"
 

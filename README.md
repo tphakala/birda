@@ -234,14 +234,24 @@ Compatible with [Wildlife Acoustics Kaleidoscope](https://www.wildlifeacoustics.
 | GPU with small files | 32-64 |
 | GPU with large files | 64-128 |
 
-### Example Performance (1GB audio file, ~17 minutes)
+### Example Performance
 
-| Device | Batch Size | Time |
-|--------|------------|------|
-| GPU | 256 | ~36s |
-| GPU | 128 | ~6s |
-| GPU | 64 | ~7s |
-| CPU | 1 | ~11s |
+**Test system:** Intel Core i7-13700K, NVIDIA RTX 5080 (16GB VRAM), Windows 11 Pro
+
+**Test file:** 1GB WAV (~17 minutes of audio, ~3600 segments)
+
+| Device | Batch Size | Time | Speedup |
+|--------|------------|------|---------|
+| CPU | 1 | ~36s | 1x |
+| GPU | 1 | ~11s | 3.3x |
+| GPU | 64 | ~7s | 5.1x |
+| GPU | 128 | ~6s | 6x |
+| GPU | 256 | ~36s | 1x (overhead) |
+
+**Key findings:**
+- GPU with batch 64-128 is optimal (~6x faster than CPU)
+- Very large batch sizes (256+) can be slower due to memory allocation overhead
+- GPU with batch=1 is still 3x faster than CPU
 
 ## Supported Audio Formats
 

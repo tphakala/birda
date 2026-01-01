@@ -81,7 +81,7 @@ jobs:
           Compress-Archive -Path "dist/*" -DestinationPath "${{ matrix.artifact }}.zip"
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: ${{ matrix.artifact }}
           path: |
@@ -260,7 +260,7 @@ jobs:
           cd dist && tar -czvf ../${{ env.ARTIFACT }}.tar.gz *
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: ${{ env.ARTIFACT }}
           path: ${{ env.ARTIFACT }}.tar.gz
@@ -448,13 +448,13 @@ jobs:
             "installer\windows\birda.iss"
 
       - name: Upload ZIP artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: ${{ env.ARTIFACT }}
           path: ${{ env.ARTIFACT }}.zip
 
       - name: Upload installer artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: ${{ env.ARTIFACT }}-setup
           path: ${{ env.ARTIFACT }}-setup.exe

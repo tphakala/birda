@@ -102,6 +102,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Free disk space
+        run: |
+          echo "=== Before cleanup ==="
+          df -h
+          # Remove large preinstalled packages we don't need
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /usr/local/lib/android
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /opt/hostedtoolcache/CodeQL
+          echo "=== After cleanup ==="
+          df -h
+
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -221,6 +233,9 @@ jobs:
 
           echo "All required libraries present"
 
+          # Clean up extracted directories to save space (keep only lib-staging)
+          rm -rf cuda_cudart*-archive libcublas*-archive libcufft*-archive libcurand*-archive cudnn*-archive
+
       - name: Build release binary (CUDA)
         env:
           ORT_LIB_LOCATION: ${{ github.workspace }}/onnxruntime-linux-x64-gpu-${{ env.ONNXRUNTIME_VERSION }}/lib
@@ -259,6 +274,17 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Free disk space
+        shell: pwsh
+        run: |
+          Write-Host "=== Before cleanup ==="
+          Get-PSDrive -PSProvider FileSystem | Select-Object Name, @{N='Free(GB)';E={[math]::Round($_.Free/1GB,2)}}
+          # Remove large preinstalled packages we don't need
+          Remove-Item -Recurse -Force "C:\Program Files\dotnet" -ErrorAction SilentlyContinue
+          Remove-Item -Recurse -Force "C:\Android" -ErrorAction SilentlyContinue
+          Write-Host "=== After cleanup ==="
+          Get-PSDrive -PSProvider FileSystem | Select-Object Name, @{N='Free(GB)';E={[math]::Round($_.Free/1GB,2)}}
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -374,6 +400,13 @@ jobs:
           }
 
           Write-Host "All required libraries present"
+
+          # Clean up extracted directories to save space (keep only lib-staging and ort-extract for build)
+          Remove-Item -Recurse -Force "cuda_cudart-extract" -ErrorAction SilentlyContinue
+          Remove-Item -Recurse -Force "libcublas-extract" -ErrorAction SilentlyContinue
+          Remove-Item -Recurse -Force "libcufft-extract" -ErrorAction SilentlyContinue
+          Remove-Item -Recurse -Force "libcurand-extract" -ErrorAction SilentlyContinue
+          Remove-Item -Recurse -Force "cudnn-extract" -ErrorAction SilentlyContinue
 
       - name: Build release binary (CUDA)
         shell: pwsh

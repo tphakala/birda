@@ -21,6 +21,8 @@ A fast, cross-platform CLI tool for bird species detection using [BirdNET](https
 
 Download the latest release from the [Releases](https://github.com/tphakala/birda/releases) page.
 
+> **Windows users**: See the [Windows User Guide](docs/windows-guide.md) for detailed installation and GPU setup instructions.
+
 ### From Source
 
 Requires Rust 1.92 or later.

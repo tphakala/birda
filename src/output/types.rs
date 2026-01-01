@@ -91,13 +91,8 @@ mod tests {
 
     #[test]
     fn test_detection_from_label_no_underscore() {
-        let detection = Detection::from_label(
-            "Unknown Species",
-            0.5,
-            0.0,
-            3.0,
-            PathBuf::from("test.wav"),
-        );
+        let detection =
+            Detection::from_label("Unknown Species", 0.5, 0.0, 3.0, PathBuf::from("test.wav"));
         assert_eq!(detection.scientific_name, "Unknown Species");
         assert_eq!(detection.common_name, "Unknown Species");
     }

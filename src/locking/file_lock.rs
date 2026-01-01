@@ -45,15 +45,15 @@ impl FileLock {
                 // Write lock info
                 let info = LockInfo {
                     pid: std::process::id(),
-                    hostname: hostname::get()
-                        .map(|h| h.to_string_lossy().into_owned())
-                        .unwrap_or_else(|_| "unknown".to_string()),
+                    hostname: hostname::get().map_or_else(
+                        |_| "unknown".to_string(),
+                        |h| h.to_string_lossy().into_owned(),
+                    ),
                     started: Utc::now(),
                     input: input_path.to_path_buf(),
                 };
 
-                let json = serde_json::to_string_pretty(&info)
-                    .unwrap_or_else(|_| "{}".to_string());
+                let json = serde_json::to_string_pretty(&info).unwrap_or_else(|_| "{}".to_string());
                 let _ = f.write_all(json.as_bytes());
 
                 Ok(Self { lock_path })
@@ -82,14 +82,14 @@ impl FileLock {
         Self::lock_path_for(input_path, output_dir).exists()
     }
 
-    /// Check if a lock is stale (older than max_age).
+    /// Check if a lock is stale (older than `max_age`).
     pub fn is_stale(input_path: &Path, output_dir: &Path, max_age: Duration) -> bool {
         let lock_path = Self::lock_path_for(input_path, output_dir);
 
-        if let Ok(metadata) = fs::metadata(&lock_path) {
-            if let Ok(modified) = metadata.modified() {
-                return modified.elapsed().unwrap_or_default() > max_age;
-            }
+        if let Ok(metadata) = fs::metadata(&lock_path)
+            && let Ok(modified) = metadata.modified()
+        {
+            return modified.elapsed().unwrap_or_default() > max_age;
         }
         false
     }
@@ -152,10 +152,7 @@ mod tests {
 
     #[test]
     fn test_lock_path_format() {
-        let path = FileLock::lock_path_for(
-            Path::new("/data/audio.wav"),
-            Path::new("/output"),
-        );
+        let path = FileLock::lock_path_for(Path::new("/data/audio.wav"), Path::new("/output"));
         assert_eq!(path.to_string_lossy(), "/output/audio.wav.birda.lock");
     }
 }

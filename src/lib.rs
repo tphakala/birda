@@ -16,9 +16,9 @@ pub mod pipeline;
 
 use clap::Parser;
 use cli::{AnalyzeArgs, Cli, Command};
-use config::{load_default_config, Config, InferenceDevice};
+use config::{Config, InferenceDevice, load_default_config};
 use inference::BirdClassifier;
-use pipeline::{collect_input_files, output_dir_for, process_file, should_process, ProcessCheck};
+use pipeline::{ProcessCheck, collect_input_files, output_dir_for, process_file, should_process};
 use std::path::PathBuf;
 use tracing::{error, info, warn};
 
@@ -70,7 +70,9 @@ fn analyze_files(inputs: &[PathBuf], args: &AnalyzeArgs, config: &Config) -> Res
     let model_config = config::get_model(config, &model_name)?;
 
     // Resolve other settings
-    let min_confidence = args.min_confidence.unwrap_or(config.defaults.min_confidence);
+    let min_confidence = args
+        .min_confidence
+        .unwrap_or(config.defaults.min_confidence);
     let overlap = args.overlap.unwrap_or(config.defaults.overlap);
     let batch_size = args.batch_size.unwrap_or(config.defaults.batch_size);
     let formats = args
@@ -127,7 +129,7 @@ fn analyze_files(inputs: &[PathBuf], args: &AnalyzeArgs, config: &Config) -> Res
             min_confidence,
             overlap,
             batch_size,
-            config.defaults.csv_columns.include.clone(),
+            &config.defaults.csv_columns.include,
         ) {
             Ok(result) => {
                 processed += 1;
@@ -157,7 +159,7 @@ fn analyze_files(inputs: &[PathBuf], args: &AnalyzeArgs, config: &Config) -> Res
 }
 
 fn init_logging(verbose: u8, quiet: bool) {
-    use tracing_subscriber::{fmt, EnvFilter};
+    use tracing_subscriber::{EnvFilter, fmt};
 
     let level = if quiet {
         "warn"

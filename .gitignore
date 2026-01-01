@@ -1,0 +1,15 @@
+# Build artifacts
+/target/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Claude Code
+.claude/
+CLAUDE.md
+
+# Design documents (not tracked in git)
+/docs/

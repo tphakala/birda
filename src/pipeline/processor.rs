@@ -1,6 +1,6 @@
 //! Single file processing pipeline.
 
-use crate::audio::{chunk_audio, decode_audio_file, resample, AudioChunk};
+use crate::audio::{AudioChunk, chunk_audio, decode_audio_file, resample};
 use crate::config::OutputFormat;
 use crate::error::Result;
 use crate::inference::BirdClassifier;
@@ -13,6 +13,7 @@ use std::path::Path;
 use tracing::{debug, info};
 
 /// Process a single audio file and write detection results.
+#[allow(clippy::too_many_arguments)]
 pub fn process_file(
     input_path: &Path,
     output_dir: &Path,
@@ -21,7 +22,7 @@ pub fn process_file(
     min_confidence: f32,
     overlap: f32,
     batch_size: usize,
-    csv_columns: Vec<String>,
+    csv_columns: &[String],
 ) -> Result<ProcessResult> {
     info!("Processing: {}", input_path.display());
 
@@ -34,14 +35,14 @@ pub fn process_file(
 
     // Resample to model's expected sample rate
     let target_rate = classifier.sample_rate();
-    let samples = if decoded.sample_rate != target_rate {
+    let samples = if decoded.sample_rate == target_rate {
+        decoded.samples
+    } else {
         debug!(
             "Resampling from {} Hz to {} Hz...",
             decoded.sample_rate, target_rate
         );
         resample(decoded.samples, decoded.sample_rate, target_rate)?
-    } else {
-        decoded.samples
     };
 
     // Chunk audio into segments
@@ -62,13 +63,7 @@ pub fn process_file(
 
     // Run inference
     debug!("Running inference on {} segments...", chunks.len());
-    let detections = run_inference(
-        &chunks,
-        classifier,
-        input_path,
-        min_confidence,
-        batch_size,
-    )?;
+    let detections = run_inference(&chunks, classifier, input_path, min_confidence, batch_size)?;
 
     info!(
         "Found {} detections above {:.1}% confidence",
@@ -78,13 +73,7 @@ pub fn process_file(
 
     // Write output files
     for format in formats {
-        write_output(
-            input_path,
-            output_dir,
-            *format,
-            &detections,
-            &csv_columns,
-        )?;
+        write_output(input_path, output_dir, *format, &detections, csv_columns)?;
     }
 
     Ok(ProcessResult {

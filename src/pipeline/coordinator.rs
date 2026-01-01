@@ -128,10 +128,12 @@ fn collect_audio_files_recursive(dir: &Path, files: &mut Vec<PathBuf>) -> Result
 
 /// Check if a file is a supported audio format.
 fn is_audio_file(path: &Path) -> bool {
-    path.extension()
-        .and_then(|e| e.to_str())
-        .map(|e| matches!(e.to_lowercase().as_str(), "wav" | "flac" | "mp3" | "m4a" | "aac"))
-        .unwrap_or(false)
+    path.extension().and_then(|e| e.to_str()).is_some_and(|e| {
+        matches!(
+            e.to_lowercase().as_str(),
+            "wav" | "flac" | "mp3" | "m4a" | "aac"
+        )
+    })
 }
 
 #[cfg(test)]

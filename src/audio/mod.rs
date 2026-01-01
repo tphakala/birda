@@ -4,6 +4,6 @@ mod chunker;
 mod decode;
 mod resample;
 
-pub use chunker::{chunk_audio, AudioChunk};
-pub use decode::{decode_audio_file, DecodedAudio};
+pub use chunker::{AudioChunk, chunk_audio};
+pub use decode::{DecodedAudio, decode_audio_file};
 pub use resample::resample;

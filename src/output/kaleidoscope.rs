@@ -24,7 +24,10 @@ impl KaleidoscopeWriter {
 
 impl OutputWriter for KaleidoscopeWriter {
     fn write_header(&mut self) -> Result<()> {
-        writeln!(self.writer, "INDIR,FOLDER,IN FILE,OFFSET,DURATION,TOP1MATCH,TOP1DIST")?;
+        writeln!(
+            self.writer,
+            "INDIR,FOLDER,IN FILE,OFFSET,DURATION,TOP1MATCH,TOP1DIST"
+        )?;
         Ok(())
     }
 
@@ -44,10 +47,7 @@ impl OutputWriter for KaleidoscopeWriter {
             .map(|p| p.display().to_string())
             .unwrap_or_default();
 
-        let filename = path
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or("");
+        let filename = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
 
         let duration = detection.end_time - detection.start_time;
 

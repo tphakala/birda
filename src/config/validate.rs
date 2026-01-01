@@ -85,12 +85,9 @@ pub fn validate_model_config(name: &str, model: &ModelConfig) -> Result<()> {
 
 /// Get a model by name from the config.
 pub fn get_model<'a>(config: &'a Config, name: &str) -> Result<&'a ModelConfig> {
-    config
-        .models
-        .get(name)
-        .ok_or_else(|| Error::ModelNotFound {
-            name: name.to_string(),
-        })
+    config.models.get(name).ok_or_else(|| Error::ModelNotFound {
+        name: name.to_string(),
+    })
 }
 
 #[cfg(test)]

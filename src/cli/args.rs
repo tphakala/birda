@@ -176,15 +176,8 @@ mod tests {
 
     #[test]
     fn test_cli_parse_with_options() {
-        let cli = Cli::try_parse_from([
-            "birda",
-            "test.wav",
-            "-m",
-            "birdnet-v24",
-            "-c",
-            "0.25",
-            "-q",
-        ]);
+        let cli =
+            Cli::try_parse_from(["birda", "test.wav", "-m", "birdnet-v24", "-c", "0.25", "-q"]);
         assert!(cli.is_ok());
         let cli = cli.unwrap();
         assert_eq!(cli.analyze.model, Some("birdnet-v24".to_string()));

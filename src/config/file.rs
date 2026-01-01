@@ -27,8 +27,7 @@ pub fn load_config_file(path: &Path) -> Result<Config> {
 ///
 /// Returns default config if no config file exists.
 pub fn load_default_config() -> Result<Config> {
-    super::config_file_path()
-        .map_or_else(|_| Ok(Config::default()), |path| load_config_file(&path))
+    super::config_file_path().map_or_else(|_| Ok(Config::default()), |path| load_config_file(&path))
 }
 
 #[cfg(test)]

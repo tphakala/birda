@@ -33,4 +33,32 @@ pub enum Error {
         #[source]
         source: toml::de::Error,
     },
+
+    /// Configuration validation failed.
+    #[error("configuration validation failed: {message}")]
+    ConfigValidation {
+        /// Description of the validation failure.
+        message: String,
+    },
+
+    /// Model not found in configuration.
+    #[error("model '{name}' not found in configuration")]
+    ModelNotFound {
+        /// Name of the missing model.
+        name: String,
+    },
+
+    /// Model file does not exist.
+    #[error("model file does not exist: {path}")]
+    ModelFileNotFound {
+        /// Path to the missing model file.
+        path: std::path::PathBuf,
+    },
+
+    /// Labels file does not exist.
+    #[error("labels file does not exist: {path}")]
+    LabelsFileNotFound {
+        /// Path to the missing labels file.
+        path: std::path::PathBuf,
+    },
 }

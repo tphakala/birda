@@ -32,6 +32,7 @@ pub fn load_default_config() -> Result<Config> {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::float_cmp)]
 mod tests {
     use super::*;
     use std::io::Write;

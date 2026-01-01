@@ -162,6 +162,7 @@ impl std::str::FromStr for OutputFormat {
 }
 
 #[cfg(test)]
+#[allow(clippy::float_cmp)]
 mod tests {
     use super::*;
 

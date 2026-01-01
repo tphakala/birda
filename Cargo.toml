@@ -1,0 +1,40 @@
+[package]
+name = "birda"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.92"
+description = "CLI tool for bird species detection using BirdNET and Perch models"
+license = "MIT"
+repository = "https://github.com/tphakala/birda"
+readme = "README.md"
+keywords = ["birdnet", "audio", "machine-learning", "bioacoustics"]
+categories = ["science", "multimedia::audio", "command-line-utilities"]
+
+[dependencies]
+thiserror = "2"
+
+[dev-dependencies]
+tempfile = "3"
+
+[lints.rust]
+unsafe_code = "deny"
+missing_docs = "warn"
+
+[lints.clippy]
+correctness = { level = "deny", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+nursery = { level = "warn", priority = -1 }
+cargo = { level = "warn", priority = -1 }
+unwrap_used = "warn"
+expect_used = "warn"
+panic = "warn"
+todo = "warn"
+unimplemented = "warn"
+dbg_macro = "warn"
+module_name_repetitions = "allow"
+similar_names = "allow"
+too_many_lines = "allow"
+must_use_candidate = "allow"
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
+missing_const_for_fn = "allow"

@@ -122,7 +122,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: gpu-libs
-          key: gpu-libs-linux-ort${{ env.ONNXRUNTIME_VERSION }}-cudart${{ env.CUDA_CUDART_VERSION }}-cudnn${{ env.CUDNN_VERSION }}
+          key: gpu-libs-linux-ort${{ env.ONNXRUNTIME_VERSION }}-cuda${{ env.CUDA_CUDART_VERSION }}-${{ env.CUDA_CUBLAS_VERSION }}-${{ env.CUDA_CUFFT_VERSION }}-${{ env.CUDA_CURAND_VERSION }}-cudnn${{ env.CUDNN_VERSION }}
 
       - name: Download ONNX Runtime GPU
         run: |
@@ -280,7 +280,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: gpu-libs
-          key: gpu-libs-windows-ort${{ env.ONNXRUNTIME_VERSION }}-cudart${{ env.CUDA_CUDART_VERSION }}-cudnn${{ env.CUDNN_VERSION }}
+          key: gpu-libs-windows-ort${{ env.ONNXRUNTIME_VERSION }}-cuda${{ env.CUDA_CUDART_VERSION }}-${{ env.CUDA_CUBLAS_VERSION }}-${{ env.CUDA_CUFFT_VERSION }}-${{ env.CUDA_CURAND_VERSION }}-cudnn${{ env.CUDNN_VERSION }}
 
       - name: Download ONNX Runtime GPU
         shell: pwsh

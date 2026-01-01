@@ -2,7 +2,8 @@
 ; https://jrsoftware.org/isinfo.php
 
 #define MyAppName "Birda"
-#define MyAppPublisher "tphakala"
+#define MyAppPublisher "Tomi P. Hakala"
+#define MyAppPublisherURL "https://github.com/tphakala"
 #define MyAppURL "https://github.com/tphakala/birda"
 #define MyAppExeName "birda.exe"
 
@@ -12,7 +13,7 @@ AppId={{B1RDA-GPU-4N4LYZ3R-2024}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppPublisher={#MyAppPublisher}
-AppPublisherURL={#MyAppURL}
+AppPublisherURL={#MyAppPublisherURL}
 AppSupportURL={#MyAppURL}/issues
 AppUpdatesURL={#MyAppURL}/releases
 DefaultDirName={autopf}\{#MyAppName}

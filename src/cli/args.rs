@@ -1,0 +1,200 @@
+//! CLI argument definitions.
+
+use crate::config::OutputFormat;
+use clap::{Args, Parser, Subcommand};
+use std::path::PathBuf;
+
+/// Bird species detection using `BirdNET` and Perch models.
+#[derive(Debug, Parser)]
+#[command(name = "birda")]
+#[command(author, version, about, long_about = None)]
+pub struct Cli {
+    /// Subcommand to run.
+    #[command(subcommand)]
+    pub command: Option<Command>,
+
+    /// Input files or directories to analyze.
+    pub inputs: Vec<PathBuf>,
+
+    /// Common options for analysis.
+    #[command(flatten)]
+    pub analyze: AnalyzeArgs,
+}
+
+/// Available subcommands.
+#[derive(Debug, Subcommand)]
+pub enum Command {
+    /// Manage configuration.
+    Config {
+        /// Configuration action to perform.
+        #[command(subcommand)]
+        action: ConfigAction,
+    },
+    /// Manage models.
+    Models {
+        /// Models action to perform.
+        #[command(subcommand)]
+        action: ModelsAction,
+    },
+}
+
+/// Config subcommand actions.
+#[derive(Debug, Subcommand)]
+pub enum ConfigAction {
+    /// Create default configuration file.
+    Init,
+    /// Display current configuration.
+    Show,
+    /// Print configuration file path.
+    Path,
+}
+
+/// Models subcommand actions.
+#[derive(Debug, Subcommand)]
+pub enum ModelsAction {
+    /// List configured models.
+    List,
+    /// Verify model files exist and are valid.
+    Check,
+    /// Show details for a specific model.
+    Info {
+        /// Model name from configuration.
+        name: String,
+    },
+}
+
+/// Arguments for the analyze command.
+#[derive(Debug, Args)]
+#[allow(clippy::struct_excessive_bools)]
+pub struct AnalyzeArgs {
+    /// Model name from configuration.
+    #[arg(short, long, env = "BIRDA_MODEL")]
+    pub model: Option<String>,
+
+    /// Path to ONNX model file (overrides config).
+    #[arg(long, env = "BIRDA_MODEL_PATH")]
+    pub model_path: Option<PathBuf>,
+
+    /// Path to labels file (overrides config).
+    #[arg(long, env = "BIRDA_LABELS_PATH")]
+    pub labels_path: Option<PathBuf>,
+
+    /// Output formats (comma-separated: csv,raven,audacity,kaleidoscope).
+    #[arg(short, long, value_delimiter = ',', env = "BIRDA_FORMAT")]
+    pub format: Option<Vec<OutputFormat>>,
+
+    /// Output directory (default: same as input).
+    #[arg(short, long, env = "BIRDA_OUTPUT_DIR")]
+    pub output_dir: Option<PathBuf>,
+
+    /// Minimum confidence threshold (0.0-1.0).
+    #[arg(short = 'c', long, value_parser = parse_confidence, env = "BIRDA_MIN_CONFIDENCE")]
+    pub min_confidence: Option<f32>,
+
+    /// Segment overlap in seconds.
+    #[arg(long, env = "BIRDA_OVERLAP")]
+    pub overlap: Option<f32>,
+
+    /// Inference batch size.
+    #[arg(short, long, env = "BIRDA_BATCH_SIZE")]
+    pub batch_size: Option<usize>,
+
+    /// Generate combined results file.
+    #[arg(long)]
+    pub combine: bool,
+
+    /// Reprocess files even if output exists.
+    #[arg(long)]
+    pub force: bool,
+
+    /// Stop on first error.
+    #[arg(long)]
+    pub fail_fast: bool,
+
+    /// Suppress progress output.
+    #[arg(short, long)]
+    pub quiet: bool,
+
+    /// Increase verbosity (-v, -vv, -vvv).
+    #[arg(short, long, action = clap::ArgAction::Count)]
+    pub verbose: u8,
+
+    /// Enable CUDA GPU acceleration.
+    #[arg(long, conflicts_with = "cpu")]
+    pub gpu: bool,
+
+    /// Force CPU inference.
+    #[arg(long, conflicts_with = "gpu")]
+    pub cpu: bool,
+
+    /// Remove locks older than this duration (e.g., 1h, 30m).
+    #[arg(long)]
+    pub stale_lock_timeout: Option<String>,
+}
+
+/// Parse and validate confidence value.
+fn parse_confidence(s: &str) -> Result<f32, String> {
+    let value: f32 = s
+        .parse()
+        .map_err(|_| format!("'{s}' is not a valid number"))?;
+
+    if !(0.0..=1.0).contains(&value) {
+        return Err(format!(
+            "confidence must be between 0.0 and 1.0, got {value}"
+        ));
+    }
+
+    Ok(value)
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::float_cmp)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_confidence_valid() {
+        assert_eq!(parse_confidence("0.5").ok(), Some(0.5));
+        assert_eq!(parse_confidence("0.0").ok(), Some(0.0));
+        assert_eq!(parse_confidence("1.0").ok(), Some(1.0));
+    }
+
+    #[test]
+    fn test_parse_confidence_invalid() {
+        assert!(parse_confidence("1.5").is_err());
+        assert!(parse_confidence("-0.1").is_err());
+        assert!(parse_confidence("abc").is_err());
+    }
+
+    #[test]
+    fn test_cli_parse_simple() {
+        let cli = Cli::try_parse_from(["birda", "test.wav"]);
+        assert!(cli.is_ok());
+        let cli = cli.unwrap();
+        assert_eq!(cli.inputs.len(), 1);
+    }
+
+    #[test]
+    fn test_cli_parse_with_options() {
+        let cli = Cli::try_parse_from([
+            "birda",
+            "test.wav",
+            "-m",
+            "birdnet-v24",
+            "-c",
+            "0.25",
+            "-q",
+        ]);
+        assert!(cli.is_ok());
+        let cli = cli.unwrap();
+        assert_eq!(cli.analyze.model, Some("birdnet-v24".to_string()));
+        assert_eq!(cli.analyze.min_confidence, Some(0.25));
+        assert!(cli.analyze.quiet);
+    }
+
+    #[test]
+    fn test_cli_parse_config_subcommand() {
+        let cli = Cli::try_parse_from(["birda", "config", "show"]);
+        assert!(cli.is_ok());
+    }
+}

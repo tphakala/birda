@@ -3,6 +3,7 @@
 [![CI](https://github.com/tphakala/birda/actions/workflows/ci.yml/badge.svg)](https://github.com/tphakala/birda/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Rust](https://img.shields.io/badge/rust-1.92%2B-blue.svg)](https://www.rust-lang.org/)
+[![Sponsor](https://img.shields.io/badge/sponsor-GitHub-pink.svg)](https://github.com/sponsors/tphakala)
 
 A fast, cross-platform CLI tool for bird species detection using [BirdNET](https://github.com/kahst/BirdNET-Analyzer) and Google Perch AI models.
 

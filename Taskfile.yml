@@ -6,10 +6,11 @@ vars:
   BINARY_NAME: birda
 
 # Cross-compilation notes:
+# - Native builds include CUDA support by default
+# - Cross-compilation builds are CPU-only (--no-default-features)
 # - Linux ARM64: requires `gcc-aarch64-linux-gnu` package
 # - macOS targets: requires macOS SDK (osxcross) or build on macOS
 # - Windows GNU: requires `mingw-w64` package
-# - ONNX Runtime: downloads platform-specific binaries automatically
 
 tasks:
   default:
@@ -55,26 +56,25 @@ tasks:
       - cargo test -- --nocapture
 
   build:
-    desc: Build for current platform (debug)
+    desc: Build for current platform (debug, with CUDA)
     cmds:
       - cargo build
 
   build:release:
-    desc: Build for current platform (release)
+    desc: Build for current platform (release, with CUDA)
     cmds:
       - cargo build --release
 
-  # Native builds (recommended - no cross-compilation complexity)
-  build:native:
-    desc: Build release for current platform only
+  build:cpu:
+    desc: Build for current platform (release, CPU-only)
     cmds:
-      - cargo build --release
+      - cargo build --release --no-default-features
 
-  # Cross-compilation targets
+  # Cross-compilation targets (CPU-only, no CUDA)
   # These require appropriate toolchains installed
 
   build:linux-x64:
-    desc: Build for Linux x86_64
+    desc: Build for Linux x86_64 (with CUDA)
     vars:
       TARGET: x86_64-unknown-linux-gnu
     cmds:
@@ -82,46 +82,40 @@ tasks:
       - cargo build --release --target {{.TARGET}}
 
   build:linux-arm64:
-    desc: Build for Linux ARM64 (requires gcc-aarch64-linux-gnu)
+    desc: Build for Linux ARM64 (CPU-only, requires gcc-aarch64-linux-gnu)
     vars:
       TARGET: aarch64-unknown-linux-gnu
     env:
       CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
     cmds:
       - rustup target add {{.TARGET}} 2>/dev/null || true
-      - cargo build --release --target {{.TARGET}}
+      - cargo build --release --no-default-features --target {{.TARGET}}
 
   build:macos-x64:
-    desc: Build for macOS x86_64 (requires osxcross or native macOS)
+    desc: Build for macOS x86_64 (CPU-only, requires osxcross or native macOS)
     vars:
       TARGET: x86_64-apple-darwin
     cmds:
       - rustup target add {{.TARGET}} 2>/dev/null || true
-      - cargo build --release --target {{.TARGET}}
+      - cargo build --release --no-default-features --target {{.TARGET}}
 
   build:macos-arm64:
-    desc: Build for macOS ARM64 (requires osxcross or native macOS)
+    desc: Build for macOS ARM64 (CPU-only, requires osxcross or native macOS)
     vars:
       TARGET: aarch64-apple-darwin
     cmds:
       - rustup target add {{.TARGET}} 2>/dev/null || true
-      - cargo build --release --target {{.TARGET}}
+      - cargo build --release --no-default-features --target {{.TARGET}}
 
   build:windows-x64:
-    desc: Build for Windows x86_64 (requires mingw-w64)
+    desc: Build for Windows x86_64 (CPU-only, requires mingw-w64)
     vars:
       TARGET: x86_64-pc-windows-gnu
     env:
       CARGO_TARGET_X86_64_PC_WINDOWS_GNU_LINKER: x86_64-w64-mingw32-gcc
     cmds:
       - rustup target add {{.TARGET}} 2>/dev/null || true
-      - cargo build --release --target {{.TARGET}}
-
-  # Build all that work on current platform
-  build:all-native:
-    desc: Build for all Linux targets (from Linux host)
-    cmds:
-      - task: build:linux-x64
+      - cargo build --release --no-default-features --target {{.TARGET}}
 
   clean:
     desc: Clean build artifacts

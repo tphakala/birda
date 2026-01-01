@@ -10,6 +10,10 @@ readme = "README.md"
 keywords = ["birdnet", "audio", "machine-learning", "bioacoustics"]
 categories = ["science", "multimedia::audio", "command-line-utilities"]
 
+[features]
+default = ["cuda"]
+cuda = ["birdnet-onnx/cuda"]
+
 [dependencies]
 birdnet-onnx = { path = "../rust-birdnet-onnx" }
 symphonia = { version = "0.5", features = ["aac", "mp3", "flac", "wav", "pcm"] }

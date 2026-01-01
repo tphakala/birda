@@ -34,6 +34,11 @@ pub fn run() -> Result<()> {
     // Initialize logging
     init_logging(cli.analyze.verbose, cli.analyze.quiet);
 
+    // Initialize ONNX Runtime (auto-detects bundled libraries)
+    birdnet_onnx::init_runtime().map_err(|e| Error::RuntimeInitialization {
+        reason: e.to_string(),
+    })?;
+
     // Load configuration
     let config = load_default_config()?;
 

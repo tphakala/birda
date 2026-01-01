@@ -7,10 +7,23 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  # Library versions - update these when upgrading
+  # ONNX Runtime 1.22+ requires CUDA 12.x and cuDNN 9.x
+  ONNXRUNTIME_VERSION: "1.22.0"
+  # CUDA redistributable versions (from https://developer.download.nvidia.com/compute/cuda/redist/redistrib_12.9.0.json)
+  CUDA_CUDART_VERSION: "12.9.37"
+  CUDA_CUBLAS_VERSION: "12.9.0.13"
+  CUDA_CUFFT_VERSION: "11.4.0.6"
+  CUDA_CURAND_VERSION: "10.3.10.19"
+  # cuDNN version (from https://developer.download.nvidia.com/compute/cudnn/redist/redistrib_9.17.1.json)
+  CUDNN_VERSION: "9.17.1.4"
 
 jobs:
-  build:
-    name: Build ${{ matrix.target }}
+  # ==========================================================================
+  # CPU-only builds (small, no GPU dependencies)
+  # ==========================================================================
+  build-cpu:
+    name: Build CPU ${{ matrix.target }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -45,7 +58,7 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-${{ matrix.target }}-cargo-
 
-      - name: Build release binary
+      - name: Build release binary (CPU only)
         run: cargo build --release --no-default-features --target ${{ matrix.target }}
 
       - name: Prepare artifact (Unix)
@@ -53,7 +66,8 @@ jobs:
         run: |
           mkdir -p dist
           cp target/${{ matrix.target }}/release/birda dist/
-          cp README.md LICENSE dist/ 2>/dev/null || true
+          cp README.md dist/
+          cp LICENSE dist/ 2>/dev/null || true
           cd dist && tar -czvf ../${{ matrix.artifact }}.tar.gz *
 
       - name: Prepare artifact (Windows)
@@ -62,7 +76,7 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force -Path dist
           Copy-Item "target/${{ matrix.target }}/release/birda.exe" -Destination "dist/"
-          Copy-Item "README.md" -Destination "dist/" -ErrorAction SilentlyContinue
+          Copy-Item "README.md" -Destination "dist/"
           Copy-Item "LICENSE" -Destination "dist/" -ErrorAction SilentlyContinue
           Compress-Archive -Path "dist/*" -DestinationPath "${{ matrix.artifact }}.zip"
 
@@ -75,9 +89,320 @@ jobs:
             ${{ matrix.artifact }}.zip
           if-no-files-found: ignore
 
+  # ==========================================================================
+  # GPU builds with bundled ONNX Runtime + CUDA libraries
+  # ==========================================================================
+  build-gpu-linux:
+    name: Build GPU Linux x64
+    runs-on: ubuntu-latest
+    env:
+      TARGET: x86_64-unknown-linux-gnu
+      ARTIFACT: birda-linux-x64-cuda
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ env.TARGET }}
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-${{ env.TARGET }}-cuda-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ env.TARGET }}-cuda-cargo-
+
+      - name: Cache GPU libraries
+        uses: actions/cache@v4
+        with:
+          path: gpu-libs
+          key: gpu-libs-linux-ort${{ env.ONNXRUNTIME_VERSION }}-cudart${{ env.CUDA_CUDART_VERSION }}-cudnn${{ env.CUDNN_VERSION }}
+
+      - name: Download ONNX Runtime GPU
+        run: |
+          mkdir -p gpu-libs
+          if [ ! -f "gpu-libs/onnxruntime-linux-x64-gpu-${{ env.ONNXRUNTIME_VERSION }}.tgz" ]; then
+            curl -L -o gpu-libs/onnxruntime-linux-x64-gpu-${{ env.ONNXRUNTIME_VERSION }}.tgz \
+              "https://github.com/microsoft/onnxruntime/releases/download/v${{ env.ONNXRUNTIME_VERSION }}/onnxruntime-linux-x64-gpu-${{ env.ONNXRUNTIME_VERSION }}.tgz"
+          fi
+
+      - name: Download CUDA libraries
+        run: |
+          CUDA_BASE="https://developer.download.nvidia.com/compute/cuda/redist"
+
+          # Download CUDA runtime
+          if [ ! -f "gpu-libs/cuda_cudart.tar.xz" ]; then
+            curl -L -o gpu-libs/cuda_cudart.tar.xz \
+              "${CUDA_BASE}/cuda_cudart/linux-x86_64/cuda_cudart-linux-x86_64-${{ env.CUDA_CUDART_VERSION }}-archive.tar.xz"
+          fi
+
+          # Download cuBLAS
+          if [ ! -f "gpu-libs/libcublas.tar.xz" ]; then
+            curl -L -o gpu-libs/libcublas.tar.xz \
+              "${CUDA_BASE}/libcublas/linux-x86_64/libcublas-linux-x86_64-${{ env.CUDA_CUBLAS_VERSION }}-archive.tar.xz"
+          fi
+
+          # Download cuFFT
+          if [ ! -f "gpu-libs/libcufft.tar.xz" ]; then
+            curl -L -o gpu-libs/libcufft.tar.xz \
+              "${CUDA_BASE}/libcufft/linux-x86_64/libcufft-linux-x86_64-${{ env.CUDA_CUFFT_VERSION }}-archive.tar.xz"
+          fi
+
+          # Download cuRAND
+          if [ ! -f "gpu-libs/libcurand.tar.xz" ]; then
+            curl -L -o gpu-libs/libcurand.tar.xz \
+              "${CUDA_BASE}/libcurand/linux-x86_64/libcurand-linux-x86_64-${{ env.CUDA_CURAND_VERSION }}-archive.tar.xz"
+          fi
+
+      - name: Download cuDNN
+        run: |
+          CUDNN_BASE="https://developer.download.nvidia.com/compute/cudnn/redist/cudnn/linux-x86_64"
+          if [ ! -f "gpu-libs/cudnn.tar.xz" ]; then
+            curl -L -o gpu-libs/cudnn.tar.xz \
+              "${CUDNN_BASE}/cudnn-linux-x86_64-${{ env.CUDNN_VERSION }}_cuda12-archive.tar.xz"
+          fi
+
+      - name: Extract GPU libraries
+        run: |
+          mkdir -p lib-staging
+
+          # Extract ONNX Runtime
+          tar -xzf gpu-libs/onnxruntime-linux-x64-gpu-${{ env.ONNXRUNTIME_VERSION }}.tgz
+          cp onnxruntime-linux-x64-gpu-${{ env.ONNXRUNTIME_VERSION }}/lib/*.so* lib-staging/
+
+          # Extract CUDA libraries
+          for archive in cuda_cudart libcublas libcufft libcurand; do
+            tar -xJf gpu-libs/${archive}.tar.xz
+            find . -maxdepth 1 -type d -name "${archive}*" -exec cp -r {}/**/lib*/*.so* lib-staging/ \; 2>/dev/null || true
+          done
+
+          # Extract cuDNN
+          tar -xJf gpu-libs/cudnn.tar.xz
+          find . -maxdepth 1 -type d -name "cudnn*" -exec cp -r {}/**/lib*/*.so* lib-staging/ \; 2>/dev/null || true
+
+          # List what we collected
+          echo "=== Collected libraries ==="
+          ls -la lib-staging/
+
+          # Verify critical libraries were extracted
+          REQUIRED_LIBS=(
+            "libonnxruntime.so"
+            "libonnxruntime_providers_cuda.so"
+            "libonnxruntime_providers_shared.so"
+            "libcudart.so"
+            "libcublas.so"
+            "libcublasLt.so"
+            "libcufft.so"
+            "libcurand.so"
+            "libcudnn.so"
+          )
+
+          for lib in "${REQUIRED_LIBS[@]}"; do
+            if ! ls lib-staging/${lib}* 1> /dev/null 2>&1; then
+              echo "ERROR: Required library ${lib} not found!"
+              exit 1
+            fi
+          done
+
+          echo "All required libraries present"
+
+      - name: Build release binary (CUDA)
+        env:
+          ORT_LIB_LOCATION: ${{ github.workspace }}/onnxruntime-linux-x64-gpu-${{ env.ONNXRUNTIME_VERSION }}/lib
+        run: cargo build --release --features cuda --target ${{ env.TARGET }}
+
+      - name: Prepare artifact
+        run: |
+          mkdir -p dist/lib
+
+          # Copy binary
+          cp target/${{ env.TARGET }}/release/birda dist/
+
+          # Copy GPU libraries
+          cp lib-staging/*.so* dist/lib/
+
+          # Copy documentation
+          cp README.md dist/
+          cp LICENSE dist/ 2>/dev/null || true
+          cp THIRD_PARTY_LICENSES.txt dist/
+
+          # Create archive
+          cd dist && tar -czvf ../${{ env.ARTIFACT }}.tar.gz *
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ARTIFACT }}
+          path: ${{ env.ARTIFACT }}.tar.gz
+
+  build-gpu-windows:
+    name: Build GPU Windows x64
+    runs-on: windows-latest
+    env:
+      TARGET: x86_64-pc-windows-msvc
+      ARTIFACT: birda-windows-x64-cuda
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ env.TARGET }}
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-${{ env.TARGET }}-cuda-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ env.TARGET }}-cuda-cargo-
+
+      - name: Cache GPU libraries
+        uses: actions/cache@v4
+        with:
+          path: gpu-libs
+          key: gpu-libs-windows-ort${{ env.ONNXRUNTIME_VERSION }}-cudart${{ env.CUDA_CUDART_VERSION }}-cudnn${{ env.CUDNN_VERSION }}
+
+      - name: Download ONNX Runtime GPU
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path gpu-libs
+          $ortFile = "gpu-libs/onnxruntime-win-x64-gpu-${{ env.ONNXRUNTIME_VERSION }}.zip"
+          if (-not (Test-Path $ortFile)) {
+            Invoke-WebRequest -Uri "https://github.com/microsoft/onnxruntime/releases/download/v${{ env.ONNXRUNTIME_VERSION }}/onnxruntime-win-x64-gpu-${{ env.ONNXRUNTIME_VERSION }}.zip" -OutFile $ortFile
+          }
+
+      - name: Download CUDA libraries
+        shell: pwsh
+        run: |
+          $cudaBase = "https://developer.download.nvidia.com/compute/cuda/redist"
+
+          # CUDA Runtime
+          if (-not (Test-Path "gpu-libs/cuda_cudart.zip")) {
+            Invoke-WebRequest -Uri "${cudaBase}/cuda_cudart/windows-x86_64/cuda_cudart-windows-x86_64-${{ env.CUDA_CUDART_VERSION }}-archive.zip" -OutFile "gpu-libs/cuda_cudart.zip"
+          }
+
+          # cuBLAS
+          if (-not (Test-Path "gpu-libs/libcublas.zip")) {
+            Invoke-WebRequest -Uri "${cudaBase}/libcublas/windows-x86_64/libcublas-windows-x86_64-${{ env.CUDA_CUBLAS_VERSION }}-archive.zip" -OutFile "gpu-libs/libcublas.zip"
+          }
+
+          # cuFFT
+          if (-not (Test-Path "gpu-libs/libcufft.zip")) {
+            Invoke-WebRequest -Uri "${cudaBase}/libcufft/windows-x86_64/libcufft-windows-x86_64-${{ env.CUDA_CUFFT_VERSION }}-archive.zip" -OutFile "gpu-libs/libcufft.zip"
+          }
+
+          # cuRAND
+          if (-not (Test-Path "gpu-libs/libcurand.zip")) {
+            Invoke-WebRequest -Uri "${cudaBase}/libcurand/windows-x86_64/libcurand-windows-x86_64-${{ env.CUDA_CURAND_VERSION }}-archive.zip" -OutFile "gpu-libs/libcurand.zip"
+          }
+
+      - name: Download cuDNN
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "gpu-libs/cudnn.zip")) {
+            Invoke-WebRequest -Uri "https://developer.download.nvidia.com/compute/cudnn/redist/cudnn/windows-x86_64/cudnn-windows-x86_64-${{ env.CUDNN_VERSION }}_cuda12-archive.zip" -OutFile "gpu-libs/cudnn.zip"
+          }
+
+      - name: Extract GPU libraries
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path lib-staging
+
+          # Extract ONNX Runtime
+          Expand-Archive -Path "gpu-libs/onnxruntime-win-x64-gpu-${{ env.ONNXRUNTIME_VERSION }}.zip" -DestinationPath "ort-extract" -Force
+          Copy-Item "ort-extract/onnxruntime-win-x64-gpu-${{ env.ONNXRUNTIME_VERSION }}/lib/*.dll" -Destination "lib-staging/" -ErrorAction SilentlyContinue
+
+          # Extract CUDA libraries
+          @("cuda_cudart", "libcublas", "libcufft", "libcurand") | ForEach-Object {
+            $name = $_
+            Expand-Archive -Path "gpu-libs/${name}.zip" -DestinationPath "${name}-extract" -Force
+            Get-ChildItem -Path "${name}-extract" -Recurse -Filter "*.dll" | Copy-Item -Destination "lib-staging/" -ErrorAction SilentlyContinue
+          }
+
+          # Extract cuDNN
+          Expand-Archive -Path "gpu-libs/cudnn.zip" -DestinationPath "cudnn-extract" -Force
+          Get-ChildItem -Path "cudnn-extract" -Recurse -Filter "*.dll" | Copy-Item -Destination "lib-staging/" -ErrorAction SilentlyContinue
+
+          # List collected DLLs
+          Write-Host "=== Collected DLLs ==="
+          Get-ChildItem lib-staging/
+
+          # Verify critical libraries were extracted
+          $requiredDlls = @(
+            "onnxruntime.dll",
+            "onnxruntime_providers_cuda.dll",
+            "onnxruntime_providers_shared.dll",
+            "cudart64_12.dll",
+            "cublas64_12.dll",
+            "cublasLt64_12.dll",
+            "cufft64_11.dll",
+            "curand64_10.dll",
+            "cudnn64_9.dll"
+          )
+
+          $missing = @()
+          foreach ($dll in $requiredDlls) {
+            if (-not (Test-Path "lib-staging/$dll")) {
+              $missing += $dll
+            }
+          }
+
+          if ($missing.Count -gt 0) {
+            Write-Host "ERROR: Required libraries not found:"
+            $missing | ForEach-Object { Write-Host "  - $_" }
+            exit 1
+          }
+
+          Write-Host "All required libraries present"
+
+      - name: Build release binary (CUDA)
+        shell: pwsh
+        env:
+          ORT_LIB_LOCATION: ${{ github.workspace }}/ort-extract/onnxruntime-win-x64-gpu-${{ env.ONNXRUNTIME_VERSION }}/lib
+        run: cargo build --release --features cuda --target ${{ env.TARGET }}
+
+      - name: Prepare artifact
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist
+
+          # Copy binary
+          Copy-Item "target/${{ env.TARGET }}/release/birda.exe" -Destination "dist/"
+
+          # Copy GPU DLLs to same directory as executable (Windows searches exe directory)
+          Copy-Item "lib-staging/*.dll" -Destination "dist/"
+
+          # Copy documentation
+          Copy-Item "README.md" -Destination "dist/"
+          Copy-Item "LICENSE" -Destination "dist/" -ErrorAction SilentlyContinue
+          Copy-Item "THIRD_PARTY_LICENSES.txt" -Destination "dist/"
+
+          # Create archive
+          Compress-Archive -Path "dist/*" -DestinationPath "${{ env.ARTIFACT }}.zip"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ARTIFACT }}
+          path: ${{ env.ARTIFACT }}.zip
+
+  # ==========================================================================
+  # Create GitHub Release with all artifacts
+  # ==========================================================================
   release:
     name: Create Release
-    needs: build
+    needs: [build-cpu, build-gpu-linux, build-gpu-windows]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -89,10 +414,31 @@ jobs:
         with:
           path: artifacts
 
+      - name: List artifacts
+        run: find artifacts -type f
+
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
           generate_release_notes: true
+          body: |
+            ## Download Options
+
+            | Package | Description | Size |
+            |---------|-------------|------|
+            | `birda-linux-x64.tar.gz` | Linux CPU-only | ~5 MB |
+            | `birda-windows-x64.zip` | Windows CPU-only | ~5 MB |
+            | `birda-linux-x64-cuda.tar.gz` | Linux with GPU support (bundled CUDA) | ~400 MB |
+            | `birda-windows-x64-cuda.zip` | Windows with GPU support (bundled CUDA) | ~400 MB |
+
+            ### GPU Builds
+
+            GPU builds include bundled ONNX Runtime, CUDA, and cuDNN libraries - no separate installation required.
+            Just extract and run `./birda` directly.
+
+            **Requirements:** NVIDIA GPU with CUDA compute capability 5.0+
+
+            See [THIRD_PARTY_LICENSES.txt](THIRD_PARTY_LICENSES.txt) for bundled library licenses.
           files: |
             artifacts/**/*.tar.gz
             artifacts/**/*.zip

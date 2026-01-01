@@ -15,9 +15,12 @@ pub mod output;
 pub mod pipeline;
 
 use clap::Parser;
-use cli::{Cli, Command};
-use config::load_default_config;
-use tracing::info;
+use cli::{AnalyzeArgs, Cli, Command};
+use config::{load_default_config, Config, InferenceDevice};
+use inference::BirdClassifier;
+use pipeline::{collect_input_files, output_dir_for, process_file, should_process, ProcessCheck};
+use std::path::PathBuf;
+use tracing::{error, info, warn};
 
 pub use error::{Error, Result};
 
@@ -41,11 +44,114 @@ pub fn run() -> Result<()> {
         return Err(Error::NoInputFiles);
     }
 
+    // Run analysis
+    analyze_files(&cli.inputs, &cli.analyze, &config)
+}
+
+/// Analyze input files with the given options.
+fn analyze_files(inputs: &[PathBuf], args: &AnalyzeArgs, config: &Config) -> Result<()> {
+    // Collect all input files
+    let files = collect_input_files(inputs)?;
+    if files.is_empty() {
+        return Err(Error::NoInputFiles);
+    }
+
+    info!("Found {} audio file(s) to process", files.len());
+
+    // Resolve model configuration
+    let model_name = args
+        .model
+        .clone()
+        .or_else(|| config.defaults.model.clone())
+        .ok_or_else(|| Error::ConfigValidation {
+            message: "no model specified (use -m or set defaults.model in config)".to_string(),
+        })?;
+
+    let model_config = config::get_model(config, &model_name)?;
+
+    // Resolve other settings
+    let min_confidence = args.min_confidence.unwrap_or(config.defaults.min_confidence);
+    let overlap = args.overlap.unwrap_or(config.defaults.overlap);
+    let batch_size = args.batch_size.unwrap_or(config.defaults.batch_size);
+    let formats = args
+        .format
+        .clone()
+        .unwrap_or_else(|| config.defaults.formats.clone());
+    let output_dir = args.output_dir.clone();
+    let force = args.force;
+    let fail_fast = args.fail_fast;
+
+    // Resolve device
+    let device = if args.gpu {
+        InferenceDevice::Gpu
+    } else if args.cpu {
+        InferenceDevice::Cpu
+    } else {
+        config.inference.device
+    };
+
+    // Build classifier
+    info!("Loading model: {}", model_name);
+    let classifier = BirdClassifier::from_config(model_config, device, min_confidence, 10)?;
+
+    // Process files
+    let mut processed = 0;
+    let mut skipped = 0;
+    let mut errors = 0;
+    let mut total_detections = 0;
+
+    for file in &files {
+        let file_output_dir = output_dir_for(file, output_dir.as_deref());
+
+        // Check if should process
+        match should_process(file, &file_output_dir, &formats, force) {
+            ProcessCheck::SkipExists => {
+                info!("Skipping (output exists): {}", file.display());
+                skipped += 1;
+                continue;
+            }
+            ProcessCheck::SkipLocked => {
+                info!("Skipping (locked): {}", file.display());
+                skipped += 1;
+                continue;
+            }
+            ProcessCheck::Process => {}
+        }
+
+        // Process the file
+        match process_file(
+            file,
+            &file_output_dir,
+            &classifier,
+            &formats,
+            min_confidence,
+            overlap,
+            batch_size,
+            config.defaults.csv_columns.include.clone(),
+        ) {
+            Ok(result) => {
+                processed += 1;
+                total_detections += result.detections;
+            }
+            Err(e) => {
+                error!("Failed to process {}: {}", file.display(), e);
+                errors += 1;
+                if fail_fast {
+                    return Err(e);
+                }
+            }
+        }
+    }
+
+    // Summary
     info!(
-        "Would analyze {} input(s) with config: {:?}",
-        cli.inputs.len(),
-        config.defaults
+        "Complete: {} processed, {} skipped, {} errors, {} total detections",
+        processed, skipped, errors, total_detections
     );
+
+    if errors > 0 && !fail_fast {
+        warn!("{} file(s) had errors", errors);
+    }
 
     Ok(())
 }

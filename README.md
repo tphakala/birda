@@ -338,5 +338,6 @@ MIT License - see [LICENSE](LICENSE) for details.
 ## Acknowledgments
 
 - [BirdNET](https://github.com/kahst/BirdNET-Analyzer) by the K. Lisa Yang Center for Conservation Bioacoustics
+- [Perch](https://github.com/google-research/perch) by Google Research for bioacoustic analysis
 - [ONNX Runtime](https://onnxruntime.ai/) for cross-platform inference
 - [Symphonia](https://github.com/pdeljanov/Symphonia) for audio decoding

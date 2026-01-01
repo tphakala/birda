@@ -303,9 +303,8 @@ task build:macos-arm64
 
 ### BirdNET v2.4
 
-- **Download**: [BirdNET-Analyzer Releases](https://github.com/kahst/BirdNET-Analyzer/releases)
-- **ONNX Model**: [BirdNET-onnx on Hugging Face](https://huggingface.co/justinchuby/BirdNET-onnx) (optimized ONNX conversion)
-- **Labels**: `BirdNET_GLOBAL_6K_V2.4_Labels.txt`
+- **ONNX Model**: [BirdNET-onnx on Hugging Face](https://huggingface.co/justinchuby/BirdNET-onnx) (required - optimized ONNX conversion by Justin Chu)
+- **Labels**: Download from [BirdNET-Analyzer Releases](https://github.com/kahst/BirdNET-Analyzer/releases) (`BirdNET_GLOBAL_6K_V2.4_Labels.txt`)
 - **Model type**: `birdnet-v24`
 - **Sample rate**: 48kHz
 - **Segment duration**: 3 seconds

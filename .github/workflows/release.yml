@@ -179,12 +179,21 @@ jobs:
           # Extract CUDA libraries
           for archive in cuda_cudart libcublas libcufft libcurand; do
             tar -xJf gpu-libs/${archive}.tar.xz
-            find . -maxdepth 1 -type d -name "${archive}*" -exec cp -r {}/**/lib*/*.so* lib-staging/ \; 2>/dev/null || true
+            # Find the extracted directory and copy .so files from lib/
+            for dir in ${archive}*-archive; do
+              if [ -d "$dir/lib" ]; then
+                cp -v "$dir"/lib/*.so* lib-staging/ 2>/dev/null || true
+              fi
+            done
           done
 
           # Extract cuDNN
           tar -xJf gpu-libs/cudnn.tar.xz
-          find . -maxdepth 1 -type d -name "cudnn*" -exec cp -r {}/**/lib*/*.so* lib-staging/ \; 2>/dev/null || true
+          for dir in cudnn*-archive; do
+            if [ -d "$dir/lib" ]; then
+              cp -v "$dir"/lib/*.so* lib-staging/ 2>/dev/null || true
+            fi
+          done
 
           # List what we collected
           echo "=== Collected libraries ==="

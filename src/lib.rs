@@ -56,8 +56,10 @@ pub fn run() -> Result<()> {
     }
 
     // Default: analyze files
+    // Show help if no inputs provided
     if cli.inputs.is_empty() {
-        return Err(Error::NoInputFiles);
+        cli::help::print_smart_help(&config);
+        std::process::exit(0);
     }
 
     // Run analysis
@@ -69,7 +71,7 @@ fn analyze_files(inputs: &[PathBuf], args: &AnalyzeArgs, config: &Config) -> Res
     // Collect all input files
     let files = collect_input_files(inputs)?;
     if files.is_empty() {
-        return Err(Error::NoInputFiles);
+        return Err(Error::NoValidAudioFiles);
     }
 
     info!("Found {} audio file(s) to process", files.len());

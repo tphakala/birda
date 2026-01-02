@@ -17,12 +17,7 @@ pub fn load_registry() -> Result<Registry> {
 
 /// Get path to registry file in user config.
 fn registry_file_path() -> Result<PathBuf> {
-    let config_dir = directories::ProjectDirs::from("", "", "birda")
-        .ok_or(Error::ConfigDirNotFound)?
-        .config_dir()
-        .to_path_buf();
-
-    Ok(config_dir.join("registry.json"))
+    Ok(crate::config::config_dir()?.join("registry.json"))
 }
 
 /// Load registry from existing file.

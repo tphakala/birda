@@ -282,7 +282,7 @@ fn handle_models_command(action: cli::ModelsAction, config: &config::Config) -> 
         ModelsAction::Info { id, languages } => {
             // Try registry first
             let registry = registry::load_registry()?;
-            if let Some(_model) = registry::find_model(&registry, &id) {
+            if registry::find_model(&registry, &id).is_some() {
                 if languages {
                     registry::show_languages(&registry, &id)?;
                 } else {

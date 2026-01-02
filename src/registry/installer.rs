@@ -10,14 +10,7 @@ use tokio::fs::File;
 use tokio::io::AsyncWriteExt;
 
 /// Download a file with progress bar.
-pub async fn download_file(url: &str, dest: &Path) -> Result<()> {
-    let client = Client::builder()
-        .build()
-        .map_err(|e| Error::DownloadFailed {
-            url: url.to_string(),
-            source: Box::new(e),
-        })?;
-
+pub async fn download_file(client: &Client, url: &str, dest: &Path) -> Result<()> {
     let response = client
         .get(url)
         .send()
@@ -102,9 +95,18 @@ pub async fn install_model(
     let models_dir = models_dir()?;
     std::fs::create_dir_all(&models_dir).map_err(Error::Io)?;
 
+    // Create HTTP client with timeouts for all downloads
+    let client = Client::builder()
+        .connect_timeout(std::time::Duration::from_secs(30))
+        .timeout(std::time::Duration::from_secs(300))
+        .build()
+        .map_err(|e| Error::Internal {
+            message: format!("Failed to create HTTP client: {e}"),
+        })?;
+
     // Download model file
     let model_dest = models_dir.join(&model.files.model.filename);
-    download_file(&model.files.model.url, &model_dest).await?;
+    download_file(&client, &model.files.model.url, &model_dest).await?;
 
     // Determine which language to download
     let language_code = language.unwrap_or(&model.files.labels.default_language);
@@ -121,7 +123,7 @@ pub async fn install_model(
 
     // Download labels file
     let labels_dest = models_dir.join(&language_variant.filename);
-    download_file(&language_variant.url, &labels_dest).await?;
+    download_file(&client, &language_variant.url, &labels_dest).await?;
 
     Ok((model_dest, labels_dest))
 }

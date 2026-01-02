@@ -14,7 +14,6 @@ env:
   CUDA_CUDART_VERSION: "12.9.37"
   CUDA_CUBLAS_VERSION: "12.9.0.13"
   CUDA_CUFFT_VERSION: "11.4.0.6"
-  CUDA_CURAND_VERSION: "10.3.10.19"
   # cuDNN version (from https://developer.download.nvidia.com/compute/cudnn/redist/redistrib_9.17.1.json)
   CUDNN_VERSION: "9.17.1.4"
 
@@ -178,7 +177,7 @@ jobs:
         uses: actions/cache@v5
         with:
           path: gpu-libs
-          key: gpu-libs-linux-ort${{ env.ONNXRUNTIME_VERSION }}-cuda${{ env.CUDA_CUDART_VERSION }}-${{ env.CUDA_CUBLAS_VERSION }}-${{ env.CUDA_CUFFT_VERSION }}-${{ env.CUDA_CURAND_VERSION }}-cudnn${{ env.CUDNN_VERSION }}
+          key: gpu-libs-linux-ort${{ env.ONNXRUNTIME_VERSION }}-cuda${{ env.CUDA_CUDART_VERSION }}-${{ env.CUDA_CUBLAS_VERSION }}-${{ env.CUDA_CUFFT_VERSION }}-cudnn${{ env.CUDNN_VERSION }}
 
       - name: Download ONNX Runtime GPU
         run: |
@@ -210,12 +209,6 @@ jobs:
               "${CUDA_BASE}/libcufft/linux-x86_64/libcufft-linux-x86_64-${{ env.CUDA_CUFFT_VERSION }}-archive.tar.xz"
           fi
 
-          # Download cuRAND
-          if [ ! -f "gpu-libs/libcurand.tar.xz" ]; then
-            curl -L -o gpu-libs/libcurand.tar.xz \
-              "${CUDA_BASE}/libcurand/linux-x86_64/libcurand-linux-x86_64-${{ env.CUDA_CURAND_VERSION }}-archive.tar.xz"
-          fi
-
       - name: Download cuDNN
         run: |
           CUDNN_BASE="https://developer.download.nvidia.com/compute/cudnn/redist/cudnn/linux-x86_64"
@@ -233,7 +226,7 @@ jobs:
           cp onnxruntime-linux-x64-gpu-${{ env.ONNXRUNTIME_VERSION }}/lib/*.so* lib-staging/
 
           # Extract CUDA libraries
-          for archive in cuda_cudart libcublas libcufft libcurand; do
+          for archive in cuda_cudart libcublas libcufft; do
             tar -xJf gpu-libs/${archive}.tar.xz
             # Find the extracted directory and copy .so files from lib/
             for dir in ${archive}*-archive; do
@@ -264,7 +257,6 @@ jobs:
             "libcublas.so"
             "libcublasLt.so"
             "libcufft.so"
-            "libcurand.so"
             "libcudnn.so"
           )
 
@@ -278,7 +270,7 @@ jobs:
           echo "All required libraries present"
 
           # Clean up extracted directories to save space (keep only lib-staging)
-          rm -rf cuda_cudart*-archive libcublas*-archive libcufft*-archive libcurand*-archive cudnn*-archive
+          rm -rf cuda_cudart*-archive libcublas*-archive libcufft*-archive cudnn*-archive
 
       - name: Build release binary (CUDA)
         env:
@@ -351,7 +343,7 @@ jobs:
         uses: actions/cache@v5
         with:
           path: gpu-libs
-          key: gpu-libs-windows-ort${{ env.ONNXRUNTIME_VERSION }}-cuda${{ env.CUDA_CUDART_VERSION }}-${{ env.CUDA_CUBLAS_VERSION }}-${{ env.CUDA_CUFFT_VERSION }}-${{ env.CUDA_CURAND_VERSION }}-cudnn${{ env.CUDNN_VERSION }}
+          key: gpu-libs-windows-ort${{ env.ONNXRUNTIME_VERSION }}-cuda${{ env.CUDA_CUDART_VERSION }}-${{ env.CUDA_CUBLAS_VERSION }}-${{ env.CUDA_CUFFT_VERSION }}-cudnn${{ env.CUDNN_VERSION }}
 
       - name: Download ONNX Runtime GPU
         shell: pwsh
@@ -382,11 +374,6 @@ jobs:
             Invoke-WebRequest -Uri "${cudaBase}/libcufft/windows-x86_64/libcufft-windows-x86_64-${{ env.CUDA_CUFFT_VERSION }}-archive.zip" -OutFile "gpu-libs/libcufft.zip"
           }
 
-          # cuRAND
-          if (-not (Test-Path "gpu-libs/libcurand.zip")) {
-            Invoke-WebRequest -Uri "${cudaBase}/libcurand/windows-x86_64/libcurand-windows-x86_64-${{ env.CUDA_CURAND_VERSION }}-archive.zip" -OutFile "gpu-libs/libcurand.zip"
-          }
-
       - name: Download cuDNN
         shell: pwsh
         run: |
@@ -404,7 +391,7 @@ jobs:
           Copy-Item "ort-extract/onnxruntime-win-x64-gpu-${{ env.ONNXRUNTIME_VERSION }}/lib/*.dll" -Destination "lib-staging/" -ErrorAction SilentlyContinue
 
           # Extract CUDA libraries
-          @("cuda_cudart", "libcublas", "libcufft", "libcurand") | ForEach-Object {
+          @("cuda_cudart", "libcublas", "libcufft") | ForEach-Object {
             $name = $_
             Expand-Archive -Path "gpu-libs/${name}.zip" -DestinationPath "${name}-extract" -Force
             Get-ChildItem -Path "${name}-extract" -Recurse -Filter "*.dll" | Copy-Item -Destination "lib-staging/" -ErrorAction SilentlyContinue
@@ -427,7 +414,6 @@ jobs:
             "cublas64_12.dll",
             "cublasLt64_12.dll",
             "cufft64_11.dll",
-            "curand64_10.dll",
             "cudnn64_9.dll"
           )
 
@@ -450,7 +436,6 @@ jobs:
           Remove-Item -Recurse -Force "cuda_cudart-extract" -ErrorAction SilentlyContinue
           Remove-Item -Recurse -Force "libcublas-extract" -ErrorAction SilentlyContinue
           Remove-Item -Recurse -Force "libcufft-extract" -ErrorAction SilentlyContinue
-          Remove-Item -Recurse -Force "libcurand-extract" -ErrorAction SilentlyContinue
           Remove-Item -Recurse -Force "cudnn-extract" -ErrorAction SilentlyContinue
 
       - name: Build release binary (CUDA)

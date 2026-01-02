@@ -17,32 +17,21 @@ pub fn print_smart_help(config: &Config) {
 pub fn print_first_time_help() {
     println!("No models configured. Get started with Birda:");
     println!();
+    println!("Quick setup (recommended):");
+    println!("   birda models list-available         # Browse available models");
+    println!("   birda models install birdnet-v24    # Install BirdNET v2.4");
+    println!();
+    println!("Or configure manually:");
     println!("1. Initialize configuration:");
     println!("   birda config init");
     println!();
-    println!("2. Download a model and labels from HuggingFace:");
+    println!("2. Browse and install a model:");
+    println!("   birda models list-available");
+    println!("   birda models info birdnet-v24");
+    println!("   birda models install birdnet-v24 --default");
     println!();
-    println!("   BirdNET (recommended):");
-    println!("   • Model: https://huggingface.co/justinchuby/BirdNET-onnx/blob/main/birdnet.onnx");
-    println!(
-        "   • Labels: https://github.com/birdnet-team/BirdNET-Analyzer/blob/main/birdnet_analyzer/labels/V2.4/labels.txt"
-    );
-    println!();
-    println!("   Perch:");
-    println!("   • Model: https://huggingface.co/justinchuby/Perch-onnx");
-    println!("   • Labels: https://github.com/cgeorgiaw/Perch/blob/main/assets/labels.csv");
-    println!();
-    println!("3. Add your model to configuration:");
-    println!(
-        "   birda models add birdnet --path ./birdnet.onnx --labels ./labels.txt --type BirdnetV24 --default"
-    );
-    println!();
-    println!("4. Analyze audio files:");
+    println!("3. Analyze audio files:");
     println!("   birda recording.wav");
-    println!();
-    println!("IMPORTANT: Models are subject to their respective licenses. You are responsible");
-    println!("for ensuring your use complies with each model's license terms. Review the");
-    println!("license information in each model's repository before use.");
     println!();
     println!("Run 'birda -h' for all options.");
 }

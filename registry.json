@@ -1,0 +1,289 @@
+{
+  "schema_version": "1.0",
+  "models": [
+    {
+      "id": "birdnet-v24",
+      "name": "BirdNET v2.4",
+      "description": "Bird sound recognition for 6,000+ species worldwide",
+      "vendor": "Cornell Lab of Ornithology & Chemnitz University of Technology",
+      "version": "2.4",
+      "model_type": "birdnet-v24",
+      "license": {
+        "type": "CC-BY-NC-SA-4.0",
+        "url": "https://creativecommons.org/licenses/by-nc-sa/4.0/",
+        "commercial_use": false,
+        "attribution_required": true,
+        "share_alike": true
+      },
+      "files": {
+        "model": {
+          "url": "https://huggingface.co/justinchuby/BirdNET-onnx/resolve/main/birdnet.onnx",
+          "filename": "birdnet-v24.onnx",
+          "sha256": null
+        },
+        "labels": {
+          "default_language": "en",
+          "languages": [
+            {
+              "code": "af",
+              "name": "Afrikaans",
+              "url": "https://github.com/birdnet-team/BirdNET-Analyzer/raw/main/birdnet_analyzer/labels/V2.4/labels_af.txt",
+              "filename": "birdnet-v24-af.txt"
+            },
+            {
+              "code": "ar",
+              "name": "Arabic",
+              "url": "https://github.com/birdnet-team/BirdNET-Analyzer/raw/main/birdnet_analyzer/labels/V2.4/labels_ar.txt",
+              "filename": "birdnet-v24-ar.txt"
+            },
+            {
+              "code": "bg",
+              "name": "Bulgarian",
+              "url": "https://github.com/birdnet-team/BirdNET-Analyzer/raw/main/birdnet_analyzer/labels/V2.4/labels_bg.txt",
+              "filename": "birdnet-v24-bg.txt"
+            },
+            {
+              "code": "ca",
+              "name": "Catalan",
+              "url": "https://github.com/birdnet-team/BirdNET-Analyzer/raw/main/birdnet_analyzer/labels/V2.4/labels_ca.txt",
+              "filename": "birdnet-v24-ca.txt"
+            },
+            {
+              "code": "cs",
+              "name": "Czech",
+              "url": "https://github.com/birdnet-team/BirdNET-Analyzer/raw/main/birdnet_analyzer/labels/V2.4/labels_cs.txt",
+              "filename": "birdnet-v24-cs.txt"
+            },
+            {
+              "code": "da",
+              "name": "Danish",
+              "url": "https://github.com/birdnet-team/BirdNET-Analyzer/raw/main/birdnet_analyzer/labels/V2.4/labels_da.txt",
+              "filename": "birdnet-v24-da.txt"
+            },
+            {
+              "code": "de",
+              "name": "German",
+              "url": "https://github.com/birdnet-team/BirdNET-Analyzer/raw/main/birdnet_analyzer/labels/V2.4/labels_de.txt",
+              "filename": "birdnet-v24-de.txt"
+            },
+            {
+              "code": "el",
+              "name": "Greek",
+              "url": "https://github.com/birdnet-team/BirdNET-Analyzer/raw/main/birdnet_analyzer/labels/V2.4/labels_el.txt",
+              "filename": "birdnet-v24-el.txt"
+            },
+            {
+              "code": "en",
+              "name": "English",
+              "url": "https://github.com/birdnet-team/BirdNET-Analyzer/raw/main/birdnet_analyzer/labels/V2.4/labels.txt",
+              "filename": "birdnet-v24-en.txt"
+            },
+            {
+              "code": "es",
+              "name": "Spanish",
+              "url": "https://github.com/birdnet-team/BirdNET-Analyzer/raw/main/birdnet_analyzer/labels/V2.4/labels_es.txt",
+              "filename": "birdnet-v24-es.txt"
+            },
+            {
+              "code": "et",
+              "name": "Estonian",
+              "url": "https://github.com/birdnet-team/BirdNET-Analyzer/raw/main/birdnet_analyzer/labels/V2.4/labels_et.txt",
+              "filename": "birdnet-v24-et.txt"
+            },
+            {
+              "code": "fi",
+              "name": "Finnish",
+              "url": "https://github.com/birdnet-team/BirdNET-Analyzer/raw/main/birdnet_analyzer/labels/V2.4/labels_fi.txt",
+              "filename": "birdnet-v24-fi.txt"
+            },
+            {
+              "code": "fr",
+              "name": "French",
+              "url": "https://github.com/birdnet-team/BirdNET-Analyzer/raw/main/birdnet_analyzer/labels/V2.4/labels_fr.txt",
+              "filename": "birdnet-v24-fr.txt"
+            },
+            {
+              "code": "he",
+              "name": "Hebrew",
+              "url": "https://github.com/birdnet-team/BirdNET-Analyzer/raw/main/birdnet_analyzer/labels/V2.4/labels_he.txt",
+              "filename": "birdnet-v24-he.txt"
+            },
+            {
+              "code": "hi",
+              "name": "Hindi",
+              "url": "https://github.com/birdnet-team/BirdNET-Analyzer/raw/main/birdnet_analyzer/labels/V2.4/labels_hi.txt",
+              "filename": "birdnet-v24-hi.txt"
+            },
+            {
+              "code": "hr",
+              "name": "Croatian",
+              "url": "https://github.com/birdnet-team/BirdNET-Analyzer/raw/main/birdnet_analyzer/labels/V2.4/labels_hr.txt",
+              "filename": "birdnet-v24-hr.txt"
+            },
+            {
+              "code": "hu",
+              "name": "Hungarian",
+              "url": "https://github.com/birdnet-team/BirdNET-Analyzer/raw/main/birdnet_analyzer/labels/V2.4/labels_hu.txt",
+              "filename": "birdnet-v24-hu.txt"
+            },
+            {
+              "code": "id",
+              "name": "Indonesian",
+              "url": "https://github.com/birdnet-team/BirdNET-Analyzer/raw/main/birdnet_analyzer/labels/V2.4/labels_id.txt",
+              "filename": "birdnet-v24-id.txt"
+            },
+            {
+              "code": "is",
+              "name": "Icelandic",
+              "url": "https://github.com/birdnet-team/BirdNET-Analyzer/raw/main/birdnet_analyzer/labels/V2.4/labels_is.txt",
+              "filename": "birdnet-v24-is.txt"
+            },
+            {
+              "code": "it",
+              "name": "Italian",
+              "url": "https://github.com/birdnet-team/BirdNET-Analyzer/raw/main/birdnet_analyzer/labels/V2.4/labels_it.txt",
+              "filename": "birdnet-v24-it.txt"
+            },
+            {
+              "code": "ja",
+              "name": "Japanese",
+              "url": "https://github.com/birdnet-team/BirdNET-Analyzer/raw/main/birdnet_analyzer/labels/V2.4/labels_ja.txt",
+              "filename": "birdnet-v24-ja.txt"
+            },
+            {
+              "code": "ko",
+              "name": "Korean",
+              "url": "https://github.com/birdnet-team/BirdNET-Analyzer/raw/main/birdnet_analyzer/labels/V2.4/labels_ko.txt",
+              "filename": "birdnet-v24-ko.txt"
+            },
+            {
+              "code": "lt",
+              "name": "Lithuanian",
+              "url": "https://github.com/birdnet-team/BirdNET-Analyzer/raw/main/birdnet_analyzer/labels/V2.4/labels_lt.txt",
+              "filename": "birdnet-v24-lt.txt"
+            },
+            {
+              "code": "lv",
+              "name": "Latvian",
+              "url": "https://github.com/birdnet-team/BirdNET-Analyzer/raw/main/birdnet_analyzer/labels/V2.4/labels_lv.txt",
+              "filename": "birdnet-v24-lv.txt"
+            },
+            {
+              "code": "mk",
+              "name": "Macedonian",
+              "url": "https://github.com/birdnet-team/BirdNET-Analyzer/raw/main/birdnet_analyzer/labels/V2.4/labels_mk.txt",
+              "filename": "birdnet-v24-mk.txt"
+            },
+            {
+              "code": "nl",
+              "name": "Dutch",
+              "url": "https://github.com/birdnet-team/BirdNET-Analyzer/raw/main/birdnet_analyzer/labels/V2.4/labels_nl.txt",
+              "filename": "birdnet-v24-nl.txt"
+            },
+            {
+              "code": "no",
+              "name": "Norwegian",
+              "url": "https://github.com/birdnet-team/BirdNET-Analyzer/raw/main/birdnet_analyzer/labels/V2.4/labels_no.txt",
+              "filename": "birdnet-v24-no.txt"
+            },
+            {
+              "code": "pl",
+              "name": "Polish",
+              "url": "https://github.com/birdnet-team/BirdNET-Analyzer/raw/main/birdnet_analyzer/labels/V2.4/labels_pl.txt",
+              "filename": "birdnet-v24-pl.txt"
+            },
+            {
+              "code": "pt",
+              "name": "Portuguese",
+              "url": "https://github.com/birdnet-team/BirdNET-Analyzer/raw/main/birdnet_analyzer/labels/V2.4/labels_pt.txt",
+              "filename": "birdnet-v24-pt.txt"
+            },
+            {
+              "code": "ro",
+              "name": "Romanian",
+              "url": "https://github.com/birdnet-team/BirdNET-Analyzer/raw/main/birdnet_analyzer/labels/V2.4/labels_ro.txt",
+              "filename": "birdnet-v24-ro.txt"
+            },
+            {
+              "code": "ru",
+              "name": "Russian",
+              "url": "https://github.com/birdnet-team/BirdNET-Analyzer/raw/main/birdnet_analyzer/labels/V2.4/labels_ru.txt",
+              "filename": "birdnet-v24-ru.txt"
+            },
+            {
+              "code": "sk",
+              "name": "Slovak",
+              "url": "https://github.com/birdnet-team/BirdNET-Analyzer/raw/main/birdnet_analyzer/labels/V2.4/labels_sk.txt",
+              "filename": "birdnet-v24-sk.txt"
+            },
+            {
+              "code": "sl",
+              "name": "Slovenian",
+              "url": "https://github.com/birdnet-team/BirdNET-Analyzer/raw/main/birdnet_analyzer/labels/V2.4/labels_sl.txt",
+              "filename": "birdnet-v24-sl.txt"
+            },
+            {
+              "code": "sv",
+              "name": "Swedish",
+              "url": "https://github.com/birdnet-team/BirdNET-Analyzer/raw/main/birdnet_analyzer/labels/V2.4/labels_sv.txt",
+              "filename": "birdnet-v24-sv.txt"
+            },
+            {
+              "code": "th",
+              "name": "Thai",
+              "url": "https://github.com/birdnet-team/BirdNET-Analyzer/raw/main/birdnet_analyzer/labels/V2.4/labels_th.txt",
+              "filename": "birdnet-v24-th.txt"
+            },
+            {
+              "code": "uk",
+              "name": "Ukrainian",
+              "url": "https://github.com/birdnet-team/BirdNET-Analyzer/raw/main/birdnet_analyzer/labels/V2.4/labels_uk.txt",
+              "filename": "birdnet-v24-uk.txt"
+            },
+            {
+              "code": "zh",
+              "name": "Chinese",
+              "url": "https://github.com/birdnet-team/BirdNET-Analyzer/raw/main/birdnet_analyzer/labels/V2.4/labels_zh.txt",
+              "filename": "birdnet-v24-zh.txt"
+            }
+          ]
+        }
+      },
+      "recommended": true
+    },
+    {
+      "id": "perch-v2",
+      "name": "Google Perch v2",
+      "description": "General bird sound classification model",
+      "vendor": "Google Research",
+      "version": "2.0",
+      "model_type": "perch-v2",
+      "license": {
+        "type": "Apache-2.0",
+        "url": "https://www.apache.org/licenses/LICENSE-2.0",
+        "commercial_use": true,
+        "attribution_required": true,
+        "share_alike": false
+      },
+      "files": {
+        "model": {
+          "url": "https://huggingface.co/justinchuby/Perch-onnx/resolve/main/perch.onnx",
+          "filename": "perch-v2.onnx",
+          "sha256": null
+        },
+        "labels": {
+          "default_language": "en",
+          "languages": [
+            {
+              "code": "en",
+              "name": "English",
+              "url": "https://github.com/google-research/perch/raw/main/assets/labels.csv",
+              "filename": "perch-v2.csv"
+            }
+          ]
+        }
+      },
+      "recommended": false
+    }
+  ]
+}

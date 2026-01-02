@@ -179,4 +179,82 @@ pub enum Error {
         /// Description of the inference failure.
         reason: String,
     },
+
+    /// Failed to read registry file.
+    #[error("failed to read registry file '{path}'")]
+    RegistryRead {
+        /// Path to the registry file.
+        path: std::path::PathBuf,
+        /// Underlying I/O error.
+        #[source]
+        source: std::io::Error,
+    },
+
+    /// Failed to parse registry file.
+    #[error("failed to parse registry file '{path}'")]
+    RegistryParse {
+        /// Path to the registry file.
+        path: std::path::PathBuf,
+        /// Underlying parse error.
+        #[source]
+        source: serde_json::Error,
+    },
+
+    /// Failed to serialize registry.
+    #[error("failed to serialize registry")]
+    RegistrySerialize {
+        /// Underlying serialization error.
+        #[source]
+        source: serde_json::Error,
+    },
+
+    /// Failed to write registry file.
+    #[error("failed to write registry file '{path}'")]
+    RegistryWrite {
+        /// Path to the registry file.
+        path: std::path::PathBuf,
+        /// Underlying I/O error.
+        #[source]
+        source: std::io::Error,
+    },
+
+    /// Model not found in registry.
+    #[error("model '{id}' not found in registry")]
+    ModelNotFoundInRegistry {
+        /// ID of the missing model.
+        id: String,
+    },
+
+    /// Language not available for model.
+    #[error("language '{code}' not available for model '{model_id}'")]
+    LanguageNotFound {
+        /// Language code.
+        code: String,
+        /// Model ID.
+        model_id: String,
+    },
+
+    /// Download failed.
+    #[error("failed to download from '{url}'")]
+    DownloadFailed {
+        /// URL that failed.
+        url: String,
+        /// Underlying error.
+        #[source]
+        source: Box<dyn std::error::Error + Send + Sync>,
+    },
+
+    /// Invalid model type string.
+    #[error("invalid model type: {value}")]
+    InvalidModelType {
+        /// Invalid value.
+        value: String,
+    },
+
+    /// Internal error (for unexpected failures).
+    #[error("internal error: {message}")]
+    Internal {
+        /// Error message.
+        message: String,
+    },
 }

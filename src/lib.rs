@@ -13,6 +13,7 @@ pub mod inference;
 pub mod locking;
 pub mod output;
 pub mod pipeline;
+pub mod registry;
 
 use clap::Parser;
 use cli::{AnalyzeArgs, Cli, Command};
@@ -259,6 +260,11 @@ fn handle_models_command(action: cli::ModelsAction, config: &config::Config) -> 
             }
             Ok(())
         }
+        ModelsAction::ListAvailable => {
+            let registry = registry::load_registry()?;
+            registry::list_available(&registry);
+            Ok(())
+        }
         ModelsAction::Add {
             name,
             path,
@@ -273,14 +279,30 @@ fn handle_models_command(action: cli::ModelsAction, config: &config::Config) -> 
             }
             Ok(())
         }
-        ModelsAction::Info { name } => {
-            let model = config::get_model(config, &name)?;
-            println!("Model: {name}");
-            println!("  Type: {}", model.model_type);
-            println!("  Path: {}", model.path.display());
-            println!("  Labels: {}", model.labels.display());
+        ModelsAction::Info { id, languages } => {
+            // Try registry first
+            let registry = registry::load_registry()?;
+            if let Some(_model) = registry::find_model(&registry, &id) {
+                if languages {
+                    registry::show_languages(&registry, &id)?;
+                } else {
+                    registry::show_info(&registry, &id)?;
+                }
+            } else {
+                // Fall back to configured model
+                let model = config::get_model(config, &id)?;
+                println!("Model: {id}");
+                println!("  Type: {}", model.model_type);
+                println!("  Path: {}", model.path.display());
+                println!("  Labels: {}", model.labels.display());
+            }
             Ok(())
         }
+        ModelsAction::Install {
+            id,
+            language,
+            default,
+        } => handle_models_install(&id, language.as_deref(), default),
     }
 }
 
@@ -332,6 +354,86 @@ fn handle_models_add(
     println!("  Labels: {}", labels.display());
     println!("  Default: {}", if set_default { "yes" } else { "no" });
     println!("\nConfiguration saved to: {}", config_path.display());
+
+    Ok(())
+}
+
+/// Handle the `models install` command.
+fn handle_models_install(id: &str, language: Option<&str>, set_default: bool) -> Result<()> {
+    // Load registry
+    let registry = registry::load_registry()?;
+    let model = registry::find_model(&registry, id)
+        .ok_or_else(|| Error::ModelNotFoundInRegistry { id: id.to_string() })?;
+
+    // Prompt for license acceptance
+    if !registry::prompt_license_acceptance(model)? {
+        println!("Installation cancelled.");
+        return Ok(());
+    }
+
+    // Download model and labels (async operation)
+    let runtime = tokio::runtime::Runtime::new().map_err(|e| Error::Internal {
+        message: format!("Failed to create async runtime: {e}"),
+    })?;
+
+    let (model_path, labels_path) =
+        runtime.block_on(async { registry::install_model(model, language).await })?;
+
+    println!();
+    println!("Installation complete!");
+    println!();
+    println!("Model files saved to:");
+    println!("  {}", model_path.display());
+    println!("  {}", labels_path.display());
+    println!();
+
+    // Prompt to set as default
+    let should_set_default = if set_default {
+        true
+    } else {
+        use std::io::Write;
+        print!("Set as default model? [Y/n]: ");
+        std::io::stdout().flush()?;
+        let mut input = String::new();
+        std::io::stdin().read_line(&mut input)?;
+        !input.trim().eq_ignore_ascii_case("n")
+    };
+
+    // Add to config
+    let mut config = load_default_config()?;
+
+    // Parse model_type from string
+    let model_type: ModelType = model
+        .model_type
+        .parse()
+        .map_err(|_| Error::InvalidModelType {
+            value: model.model_type.clone(),
+        })?;
+
+    config.models.insert(
+        id.to_string(),
+        ModelConfig {
+            path: model_path,
+            labels: labels_path,
+            model_type,
+        },
+    );
+
+    if should_set_default {
+        config.defaults.model = Some(id.to_string());
+    }
+
+    save_default_config(&config)?;
+
+    if should_set_default {
+        println!("Model '{id}' added to configuration and set as default.");
+    } else {
+        println!("Model '{id}' added to configuration.");
+    }
+
+    println!();
+    println!("Ready to analyze:");
+    println!("  birda recording.wav");
 
     Ok(())
 }

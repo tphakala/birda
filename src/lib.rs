@@ -360,6 +360,8 @@ fn handle_models_add(
 
 /// Handle the `models install` command.
 fn handle_models_install(id: &str, language: Option<&str>, set_default: bool) -> Result<()> {
+    use std::io::Write;
+
     // Load registry
     let registry = registry::load_registry()?;
     let model = registry::find_model(&registry, id)
@@ -391,7 +393,6 @@ fn handle_models_install(id: &str, language: Option<&str>, set_default: bool) ->
     let should_set_default = if set_default {
         true
     } else {
-        use std::io::Write;
         print!("Set as default model? [Y/n]: ");
         std::io::stdout().flush()?;
         let mut input = String::new();

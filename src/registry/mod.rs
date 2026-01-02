@@ -101,7 +101,7 @@ pub fn show_info(registry: &Registry, id: &str) -> Result<()> {
         .map_or("Unknown", |l| l.name.as_str());
 
     if lang_count == 1 {
-        println!("  Labels: English only");
+        println!("  Labels: {default_lang} only");
     } else {
         println!("  Labels: {lang_count} languages available (default: {default_lang})");
     }

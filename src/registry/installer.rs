@@ -70,6 +70,14 @@ pub async fn download_file(url: &str, dest: &Path) -> Result<()> {
 
     pb.finish_with_message("Download complete");
 
+    // TODO: Implement SHA256 checksum verification for downloaded files
+    // Currently all SHA256 checksums in registry.json are null, which is a security risk.
+    // Future work should:
+    // 1. Generate SHA256 checksums for all model and label files
+    // 2. Update registry.json with the checksums
+    // 3. Verify downloaded files against checksums here before returning
+    // See: https://github.com/tphakala/birda/issues/XX
+
     Ok(())
 }
 

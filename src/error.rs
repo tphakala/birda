@@ -87,9 +87,9 @@ pub enum Error {
         source: toml::ser::Error,
     },
 
-    /// No input files provided.
-    #[error("no input files provided")]
-    NoInputFiles,
+    /// No valid audio files found.
+    #[error("no valid audio files found in the provided paths")]
+    NoValidAudioFiles,
 
     /// Failed to open audio file.
     #[error("failed to open audio file '{path}'")]

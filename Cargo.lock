@@ -123,6 +123,7 @@ checksum = "c08606f8c3cbf4ce6ec8e28fb0014a2c086708fe954eaa885384a6165172e7e8"
 name = "birda"
 version = "0.9.1"
 dependencies = [
+ "audioadapter-buffers",
  "birdnet-onnx",
  "chrono",
  "clap",

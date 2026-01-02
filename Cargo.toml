@@ -18,6 +18,7 @@ cuda = ["birdnet-onnx/cuda"]
 birdnet-onnx = "1.0.2"
 symphonia = { version = "0.5", features = ["aac", "mp3", "flac", "wav", "pcm"] }
 rubato = "1.0"
+audioadapter-buffers = "2.0"
 clap = { version = "4", features = ["derive", "env"] }
 toml = "0.9"
 serde = { version = "1", features = ["derive"] }

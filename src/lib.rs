@@ -177,19 +177,19 @@ fn analyze_files(inputs: &[PathBuf], args: &AnalyzeArgs, config: &Config) -> Res
 fn init_logging(verbose: u8, quiet: bool) {
     use tracing_subscriber::{EnvFilter, fmt};
 
-    let (level, ort_level) = if quiet {
-        ("warn", "warn")
+    // Build filter string based on verbosity level.
+    // ORT logging is suppressed by default (warn) because it's very noisy.
+    // -vvv bypasses the ORT filter entirely for maximum verbosity.
+    let filter_str = if quiet {
+        "warn,ort=warn".to_string()
     } else {
         match verbose {
-            0 => ("info", "warn"),
-            1 => ("debug", "warn"),
-            2 => ("trace", "info"),
-            _ => ("trace", "debug"), // -vvv enables ORT debug logging
+            0 => "info,ort=warn".to_string(),
+            1 => "debug,ort=warn".to_string(),
+            2 => "trace,ort=info".to_string(),
+            _ => "trace".to_string(), // -vvv: no ORT filter, full trace
         }
     };
-
-    // Verbosity level also controls the ONNX Runtime (ort) log level.
-    let filter_str = format!("{level},ort={ort_level}");
 
     let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(&filter_str));
 

@@ -15,7 +15,7 @@ pub fn print_smart_help(config: &Config) {
 
 /// Print detailed setup guide for first-time users.
 pub fn print_first_time_help() {
-    println!("No configuration found. Get started with Birda:");
+    println!("No models configured. Get started with Birda:");
     println!();
     println!("1. Initialize configuration:");
     println!("   birda config init");
@@ -30,7 +30,7 @@ pub fn print_first_time_help() {
     println!();
     println!("   Perch:");
     println!("   • Model: https://huggingface.co/justinchuby/Perch-onnx");
-    println!("   • Labels: (check repository for labels file)");
+    println!("   • Labels: https://github.com/cgeorgiaw/Perch/blob/main/assets/labels.csv");
     println!();
     println!("3. Add your model to configuration:");
     println!(

@@ -24,14 +24,18 @@ pub fn print_first_time_help() {
     println!();
     println!("   BirdNET (recommended):");
     println!("   • Model: https://huggingface.co/justinchuby/BirdNET-onnx/blob/main/birdnet.onnx");
-    println!("   • Labels: https://github.com/birdnet-team/BirdNET-Analyzer/blob/main/birdnet_analyzer/labels/V2.4/labels.txt");
+    println!(
+        "   • Labels: https://github.com/birdnet-team/BirdNET-Analyzer/blob/main/birdnet_analyzer/labels/V2.4/labels.txt"
+    );
     println!();
     println!("   Perch:");
     println!("   • Model: https://huggingface.co/justinchuby/Perch-onnx");
     println!("   • Labels: (check repository for labels file)");
     println!();
     println!("3. Add your model to configuration:");
-    println!("   birda models add birdnet --path ./birdnet.onnx --labels ./labels.txt --type BirdnetV24 --default");
+    println!(
+        "   birda models add birdnet --path ./birdnet.onnx --labels ./labels.txt --type BirdnetV24 --default"
+    );
     println!();
     println!("4. Analyze audio files:");
     println!("   birda recording.wav");
@@ -75,8 +79,8 @@ mod tests {
 
     #[test]
     fn test_print_configured_help_logic() {
-        use std::path::PathBuf;
         use crate::config::{ModelConfig, ModelType};
+        use std::path::PathBuf;
 
         // Create config with a model
         let mut models = HashMap::new();

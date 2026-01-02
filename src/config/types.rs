@@ -186,6 +186,19 @@ impl std::fmt::Display for ModelType {
     }
 }
 
+impl std::str::FromStr for ModelType {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "birdnet-v24" => Ok(Self::BirdnetV24),
+            "birdnet-v30" => Ok(Self::BirdnetV30),
+            "perch-v2" => Ok(Self::PerchV2),
+            other => Err(format!("unknown model type: {other}")),
+        }
+    }
+}
+
 #[cfg(test)]
 #[allow(clippy::float_cmp)]
 mod tests {

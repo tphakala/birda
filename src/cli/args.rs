@@ -54,6 +54,8 @@ pub enum ConfigAction {
 pub enum ModelsAction {
     /// List configured models.
     List,
+    /// List models available for download.
+    ListAvailable,
     /// Add a new model to configuration.
     Add {
         /// Name for this model (e.g., "birdnet", "perch").
@@ -75,8 +77,22 @@ pub enum ModelsAction {
     Check,
     /// Show details for a specific model.
     Info {
-        /// Model name from configuration.
-        name: String,
+        /// Model ID from registry or name from configuration.
+        id: String,
+        /// Show available languages (for registry models).
+        #[arg(long)]
+        languages: bool,
+    },
+    /// Install a model from the registry.
+    Install {
+        /// Model ID to install.
+        id: String,
+        /// Language code for labels (default: en).
+        #[arg(short, long)]
+        language: Option<String>,
+        /// Set as default model.
+        #[arg(short, long)]
+        default: bool,
     },
 }
 

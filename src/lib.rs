@@ -169,18 +169,19 @@ fn analyze_files(inputs: &[PathBuf], args: &AnalyzeArgs, config: &Config) -> Res
 fn init_logging(verbose: u8, quiet: bool) {
     use tracing_subscriber::{EnvFilter, fmt};
 
-    let level = if quiet {
-        "warn"
+    let (level, ort_level) = if quiet {
+        ("warn", "warn")
     } else {
         match verbose {
-            0 => "info",
-            1 => "debug",
-            _ => "trace",
+            0 => ("info", "warn"),
+            1 => ("debug", "warn"),
+            2 => ("trace", "info"),
+            _ => ("trace", "debug"), // -vvv enables ORT debug logging
         }
     };
 
-    // Suppress verbose ort logging (ONNX Runtime) unless explicitly requested
-    let filter_str = format!("{level},ort=warn");
+    // At -vvv, enable ORT debug logging to see library loading and execution details
+    let filter_str = format!("{level},ort={ort_level}");
 
     let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(&filter_str));
 

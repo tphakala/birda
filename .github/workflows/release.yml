@@ -300,14 +300,14 @@ jobs:
           cp LICENSE dist/ 2>/dev/null || true
           cp THIRD_PARTY_LICENSES.txt dist/
 
-          # Create archive
-          cd dist && tar -czvf ../${{ env.ARTIFACT }}.tar.gz *
+          # Create archive with xz compression (smaller than gzip, fits under GitHub's 2GB limit)
+          cd dist && tar -cJvf ../${{ env.ARTIFACT }}.tar.xz *
 
       - name: Upload artifact
         uses: actions/upload-artifact@v6
         with:
           name: ${{ env.ARTIFACT }}
-          path: ${{ env.ARTIFACT }}.tar.gz
+          path: ${{ env.ARTIFACT }}.tar.xz
 
   build-gpu-windows:
     name: Build GPU Windows x64
@@ -535,7 +535,7 @@ jobs:
             |---------|-------------|------|
             | `birda-linux-x64.tar.gz` | Linux CPU-only | ~5 MB |
             | `birda-windows-x64.zip` | Windows CPU-only | ~5 MB |
-            | `birda-linux-x64-cuda.tar.gz` | Linux with GPU support (bundled CUDA) | ~400 MB |
+            | `birda-linux-x64-cuda.tar.xz` | Linux with GPU support (bundled CUDA) | ~400 MB |
             | `birda-windows-x64-cuda.zip` | Windows with GPU support (bundled CUDA) | ~400 MB |
             | `birda-windows-x64-cuda-setup.exe` | Windows GPU installer (adds to PATH) | ~400 MB |
 
@@ -545,12 +545,13 @@ jobs:
 
             **Windows Installer:** Use the `-setup.exe` for automatic installation with optional PATH configuration.
 
-            **Portable:** Extract ZIP/tar.gz and run `birda` directly.
+            **Portable:** Extract ZIP/tar.xz and run `birda` directly.
 
             **Requirements:** NVIDIA GPU with CUDA compute capability 5.0+
 
             See [THIRD_PARTY_LICENSES.txt](THIRD_PARTY_LICENSES.txt) for bundled library licenses.
           files: |
             artifacts/**/*.tar.gz
+            artifacts/**/*.tar.xz
             artifacts/**/*.zip
             artifacts/**/*.exe

@@ -56,6 +56,9 @@ impl FileLock {
                 let json = serde_json::to_string_pretty(&info).unwrap_or_else(|_| "{}".to_string());
                 let _ = f.write_all(json.as_bytes());
 
+                // Register for cleanup on signal
+                register_lock(&lock_path);
+
                 Ok(Self { lock_path })
             }
             Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
@@ -113,6 +116,34 @@ impl FileLock {
 impl Drop for FileLock {
     fn drop(&mut self) {
         let _ = fs::remove_file(&self.lock_path);
+        unregister_lock(&self.lock_path);
+    }
+}
+
+/// Global registry of active lock paths for cleanup on signal.
+static ACTIVE_LOCKS: std::sync::LazyLock<std::sync::Mutex<Vec<PathBuf>>> =
+    std::sync::LazyLock::new(|| std::sync::Mutex::new(Vec::new()));
+
+/// Register a lock path for cleanup on signal.
+pub fn register_lock(path: &Path) {
+    if let Ok(mut locks) = ACTIVE_LOCKS.lock() {
+        locks.push(path.to_path_buf());
+    }
+}
+
+/// Unregister a lock path after normal cleanup.
+pub fn unregister_lock(path: &Path) {
+    if let Ok(mut locks) = ACTIVE_LOCKS.lock() {
+        locks.retain(|p| p != path);
+    }
+}
+
+/// Clean up all registered locks. Called on signal.
+pub fn cleanup_all_locks() {
+    if let Ok(locks) = ACTIVE_LOCKS.lock() {
+        for lock_path in locks.iter() {
+            let _ = fs::remove_file(lock_path);
+        }
     }
 }
 
@@ -154,5 +185,22 @@ mod tests {
     fn test_lock_path_format() {
         let path = FileLock::lock_path_for(Path::new("/data/audio.wav"), Path::new("/output"));
         assert_eq!(path.to_string_lossy(), "/output/audio.wav.birda.lock");
+    }
+
+    #[test]
+    fn test_cleanup_all_locks_removes_registered_files() {
+        let temp_dir = TempDir::new().unwrap();
+        let lock_path = temp_dir.path().join("test.wav.birda.lock");
+
+        // Create a lock file manually (simulating orphaned lock)
+        File::create(&lock_path).unwrap();
+        assert!(lock_path.exists());
+
+        // Register and cleanup
+        register_lock(&lock_path);
+        cleanup_all_locks();
+
+        // Lock file should be removed
+        assert!(!lock_path.exists());
     }
 }

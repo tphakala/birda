@@ -11,6 +11,9 @@
 ; NOTE: The value of AppId uniquely identifies this application.
 AppId={{B1RDA-GPU-4N4LYZ3R-2024}
 AppName={#MyAppName}
+; 64-bit application - install to Program Files, not Program Files (x86)
+ArchitecturesAllowed=x64compatible
+ArchitecturesInstallIn64BitMode=x64compatible
 AppVersion={#MyAppVersion}
 AppPublisher={#MyAppPublisher}
 AppPublisherURL={#MyAppPublisherURL}

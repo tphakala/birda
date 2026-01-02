@@ -43,16 +43,16 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "addtopath"; Description: "Add to PATH environment variable"; GroupDescription: "Additional options:"
 
 [Files]
-; Main executable
-Source: "dist\birda.exe"; DestDir: "{app}"; Flags: ignoreversion
+; Main executable (dist is in repo root, not installer/windows/)
+Source: "..\..\dist\birda.exe"; DestDir: "{app}"; Flags: ignoreversion
 
 ; GPU libraries (DLLs in same directory as exe)
-Source: "dist\*.dll"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\..\dist\*.dll"; DestDir: "{app}"; Flags: ignoreversion
 
 ; Documentation
-Source: "dist\README.md"; DestDir: "{app}"; Flags: ignoreversion
-Source: "dist\LICENSE"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
-Source: "dist\THIRD_PARTY_LICENSES.txt"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\..\dist\README.md"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\..\dist\LICENSE"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
+Source: "..\..\dist\THIRD_PARTY_LICENSES.txt"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
 Name: "{group}\{#MyAppName} Command Prompt"; Filename: "{cmd}"; Parameters: "/k ""{app}\{#MyAppExeName}"" --help"; WorkingDir: "{app}"

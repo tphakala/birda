@@ -180,7 +180,7 @@ fn init_logging(verbose: u8, quiet: bool) {
         }
     };
 
-    // At -vvv, enable ORT debug logging to see library loading and execution details
+    // Verbosity level also controls the ONNX Runtime (ort) log level.
     let filter_str = format!("{level},ort={ort_level}");
 
     let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(&filter_str));

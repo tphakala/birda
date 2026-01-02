@@ -34,6 +34,14 @@ pub fn run() -> Result<()> {
     // Initialize logging
     init_logging(cli.analyze.verbose, cli.analyze.quiet);
 
+    // Install Ctrl+C handler to clean up lock files on interrupt
+    if let Err(e) = ctrlc::set_handler(|| {
+        locking::cleanup_all_locks();
+        std::process::exit(130); // 128 + SIGINT(2)
+    }) {
+        warn!("Failed to install Ctrl+C handler: {e}");
+    }
+
     // Initialize ONNX Runtime (auto-detects bundled libraries)
     birdnet_onnx::init_runtime().map_err(|e| Error::RuntimeInitialization {
         reason: e.to_string(),

@@ -2,4 +2,4 @@
 
 mod file_lock;
 
-pub use file_lock::{FileLock, LockInfo};
+pub use file_lock::{FileLock, LockInfo, cleanup_all_locks};

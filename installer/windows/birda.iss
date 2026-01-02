@@ -49,21 +49,21 @@ Name: "addtopath"; Description: "Add to PATH environment variable"; GroupDescrip
 ; Main executable (dist is in repo root, not installer/windows/)
 Source: "..\..\dist\birda.exe"; DestDir: "{app}"; Flags: ignoreversion
 
-; GPU libraries (DLLs in same directory as exe)
-Source: "..\..\dist\*.dll"; DestDir: "{app}"; Flags: ignoreversion
+; GPU libraries in lib subdirectory
+Source: "..\..\dist\*.dll"; DestDir: "{app}\lib"; Flags: ignoreversion
 
-; Documentation
-Source: "..\..\dist\README.md"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\..\dist\LICENSE"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
-Source: "..\..\dist\THIRD_PARTY_LICENSES.txt"; DestDir: "{app}"; Flags: ignoreversion
+; Documentation in docs subdirectory
+Source: "..\..\dist\README.md"; DestDir: "{app}\docs"; Flags: ignoreversion
+Source: "..\..\dist\LICENSE"; DestDir: "{app}\docs"; Flags: ignoreversion skipifsourcedoesntexist
+Source: "..\..\dist\THIRD_PARTY_LICENSES.txt"; DestDir: "{app}\docs"; Flags: ignoreversion
 
 [Icons]
 Name: "{group}\{#MyAppName} Command Prompt"; Filename: "{cmd}"; Parameters: "/k ""{app}\{#MyAppExeName}"" --help"; WorkingDir: "{app}"
 Name: "{group}\Uninstall {#MyAppName}"; Filename: "{uninstallexe}"
 
 [Registry]
-; Add to PATH if user selected that option
-Root: HKLM; Subkey: "SYSTEM\CurrentControlSet\Control\Session Manager\Environment"; ValueType: expandsz; ValueName: "Path"; ValueData: "{olddata};{app}"; Tasks: addtopath; Check: NeedsAddPath('{app}')
+; Add app and lib directories to PATH if user selected that option
+Root: HKLM; Subkey: "SYSTEM\CurrentControlSet\Control\Session Manager\Environment"; ValueType: expandsz; ValueName: "Path"; ValueData: "{olddata};{app};{app}\lib"; Tasks: addtopath; Check: NeedsAddPath('{app}')
 
 [Code]
 function NeedsAddPath(Param: string): boolean;
@@ -85,6 +85,7 @@ procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 var
   Path: string;
   AppPath: string;
+  LibPath: string;
   P: Integer;
 begin
   if CurUninstallStep = usPostUninstall then
@@ -94,14 +95,21 @@ begin
       'Path', Path) then
     begin
       AppPath := ExpandConstant('{app}');
+      LibPath := AppPath + '\lib';
+
+      { Remove lib path first }
+      P := Pos(';' + LibPath, Path);
+      if P <> 0 then
+        Delete(Path, P, Length(';' + LibPath));
+
+      { Remove app path }
       P := Pos(';' + AppPath, Path);
       if P <> 0 then
-      begin
         Delete(Path, P, Length(';' + AppPath));
-        RegWriteStringValue(HKEY_LOCAL_MACHINE,
-          'SYSTEM\CurrentControlSet\Control\Session Manager\Environment',
-          'Path', Path);
-      end;
+
+      RegWriteStringValue(HKEY_LOCAL_MACHINE,
+        'SYSTEM\CurrentControlSet\Control\Session Manager\Environment',
+        'Path', Path);
     end;
   end;
 end;

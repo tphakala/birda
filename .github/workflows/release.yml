@@ -585,8 +585,6 @@ jobs:
 
             See [THIRD_PARTY_LICENSES.txt](THIRD_PARTY_LICENSES.txt) for bundled library licenses.
           files: |
-            artifacts/*.tar.gz
-            artifacts/*.zip
             artifacts/**/*.tar.gz
             artifacts/**/*.zip
-            artifacts/**/*.exe
+            artifacts/**/*-setup.exe

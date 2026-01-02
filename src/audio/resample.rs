@@ -1,7 +1,8 @@
 //! Audio resampling using rubato.
 
 use crate::error::{Error, Result};
-use rubato::{FftFixedInOut, Resampler};
+use audioadapter_buffers::direct::SequentialSlice;
+use rubato::{Fft, FixedSync, Resampler};
 
 /// Resample audio to the target sample rate.
 ///
@@ -11,11 +12,18 @@ pub fn resample(samples: Vec<f32>, from_rate: u32, to_rate: u32) -> Result<Vec<f
         return Ok(samples);
     }
 
-    let mut resampler = FftFixedInOut::<f32>::new(
+    // Create FFT-based synchronous resampler with fixed input/output sizes
+    let chunk_size = 1024;
+    let sub_chunks = 1;
+    let channels = 1;
+
+    let mut resampler = Fft::<f32>::new(
         from_rate as usize,
         to_rate as usize,
-        1024, // chunk size
-        1,    // channels
+        chunk_size,
+        sub_chunks,
+        channels,
+        FixedSync::Both,
     )
     .map_err(|e| Error::Resample {
         reason: e.to_string(),
@@ -28,15 +36,24 @@ pub fn resample(samples: Vec<f32>, from_rate: u32, to_rate: u32) -> Result<Vec<f
     let mut pos = 0;
     while pos + input_frames_needed <= samples.len() {
         let chunk = &samples[pos..pos + input_frames_needed];
-        let input = vec![chunk.to_vec()];
-
-        let resampled = resampler
-            .process(&input, None)
-            .map_err(|e| Error::Resample {
-                reason: e.to_string(),
+        // Wrap as single-channel sequential data
+        let input_adapter =
+            SequentialSlice::new(chunk, channels, input_frames_needed).map_err(|e| {
+                Error::Resample {
+                    reason: format!("failed to create input adapter: {e}"),
+                }
             })?;
 
-        output.extend(&resampled[0]);
+        let resampled =
+            resampler
+                .process(&input_adapter, 0, None)
+                .map_err(|e| Error::Resample {
+                    reason: e.to_string(),
+                })?;
+
+        // Extract samples from the interleaved output
+        let output_data = resampled.take_data();
+        output.extend_from_slice(&output_data);
         pos += input_frames_needed;
     }
 
@@ -46,12 +63,19 @@ pub fn resample(samples: Vec<f32>, from_rate: u32, to_rate: u32) -> Result<Vec<f
         let mut padded = samples[pos..].to_vec();
         padded.resize(input_frames_needed, 0.0);
 
-        let input = vec![padded];
-        let resampled = resampler
-            .process(&input, None)
-            .map_err(|e| Error::Resample {
-                reason: e.to_string(),
+        let input_adapter =
+            SequentialSlice::new(&padded, channels, input_frames_needed).map_err(|e| {
+                Error::Resample {
+                    reason: format!("failed to create input adapter: {e}"),
+                }
             })?;
+
+        let resampled =
+            resampler
+                .process(&input_adapter, 0, None)
+                .map_err(|e| Error::Resample {
+                    reason: e.to_string(),
+                })?;
 
         // Only take proportional amount of output
         #[allow(
@@ -61,7 +85,10 @@ pub fn resample(samples: Vec<f32>, from_rate: u32, to_rate: u32) -> Result<Vec<f
         )]
         let output_frames =
             (remaining as f64 * f64::from(to_rate) / f64::from(from_rate)).ceil() as usize;
-        output.extend(&resampled[0][..output_frames.min(resampled[0].len())]);
+
+        let output_data = resampled.take_data();
+        let take_count = output_frames.min(output_data.len());
+        output.extend_from_slice(&output_data[..take_count]);
     }
 
     Ok(output)

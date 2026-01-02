@@ -132,7 +132,7 @@ pub struct AnalyzeArgs {
     #[arg(short, long)]
     pub quiet: bool,
 
-    /// Increase verbosity (-v, -vv, -vvv).
+    /// Increase verbosity (-v: debug, -vv: trace+ORT info, -vvv: trace+ORT debug).
     #[arg(short, long, action = clap::ArgAction::Count)]
     pub verbose: u8,
 

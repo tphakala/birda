@@ -337,9 +337,11 @@ Compatible with [Wildlife Acoustics Kaleidoscope](https://www.wildlifeacoustics.
 
 | Scenario | Recommended Batch Size |
 |----------|------------------------|
-| CPU inference | 1 (default) |
+| CPU inference | 8 (48% faster than default) |
 | GPU with small files | 32-64 |
 | GPU with large files | 64-128 |
+
+**Note:** For CPU inference, batch size 8 provides optimal performance. Larger batch sizes (16+) show diminishing returns due to memory overhead.
 
 ### Example Performance
 
@@ -350,13 +352,16 @@ Compatible with [Wildlife Acoustics Kaleidoscope](https://www.wildlifeacoustics.
 | Device | Batch Size | Time | Speedup |
 |--------|------------|------|---------|
 | CPU | 1 | ~36s | 1x |
+| CPU | 8 | ~24s | 1.5x |
 | GPU | 1 | ~11s | 3.3x |
 | GPU | 64 | ~7s | 5.1x |
 | GPU | 128 | ~6s | 6x |
 | GPU | 256 | ~36s | 1x (overhead) |
 
 **Key findings:**
-- GPU with batch 64-128 is optimal (~6x faster than CPU)
+
+- CPU batch size 8 is 48% faster than batch size 1
+- GPU with batch 64-128 is optimal (~6x faster than CPU batch 1, ~4x faster than CPU batch 8)
 - Very large batch sizes (256+) can be slower due to memory allocation overhead
 - GPU with batch=1 is still 3x faster than CPU
 

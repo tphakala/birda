@@ -50,9 +50,13 @@ pub async fn download_file(client: &Client, url: &str, dest: &Path) -> Result<()
             })?
             .progress_chars("█▓▒░ "),
     );
+    // Use to_string_lossy() to handle non-UTF-8 filenames gracefully
     pb.set_message(format!(
         "Downloading {}...",
-        dest.file_name().and_then(|n| n.to_str()).unwrap_or("file")
+        dest.file_name().map_or_else(
+            || std::borrow::Cow::Borrowed("file"),
+            |n| n.to_string_lossy()
+        )
     ));
 
     // Stream download

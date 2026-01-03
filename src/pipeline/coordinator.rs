@@ -51,10 +51,12 @@ pub fn output_dir_for(input: &Path, explicit_output_dir: Option<&Path>) -> PathB
 
 /// Get output file path for a given format.
 pub fn output_path_for(input: &Path, output_dir: &Path, format: OutputFormat) -> PathBuf {
-    let stem = input
-        .file_stem()
-        .and_then(|s| s.to_str())
-        .unwrap_or("output");
+    // Use to_string_lossy() to handle non-UTF-8 filenames gracefully
+    // Invalid UTF-8 sequences will be replaced with the Unicode replacement character
+    let stem = input.file_stem().map_or_else(
+        || std::borrow::Cow::Borrowed("output"),
+        |s| s.to_string_lossy(),
+    );
 
     let extension = match format {
         OutputFormat::Csv => output_extensions::CSV,
@@ -128,11 +130,15 @@ fn collect_audio_files_recursive(dir: &Path, files: &mut Vec<PathBuf>) -> Result
 
 /// Check if a file is a supported audio format.
 fn is_audio_file(path: &Path) -> bool {
-    path.extension().and_then(|e| e.to_str()).is_some_and(|e| {
-        matches!(
-            e.to_lowercase().as_str(),
-            "wav" | "flac" | "mp3" | "m4a" | "aac"
-        )
+    use std::ffi::OsStr;
+
+    path.extension().is_some_and(|ext| {
+        // Compare extension directly as OsStr to handle non-UTF-8 filenames
+        ext.eq_ignore_ascii_case(OsStr::new("wav"))
+            || ext.eq_ignore_ascii_case(OsStr::new("flac"))
+            || ext.eq_ignore_ascii_case(OsStr::new("mp3"))
+            || ext.eq_ignore_ascii_case(OsStr::new("m4a"))
+            || ext.eq_ignore_ascii_case(OsStr::new("aac"))
     })
 }
 
@@ -171,5 +177,25 @@ mod tests {
         assert!(is_audio_file(Path::new("test.FLAC")));
         assert!(is_audio_file(Path::new("test.mp3")));
         assert!(!is_audio_file(Path::new("test.txt")));
+    }
+
+    #[test]
+    fn test_is_audio_file_with_unicode() {
+        // Test with Finnish/Swedish characters
+        assert!(is_audio_file(Path::new("ääni_tiedostö.wav")));
+        assert!(is_audio_file(Path::new("räkä.flac")));
+        assert!(is_audio_file(Path::new("öljy.mp3")));
+        assert!(is_audio_file(Path::new("テスト.wav"))); // Japanese
+    }
+
+    #[test]
+    fn test_output_path_for_unicode() {
+        // Test that Unicode filenames preserve their names in output
+        let path = output_path_for(
+            Path::new("ääni_tiedostö.wav"),
+            Path::new("/output"),
+            OutputFormat::Csv,
+        );
+        assert!(path.to_string_lossy().contains("ääni_tiedostö"));
     }
 }

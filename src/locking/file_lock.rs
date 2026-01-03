@@ -78,10 +78,11 @@ impl FileLock {
 
     /// Get the lock file path for an input file.
     pub fn lock_path_for(input_path: &Path, output_dir: &Path) -> PathBuf {
-        let stem = input_path
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or("unknown");
+        // Use to_string_lossy() to handle non-UTF-8 filenames gracefully
+        let stem = input_path.file_name().map_or_else(
+            || std::borrow::Cow::Borrowed("unknown"),
+            |n| n.to_string_lossy(),
+        );
         output_dir.join(format!("{stem}{LOCK_FILE_EXTENSION}"))
     }
 

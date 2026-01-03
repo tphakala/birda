@@ -33,9 +33,10 @@ pub fn decode_audio_file(path: &Path) -> Result<DecodedAudio> {
     let mss = MediaSourceStream::new(Box::new(file), MediaSourceStreamOptions::default());
 
     // Create hint from file extension
+    // Use to_string_lossy() to handle non-UTF-8 extensions gracefully
     let mut hint = Hint::new();
-    if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
-        hint.with_extension(ext);
+    if let Some(ext) = path.extension() {
+        hint.with_extension(&ext.to_string_lossy());
     }
 
     // Probe the file

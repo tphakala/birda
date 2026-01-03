@@ -24,6 +24,10 @@ pub fn process_file(
     batch_size: usize,
     csv_columns: &[String],
 ) -> Result<ProcessResult> {
+    use std::time::Instant;
+
+    let start_time = Instant::now();
+
     info!("Processing: {}", input_path.display());
 
     // Acquire lock
@@ -55,9 +59,11 @@ pub fn process_file(
 
     if chunks.is_empty() {
         info!("No segments to process (audio too short)");
+        let duration_secs = start_time.elapsed().as_secs_f64();
         return Ok(ProcessResult {
             detections: 0,
             segments: 0,
+            duration_secs,
         });
     }
 
@@ -76,9 +82,24 @@ pub fn process_file(
         write_output(input_path, output_dir, *format, &detections, csv_columns)?;
     }
 
+    let duration_secs = start_time.elapsed().as_secs_f64();
+    #[allow(clippy::cast_precision_loss)]
+    let segments_per_sec = if duration_secs > 0.0 {
+        chunks.len() as f64 / duration_secs
+    } else {
+        0.0
+    };
+    info!(
+        "Processed {} segments in {:.2}s ({:.1} segments/sec)",
+        chunks.len(),
+        duration_secs,
+        segments_per_sec
+    );
+
     Ok(ProcessResult {
         detections: detections.len(),
         segments: chunks.len(),
+        duration_secs,
     })
 }
 
@@ -170,4 +191,6 @@ pub struct ProcessResult {
     pub detections: usize,
     /// Number of segments processed.
     pub segments: usize,
+    /// Processing duration in seconds.
+    pub duration_secs: f64,
 }

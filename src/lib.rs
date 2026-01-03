@@ -72,6 +72,10 @@ pub fn run() -> Result<()> {
 
 /// Analyze input files with the given options.
 fn analyze_files(inputs: &[PathBuf], args: &AnalyzeArgs, config: &Config) -> Result<()> {
+    use std::time::Instant;
+
+    let total_start = Instant::now();
+
     // Collect all input files
     let files = collect_input_files(inputs)?;
     if files.is_empty() {
@@ -179,6 +183,7 @@ fn analyze_files(inputs: &[PathBuf], args: &AnalyzeArgs, config: &Config) -> Res
     let mut skipped = 0;
     let mut errors = 0;
     let mut total_detections = 0;
+    let mut total_segments = 0;
 
     for file in &files {
         let file_output_dir = output_dir_for(file, output_dir.as_deref());
@@ -212,6 +217,7 @@ fn analyze_files(inputs: &[PathBuf], args: &AnalyzeArgs, config: &Config) -> Res
             Ok(result) => {
                 processed += 1;
                 total_detections += result.detections;
+                total_segments += result.segments;
             }
             Err(e) => {
                 error!("Failed to process {}: {}", file.display(), e);
@@ -224,10 +230,24 @@ fn analyze_files(inputs: &[PathBuf], args: &AnalyzeArgs, config: &Config) -> Res
     }
 
     // Summary
+    let total_duration = total_start.elapsed().as_secs_f64();
     info!(
-        "Complete: {} processed, {} skipped, {} errors, {} total detections",
-        processed, skipped, errors, total_detections
+        "Complete: {} processed, {} skipped, {} errors, {} total detections in {:.2}s",
+        processed, skipped, errors, total_detections, total_duration
     );
+
+    if processed > 0 {
+        #[allow(clippy::cast_precision_loss)]
+        let avg_segments_per_sec = if total_duration > 0.0 {
+            total_segments as f64 / total_duration
+        } else {
+            0.0
+        };
+        info!(
+            "Performance: {:.1} segments/sec overall",
+            avg_segments_per_sec
+        );
+    }
 
     if errors > 0 && !fail_fast {
         warn!("{} file(s) had errors", errors);

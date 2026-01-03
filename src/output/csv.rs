@@ -1,7 +1,7 @@
 //! CSV output format writer.
 
-use crate::constants::confidence::DECIMAL_PLACES;
 use crate::constants::UTF8_BOM;
+use crate::constants::confidence::DECIMAL_PLACES;
 use crate::error::Result;
 use crate::output::{Detection, OutputWriter};
 use std::fs::File;

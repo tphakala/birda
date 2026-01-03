@@ -14,6 +14,7 @@ pub mod locking;
 pub mod output;
 pub mod pipeline;
 pub mod registry;
+pub mod utils;
 
 use clap::Parser;
 use cli::{AnalyzeArgs, Cli, Command};

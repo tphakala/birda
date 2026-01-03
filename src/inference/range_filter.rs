@@ -1,7 +1,7 @@
 //! Wrapper around birdnet-onnx `RangeFilter`.
 
-use birdnet_onnx::{LocationScore, Prediction, RangeFilter as BirdnetRangeFilter};
 use crate::error::{Error, Result};
+use birdnet_onnx::{LocationScore, Prediction, RangeFilter as BirdnetRangeFilter};
 use std::path::Path;
 
 /// Wrapper around birdnet-onnx `RangeFilter`.

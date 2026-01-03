@@ -125,9 +125,10 @@ impl BirdClassifier {
         &self,
         mut predictions: Vec<PredictionResult>,
     ) -> Result<Vec<PredictionResult>> {
-        if let (Some(range_filter), Some(rf_config)) =
-            (self.range_filter.as_ref(), self.range_filter_config.as_ref())
-        {
+        if let (Some(range_filter), Some(rf_config)) = (
+            self.range_filter.as_ref(),
+            self.range_filter_config.as_ref(),
+        ) {
             use tracing::debug;
 
             // Get location scores once for all predictions

@@ -172,7 +172,10 @@ mod tests {
 
         let result = validate_range_filter(&config);
         assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), Error::InvalidLongitude { .. }));
+        assert!(matches!(
+            result.unwrap_err(),
+            Error::InvalidLongitude { .. }
+        ));
     }
 
     #[test]

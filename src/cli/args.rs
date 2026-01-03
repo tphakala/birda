@@ -318,7 +318,11 @@ mod tests {
     #[test]
     fn test_cli_parse_range_filter_week() {
         let cli = Cli::try_parse_from([
-            "birda", "test.wav", "--lat=40.7", "--lon=-74.0", "--week=24"
+            "birda",
+            "test.wav",
+            "--lat=40.7",
+            "--lon=-74.0",
+            "--week=24",
         ]);
         assert!(cli.is_ok());
         let cli = cli.unwrap();
@@ -330,7 +334,12 @@ mod tests {
     #[test]
     fn test_cli_parse_range_filter_month_day() {
         let cli = Cli::try_parse_from([
-            "birda", "test.wav", "--lat=40.7", "--lon=-74.0", "--month=6", "--day=15"
+            "birda",
+            "test.wav",
+            "--lat=40.7",
+            "--lon=-74.0",
+            "--month=6",
+            "--day=15",
         ]);
         assert!(cli.is_ok());
         let cli = cli.unwrap();
@@ -342,7 +351,7 @@ mod tests {
     fn test_cli_parse_range_filter_conflicts() {
         // week and month should conflict
         let cli = Cli::try_parse_from([
-            "birda", "test.wav", "--week", "24", "--month", "6", "--day", "15"
+            "birda", "test.wav", "--week", "24", "--month", "6", "--day", "15",
         ]);
         assert!(cli.is_err());
     }

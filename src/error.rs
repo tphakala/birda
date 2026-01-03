@@ -273,7 +273,9 @@ pub enum Error {
     },
 
     /// Range filtering requires meta model.
-    #[error("range filtering requires meta model (model {model_name} has no meta model configured)")]
+    #[error(
+        "range filtering requires meta model (model {model_name} has no meta model configured)"
+    )]
     MetaModelMissing {
         /// Name of the model.
         model_name: String,

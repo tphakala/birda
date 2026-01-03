@@ -125,7 +125,11 @@ fn analyze_files(inputs: &[PathBuf], args: &AnalyzeArgs, config: &Config) -> Res
             rf_config.month,
             rf_config.day,
             rf_config.threshold,
-            if rf_config.rerank { ", rerank=true" } else { "" }
+            if rf_config.rerank {
+                ", rerank=true"
+            } else {
+                ""
+            }
         );
     }
 

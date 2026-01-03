@@ -44,7 +44,11 @@ pub fn build_range_filter_config(
 
     // Convert week back to month/day for RangeFilter::predict
     // Week 1 = ~Jan 4 (day 4), Week 48 = ~Dec 29 (day 363)
-    #[allow(clippy::cast_precision_loss, clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    #[allow(
+        clippy::cast_precision_loss,
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss
+    )]
     let day_of_year = ((week - 1) as f32).mul_add(DAYS_PER_WEEK, 1.0) as u32;
     let (actual_month, actual_day) = day_of_year_to_date(day_of_year);
 

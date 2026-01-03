@@ -25,6 +25,7 @@ use config::{
 use constants::DEFAULT_TOP_K;
 use inference::BirdClassifier;
 use pipeline::{ProcessCheck, collect_input_files, output_dir_for, process_file, should_process};
+use std::collections::HashSet;
 use std::path::PathBuf;
 use tracing::{error, info, warn};
 
@@ -133,6 +134,35 @@ fn analyze_files(inputs: &[PathBuf], args: &AnalyzeArgs, config: &Config) -> Res
         );
     }
 
+    // Priority: lat/lon (dynamic) > species list file (static) > no filtering
+    let species_list = if range_filter_config.is_some() {
+        // Dynamic filtering - species list will come from range filter
+        None
+    } else if let Some(slist_path) = args
+        .slist
+        .as_ref()
+        .or(config.defaults.species_list_file.as_ref())
+    {
+        // Static filtering from file
+        info!("Loading species list: {}", slist_path.display());
+        Some(
+            utils::species_list::read_species_list(slist_path)?
+                .into_iter()
+                .collect::<HashSet<_>>(),
+        )
+    } else {
+        // No filtering
+        None
+    };
+
+    // Log if species list filtering is enabled
+    if let Some(ref species) = species_list {
+        info!(
+            "Species list filter enabled: {} species loaded",
+            species.len()
+        );
+    }
+
     // Build classifier
     info!("Loading model: {}", model_name);
     let classifier = BirdClassifier::from_config(
@@ -141,6 +171,7 @@ fn analyze_files(inputs: &[PathBuf], args: &AnalyzeArgs, config: &Config) -> Res
         min_confidence,
         DEFAULT_TOP_K,
         range_filter_config,
+        species_list,
     )?;
 
     // Process files

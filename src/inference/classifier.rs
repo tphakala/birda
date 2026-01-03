@@ -3,6 +3,7 @@
 use crate::config::{InferenceDevice, ModelConfig as BirdaModelConfig};
 use crate::error::{Error, Result};
 use birdnet_onnx::{Classifier, ClassifierBuilder, PredictionResult};
+use std::collections::HashSet;
 use tracing::info;
 
 /// Wrapper around birdnet-onnx Classifier with birda configuration.
@@ -10,6 +11,9 @@ pub struct BirdClassifier {
     inner: Classifier,
     range_filter: Option<crate::inference::range_filter::RangeFilter>,
     range_filter_config: Option<crate::inference::RangeFilterConfig>,
+    /// Optional species list for filtering (from file).
+    /// None if no species list file provided or if using dynamic range filtering.
+    species_list: Option<HashSet<String>>,
 }
 
 impl BirdClassifier {
@@ -20,6 +24,7 @@ impl BirdClassifier {
         min_confidence: f32,
         top_k: usize,
         range_filter_config: Option<crate::inference::RangeFilterConfig>,
+        species_list: Option<HashSet<String>>,
     ) -> Result<Self> {
         let mut builder = ClassifierBuilder::new()
             .model_path(model_config.path.to_string_lossy().to_string())
@@ -74,6 +79,7 @@ impl BirdClassifier {
             inner,
             range_filter,
             range_filter_config,
+            species_list,
         })
     }
 
@@ -164,8 +170,85 @@ impl BirdClassifier {
                     );
                 }
             }
+        } else if let Some(ref species_list) = self.species_list {
+            use tracing::debug;
+
+            debug!(
+                "Species list filter: applying to {} prediction results",
+                predictions.len()
+            );
+
+            // Apply species list filtering to each prediction result
+            for result in &mut predictions {
+                let before_count = result.predictions.len();
+
+                result.predictions = result
+                    .predictions
+                    .iter()
+                    .filter(|p| species_list.contains(&p.species))
+                    .cloned()
+                    .collect();
+
+                let after_count = result.predictions.len();
+                if before_count != after_count {
+                    debug!(
+                        "Species list filter: {} predictions before, {} after (filtered {})",
+                        before_count,
+                        after_count,
+                        before_count - after_count
+                    );
+                }
+            }
         }
 
         Ok(predictions)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    #[allow(clippy::unwrap_used)]
+    fn test_filter_predictions_with_species_list() {
+        use birdnet_onnx::Prediction;
+
+        let predictions = vec![
+            Prediction {
+                species: "Parus major_Great Tit".to_string(),
+                confidence: 0.95,
+                index: 0,
+            },
+            Prediction {
+                species: "Turdus merula_Blackbird".to_string(),
+                confidence: 0.85,
+                index: 1,
+            },
+            Prediction {
+                species: "Cyanistes caeruleus_Blue Tit".to_string(),
+                confidence: 0.75,
+                index: 2,
+            },
+        ];
+
+        let species_list: HashSet<String> = vec![
+            "Parus major_Great Tit".to_string(),
+            "Cyanistes caeruleus_Blue Tit".to_string(),
+        ]
+        .into_iter()
+        .collect();
+
+        // Filter using the species list (now O(1) lookup)
+        let filtered: Vec<Prediction> = predictions
+            .iter()
+            .filter(|p| species_list.contains(&p.species))
+            .cloned()
+            .collect();
+
+        assert_eq!(filtered.len(), 2);
+        assert!(filtered.iter().any(|p| p.species.contains("Parus major")));
+        assert!(filtered.iter().any(|p| p.species.contains("Cyanistes")));
+        assert!(!filtered.iter().any(|p| p.species.contains("Turdus")));
     }
 }

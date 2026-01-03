@@ -191,6 +191,12 @@ pub struct AnalyzeArgs {
     #[arg(long)]
     pub rerank: bool,
 
+    /// Path to species list file.
+    /// File should contain one species per line in format: `"Genus species_Common Name"`.
+    /// If lat/lon are provided, this will be ignored (dynamic filtering takes precedence).
+    #[arg(long, env = "BIRDA_SPECIES_LIST")]
+    pub slist: Option<PathBuf>,
+
     /// Remove locks older than this duration (e.g., 1h, 30m).
     #[arg(long)]
     pub stale_lock_timeout: Option<String>,
@@ -354,5 +360,13 @@ mod tests {
             "birda", "test.wav", "--week", "24", "--month", "6", "--day", "15",
         ]);
         assert!(cli.is_err());
+    }
+
+    #[test]
+    fn test_cli_parse_with_species_list() {
+        let cli = Cli::try_parse_from(["birda", "test.wav", "--slist", "species_list.txt"]);
+        assert!(cli.is_ok());
+        let cli = cli.unwrap();
+        assert_eq!(cli.analyze.slist, Some(PathBuf::from("species_list.txt")));
     }
 }

@@ -119,6 +119,7 @@ mod tests {
             day: None,
             range_threshold: None,
             rerank: false,
+            slist: None,
             stale_lock_timeout: None,
         }
     }

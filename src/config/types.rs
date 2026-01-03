@@ -76,6 +76,12 @@ pub struct DefaultsConfig {
     /// Global default meta model path.
     pub meta_model: Option<PathBuf>,
 
+    /// Optional species list file for filtering results.
+    /// Format: one species per line as `"Genus species_Common Name"` (e.g., `"Parus major_Great Tit"`).
+    /// Ignored if latitude/longitude are provided (dynamic filtering takes precedence).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub species_list_file: Option<PathBuf>,
+
     /// CSV column configuration.
     #[serde(default)]
     pub csv_columns: CsvColumnsConfig,
@@ -98,6 +104,7 @@ impl Default for DefaultsConfig {
             longitude: None,
             range_threshold: default_range_threshold(),
             meta_model: None,
+            species_list_file: None,
             csv_columns: CsvColumnsConfig::default(),
         }
     }
@@ -264,5 +271,14 @@ mod tests {
         assert_eq!(defaults.min_confidence, 0.1);
         assert_eq!(defaults.overlap, 0.0);
         assert_eq!(defaults.batch_size, 1);
+    }
+
+    #[test]
+    fn test_defaults_with_species_list_file() {
+        let defaults = DefaultsConfig {
+            species_list_file: Some(PathBuf::from("/path/to/species_list.txt")),
+            ..Default::default()
+        };
+        assert!(defaults.species_list_file.is_some());
     }
 }

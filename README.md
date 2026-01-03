@@ -150,9 +150,46 @@ Options:
       --force                   Reprocess files even if output exists
       --fail-fast               Stop on first error
   -q, --quiet                   Suppress progress output
+      --no-progress             Disable progress bars (useful for scripting/logging)
   -v, --verbose                 Increase verbosity (-v, -vv, -vvv)
   -h, --help                    Print help
   -V, --version                 Print version
+```
+
+### Performance and Progress
+
+The CLI displays detailed timing and performance metrics:
+
+- Total processing time for batch operations
+- Per-file processing time
+- Performance metrics (segments/sec per file and overall)
+- Clear indication of which device (CPU/GPU) is being used
+- Optional progress bars showing file and segment processing status
+
+**Progress Bar Control:**
+
+- `--no-progress` - Disable progress bars (useful for scripting/logging)
+
+Progress bars are enabled by default for interactive use but automatically disabled in quiet mode (`--quiet`).
+
+**Example output:**
+
+```text
+INFO birda: Found 1 audio file(s) to process
+INFO birda: Loading model: perch-v2
+INFO birda::inference::classifier: Auto device selection: attempting GPU, will fallback to CPU if unavailable
+INFO birda::inference::classifier: Loaded model: PerchV2, sample_rate: 32000, segment_duration: 5s, device: Auto (GPU preferred, CPU fallback)
+INFO birda::pipeline::processor: Processing: recording.wav
+INFO birda::pipeline::processor: Found 10800 detections above 80.0% confidence
+INFO birda::pipeline::processor: Processed 2160 segments in 12.35s (174.9 segments/sec)
+INFO birda: Complete: 1 processed, 0 skipped, 0 errors, 10800 total detections in 12.48s
+INFO birda: Performance: 173.1 segments/sec overall
+```
+
+**For headless/scripted usage:**
+
+```bash
+birda --no-progress --quiet recording.wav
 ```
 
 ### Model Management
@@ -367,7 +404,7 @@ task build:macos-arm64
 
 Planned features for future releases:
 
-- [ ] **Progress indicators** - Real-time progress bars for batch processing
+- [x] **Progress indicators** - Real-time progress bars for batch processing
 - [ ] **Parallel file processing** - Process multiple audio files concurrently
 
 ## License

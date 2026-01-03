@@ -2,6 +2,7 @@
 
 mod file;
 mod paths;
+pub mod range_filter;
 mod types;
 mod validate;
 

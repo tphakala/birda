@@ -40,6 +40,7 @@ impl BirdClassifier {
                 .join(", ")
         );
 
+        let tensorrt_available = available_providers.contains(&ExecutionProviderInfo::TensorRt);
         let cuda_available = available_providers.contains(&ExecutionProviderInfo::Cuda);
 
         let builder = ClassifierBuilder::new()
@@ -51,36 +52,66 @@ impl BirdClassifier {
         // Add execution provider based on device setting and determine actual device used
         let (builder, actual_device_msg) = match device {
             InferenceDevice::Gpu => {
-                info!("Requested device: GPU (CUDA)");
+                info!("Requested device: GPU (TensorRT/CUDA with fallback)");
 
-                if !cuda_available {
-                    warn!("CUDA not available at compile-time, but GPU was requested");
-                    warn!("Build will proceed, but may fall back to CPU at runtime");
+                let mut builder = builder;
+                let mut registered = Vec::new();
+
+                if tensorrt_available {
+                    debug!("Registering TensorRT execution provider");
+                    builder = builder.with_tensorrt();
+                    registered.push("TensorRT");
                 }
 
-                let builder = builder.execution_provider(
-                    birdnet_onnx::ort_execution_providers::CUDAExecutionProvider::default(),
-                );
-                (builder, "GPU (CUDA requested, may fallback to CPU)")
+                if cuda_available {
+                    debug!("Registering CUDA execution provider");
+                    builder = builder.with_cuda();
+                    registered.push("CUDA");
+                }
+
+                if registered.is_empty() {
+                    warn!("GPU requested but neither TensorRT nor CUDA available");
+                    warn!("Will fall back to CPU at runtime");
+                }
+
+                let msg = if registered.is_empty() {
+                    "GPU requested (will use CPU)".to_string()
+                } else {
+                    format!("GPU ({} → CPU fallback)", registered.join(" → "))
+                };
+
+                (builder, msg)
             }
             InferenceDevice::Cpu => {
                 info!("Requested device: CPU");
-                (builder, "CPU")
+                (builder, "CPU".to_string())
             }
             InferenceDevice::Auto => {
-                if cuda_available {
-                    info!("Auto mode: CUDA available, attempting to use GPU");
-                    let builder = builder.execution_provider(
-                        birdnet_onnx::ort_execution_providers::CUDAExecutionProvider::default(),
-                    );
-                    (
-                        builder,
-                        "Auto (CUDA available, attempting GPU with CPU fallback)",
-                    )
-                } else {
-                    info!("Auto mode: CUDA not available, using CPU");
-                    (builder, "Auto (CUDA unavailable, using CPU)")
+                let mut builder = builder;
+                let mut registered = Vec::new();
+
+                if tensorrt_available {
+                    info!("Auto mode: TensorRT available, registering");
+                    builder = builder.with_tensorrt();
+                    registered.push("TensorRT");
                 }
+
+                if cuda_available {
+                    if !tensorrt_available {
+                        info!("Auto mode: CUDA available, registering");
+                    }
+                    builder = builder.with_cuda();
+                    registered.push("CUDA");
+                }
+
+                let msg = if registered.is_empty() {
+                    info!("Auto mode: No GPU providers available, using CPU");
+                    "Auto (CPU only)".to_string()
+                } else {
+                    format!("Auto ({} → CPU fallback)", registered.join(" → "))
+                };
+
+                (builder, msg)
             }
         };
 

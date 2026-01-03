@@ -343,14 +343,40 @@ fn handle_providers_command() {
     }
 
     println!();
-    println!("To use a specific provider:");
-    println!("  --gpu       Use CUDA (if available)");
-    println!("  --cpu       Use CPU only");
-    println!("  (default)   Auto-select (GPU if available, fallback to CPU)");
+
+    // Show GPU mode provider selection if any GPU providers are available
+    let has_tensorrt = providers.contains(&birdnet_onnx::ExecutionProviderInfo::TensorRt);
+    let has_cuda = providers.contains(&birdnet_onnx::ExecutionProviderInfo::Cuda);
+
+    if has_tensorrt || has_cuda {
+        println!("GPU Mode Provider Selection (--gpu):");
+        println!("  Providers are tried in this order:");
+
+        let mut priority = 1;
+        if has_tensorrt {
+            println!("  {priority}. TensorRT          - NVIDIA optimized inference");
+            priority += 1;
+        }
+        if has_cuda {
+            println!("  {priority}. CUDA              - NVIDIA GPU acceleration");
+            priority += 1;
+        }
+        println!("  {priority}. CPU (fallback)    - Always available");
+        println!();
+    }
+
+    println!("To use a specific mode:");
+    if has_tensorrt || has_cuda {
+        println!("  --gpu       Use GPU (TensorRT → CUDA → CPU fallback)");
+    } else {
+        println!("  --gpu       Use GPU (not available - will use CPU)");
+    }
+    println!("  --cpu       Force CPU-only inference");
+    println!("  (default)   Auto-select best available provider");
     println!();
     println!("Note: This shows compile-time availability. Runtime availability may");
-    println!("      differ based on drivers and hardware. Check log output for actual");
-    println!("      provider selection during inference.");
+    println!("      differ based on drivers and hardware. Use -v flag during analysis");
+    println!("      to see actual provider selection and fallback behavior.");
 }
 
 fn handle_config_command(action: cli::ConfigAction) -> Result<()> {

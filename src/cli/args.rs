@@ -219,7 +219,7 @@ pub struct AnalyzeArgs {
     #[arg(long)]
     pub no_csv_bom: bool,
 
-    /// Enable CUDA GPU acceleration.
+    /// Enable GPU acceleration (`TensorRT` → `CUDA` → CPU fallback).
     #[arg(long, conflicts_with = "cpu")]
     pub gpu: bool,
 

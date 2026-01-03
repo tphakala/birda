@@ -272,13 +272,13 @@ fn init_logging(verbose: u8, quiet: bool) {
     use tracing_subscriber::{EnvFilter, fmt};
 
     // Build filter string based on verbosity level.
-    // ORT logging is suppressed by default (warn) because it's very noisy.
-    // -vvv bypasses the ORT filter entirely for maximum verbosity.
+    // ORT logging is suppressed by default because CUDA fallback is expected in auto mode.
+    // Use -v to see ORT warnings, -vv for info, -vvv for full trace.
     let filter_str = if quiet {
-        "warn,ort=warn".to_string()
+        "warn,ort=off".to_string()
     } else {
         match verbose {
-            0 => "info,ort=warn".to_string(),
+            0 => "info,ort=off".to_string(),
             1 => "debug,ort=warn".to_string(),
             2 => "trace,ort=info".to_string(),
             _ => "trace".to_string(), // -vvv: no ORT filter, full trace

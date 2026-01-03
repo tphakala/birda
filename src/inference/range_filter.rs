@@ -1,10 +1,10 @@
-//! Wrapper around birdnet-onnx RangeFilter.
+//! Wrapper around birdnet-onnx `RangeFilter`.
 
 use birdnet_onnx::{LocationScore, Prediction, RangeFilter as BirdnetRangeFilter};
 use crate::error::{Error, Result};
 use std::path::Path;
 
-/// Wrapper around birdnet-onnx RangeFilter.
+/// Wrapper around birdnet-onnx `RangeFilter`.
 pub struct RangeFilter {
     inner: BirdnetRangeFilter,
 }

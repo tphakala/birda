@@ -82,34 +82,34 @@ pub fn get_model<'a>(config: &'a Config, name: &str) -> Result<&'a ModelConfig> 
 
 /// Validate range filter configuration.
 pub fn validate_range_filter(config: &Config) -> Result<()> {
-    if let Some(lat) = config.defaults.latitude {
-        if !(-90.0..=90.0).contains(&lat) {
-            return Err(Error::InvalidLatitude { value: lat });
-        }
+    if let Some(lat) = config.defaults.latitude
+        && !(-90.0..=90.0).contains(&lat)
+    {
+        return Err(Error::InvalidLatitude { value: lat });
     }
 
-    if let Some(lon) = config.defaults.longitude {
-        if !(-180.0..=180.0).contains(&lon) {
-            return Err(Error::InvalidLongitude { value: lon });
-        }
+    if let Some(lon) = config.defaults.longitude
+        && !(-180.0..=180.0).contains(&lon)
+    {
+        return Err(Error::InvalidLongitude { value: lon });
     }
 
-    if let Some(meta_path) = &config.defaults.meta_model {
-        if !meta_path.exists() {
-            return Err(Error::MetaModelNotFound {
-                path: meta_path.clone(),
-            });
-        }
+    if let Some(meta_path) = &config.defaults.meta_model
+        && !meta_path.exists()
+    {
+        return Err(Error::MetaModelNotFound {
+            path: meta_path.clone(),
+        });
     }
 
     // Validate per-model meta model paths
-    for (_name, model_config) in &config.models {
-        if let Some(meta_path) = &model_config.meta_model {
-            if !meta_path.exists() {
-                return Err(Error::MetaModelNotFound {
-                    path: meta_path.clone(),
-                });
-            }
+    for model_config in config.models.values() {
+        if let Some(meta_path) = &model_config.meta_model
+            && !meta_path.exists()
+        {
+            return Err(Error::MetaModelNotFound {
+                path: meta_path.clone(),
+            });
         }
     }
 

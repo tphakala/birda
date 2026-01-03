@@ -2,6 +2,7 @@
 
 use crate::cli::AnalyzeArgs;
 use crate::config::types::{Config, ModelConfig};
+use crate::constants::range_filter::DAYS_PER_WEEK;
 use crate::error::{Error, Result};
 use crate::inference::RangeFilterConfig;
 use crate::utils::date::date_to_week;
@@ -38,7 +39,8 @@ pub fn build_range_filter_config(
 
     // Convert week back to month/day for RangeFilter::predict
     // Week 1 = ~Jan 4 (day 4), Week 48 = ~Dec 29 (day 363)
-    let day_of_year = ((week - 1) as f32 * 7.6 + 1.0) as u32;
+    #[allow(clippy::cast_precision_loss, clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    let day_of_year = ((week - 1) as f32).mul_add(DAYS_PER_WEEK, 1.0) as u32;
     let (actual_month, actual_day) = day_of_year_to_date(day_of_year);
 
     // Get meta model path (per-model overrides global default)
@@ -73,6 +75,7 @@ fn day_of_year_to_date(day_of_year: u32) -> (u32, u32) {
     let mut remaining = day_of_year;
     for (month_idx, &days_in_month) in DAYS_IN_MONTH.iter().enumerate() {
         if remaining <= days_in_month {
+            #[allow(clippy::cast_possible_truncation)]
             return ((month_idx + 1) as u32, remaining);
         }
         remaining -= days_in_month;

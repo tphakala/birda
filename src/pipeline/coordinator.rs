@@ -130,15 +130,13 @@ fn collect_audio_files_recursive(dir: &Path, files: &mut Vec<PathBuf>) -> Result
 
 /// Check if a file is a supported audio format.
 fn is_audio_file(path: &Path) -> bool {
-    use std::ffi::OsStr;
+    const AUDIO_EXTENSIONS: &[&str] = &["wav", "flac", "mp3", "m4a", "aac"];
 
+    // Compare extension directly as OsStr to handle non-UTF-8 filenames
     path.extension().is_some_and(|ext| {
-        // Compare extension directly as OsStr to handle non-UTF-8 filenames
-        ext.eq_ignore_ascii_case(OsStr::new("wav"))
-            || ext.eq_ignore_ascii_case(OsStr::new("flac"))
-            || ext.eq_ignore_ascii_case(OsStr::new("mp3"))
-            || ext.eq_ignore_ascii_case(OsStr::new("m4a"))
-            || ext.eq_ignore_ascii_case(OsStr::new("aac"))
+        AUDIO_EXTENSIONS
+            .iter()
+            .any(|&audio_ext| ext.eq_ignore_ascii_case(audio_ext))
     })
 }
 

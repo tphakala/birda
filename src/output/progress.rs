@@ -29,11 +29,14 @@ pub fn create_segment_progress(
         return None;
     }
 
+    // Sanitize filename to prevent template injection (remove curly braces)
+    let safe_name = file_name.replace(['{', '}'], "");
+
     let pb = ProgressBar::new(total_segments as u64);
     pb.set_style(
         ProgressStyle::default_bar()
             .template(&format!(
-                "{{spinner:.green}} [{{elapsed_precise}}] {{bar:40.cyan/blue}} {{pos}}/{{len}} segments - {file_name}"
+                "{{spinner:.green}} [{{elapsed_precise}}] {{bar:40.cyan/blue}} {{pos}}/{{len}} segments - {safe_name}"
             ))
             .unwrap_or_else(|_| ProgressStyle::default_bar())
             .progress_chars("█▓▒░ "),

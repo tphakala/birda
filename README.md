@@ -177,8 +177,8 @@ Progress bars are enabled by default for interactive use but automatically disab
 ```text
 INFO birda: Found 1 audio file(s) to process
 INFO birda: Loading model: perch-v2
-INFO birda::inference::classifier: Auto device selection: attempting GPU, will fallback to CPU if unavailable
-INFO birda::inference::classifier: Loaded model: PerchV2, sample_rate: 32000, segment_duration: 5s, device: Auto (GPU preferred, CPU fallback)
+INFO birda::inference::classifier: Auto mode: using CPU (use --gpu to force CUDA)
+INFO birda::inference::classifier: Loaded model: PerchV2, sample_rate: 32000, segment_duration: 5s, device: CPU
 INFO birda::pipeline::processor: Processing: recording.wav
 INFO birda::pipeline::processor: Found 10800 detections above 80.0% confidence
 INFO birda::pipeline::processor: Processed 2160 segments in 12.35s (174.9 segments/sec)

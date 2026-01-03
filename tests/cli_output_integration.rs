@@ -23,8 +23,7 @@ fn test_timing_metrics_in_output() {
     cmd.assert()
         .success()
         .stdout(predicate::str::contains("segments/sec"))
-        .stdout(predicate::str::contains("in"))
-        .stdout(predicate::str::contains("s")); // Timing in seconds
+        .stdout(predicate::str::contains(" in ").or(predicate::str::contains("duration")));
 }
 
 #[test]
@@ -40,13 +39,13 @@ fn test_no_progress_flag() {
         .arg("--no-progress")
         .arg("tests/fixtures/test.wav");
 
-    // With --no-progress, output should not contain progress bar escape codes
-    // Progress bars use ANSI escape sequences for cursor movement
-    // The output should still contain processing messages
+    // With --no-progress, stderr should not contain progress bar escape codes
+    // Progress bars write to stderr by default and use ANSI escape sequences
+    // Processing messages go to stdout via tracing
     cmd.assert()
         .success()
         .stdout(predicate::str::contains("Processing:").or(predicate::str::contains("Complete:")))
-        .stdout(predicate::str::contains("\x1b[").not()); // Verify no ANSI escape sequences
+        .stderr(predicate::str::contains("\x1b[").not()); // Verify no ANSI escape sequences in stderr
 }
 
 #[test]

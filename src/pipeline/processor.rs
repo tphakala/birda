@@ -13,6 +13,19 @@ use std::path::Path;
 use tracing::{debug, info};
 
 /// Process a single audio file and write detection results.
+///
+/// # Arguments
+///
+/// * `input_path` - Path to input audio file
+/// * `output_dir` - Directory for output files
+/// * `classifier` - `BirdNET` classifier for inference
+/// * `formats` - Output formats to generate
+/// * `min_confidence` - Minimum confidence threshold (0.0-1.0)
+/// * `overlap` - Overlap between chunks in seconds
+/// * `batch_size` - Number of chunks to process in parallel
+/// * `csv_columns` - Additional columns to include in CSV output
+/// * `progress_enabled` - Whether to show progress bars
+/// * `csv_bom_enabled` - Whether to include UTF-8 BOM in CSV output for Excel compatibility
 #[allow(clippy::too_many_arguments)]
 pub fn process_file(
     input_path: &Path,
@@ -24,6 +37,7 @@ pub fn process_file(
     batch_size: usize,
     csv_columns: &[String],
     progress_enabled: bool,
+    csv_bom_enabled: bool,
 ) -> Result<ProcessResult> {
     use crate::output::progress;
     use std::time::Instant;
@@ -101,7 +115,14 @@ pub fn process_file(
 
     // Write output files
     for format in formats {
-        write_output(input_path, output_dir, *format, &detections, csv_columns)?;
+        write_output(
+            input_path,
+            output_dir,
+            *format,
+            &detections,
+            csv_columns,
+            csv_bom_enabled,
+        )?;
     }
 
     let duration_secs = start_time.elapsed().as_secs_f64();
@@ -190,12 +211,17 @@ fn write_output(
     format: OutputFormat,
     detections: &[Detection],
     csv_columns: &[String],
+    csv_bom_enabled: bool,
 ) -> Result<()> {
     let output_path = output_path_for(input_path, output_dir, format);
     debug!("Writing {} output: {}", format, output_path.display());
 
     let mut writer: Box<dyn OutputWriter> = match format {
-        OutputFormat::Csv => Box::new(CsvWriter::new(&output_path, csv_columns.to_vec(), true)?),
+        OutputFormat::Csv => Box::new(CsvWriter::new(
+            &output_path,
+            csv_columns.to_vec(),
+            csv_bom_enabled,
+        )?),
         OutputFormat::Raven => Box::new(RavenWriter::new(&output_path)?),
         OutputFormat::Audacity => Box::new(AudacityWriter::new(&output_path)?),
         OutputFormat::Kaleidoscope => Box::new(KaleidoscopeWriter::new(&output_path)?),

@@ -221,6 +221,7 @@ fn analyze_files(inputs: &[PathBuf], args: &AnalyzeArgs, config: &Config) -> Res
             batch_size,
             &config.defaults.csv_columns.include,
             progress_enabled,
+            !args.no_csv_bom,
         ) {
             Ok(result) => {
                 processed += 1;

@@ -3,6 +3,7 @@
 mod audacity;
 mod csv;
 mod kaleidoscope;
+pub mod progress;
 mod raven;
 mod types;
 mod writer;

@@ -23,7 +23,13 @@ pub fn process_file(
     overlap: f32,
     batch_size: usize,
     csv_columns: &[String],
+    progress_enabled: bool,
 ) -> Result<ProcessResult> {
+    use crate::output::progress;
+    use std::time::Instant;
+
+    let start_time = Instant::now();
+
     info!("Processing: {}", input_path.display());
 
     // Acquire lock
@@ -55,15 +61,37 @@ pub fn process_file(
 
     if chunks.is_empty() {
         info!("No segments to process (audio too short)");
+        let duration_secs = start_time.elapsed().as_secs_f64();
         return Ok(ProcessResult {
             detections: 0,
             segments: 0,
+            duration_secs,
         });
     }
 
+    // Create segment progress bar
+    let file_name = input_path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("unknown");
+    let segment_progress =
+        progress::create_segment_progress(chunks.len(), file_name, progress_enabled);
+
+    // Wrap in guard to ensure cleanup on both success and error
+    let progress_guard = progress::ProgressGuard::new(segment_progress, "Inference complete");
+
     // Run inference
     debug!("Running inference on {} segments...", chunks.len());
-    let detections = run_inference(&chunks, classifier, input_path, min_confidence, batch_size)?;
+    let detections = run_inference(
+        &chunks,
+        classifier,
+        input_path,
+        min_confidence,
+        batch_size,
+        progress_guard.get(),
+    )?;
+
+    // Guard will automatically finish progress bar when dropped here
 
     info!(
         "Found {} detections above {:.1}% confidence",
@@ -76,9 +104,24 @@ pub fn process_file(
         write_output(input_path, output_dir, *format, &detections, csv_columns)?;
     }
 
+    let duration_secs = start_time.elapsed().as_secs_f64();
+    #[allow(clippy::cast_precision_loss)]
+    let segments_per_sec = if duration_secs > 0.0 {
+        chunks.len() as f64 / duration_secs
+    } else {
+        0.0
+    };
+    info!(
+        "Processed {} segments in {:.2}s ({:.1} segments/sec)",
+        chunks.len(),
+        duration_secs,
+        segments_per_sec
+    );
+
     Ok(ProcessResult {
         detections: detections.len(),
         segments: chunks.len(),
+        duration_secs,
     })
 }
 
@@ -89,7 +132,9 @@ fn run_inference(
     file_path: &Path,
     min_confidence: f32,
     batch_size: usize,
+    segment_progress: Option<&indicatif::ProgressBar>,
 ) -> Result<Vec<Detection>> {
+    use crate::output::progress;
     let mut detections = Vec::new();
 
     // Process in batches
@@ -118,6 +163,8 @@ fn run_inference(
                     detections.push(detection);
                 }
             }
+            // Increment progress for each segment processed
+            progress::inc_progress(segment_progress);
         }
     }
 
@@ -170,4 +217,6 @@ pub struct ProcessResult {
     pub detections: usize,
     /// Number of segments processed.
     pub segments: usize,
+    /// Processing duration in seconds.
+    pub duration_secs: f64,
 }

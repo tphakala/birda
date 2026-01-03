@@ -209,6 +209,10 @@ pub struct AnalyzeArgs {
     #[arg(short, long, action = clap::ArgAction::Count)]
     pub verbose: u8,
 
+    /// Disable progress bars (useful for scripting/logging).
+    #[arg(long)]
+    pub no_progress: bool,
+
     /// Enable CUDA GPU acceleration.
     #[arg(long, conflicts_with = "cpu")]
     pub gpu: bool,

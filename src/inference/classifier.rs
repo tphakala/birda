@@ -26,41 +26,50 @@ impl BirdClassifier {
         range_filter_config: Option<crate::inference::RangeFilterConfig>,
         species_list: Option<HashSet<String>>,
     ) -> Result<Self> {
-        let mut builder = ClassifierBuilder::new()
+        let builder = ClassifierBuilder::new()
             .model_path(model_config.path.to_string_lossy().to_string())
             .labels_path(model_config.labels.to_string_lossy().to_string())
             .top_k(top_k)
             .min_confidence(min_confidence);
 
-        // Add execution provider based on device setting
-        builder = match device {
+        // Add execution provider based on device setting and determine actual device used
+        let (inner, actual_device) = match device {
             InferenceDevice::Gpu => {
                 info!("Using CUDA GPU for inference");
-                builder.execution_provider(
-                    birdnet_onnx::execution_providers::CUDAExecutionProvider::default(),
-                )
+                let inner = builder
+                    .execution_provider(
+                        birdnet_onnx::execution_providers::CUDAExecutionProvider::default(),
+                    )
+                    .build()
+                    .map_err(|e| Error::ClassifierBuild {
+                        reason: e.to_string(),
+                    })?;
+                (inner, "GPU (CUDA)")
             }
             InferenceDevice::Cpu => {
                 info!("Using CPU for inference");
-                builder
+                let inner = builder.build().map_err(|e| Error::ClassifierBuild {
+                    reason: e.to_string(),
+                })?;
+                (inner, "CPU")
             }
             InferenceDevice::Auto => {
-                info!("Using auto device selection (GPU if available)");
-                builder.execution_provider(
-                    birdnet_onnx::execution_providers::CUDAExecutionProvider::default(),
-                )
+                // Auto mode uses CPU by default for predictable behavior
+                // CUDA can fall back to CPU silently, making detection unreliable
+                info!("Auto mode: using CPU (use --gpu to force CUDA)");
+                let inner = builder.build().map_err(|e| Error::ClassifierBuild {
+                    reason: e.to_string(),
+                })?;
+                (inner, "CPU")
             }
         };
 
-        let inner = builder.build().map_err(|e| Error::ClassifierBuild {
-            reason: e.to_string(),
-        })?;
-
         info!(
-            "Loaded model: {:?}, sample_rate: {}, segment_duration: {}s",
+            "Loaded model: {:?}, sample_rate: {}, segment_duration: {}s, device: {}",
             inner.config().model_type,
             inner.config().sample_rate,
-            inner.config().segment_duration
+            inner.config().segment_duration,
+            actual_device
         );
 
         // Build optional range filter

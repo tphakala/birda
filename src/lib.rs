@@ -72,6 +72,11 @@ pub fn run() -> Result<()> {
 
 /// Analyze input files with the given options.
 fn analyze_files(inputs: &[PathBuf], args: &AnalyzeArgs, config: &Config) -> Result<()> {
+    use crate::output::progress;
+    use std::time::Instant;
+
+    let total_start = Instant::now();
+
     // Collect all input files
     let files = collect_input_files(inputs)?;
     if files.is_empty() {
@@ -174,11 +179,16 @@ fn analyze_files(inputs: &[PathBuf], args: &AnalyzeArgs, config: &Config) -> Res
         species_list,
     )?;
 
+    // Create file progress bar
+    let progress_enabled = !args.quiet && !args.no_progress;
+    let file_progress = progress::create_file_progress(files.len(), progress_enabled);
+
     // Process files
     let mut processed = 0;
     let mut skipped = 0;
     let mut errors = 0;
     let mut total_detections = 0;
+    let mut total_segments = 0;
 
     for file in &files {
         let file_output_dir = output_dir_for(file, output_dir.as_deref());
@@ -188,11 +198,13 @@ fn analyze_files(inputs: &[PathBuf], args: &AnalyzeArgs, config: &Config) -> Res
             ProcessCheck::SkipExists => {
                 info!("Skipping (output exists): {}", file.display());
                 skipped += 1;
+                progress::inc_progress(file_progress.as_ref());
                 continue;
             }
             ProcessCheck::SkipLocked => {
                 info!("Skipping (locked): {}", file.display());
                 skipped += 1;
+                progress::inc_progress(file_progress.as_ref());
                 continue;
             }
             ProcessCheck::Process => {}
@@ -208,26 +220,46 @@ fn analyze_files(inputs: &[PathBuf], args: &AnalyzeArgs, config: &Config) -> Res
             overlap,
             batch_size,
             &config.defaults.csv_columns.include,
+            progress_enabled,
         ) {
             Ok(result) => {
                 processed += 1;
                 total_detections += result.detections;
+                total_segments += result.segments;
             }
             Err(e) => {
                 error!("Failed to process {}: {}", file.display(), e);
                 errors += 1;
                 if fail_fast {
+                    progress::finish_progress(file_progress, "Failed");
                     return Err(e);
                 }
             }
         }
+        progress::inc_progress(file_progress.as_ref());
     }
 
+    progress::finish_progress(file_progress, "Complete");
+
     // Summary
+    let total_duration = total_start.elapsed().as_secs_f64();
     info!(
-        "Complete: {} processed, {} skipped, {} errors, {} total detections",
-        processed, skipped, errors, total_detections
+        "Complete: {} processed, {} skipped, {} errors, {} total detections in {:.2}s",
+        processed, skipped, errors, total_detections, total_duration
     );
+
+    if processed > 0 {
+        #[allow(clippy::cast_precision_loss)]
+        let avg_segments_per_sec = if total_duration > 0.0 {
+            total_segments as f64 / total_duration
+        } else {
+            0.0
+        };
+        info!(
+            "Performance: {:.1} segments/sec overall",
+            avg_segments_per_sec
+        );
+    }
 
     if errors > 0 && !fail_fast {
         warn!("{} file(s) had errors", errors);
@@ -240,13 +272,13 @@ fn init_logging(verbose: u8, quiet: bool) {
     use tracing_subscriber::{EnvFilter, fmt};
 
     // Build filter string based on verbosity level.
-    // ORT logging is suppressed by default (warn) because it's very noisy.
-    // -vvv bypasses the ORT filter entirely for maximum verbosity.
+    // ORT logging is suppressed by default because CUDA fallback is expected in auto mode.
+    // Use -v to see ORT warnings, -vv for info, -vvv for full trace.
     let filter_str = if quiet {
-        "warn,ort=warn".to_string()
+        "warn,ort=off".to_string()
     } else {
         match verbose {
-            0 => "info,ort=warn".to_string(),
+            0 => "info,ort=off".to_string(),
             1 => "debug,ort=warn".to_string(),
             2 => "trace,ort=info".to_string(),
             _ => "trace".to_string(), // -vvv: no ORT filter, full trace

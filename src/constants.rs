@@ -64,3 +64,15 @@ pub mod raven {
     /// Default high frequency bound in Hz.
     pub const DEFAULT_HIGH_FREQ: u32 = 15000;
 }
+
+/// Range filter constants.
+pub mod range_filter {
+    /// BirdNET uses 48 weeks per year.
+    pub const WEEKS_PER_YEAR: u32 = 48;
+
+    /// Days per BirdNET week (365.25 / 48).
+    pub const DAYS_PER_WEEK: f32 = 7.6;
+
+    /// Default range filter threshold.
+    pub const DEFAULT_THRESHOLD: f32 = 0.01;
+}

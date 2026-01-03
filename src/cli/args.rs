@@ -160,9 +160,70 @@ pub struct AnalyzeArgs {
     #[arg(long, conflicts_with = "gpu")]
     pub cpu: bool,
 
+    /// Latitude for range filtering (-90.0 to 90.0).
+    #[arg(long, value_parser = parse_latitude, env = "BIRDA_LATITUDE")]
+    pub lat: Option<f64>,
+
+    /// Longitude for range filtering (-180.0 to 180.0).
+    #[arg(long, value_parser = parse_longitude, env = "BIRDA_LONGITUDE")]
+    pub lon: Option<f64>,
+
+    /// Week number for range filtering (1-48).
+    #[arg(long, value_parser = clap::value_parser!(u32).range(1..=48),
+          conflicts_with_all = ["month", "day"])]
+    pub week: Option<u32>,
+
+    /// Month for range filtering (1-12).
+    #[arg(long, value_parser = clap::value_parser!(u32).range(1..=12),
+          requires = "day", conflicts_with = "week")]
+    pub month: Option<u32>,
+
+    /// Day of month for range filtering (1-31).
+    #[arg(long, value_parser = clap::value_parser!(u32).range(1..=31),
+          requires = "month", conflicts_with = "week")]
+    pub day: Option<u32>,
+
+    /// Range filter threshold (0.0-1.0).
+    #[arg(long, value_parser = parse_confidence, env = "BIRDA_RANGE_THRESHOLD")]
+    pub range_threshold: Option<f32>,
+
+    /// Re-rank predictions by confidence × location score.
+    #[arg(long)]
+    pub rerank: bool,
+
     /// Remove locks older than this duration (e.g., 1h, 30m).
     #[arg(long)]
     pub stale_lock_timeout: Option<String>,
+}
+
+/// Parse and validate latitude value.
+fn parse_latitude(s: &str) -> Result<f64, String> {
+    let value: f64 = s
+        .parse()
+        .map_err(|_| format!("'{s}' is not a valid number"))?;
+
+    if !(-90.0..=90.0).contains(&value) {
+        return Err(format!(
+            "latitude must be between -90.0 and 90.0, got {value}"
+        ));
+    }
+
+    Ok(value)
+}
+
+/// Parse and validate longitude value.
+fn parse_longitude(s: &str) -> Result<f64, String> {
+    let value: f64 = s
+        .parse()
+        .map_err(|_| format!("'{s}' is not a valid number"))?;
+
+    if !(-180.0..=180.0).contains(&value) {
+        return Err(format!(
+            "longitude must be between -180.0 and 180.0, got {value}"
+        ));
+    }
+
+    Ok(value)
 }
 
 /// Parse and validate confidence value.
@@ -222,5 +283,67 @@ mod tests {
     fn test_cli_parse_config_subcommand() {
         let cli = Cli::try_parse_from(["birda", "config", "show"]);
         assert!(cli.is_ok());
+    }
+
+    #[test]
+    fn test_parse_latitude_valid() {
+        assert_eq!(parse_latitude("0.0").ok(), Some(0.0));
+        assert_eq!(parse_latitude("90.0").ok(), Some(90.0));
+        assert_eq!(parse_latitude("-90.0").ok(), Some(-90.0));
+        assert_eq!(parse_latitude("40.7128").ok(), Some(40.7128));
+    }
+
+    #[test]
+    fn test_parse_latitude_invalid() {
+        assert!(parse_latitude("91.0").is_err());
+        assert!(parse_latitude("-91.0").is_err());
+        assert!(parse_latitude("abc").is_err());
+    }
+
+    #[test]
+    fn test_parse_longitude_valid() {
+        assert_eq!(parse_longitude("0.0").ok(), Some(0.0));
+        assert_eq!(parse_longitude("180.0").ok(), Some(180.0));
+        assert_eq!(parse_longitude("-180.0").ok(), Some(-180.0));
+        assert_eq!(parse_longitude("-74.0060").ok(), Some(-74.0060));
+    }
+
+    #[test]
+    fn test_parse_longitude_invalid() {
+        assert!(parse_longitude("181.0").is_err());
+        assert!(parse_longitude("-181.0").is_err());
+        assert!(parse_longitude("abc").is_err());
+    }
+
+    #[test]
+    fn test_cli_parse_range_filter_week() {
+        let cli = Cli::try_parse_from([
+            "birda", "test.wav", "--lat=40.7", "--lon=-74.0", "--week=24"
+        ]);
+        assert!(cli.is_ok());
+        let cli = cli.unwrap();
+        assert_eq!(cli.analyze.lat, Some(40.7));
+        assert_eq!(cli.analyze.lon, Some(-74.0));
+        assert_eq!(cli.analyze.week, Some(24));
+    }
+
+    #[test]
+    fn test_cli_parse_range_filter_month_day() {
+        let cli = Cli::try_parse_from([
+            "birda", "test.wav", "--lat=40.7", "--lon=-74.0", "--month=6", "--day=15"
+        ]);
+        assert!(cli.is_ok());
+        let cli = cli.unwrap();
+        assert_eq!(cli.analyze.month, Some(6));
+        assert_eq!(cli.analyze.day, Some(15));
+    }
+
+    #[test]
+    fn test_cli_parse_range_filter_conflicts() {
+        // week and month should conflict
+        let cli = Cli::try_parse_from([
+            "birda", "test.wav", "--week", "24", "--month", "6", "--day", "15"
+        ]);
+        assert!(cli.is_err());
     }
 }

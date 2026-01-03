@@ -107,6 +107,7 @@ mod tests {
                         filename: "labels.txt".into(),
                     }],
                 },
+                meta_model: None,
             },
             recommended: false,
         }

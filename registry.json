@@ -247,6 +247,11 @@
               "filename": "birdnet-v24-zh.txt"
             }
           ]
+        },
+        "meta_model": {
+          "url": "https://huggingface.co/justinchuby/BirdNET-onnx/resolve/main/birdnet_data_model.onnx",
+          "filename": "birdnet-v24-meta.onnx",
+          "sha256": null
         }
       },
       "recommended": true

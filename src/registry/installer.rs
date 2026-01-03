@@ -9,6 +9,17 @@ use std::path::{Path, PathBuf};
 use tokio::fs::File;
 use tokio::io::AsyncWriteExt;
 
+/// Result of model installation.
+#[derive(Debug)]
+pub struct InstalledModel {
+    /// Path to downloaded model file.
+    pub model: PathBuf,
+    /// Path to downloaded labels file.
+    pub labels: PathBuf,
+    /// Path to downloaded meta model file (if available).
+    pub meta_model: Option<PathBuf>,
+}
+
 /// Download a file with progress bar.
 pub async fn download_file(client: &Client, url: &str, dest: &Path) -> Result<()> {
     let response = client
@@ -86,12 +97,9 @@ pub fn models_dir() -> Result<PathBuf> {
 
 /// Install model from registry entry.
 ///
-/// Downloads the model file and labels file for the specified language (or default).
-/// Returns paths to the downloaded model and labels files.
-pub async fn install_model(
-    model: &ModelEntry,
-    language: Option<&str>,
-) -> Result<(PathBuf, PathBuf)> {
+/// Downloads the model file, labels file for the specified language (or default),
+/// and meta model if available. Returns paths to all downloaded files.
+pub async fn install_model(model: &ModelEntry, language: Option<&str>) -> Result<InstalledModel> {
     let models_dir = models_dir()?;
     std::fs::create_dir_all(&models_dir).map_err(Error::Io)?;
 
@@ -125,7 +133,20 @@ pub async fn install_model(
     let labels_dest = models_dir.join(&language_variant.filename);
     download_file(&client, &language_variant.url, &labels_dest).await?;
 
-    Ok((model_dest, labels_dest))
+    // Download meta model if available
+    let meta_model_path = if let Some(meta_info) = &model.files.meta_model {
+        let meta_dest = models_dir.join(&meta_info.filename);
+        download_file(&client, &meta_info.url, &meta_dest).await?;
+        Some(meta_dest)
+    } else {
+        None
+    };
+
+    Ok(InstalledModel {
+        model: model_dest,
+        labels: labels_dest,
+        meta_model: meta_model_path,
+    })
 }
 
 #[cfg(test)]

@@ -407,15 +407,17 @@ fn handle_models_install(id: &str, language: Option<&str>, set_default: bool) ->
         message: format!("Failed to create async runtime: {e}"),
     })?;
 
-    let (model_path, labels_path) =
-        runtime.block_on(async { registry::install_model(model, language).await })?;
+    let installed = runtime.block_on(async { registry::install_model(model, language).await })?;
 
     println!();
     println!("Installation complete!");
     println!();
     println!("Model files saved to:");
-    println!("  {}", model_path.display());
-    println!("  {}", labels_path.display());
+    println!("  {}", installed.model.display());
+    println!("  {}", installed.labels.display());
+    if let Some(meta_path) = &installed.meta_model {
+        println!("  {}", meta_path.display());
+    }
     println!();
 
     // Prompt to set as default
@@ -443,10 +445,10 @@ fn handle_models_install(id: &str, language: Option<&str>, set_default: bool) ->
     config.models.insert(
         id.to_string(),
         ModelConfig {
-            path: model_path,
-            labels: labels_path,
+            path: installed.model,
+            labels: installed.labels,
             model_type,
-            meta_model: None,
+            meta_model: installed.meta_model,
         },
     );
 

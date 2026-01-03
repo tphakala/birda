@@ -58,6 +58,9 @@ pub struct ModelFiles {
     pub model: FileInfo,
     /// Labels file information with language variants.
     pub labels: LabelsInfo,
+    /// Optional meta model for range filtering.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub meta_model: Option<FileInfo>,
 }
 
 /// Single file download information.

@@ -4,8 +4,16 @@ use crate::constants::range_filter::{DAYS_PER_WEEK, WEEKS_PER_YEAR};
 
 /// Convert month/day to week number (1-48).
 ///
-/// `BirdNET` uses 48 weeks per year, approximately 7.6 days per week.
+/// `BirdNET` uses 48 weeks per year, approximately 7.6 days per year.
 /// `Week = floor((day_of_year - 1) / 7.6) + 1`
+///
+/// # Limitations
+///
+/// - Assumes non-leap years (February = 28 days). For leap years, calculations
+///   after February will be off by 1 day, resulting in ~0.13 week error.
+///   This is acceptable given `BirdNET`'s approximate 48-week system.
+/// - Does not validate month/day combinations (e.g., Feb 31 will produce
+///   incorrect results).
 pub fn date_to_week(month: u32, day: u32) -> u32 {
     const DAYS_IN_MONTH: [u32; 12] = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
 

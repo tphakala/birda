@@ -58,6 +58,33 @@ Copy the ONNX Runtime CUDA DLLs to your executable directory or add them to PATH
 - `onnxruntime_providers_shared.dll`
 - `cudnn*.dll` files
 
+### Checking Available Execution Providers
+
+To see which execution providers are available on your system:
+
+```bash
+birda providers
+```
+
+This shows which backends (CPU, CUDA, TensorRT, etc.) are available at compile-time.
+
+**Important Notes:**
+
+- **Compile-time vs Runtime**: The `providers` command shows what was available when the binary was built. Actual runtime availability may differ based on drivers and hardware.
+- **Provider Selection**: Use `--gpu` for CUDA, `--cpu` for CPU-only, or omit both for auto-selection (GPU if available with CPU fallback).
+- **Verification**: During analysis, birda logs which provider was requested and whether it's available. However, due to ONNX Runtime limitations, it cannot detect if a runtime fallback from GPU to CPU occurred.
+- **Best Practice**: Check the log output during analysis to verify device selection. If using GPU mode, the logs will indicate whether CUDA is available at compile-time.
+
+Example output:
+
+```text
+INFO birda::inference::classifier: Requested device: GPU (CUDA)
+INFO birda::inference::classifier: Available execution providers: Cpu
+WARN birda::inference::classifier: CUDA not available at compile-time, but GPU was requested
+WARN birda::inference::classifier: Build will proceed, but may fall back to CPU at runtime
+INFO birda::inference::classifier: Loaded model: BirdNetV24, sample_rate: 48000, segment_duration: 3s, device: GPU (CUDA requested, may fallback to CPU)
+```
+
 ## Quick Start
 
 ### 1. Initialize Configuration

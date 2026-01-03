@@ -262,6 +262,19 @@ fn handle_command(command: Command, config: &config::Config) -> Result<()> {
     match command {
         Command::Config { action } => handle_config_command(action),
         Command::Models { action } => handle_models_command(action, config),
+        Command::Species {
+            output,
+            lat,
+            lon,
+            week,
+            month,
+            day,
+            threshold,
+            sort,
+            model,
+        } => cli::species::generate_species_list(
+            output, lat, lon, week, month, day, threshold, sort, model,
+        ),
     }
 }
 

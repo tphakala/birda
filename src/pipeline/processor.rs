@@ -171,4 +171,3 @@ pub struct ProcessResult {
     /// Number of segments processed.
     pub segments: usize,
 }
-

@@ -71,8 +71,6 @@ impl RangeFilter {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     // Note: Full integration tests require actual model files
     // These are placeholder unit tests for structure
 

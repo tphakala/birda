@@ -114,7 +114,7 @@ fn analyze_files(inputs: &[PathBuf], args: &AnalyzeArgs, config: &Config) -> Res
 
     // Build classifier
     info!("Loading model: {}", model_name);
-    let classifier = BirdClassifier::from_config(model_config, device, min_confidence, 10)?;
+    let classifier = BirdClassifier::from_config(model_config, device, min_confidence, 10, None)?;
 
     // Process files
     let mut processed = 0;

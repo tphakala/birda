@@ -14,13 +14,15 @@ pub mod locking;
 pub mod output;
 pub mod pipeline;
 pub mod registry;
+pub mod utils;
 
 use clap::Parser;
 use cli::{AnalyzeArgs, Cli, Command};
 use config::{
     Config, InferenceDevice, ModelConfig, ModelType, config_file_path, load_default_config,
-    save_default_config,
+    range_filter::build_range_filter_config, save_default_config,
 };
+use constants::DEFAULT_TOP_K;
 use inference::BirdClassifier;
 use pipeline::{ProcessCheck, collect_input_files, output_dir_for, process_file, should_process};
 use std::path::PathBuf;
@@ -111,9 +113,35 @@ fn analyze_files(inputs: &[PathBuf], args: &AnalyzeArgs, config: &Config) -> Res
         config.inference.device
     };
 
+    // Build range filter config
+    let range_filter_config = build_range_filter_config(args, config, model_config, &model_name)?;
+
+    // Log if range filtering is enabled
+    if let Some(ref rf_config) = range_filter_config {
+        info!(
+            "Range filter enabled: lat={:.4}, lon={:.4}, month={}, day={}, threshold={:.3}{}",
+            rf_config.latitude,
+            rf_config.longitude,
+            rf_config.month,
+            rf_config.day,
+            rf_config.threshold,
+            if rf_config.rerank {
+                ", rerank=true"
+            } else {
+                ""
+            }
+        );
+    }
+
     // Build classifier
     info!("Loading model: {}", model_name);
-    let classifier = BirdClassifier::from_config(model_config, device, min_confidence, 10)?;
+    let classifier = BirdClassifier::from_config(
+        model_config,
+        device,
+        min_confidence,
+        DEFAULT_TOP_K,
+        range_filter_config,
+    )?;
 
     // Process files
     let mut processed = 0;
@@ -337,6 +365,7 @@ fn handle_models_add(
             path: path.clone(),
             labels: labels.clone(),
             model_type,
+            meta_model: None,
         },
     );
 
@@ -417,6 +446,7 @@ fn handle_models_install(id: &str, language: Option<&str>, set_default: bool) ->
             path: model_path,
             labels: labels_path,
             model_type,
+            meta_model: None,
         },
     );
 

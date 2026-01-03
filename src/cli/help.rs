@@ -79,6 +79,7 @@ mod tests {
                 path: PathBuf::from("/tmp/model.onnx"),
                 labels: PathBuf::from("/tmp/labels.txt"),
                 model_type: ModelType::BirdnetV24,
+                meta_model: None,
             },
         );
 

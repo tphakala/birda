@@ -38,6 +38,10 @@ pub struct ModelConfig {
     /// Model type (birdnet-v24, birdnet-v30, perch-v2).
     #[serde(rename = "type")]
     pub model_type: ModelType,
+
+    /// Optional meta model for range filtering.
+    #[serde(default)]
+    pub meta_model: Option<PathBuf>,
 }
 
 /// Default analysis settings.
@@ -59,9 +63,27 @@ pub struct DefaultsConfig {
     /// Batch size for inference.
     pub batch_size: usize,
 
+    /// Latitude for range filtering.
+    pub latitude: Option<f64>,
+
+    /// Longitude for range filtering.
+    pub longitude: Option<f64>,
+
+    /// Range filter threshold.
+    #[serde(default = "default_range_threshold")]
+    pub range_threshold: f32,
+
+    /// Global default meta model path.
+    pub meta_model: Option<PathBuf>,
+
     /// CSV column configuration.
     #[serde(default)]
     pub csv_columns: CsvColumnsConfig,
+}
+
+/// Default range filter threshold.
+fn default_range_threshold() -> f32 {
+    crate::constants::range_filter::DEFAULT_THRESHOLD
 }
 
 impl Default for DefaultsConfig {
@@ -72,6 +94,10 @@ impl Default for DefaultsConfig {
             overlap: DEFAULT_OVERLAP,
             formats: vec![OutputFormat::Csv],
             batch_size: DEFAULT_BATCH_SIZE,
+            latitude: None,
+            longitude: None,
+            range_threshold: default_range_threshold(),
+            meta_model: None,
             csv_columns: CsvColumnsConfig::default(),
         }
     }

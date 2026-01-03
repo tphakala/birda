@@ -8,6 +8,8 @@ use tracing::info;
 /// Wrapper around birdnet-onnx Classifier with birda configuration.
 pub struct BirdClassifier {
     inner: Classifier,
+    range_filter: Option<crate::inference::range_filter::RangeFilter>,
+    range_filter_config: Option<crate::inference::RangeFilterConfig>,
 }
 
 impl BirdClassifier {
@@ -17,6 +19,7 @@ impl BirdClassifier {
         device: InferenceDevice,
         min_confidence: f32,
         top_k: usize,
+        range_filter_config: Option<crate::inference::RangeFilterConfig>,
     ) -> Result<Self> {
         let mut builder = ClassifierBuilder::new()
             .model_path(model_config.path.to_string_lossy().to_string())
@@ -55,7 +58,23 @@ impl BirdClassifier {
             inner.config().segment_duration
         );
 
-        Ok(Self { inner })
+        // Build optional range filter
+        let range_filter = if let Some(ref rf_config) = range_filter_config {
+            use crate::inference::range_filter::RangeFilter;
+            Some(RangeFilter::from_config(
+                &rf_config.meta_model_path,
+                inner.labels(),
+                rf_config.threshold,
+            )?)
+        } else {
+            None
+        };
+
+        Ok(Self {
+            inner,
+            range_filter,
+            range_filter_config,
+        })
     }
 
     /// Get the model configuration.
@@ -92,5 +111,61 @@ impl BirdClassifier {
             .map_err(|e| Error::Inference {
                 reason: e.to_string(),
             })
+    }
+
+    /// Get the optional range filter.
+    pub fn range_filter(&self) -> Option<&crate::inference::range_filter::RangeFilter> {
+        self.range_filter.as_ref()
+    }
+
+    /// Apply range filtering to predictions if configured.
+    ///
+    /// Returns filtered predictions. If range filtering is not enabled, returns predictions unchanged.
+    pub fn apply_range_filter(
+        &self,
+        mut predictions: Vec<PredictionResult>,
+    ) -> Result<Vec<PredictionResult>> {
+        if let (Some(range_filter), Some(rf_config)) = (
+            self.range_filter.as_ref(),
+            self.range_filter_config.as_ref(),
+        ) {
+            use tracing::debug;
+
+            // Get location scores once for all predictions
+            let location_scores = range_filter.predict(
+                rf_config.latitude,
+                rf_config.longitude,
+                rf_config.month,
+                rf_config.day,
+            )?;
+
+            debug!(
+                "Range filter: applying to {} prediction results",
+                predictions.len()
+            );
+
+            // Apply filtering to each prediction result
+            for result in &mut predictions {
+                let before_count = result.predictions.len();
+
+                result.predictions = range_filter.filter_predictions(
+                    &result.predictions,
+                    &location_scores,
+                    rf_config.rerank,
+                );
+
+                let after_count = result.predictions.len();
+                if before_count != after_count {
+                    debug!(
+                        "Range filter: {} predictions before, {} after (filtered {})",
+                        before_count,
+                        after_count,
+                        before_count - after_count
+                    );
+                }
+            }
+        }
+
+        Ok(predictions)
     }
 }

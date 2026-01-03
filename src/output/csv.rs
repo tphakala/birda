@@ -1,6 +1,7 @@
 //! CSV output format writer.
 
 use crate::constants::confidence::DECIMAL_PLACES;
+use crate::constants::UTF8_BOM;
 use crate::error::Result;
 use crate::output::{Detection, OutputWriter};
 use std::fs::File;
@@ -15,10 +16,23 @@ pub struct CsvWriter {
 
 impl CsvWriter {
     /// Create a new CSV writer.
-    pub fn new(path: &Path, include_columns: Vec<String>) -> Result<Self> {
+    ///
+    /// # Arguments
+    ///
+    /// * `path` - Path to the output CSV file
+    /// * `include_columns` - Additional columns to include in output
+    /// * `include_bom` - Whether to write UTF-8 BOM for Excel compatibility
+    pub fn new(path: &Path, include_columns: Vec<String>, include_bom: bool) -> Result<Self> {
         let file = File::create(path)?;
+        let mut writer = BufWriter::new(file);
+
+        // Write UTF-8 BOM for Excel compatibility (unless disabled)
+        if include_bom {
+            writer.write_all(UTF8_BOM)?;
+        }
+
         Ok(Self {
-            writer: BufWriter::new(file),
+            writer,
             include_columns,
         })
     }
@@ -127,7 +141,7 @@ mod tests {
     #[test]
     fn test_csv_writer_basic() {
         let file = NamedTempFile::new().unwrap();
-        let mut writer = CsvWriter::new(file.path(), vec![]).unwrap();
+        let mut writer = CsvWriter::new(file.path(), vec![], true).unwrap();
 
         writer.write_header().unwrap();
 
@@ -152,5 +166,37 @@ mod tests {
         assert_eq!(escape_csv("simple"), "simple");
         assert_eq!(escape_csv("with,comma"), "\"with,comma\"");
         assert_eq!(escape_csv("with\"quote"), "\"with\"\"quote\"");
+    }
+
+    #[test]
+    fn test_csv_writer_with_bom() {
+        let file = NamedTempFile::new().unwrap();
+        let mut writer = CsvWriter::new(file.path(), vec![], true).unwrap();
+
+        writer.write_header().unwrap();
+        writer.finalize().unwrap();
+
+        let bytes = std::fs::read(file.path()).unwrap();
+        // Check UTF-8 BOM is present at start
+        assert_eq!(&bytes[0..3], UTF8_BOM);
+        // Check header follows BOM
+        let content = String::from_utf8_lossy(&bytes[3..]);
+        assert!(content.starts_with("Start (s),End (s)"));
+    }
+
+    #[test]
+    fn test_csv_writer_without_bom() {
+        let file = NamedTempFile::new().unwrap();
+        let mut writer = CsvWriter::new(file.path(), vec![], false).unwrap();
+
+        writer.write_header().unwrap();
+        writer.finalize().unwrap();
+
+        let bytes = std::fs::read(file.path()).unwrap();
+        // Check no BOM at start
+        assert_ne!(&bytes[0..3], UTF8_BOM);
+        // Check header starts immediately
+        let content = String::from_utf8_lossy(&bytes);
+        assert!(content.starts_with("Start (s),End (s)"));
     }
 }

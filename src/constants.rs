@@ -82,3 +82,6 @@ pub mod calendar {
     /// Days in each month (non-leap year).
     pub const DAYS_IN_MONTH: [u32; 12] = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
 }
+
+/// UTF-8 Byte Order Mark for Excel compatibility in CSV files.
+pub const UTF8_BOM: &[u8; 3] = b"\xEF\xBB\xBF";

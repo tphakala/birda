@@ -195,7 +195,7 @@ fn write_output(
     debug!("Writing {} output: {}", format, output_path.display());
 
     let mut writer: Box<dyn OutputWriter> = match format {
-        OutputFormat::Csv => Box::new(CsvWriter::new(&output_path, csv_columns.to_vec())?),
+        OutputFormat::Csv => Box::new(CsvWriter::new(&output_path, csv_columns.to_vec(), true)?),
         OutputFormat::Raven => Box::new(RavenWriter::new(&output_path)?),
         OutputFormat::Audacity => Box::new(AudacityWriter::new(&output_path)?),
         OutputFormat::Kaleidoscope => Box::new(KaleidoscopeWriter::new(&output_path)?),

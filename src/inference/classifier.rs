@@ -54,30 +54,13 @@ impl BirdClassifier {
                 (inner, "CPU")
             }
             InferenceDevice::Auto => {
-                // Try CUDA first by attempting to build with it
-                info!("Auto device selection: trying GPU...");
-                let test_builder = ClassifierBuilder::new()
-                    .model_path(model_config.path.to_string_lossy().to_string())
-                    .labels_path(model_config.labels.to_string_lossy().to_string())
-                    .top_k(top_k)
-                    .min_confidence(min_confidence)
-                    .execution_provider(
-                        birdnet_onnx::execution_providers::CUDAExecutionProvider::default(),
-                    );
-
-                // Try to build with CUDA - if it succeeds, CUDA is available
-                if let Ok(classifier) = test_builder.build() {
-                    // CUDA worked, use it
-                    info!("GPU (CUDA) available and selected");
-                    (classifier, "GPU (CUDA)")
-                } else {
-                    // CUDA failed, fall back to CPU
-                    info!("GPU not available, using CPU");
-                    let inner = builder.build().map_err(|e| Error::ClassifierBuild {
-                        reason: e.to_string(),
-                    })?;
-                    (inner, "CPU")
-                }
+                // Auto mode uses CPU by default for predictable behavior
+                // CUDA can fall back to CPU silently, making detection unreliable
+                info!("Auto mode: using CPU (use --gpu to force CUDA)");
+                let inner = builder.build().map_err(|e| Error::ClassifierBuild {
+                    reason: e.to_string(),
+                })?;
+                (inner, "CPU")
             }
         };
 

@@ -16,6 +16,7 @@ pub fn build_range_filter_config(
     args: &AnalyzeArgs,
     config: &Config,
     model_config: &ModelConfig,
+    model_name: &str,
 ) -> Result<Option<RangeFilterConfig>> {
     // Get coordinates (CLI overrides config)
     let latitude = args.lat.or(config.defaults.latitude);
@@ -26,23 +27,17 @@ pub fn build_range_filter_config(
         return Ok(None); // No coordinates - range filtering disabled
     };
 
-    // Determine time: week or month/day
-    let (month, day) = if let Some(_week) = args.week {
-        // Use week directly - convert to approximate month/day
-        // Week 1 = Jan 1, Week 48 = Dec 31
-        // This is approximate but week will be used for actual filtering
-        (1, 1) // Placeholder, actual implementation uses week
+    // Get week number: either from CLI or convert from month/day
+    let week = if let Some(week) = args.week {
+        week
     } else if let (Some(month), Some(day)) = (args.month, args.day) {
-        (month, day)
+        date_to_week(month, day)
     } else {
         // No time parameter - range filtering disabled
         return Ok(None);
     };
 
-    // Get week number (convert from month/day if needed)
-    let week = args.week.unwrap_or_else(|| date_to_week(month, day));
-
-    // Convert week back to month/day for RangeFilter::predict
+    // Convert week to month/day for RangeFilter::predict
     // Week 1 = ~Jan 4 (day 4), Week 48 = ~Dec 29 (day 363)
     #[allow(
         clippy::cast_precision_loss,
@@ -50,7 +45,7 @@ pub fn build_range_filter_config(
         clippy::cast_sign_loss
     )]
     let day_of_year = ((week - 1) as f32).mul_add(DAYS_PER_WEEK, 1.0) as u32;
-    let (actual_month, actual_day) = day_of_year_to_date(day_of_year);
+    let (month, day) = day_of_year_to_date(day_of_year);
 
     // Get meta model path (per-model overrides global default)
     let meta_model_path = model_config
@@ -58,7 +53,7 @@ pub fn build_range_filter_config(
         .as_ref()
         .or(config.defaults.meta_model.as_ref())
         .ok_or_else(|| Error::MetaModelMissing {
-            model_name: "unknown".to_string(), // TODO: pass model name
+            model_name: model_name.to_string(),
         })?;
 
     // Get threshold (CLI overrides config)
@@ -71,8 +66,8 @@ pub fn build_range_filter_config(
         threshold,
         latitude,
         longitude,
-        month: actual_month,
-        day: actual_day,
+        month,
+        day,
         rerank: args.rerank,
     }))
 }

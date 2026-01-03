@@ -114,7 +114,7 @@ fn analyze_files(inputs: &[PathBuf], args: &AnalyzeArgs, config: &Config) -> Res
     };
 
     // Build range filter config
-    let range_filter_config = build_range_filter_config(args, config, model_config)?;
+    let range_filter_config = build_range_filter_config(args, config, model_config, &model_name)?;
 
     // Log if range filtering is enabled
     if let Some(ref rf_config) = range_filter_config {

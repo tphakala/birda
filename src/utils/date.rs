@@ -28,6 +28,21 @@ pub fn date_to_week(month: u32, day: u32) -> u32 {
     week.min(WEEKS_PER_YEAR)
 }
 
+/// Convert day of year (1-365) to (month, day).
+pub fn day_of_year_to_date(day_of_year: u32) -> (u32, u32) {
+    let mut remaining = day_of_year;
+    for (month_idx, &days_in_month) in DAYS_IN_MONTH.iter().enumerate() {
+        if remaining <= days_in_month {
+            #[allow(clippy::cast_possible_truncation)]
+            return ((month_idx + 1) as u32, remaining);
+        }
+        remaining -= days_in_month;
+    }
+
+    // If we overflow, return Dec 31
+    (12, 31)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

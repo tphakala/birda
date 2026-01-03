@@ -2,11 +2,10 @@
 
 use crate::cli::AnalyzeArgs;
 use crate::config::types::{Config, ModelConfig};
-use crate::constants::calendar::DAYS_IN_MONTH;
 use crate::constants::range_filter::DAYS_PER_WEEK;
 use crate::error::{Error, Result};
 use crate::inference::RangeFilterConfig;
-use crate::utils::date::date_to_week;
+use crate::utils::date::{date_to_week, day_of_year_to_date};
 
 /// Build `RangeFilterConfig` from CLI args and config file.
 ///
@@ -71,21 +70,6 @@ pub fn build_range_filter_config(
         day,
         rerank: args.rerank,
     }))
-}
-
-/// Convert day of year (1-365) to (month, day).
-fn day_of_year_to_date(day_of_year: u32) -> (u32, u32) {
-    let mut remaining = day_of_year;
-    for (month_idx, &days_in_month) in DAYS_IN_MONTH.iter().enumerate() {
-        if remaining <= days_in_month {
-            #[allow(clippy::cast_possible_truncation)]
-            return ((month_idx + 1) as u32, remaining);
-        }
-        remaining -= days_in_month;
-    }
-
-    // If we overflow, return Dec 31
-    (12, 31)
 }
 
 #[cfg(test)]

@@ -182,12 +182,9 @@ impl BirdClassifier {
             for result in &mut predictions {
                 let before_count = result.predictions.len();
 
-                result.predictions = result
+                result
                     .predictions
-                    .iter()
-                    .filter(|p| species_list.contains(&p.species))
-                    .cloned()
-                    .collect();
+                    .retain(|p| species_list.contains(&p.species));
 
                 let after_count = result.predictions.len();
                 if before_count != after_count {

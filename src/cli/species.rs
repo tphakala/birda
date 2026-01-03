@@ -2,11 +2,10 @@
 
 use crate::cli::SortOrder;
 use crate::config::load_default_config;
-use crate::constants::calendar::DAYS_IN_MONTH;
 use crate::constants::range_filter::DAYS_PER_WEEK;
 use crate::error::{Error, Result};
 use crate::inference::range_filter::RangeFilter;
-use crate::utils::date::date_to_week;
+use crate::utils::date::day_of_year_to_date;
 use std::fs::File;
 use std::io::Write;
 use std::path::PathBuf;
@@ -82,13 +81,13 @@ pub fn generate_species_list(
     let labels = read_labels_file(&model_config.labels)?;
     println!("Loaded {} species labels", labels.len());
 
-    // Convert week/month+day to month+day for range filter
+    // Get month/day for range filter
     let (filter_month, filter_day) = if let Some(week_num) = week {
+        // Convert week to approximate month/day
         week_to_date(week_num)
     } else if let (Some(m), Some(d)) = (month, day) {
-        // Convert to week and back to get consistent date representation
-        let week_num = date_to_week(m, d);
-        week_to_date(week_num)
+        // Use exact date specified by user
+        (m, d)
     } else {
         return Err(Error::ConfigValidation {
             message: "either --week or --month+--day must be specified".to_string(),
@@ -150,7 +149,7 @@ pub fn generate_species_list(
 
 /// Convert week number to month/day.
 ///
-/// Week 1 = ~Jan 4 (day 4), Week 48 = ~Dec 29 (day 363)
+/// Week 1 = Jan 1 (day 1), Week 48 = Dec 24 (day 358)
 fn week_to_date(week: u32) -> (u32, u32) {
     #[allow(
         clippy::cast_precision_loss,
@@ -159,21 +158,6 @@ fn week_to_date(week: u32) -> (u32, u32) {
     )]
     let day_of_year = ((week - 1) as f32).mul_add(DAYS_PER_WEEK, 1.0) as u32;
     day_of_year_to_date(day_of_year)
-}
-
-/// Convert day of year (1-365) to (month, day).
-fn day_of_year_to_date(day_of_year: u32) -> (u32, u32) {
-    let mut remaining = day_of_year;
-    for (month_idx, &days_in_month) in DAYS_IN_MONTH.iter().enumerate() {
-        if remaining <= days_in_month {
-            #[allow(clippy::cast_possible_truncation)]
-            return ((month_idx + 1) as u32, remaining);
-        }
-        remaining -= days_in_month;
-    }
-
-    // If we overflow, return Dec 31
-    (12, 31)
 }
 
 /// Read labels file.

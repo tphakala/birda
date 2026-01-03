@@ -8,6 +8,7 @@ use tracing::info;
 /// Wrapper around birdnet-onnx Classifier with birda configuration.
 pub struct BirdClassifier {
     inner: Classifier,
+    range_filter: Option<crate::inference::range_filter::RangeFilter>,
 }
 
 impl BirdClassifier {
@@ -17,6 +18,7 @@ impl BirdClassifier {
         device: InferenceDevice,
         min_confidence: f32,
         top_k: usize,
+        range_filter_config: Option<crate::inference::RangeFilterConfig>,
     ) -> Result<Self> {
         let mut builder = ClassifierBuilder::new()
             .model_path(model_config.path.to_string_lossy().to_string())
@@ -55,7 +57,22 @@ impl BirdClassifier {
             inner.config().segment_duration
         );
 
-        Ok(Self { inner })
+        // Build optional range filter
+        let range_filter = if let Some(rf_config) = range_filter_config {
+            use crate::inference::range_filter::RangeFilter;
+            Some(RangeFilter::from_config(
+                &rf_config.meta_model_path,
+                inner.labels(),
+                rf_config.threshold,
+            )?)
+        } else {
+            None
+        };
+
+        Ok(Self {
+            inner,
+            range_filter,
+        })
     }
 
     /// Get the model configuration.
@@ -92,5 +109,10 @@ impl BirdClassifier {
             .map_err(|e| Error::Inference {
                 reason: e.to_string(),
             })
+    }
+
+    /// Get the optional range filter.
+    pub fn range_filter(&self) -> Option<&crate::inference::range_filter::RangeFilter> {
+        self.range_filter.as_ref()
     }
 }

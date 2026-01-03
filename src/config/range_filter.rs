@@ -17,9 +17,14 @@ pub fn build_range_filter_config(
     config: &Config,
     model_config: &ModelConfig,
 ) -> Result<Option<RangeFilterConfig>> {
-    // Get coordinates (CLI overrides config, fall back to 0.0)
-    let latitude = args.lat.or(config.defaults.latitude).unwrap_or(0.0);
-    let longitude = args.lon.or(config.defaults.longitude).unwrap_or(0.0);
+    // Get coordinates (CLI overrides config)
+    let latitude = args.lat.or(config.defaults.latitude);
+    let longitude = args.lon.or(config.defaults.longitude);
+
+    // Range filtering requires both coordinates
+    let (Some(latitude), Some(longitude)) = (latitude, longitude) else {
+        return Ok(None); // No coordinates - range filtering disabled
+    };
 
     // Determine time: week or month/day
     let (month, day) = if let Some(_week) = args.week {

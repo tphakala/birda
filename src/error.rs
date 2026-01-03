@@ -257,4 +257,46 @@ pub enum Error {
         /// Error message.
         message: String,
     },
+
+    /// Failed to build range filter.
+    #[error("failed to build range filter: {reason}")]
+    RangeFilterBuild {
+        /// Description of the build failure.
+        reason: String,
+    },
+
+    /// Failed to predict location scores.
+    #[error("failed to predict location scores: {reason}")]
+    RangeFilterPredict {
+        /// Description of the prediction failure.
+        reason: String,
+    },
+
+    /// Range filtering requires meta model.
+    #[error("range filtering requires meta model (model {model_name} has no meta model configured)")]
+    MetaModelMissing {
+        /// Name of the model.
+        model_name: String,
+    },
+
+    /// Meta model file not found.
+    #[error("meta model file not found: {path}")]
+    MetaModelNotFound {
+        /// Path to the missing meta model file.
+        path: std::path::PathBuf,
+    },
+
+    /// Invalid latitude value.
+    #[error("invalid latitude: {value} (must be -90.0 to 90.0)")]
+    InvalidLatitude {
+        /// Invalid latitude value.
+        value: f64,
+    },
+
+    /// Invalid longitude value.
+    #[error("invalid longitude: {value} (must be -180.0 to 180.0)")]
+    InvalidLongitude {
+        /// Invalid longitude value.
+        value: f64,
+    },
 }

@@ -46,6 +46,11 @@ pub enum Command {
         action: ModelsAction,
     },
     /// Generate species list from range filter.
+    #[command(group(
+        clap::ArgGroup::new("time")
+            .required(true)
+            .args(["week", "month"]),
+    ))]
     Species {
         /// Output file path (default: `species_list.txt` in current directory).
         #[arg(short, long)]

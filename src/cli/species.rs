@@ -180,8 +180,14 @@ fn day_of_year_to_date(day_of_year: u32) -> (u32, u32) {
 fn read_labels_file(path: &std::path::Path) -> Result<Vec<String>> {
     use std::io::BufRead;
 
-    let file = File::open(path).map_err(|_e| Error::LabelsFileNotFound {
-        path: path.to_path_buf(),
+    let file = File::open(path).map_err(|e| {
+        if e.kind() == std::io::ErrorKind::NotFound {
+            Error::LabelsFileNotFound {
+                path: path.to_path_buf(),
+            }
+        } else {
+            Error::Io(e)
+        }
     })?;
 
     let reader = std::io::BufReader::new(file);

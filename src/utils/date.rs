@@ -1,5 +1,6 @@
 //! Date conversion utilities for range filtering.
 
+use crate::constants::calendar::DAYS_IN_MONTH;
 use crate::constants::range_filter::{DAYS_PER_WEEK, WEEKS_PER_YEAR};
 
 /// Convert month/day to week number (1-48).
@@ -15,8 +16,6 @@ use crate::constants::range_filter::{DAYS_PER_WEEK, WEEKS_PER_YEAR};
 /// - Does not validate month/day combinations (e.g., Feb 31 will produce
 ///   incorrect results).
 pub fn date_to_week(month: u32, day: u32) -> u32 {
-    const DAYS_IN_MONTH: [u32; 12] = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
-
     let day_of_year: u32 = DAYS_IN_MONTH.iter().take((month - 1) as usize).sum::<u32>() + day;
 
     #[allow(

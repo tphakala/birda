@@ -77,6 +77,9 @@ pub fn process_file(
     let segment_progress =
         progress::create_segment_progress(chunks.len(), file_name, progress_enabled);
 
+    // Wrap in guard to ensure cleanup on both success and error
+    let progress_guard = progress::ProgressGuard::new(segment_progress, "Inference complete");
+
     // Run inference
     debug!("Running inference on {} segments...", chunks.len());
     let detections = run_inference(
@@ -85,10 +88,10 @@ pub fn process_file(
         input_path,
         min_confidence,
         batch_size,
-        segment_progress.as_ref(),
+        progress_guard.get(),
     )?;
 
-    progress::finish_progress(segment_progress, "Inference complete");
+    // Guard will automatically finish progress bar when dropped here
 
     info!(
         "Found {} detections above {:.1}% confidence",

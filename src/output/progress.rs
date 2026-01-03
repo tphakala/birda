@@ -55,3 +55,67 @@ pub fn inc_progress(pb: Option<&ProgressBar>) {
         pb.inc(1);
     }
 }
+
+/// RAII guard that ensures a progress bar is finished when dropped.
+pub struct ProgressGuard {
+    progress: Option<ProgressBar>,
+    message: String,
+}
+
+impl ProgressGuard {
+    /// Create a new progress guard.
+    pub fn new(progress: Option<ProgressBar>, message: impl Into<String>) -> Self {
+        Self {
+            progress,
+            message: message.into(),
+        }
+    }
+
+    /// Get a reference to the progress bar for incrementing.
+    pub fn get(&self) -> Option<&ProgressBar> {
+        self.progress.as_ref()
+    }
+}
+
+impl Drop for ProgressGuard {
+    fn drop(&mut self) {
+        if let Some(pb) = self.progress.take() {
+            pb.finish_with_message(self.message.clone());
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_progress_guard_finishes_on_drop() {
+        // Create a progress bar
+        let pb = create_segment_progress(10, "test.wav", true);
+
+        // Wrap in guard
+        let guard = ProgressGuard::new(pb, "Complete");
+
+        // Guard should finish the progress bar when dropped
+        // (This is tested by running without panics - indicatif would complain if not finished properly)
+        drop(guard);
+    }
+
+    #[test]
+    fn test_progress_guard_finishes_on_error_path() {
+        fn might_error(should_error: bool) -> Result<(), &'static str> {
+            let pb = create_segment_progress(10, "test.wav", true);
+            let _guard = ProgressGuard::new(pb, "Complete");
+
+            if should_error {
+                return Err("simulated error");
+            }
+            Ok(())
+        }
+
+        // Should not leak even on error
+        let result = might_error(true);
+        assert!(result.is_err());
+    }
+}

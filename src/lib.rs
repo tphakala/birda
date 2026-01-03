@@ -337,6 +337,7 @@ fn handle_models_add(
             path: path.clone(),
             labels: labels.clone(),
             model_type,
+            meta_model: None,
         },
     );
 
@@ -417,6 +418,7 @@ fn handle_models_install(id: &str, language: Option<&str>, set_default: bool) ->
             path: model_path,
             labels: labels_path,
             model_type,
+            meta_model: None,
         },
     );
 

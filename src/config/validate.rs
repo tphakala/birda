@@ -7,6 +7,7 @@ use crate::error::{Error, Result};
 /// Validate the entire configuration.
 pub fn validate_config(config: &Config) -> Result<()> {
     validate_defaults(config)?;
+    validate_range_filter(config)?;
     Ok(())
 }
 
@@ -79,6 +80,42 @@ pub fn get_model<'a>(config: &'a Config, name: &str) -> Result<&'a ModelConfig> 
     })
 }
 
+/// Validate range filter configuration.
+pub fn validate_range_filter(config: &Config) -> Result<()> {
+    if let Some(lat) = config.defaults.latitude {
+        if !(-90.0..=90.0).contains(&lat) {
+            return Err(Error::InvalidLatitude { value: lat });
+        }
+    }
+
+    if let Some(lon) = config.defaults.longitude {
+        if !(-180.0..=180.0).contains(&lon) {
+            return Err(Error::InvalidLongitude { value: lon });
+        }
+    }
+
+    if let Some(meta_path) = &config.defaults.meta_model {
+        if !meta_path.exists() {
+            return Err(Error::MetaModelNotFound {
+                path: meta_path.clone(),
+            });
+        }
+    }
+
+    // Validate per-model meta model paths
+    for (_name, model_config) in &config.models {
+        if let Some(meta_path) = &model_config.meta_model {
+            if !meta_path.exists() {
+                return Err(Error::MetaModelNotFound {
+                    path: meta_path.clone(),
+                });
+            }
+        }
+    }
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -116,5 +153,35 @@ mod tests {
         config.defaults.model = Some("nonexistent".to_string());
         let result = validate_config(&config);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_validate_range_filter_invalid_latitude() {
+        let mut config = Config::default();
+        config.defaults.latitude = Some(100.0);
+
+        let result = validate_range_filter(&config);
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), Error::InvalidLatitude { .. }));
+    }
+
+    #[test]
+    fn test_validate_range_filter_invalid_longitude() {
+        let mut config = Config::default();
+        config.defaults.longitude = Some(200.0);
+
+        let result = validate_range_filter(&config);
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), Error::InvalidLongitude { .. }));
+    }
+
+    #[test]
+    fn test_validate_range_filter_valid_coordinates() {
+        let mut config = Config::default();
+        config.defaults.latitude = Some(40.7128);
+        config.defaults.longitude = Some(-74.0060);
+
+        let result = validate_range_filter(&config);
+        assert!(result.is_ok());
     }
 }

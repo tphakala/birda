@@ -45,7 +45,8 @@ fn test_no_progress_flag() {
     // The output should still contain processing messages
     cmd.assert()
         .success()
-        .stdout(predicate::str::contains("Processing:").or(predicate::str::contains("Complete:")));
+        .stdout(predicate::str::contains("Processing:").or(predicate::str::contains("Complete:")))
+        .stdout(predicate::str::contains("\x1b[").not()); // Verify no ANSI escape sequences
 }
 
 #[test]

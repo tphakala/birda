@@ -80,7 +80,7 @@ impl ProgressGuard {
 impl Drop for ProgressGuard {
     fn drop(&mut self) {
         if let Some(pb) = self.progress.take() {
-            pb.finish_with_message(self.message.clone());
+            pb.finish_with_message(std::mem::take(&mut self.message));
         }
     }
 }

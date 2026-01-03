@@ -26,42 +26,60 @@ impl BirdClassifier {
         range_filter_config: Option<crate::inference::RangeFilterConfig>,
         species_list: Option<HashSet<String>>,
     ) -> Result<Self> {
-        let mut builder = ClassifierBuilder::new()
+        let builder = ClassifierBuilder::new()
             .model_path(model_config.path.to_string_lossy().to_string())
             .labels_path(model_config.labels.to_string_lossy().to_string())
             .top_k(top_k)
             .min_confidence(min_confidence);
 
-        // Add execution provider based on device setting
-        let actual_device = match device {
+        // Add execution provider based on device setting and determine actual device used
+        let (inner, actual_device) = match device {
             InferenceDevice::Gpu => {
                 info!("Using CUDA GPU for inference");
-                builder = builder.execution_provider(
-                    birdnet_onnx::execution_providers::CUDAExecutionProvider::default(),
-                );
-                "GPU (CUDA)"
+                let inner = builder
+                    .execution_provider(
+                        birdnet_onnx::execution_providers::CUDAExecutionProvider::default(),
+                    )
+                    .build()
+                    .map_err(|e| Error::ClassifierBuild {
+                        reason: e.to_string(),
+                    })?;
+                (inner, "GPU (CUDA)")
             }
             InferenceDevice::Cpu => {
                 info!("Using CPU for inference");
-                "CPU"
+                let inner = builder.build().map_err(|e| Error::ClassifierBuild {
+                    reason: e.to_string(),
+                })?;
+                (inner, "CPU")
             }
             InferenceDevice::Auto => {
-                // Try to detect if CUDA is available by attempting to create the provider
-                // Note: This is a best-effort detection since ONNX Runtime doesn't expose
-                // provider availability directly
-                builder = builder.execution_provider(
-                    birdnet_onnx::execution_providers::CUDAExecutionProvider::default(),
-                );
-                // Log that we're attempting auto-selection
-                // The actual fallback to CPU happens inside ONNX Runtime if CUDA fails
-                info!("Auto device selection: attempting GPU, will fallback to CPU if unavailable");
-                "Auto (GPU preferred, CPU fallback)"
+                // Try CUDA first by attempting to build with it
+                info!("Auto device selection: trying GPU...");
+                let test_builder = ClassifierBuilder::new()
+                    .model_path(model_config.path.to_string_lossy().to_string())
+                    .labels_path(model_config.labels.to_string_lossy().to_string())
+                    .top_k(top_k)
+                    .min_confidence(min_confidence)
+                    .execution_provider(
+                        birdnet_onnx::execution_providers::CUDAExecutionProvider::default(),
+                    );
+
+                // Try to build with CUDA - if it succeeds, CUDA is available
+                if let Ok(classifier) = test_builder.build() {
+                    // CUDA worked, use it
+                    info!("GPU (CUDA) available and selected");
+                    (classifier, "GPU (CUDA)")
+                } else {
+                    // CUDA failed, fall back to CPU
+                    info!("GPU not available, using CPU");
+                    let inner = builder.build().map_err(|e| Error::ClassifierBuild {
+                        reason: e.to_string(),
+                    })?;
+                    (inner, "CPU")
+                }
             }
         };
-
-        let inner = builder.build().map_err(|e| Error::ClassifierBuild {
-            reason: e.to_string(),
-        })?;
 
         info!(
             "Loaded model: {:?}, sample_rate: {}, segment_duration: {}s, device: {}",

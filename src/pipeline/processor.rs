@@ -23,7 +23,9 @@ pub fn process_file(
     overlap: f32,
     batch_size: usize,
     csv_columns: &[String],
+    progress_enabled: bool,
 ) -> Result<ProcessResult> {
+    use crate::output::progress;
     use std::time::Instant;
 
     let start_time = Instant::now();
@@ -67,9 +69,26 @@ pub fn process_file(
         });
     }
 
+    // Create segment progress bar
+    let file_name = input_path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("unknown");
+    let segment_progress =
+        progress::create_segment_progress(chunks.len(), file_name, progress_enabled);
+
     // Run inference
     debug!("Running inference on {} segments...", chunks.len());
-    let detections = run_inference(&chunks, classifier, input_path, min_confidence, batch_size)?;
+    let detections = run_inference(
+        &chunks,
+        classifier,
+        input_path,
+        min_confidence,
+        batch_size,
+        segment_progress.as_ref(),
+    )?;
+
+    progress::finish_progress(segment_progress, "Inference complete");
 
     info!(
         "Found {} detections above {:.1}% confidence",
@@ -110,7 +129,9 @@ fn run_inference(
     file_path: &Path,
     min_confidence: f32,
     batch_size: usize,
+    segment_progress: Option<&indicatif::ProgressBar>,
 ) -> Result<Vec<Detection>> {
+    use crate::output::progress;
     let mut detections = Vec::new();
 
     // Process in batches
@@ -139,6 +160,8 @@ fn run_inference(
                     detections.push(detection);
                 }
             }
+            // Increment progress for each segment processed
+            progress::inc_progress(segment_progress);
         }
     }
 

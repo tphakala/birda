@@ -93,6 +93,7 @@ mod tests {
             fail_fast: false,
             quiet: false,
             verbose: 0,
+            no_progress: false,
             gpu: false,
             cpu: false,
             lat: None,

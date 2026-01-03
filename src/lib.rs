@@ -72,6 +72,7 @@ pub fn run() -> Result<()> {
 
 /// Analyze input files with the given options.
 fn analyze_files(inputs: &[PathBuf], args: &AnalyzeArgs, config: &Config) -> Result<()> {
+    use crate::output::progress;
     use std::time::Instant;
 
     let total_start = Instant::now();
@@ -178,6 +179,10 @@ fn analyze_files(inputs: &[PathBuf], args: &AnalyzeArgs, config: &Config) -> Res
         species_list,
     )?;
 
+    // Create file progress bar
+    let progress_enabled = !args.quiet && !args.no_progress;
+    let file_progress = progress::create_file_progress(files.len(), progress_enabled);
+
     // Process files
     let mut processed = 0;
     let mut skipped = 0;
@@ -193,11 +198,13 @@ fn analyze_files(inputs: &[PathBuf], args: &AnalyzeArgs, config: &Config) -> Res
             ProcessCheck::SkipExists => {
                 info!("Skipping (output exists): {}", file.display());
                 skipped += 1;
+                progress::inc_progress(file_progress.as_ref());
                 continue;
             }
             ProcessCheck::SkipLocked => {
                 info!("Skipping (locked): {}", file.display());
                 skipped += 1;
+                progress::inc_progress(file_progress.as_ref());
                 continue;
             }
             ProcessCheck::Process => {}
@@ -213,6 +220,7 @@ fn analyze_files(inputs: &[PathBuf], args: &AnalyzeArgs, config: &Config) -> Res
             overlap,
             batch_size,
             &config.defaults.csv_columns.include,
+            progress_enabled,
         ) {
             Ok(result) => {
                 processed += 1;
@@ -223,11 +231,15 @@ fn analyze_files(inputs: &[PathBuf], args: &AnalyzeArgs, config: &Config) -> Res
                 error!("Failed to process {}: {}", file.display(), e);
                 errors += 1;
                 if fail_fast {
+                    progress::finish_progress(file_progress, "Failed");
                     return Err(e);
                 }
             }
         }
+        progress::inc_progress(file_progress.as_ref());
     }
+
+    progress::finish_progress(file_progress, "Complete");
 
     // Summary
     let total_duration = total_start.elapsed().as_secs_f64();

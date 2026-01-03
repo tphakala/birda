@@ -1,6 +1,7 @@
 //! Integration tests for CSV UTF-8 BOM functionality.
 
 #[test]
+#[ignore = "Manual test: requires audio files and models. See comment for instructions."]
 fn test_csv_with_bom_default() {
     // This test would require actual model files and audio
     // For now, we verify the unit tests cover the functionality
@@ -11,6 +12,7 @@ fn test_csv_with_bom_default() {
 }
 
 #[test]
+#[ignore = "Manual test: requires audio files and models. See comment for instructions."]
 fn test_csv_without_bom_flag() {
     // Manual test:
     // birda test.wav -f csv --no-csv-bom

@@ -295,6 +295,10 @@ fn handle_command(command: Command, config: &config::Config) -> Result<()> {
     match command {
         Command::Config { action } => handle_config_command(action),
         Command::Models { action } => handle_models_command(action, config),
+        Command::Providers => {
+            handle_providers_command();
+            Ok(())
+        }
         Command::Species {
             output,
             lat,
@@ -309,6 +313,44 @@ fn handle_command(command: Command, config: &config::Config) -> Result<()> {
             output, lat, lon, week, month, day, threshold, sort, model,
         ),
     }
+}
+
+fn handle_providers_command() {
+    use birdnet_onnx::available_execution_providers;
+
+    let providers = available_execution_providers();
+
+    println!("Available execution providers:");
+    println!();
+
+    for provider in &providers {
+        let description = match provider {
+            birdnet_onnx::ExecutionProviderInfo::Cpu => "CPU (always available)",
+            birdnet_onnx::ExecutionProviderInfo::Cuda => "CUDA (NVIDIA GPU acceleration)",
+            birdnet_onnx::ExecutionProviderInfo::TensorRt => {
+                "TensorRT (NVIDIA optimized inference)"
+            }
+            birdnet_onnx::ExecutionProviderInfo::DirectMl => "DirectML (Windows GPU acceleration)",
+            birdnet_onnx::ExecutionProviderInfo::CoreMl => "CoreML (Apple GPU/Neural Engine)",
+            birdnet_onnx::ExecutionProviderInfo::Rocm => "ROCm (AMD GPU acceleration)",
+            birdnet_onnx::ExecutionProviderInfo::OpenVino => "OpenVINO (Intel optimization)",
+            birdnet_onnx::ExecutionProviderInfo::OneDnn => "oneDNN (Intel CPU optimization)",
+            birdnet_onnx::ExecutionProviderInfo::Qnn => "QNN (Qualcomm Neural Network)",
+            birdnet_onnx::ExecutionProviderInfo::Acl => "ACL (Arm Compute Library)",
+            birdnet_onnx::ExecutionProviderInfo::ArmNn => "ArmNN (Arm Neural Network)",
+        };
+        println!("  ✓ {description}");
+    }
+
+    println!();
+    println!("To use a specific provider:");
+    println!("  --gpu       Use CUDA (if available)");
+    println!("  --cpu       Use CPU only");
+    println!("  (default)   Auto-select (GPU if available, fallback to CPU)");
+    println!();
+    println!("Note: This shows compile-time availability. Runtime availability may");
+    println!("      differ based on drivers and hardware. Check log output for actual");
+    println!("      provider selection during inference.");
 }
 
 fn handle_config_command(action: cli::ConfigAction) -> Result<()> {

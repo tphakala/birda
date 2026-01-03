@@ -45,6 +45,8 @@ pub enum Command {
         #[command(subcommand)]
         action: ModelsAction,
     },
+    /// Show available execution providers (CPU, CUDA, etc.).
+    Providers,
     /// Generate species list from range filter.
     #[command(group(
         clap::ArgGroup::new("time")

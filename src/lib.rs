@@ -324,41 +324,22 @@ fn handle_providers_command() {
     println!();
 
     for provider in &providers {
-        match provider {
-            birdnet_onnx::ExecutionProviderInfo::Cpu => {
-                println!("  ✓ CPU (always available)");
-            }
-            birdnet_onnx::ExecutionProviderInfo::Cuda => {
-                println!("  ✓ CUDA (NVIDIA GPU acceleration)");
-            }
+        let description = match provider {
+            birdnet_onnx::ExecutionProviderInfo::Cpu => "CPU (always available)",
+            birdnet_onnx::ExecutionProviderInfo::Cuda => "CUDA (NVIDIA GPU acceleration)",
             birdnet_onnx::ExecutionProviderInfo::TensorRt => {
-                println!("  ✓ TensorRT (NVIDIA optimized inference)");
+                "TensorRT (NVIDIA optimized inference)"
             }
-            birdnet_onnx::ExecutionProviderInfo::DirectMl => {
-                println!("  ✓ DirectML (Windows GPU acceleration)");
-            }
-            birdnet_onnx::ExecutionProviderInfo::CoreMl => {
-                println!("  ✓ CoreML (Apple GPU/Neural Engine)");
-            }
-            birdnet_onnx::ExecutionProviderInfo::Rocm => {
-                println!("  ✓ ROCm (AMD GPU acceleration)");
-            }
-            birdnet_onnx::ExecutionProviderInfo::OpenVino => {
-                println!("  ✓ OpenVINO (Intel optimization)");
-            }
-            birdnet_onnx::ExecutionProviderInfo::OneDnn => {
-                println!("  ✓ oneDNN (Intel CPU optimization)");
-            }
-            birdnet_onnx::ExecutionProviderInfo::Qnn => {
-                println!("  ✓ QNN (Qualcomm Neural Network)");
-            }
-            birdnet_onnx::ExecutionProviderInfo::Acl => {
-                println!("  ✓ ACL (Arm Compute Library)");
-            }
-            birdnet_onnx::ExecutionProviderInfo::ArmNn => {
-                println!("  ✓ ArmNN (Arm Neural Network)");
-            }
-        }
+            birdnet_onnx::ExecutionProviderInfo::DirectMl => "DirectML (Windows GPU acceleration)",
+            birdnet_onnx::ExecutionProviderInfo::CoreMl => "CoreML (Apple GPU/Neural Engine)",
+            birdnet_onnx::ExecutionProviderInfo::Rocm => "ROCm (AMD GPU acceleration)",
+            birdnet_onnx::ExecutionProviderInfo::OpenVino => "OpenVINO (Intel optimization)",
+            birdnet_onnx::ExecutionProviderInfo::OneDnn => "oneDNN (Intel CPU optimization)",
+            birdnet_onnx::ExecutionProviderInfo::Qnn => "QNN (Qualcomm Neural Network)",
+            birdnet_onnx::ExecutionProviderInfo::Acl => "ACL (Arm Compute Library)",
+            birdnet_onnx::ExecutionProviderInfo::ArmNn => "ArmNN (Arm Neural Network)",
+        };
+        println!("  ✓ {description}");
     }
 
     println!();

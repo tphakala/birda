@@ -79,7 +79,7 @@ Example output:
 
 ```text
 INFO birda::inference::classifier: Requested device: GPU (CUDA)
-INFO birda::inference::classifier: Available execution providers: Cpu
+DEBUG birda::inference::classifier: Available execution providers: Cpu
 WARN birda::inference::classifier: CUDA not available at compile-time, but GPU was requested
 WARN birda::inference::classifier: Build will proceed, but may fall back to CPU at runtime
 INFO birda::inference::classifier: Loaded model: BirdNetV24, sample_rate: 48000, segment_duration: 3s, device: GPU (CUDA requested, may fallback to CPU)

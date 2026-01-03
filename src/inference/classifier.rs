@@ -32,7 +32,7 @@ impl BirdClassifier {
         // Check available execution providers at compile-time
         let available_providers = available_execution_providers();
         debug!(
-            "Available execution providers: {:?}",
+            "Available execution providers: {}",
             available_providers
                 .iter()
                 .map(|p| format!("{p:?}"))
@@ -49,7 +49,7 @@ impl BirdClassifier {
             .min_confidence(min_confidence);
 
         // Add execution provider based on device setting and determine actual device used
-        let (inner, actual_device_msg) = match device {
+        let (builder, actual_device_msg) = match device {
             InferenceDevice::Gpu => {
                 info!("Requested device: GPU (CUDA)");
 
@@ -58,47 +58,35 @@ impl BirdClassifier {
                     warn!("Build will proceed, but may fall back to CPU at runtime");
                 }
 
-                let inner = builder
-                    .execution_provider(
-                        birdnet_onnx::ort_execution_providers::CUDAExecutionProvider::default(),
-                    )
-                    .build()
-                    .map_err(|e| Error::ClassifierBuild {
-                        reason: e.to_string(),
-                    })?;
-                (inner, "GPU (CUDA requested, may fallback to CPU)")
+                let builder = builder.execution_provider(
+                    birdnet_onnx::ort_execution_providers::CUDAExecutionProvider::default(),
+                );
+                (builder, "GPU (CUDA requested, may fallback to CPU)")
             }
             InferenceDevice::Cpu => {
                 info!("Requested device: CPU");
-                let inner = builder.build().map_err(|e| Error::ClassifierBuild {
-                    reason: e.to_string(),
-                })?;
-                (inner, "CPU")
+                (builder, "CPU")
             }
             InferenceDevice::Auto => {
                 if cuda_available {
                     info!("Auto mode: CUDA available, attempting to use GPU");
-                    let inner = builder
-                        .execution_provider(
-                            birdnet_onnx::ort_execution_providers::CUDAExecutionProvider::default(),
-                        )
-                        .build()
-                        .map_err(|e| Error::ClassifierBuild {
-                            reason: e.to_string(),
-                        })?;
+                    let builder = builder.execution_provider(
+                        birdnet_onnx::ort_execution_providers::CUDAExecutionProvider::default(),
+                    );
                     (
-                        inner,
+                        builder,
                         "Auto (CUDA available, attempting GPU with CPU fallback)",
                     )
                 } else {
                     info!("Auto mode: CUDA not available, using CPU");
-                    let inner = builder.build().map_err(|e| Error::ClassifierBuild {
-                        reason: e.to_string(),
-                    })?;
-                    (inner, "Auto (CUDA unavailable, using CPU)")
+                    (builder, "Auto (CUDA unavailable, using CPU)")
                 }
             }
         };
+
+        let inner = builder.build().map_err(|e| Error::ClassifierBuild {
+            reason: e.to_string(),
+        })?;
 
         // Get the requested provider from the classifier
         let requested_provider = inner.requested_provider();

@@ -125,8 +125,13 @@ pub enum InferenceDevice {
     /// Automatically select (GPU if available, else CPU).
     #[default]
     Auto,
-    /// Force GPU (CUDA), fail if unavailable.
+    /// GPU acceleration (`TensorRT` OR `CUDA`, exclusive selection with CPU fallback).
     Gpu,
+    /// Force `TensorRT`-only inference (strict mode, no fallback).
+    #[serde(rename = "tensorrt")]
+    TensorRT,
+    /// Force `CUDA`-only inference (strict mode, no fallback).
+    Cuda,
     /// Force CPU inference.
     Cpu,
 }

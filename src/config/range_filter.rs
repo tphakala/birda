@@ -96,6 +96,8 @@ mod tests {
             no_progress: false,
             no_csv_bom: false,
             gpu: false,
+            tensorrt: false,
+            cuda: false,
             cpu: false,
             lat: None,
             lon: None,

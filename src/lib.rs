@@ -111,7 +111,11 @@ fn analyze_files(inputs: &[PathBuf], args: &AnalyzeArgs, config: &Config) -> Res
     let fail_fast = args.fail_fast;
 
     // Resolve device
-    let device = if args.gpu {
+    let device = if args.tensorrt {
+        InferenceDevice::TensorRT
+    } else if args.cuda {
+        InferenceDevice::Cuda
+    } else if args.gpu {
         InferenceDevice::Gpu
     } else if args.cpu {
         InferenceDevice::Cpu
@@ -349,30 +353,30 @@ fn handle_providers_command() {
     let has_cuda = providers.contains(&birdnet_onnx::ExecutionProviderInfo::Cuda);
 
     if has_tensorrt || has_cuda {
-        println!("GPU Mode Provider Selection (--gpu):");
-        println!("  Providers are tried in this order:");
-
-        let mut priority = 1;
+        println!("GPU Mode Provider Selection:");
+        println!();
+        println!("  --gpu         TensorRT OR CUDA (exclusive, auto-select best)");
         if has_tensorrt {
-            println!("  {priority}. TensorRT          - NVIDIA optimized inference");
-            priority += 1;
+            println!("  --tensorrt    TensorRT only (no fallback, strict mode)");
         }
         if has_cuda {
-            println!("  {priority}. CUDA              - NVIDIA GPU acceleration");
-            priority += 1;
+            println!("  --cuda        CUDA only (no fallback, strict mode)");
         }
-        println!("  {priority}. CPU (fallback)    - Always available");
+        println!("  --cpu         CPU only");
+        println!("  (default)     Auto-select best available provider");
         println!();
-    }
-
-    println!("To use a specific mode:");
-    if has_tensorrt || has_cuda {
-        println!("  --gpu       Use GPU (TensorRT → CUDA → CPU fallback)");
+        println!("Provider priority: TensorRT > CUDA > CPU");
+        println!();
+        println!("Note: --gpu uses exclusive registration (one GPU provider at a time)");
+        println!("      for optimal performance. Use --tensorrt or --cuda for strict");
+        println!("      provider selection with no fallback.");
+        println!();
     } else {
+        println!("To use a specific mode:");
         println!("  --gpu       Use GPU (not available - will use CPU)");
+        println!("  --cpu       Force CPU-only inference");
+        println!("  (default)   Auto-select best available provider");
     }
-    println!("  --cpu       Force CPU-only inference");
-    println!("  (default)   Auto-select best available provider");
     println!();
     println!("Note: This shows compile-time availability. Runtime availability may");
     println!("      differ based on drivers and hardware. Use -v flag during analysis");

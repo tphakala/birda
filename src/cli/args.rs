@@ -219,12 +219,20 @@ pub struct AnalyzeArgs {
     #[arg(long)]
     pub no_csv_bom: bool,
 
-    /// Enable GPU acceleration (`TensorRT` → `CUDA` → CPU fallback).
-    #[arg(long, conflicts_with = "cpu")]
+    /// Enable GPU acceleration (`TensorRT` OR `CUDA`, exclusive selection with CPU fallback).
+    #[arg(long, conflicts_with_all = ["cpu", "tensorrt", "cuda"])]
     pub gpu: bool,
 
+    /// Force `TensorRT`-only inference (no `CUDA` fallback, fails if unavailable).
+    #[arg(long, conflicts_with_all = ["cpu", "gpu", "cuda"])]
+    pub tensorrt: bool,
+
+    /// Force `CUDA`-only inference (no `TensorRT`, fails if unavailable).
+    #[arg(long, conflicts_with_all = ["cpu", "gpu", "tensorrt"])]
+    pub cuda: bool,
+
     /// Force CPU inference.
-    #[arg(long, conflicts_with = "gpu")]
+    #[arg(long, conflicts_with_all = ["gpu", "tensorrt", "cuda"])]
     pub cpu: bool,
 
     /// Latitude for range filtering (-90.0 to 90.0).

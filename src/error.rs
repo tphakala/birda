@@ -180,6 +180,14 @@ pub enum Error {
         reason: String,
     },
 
+    /// `TensorRT` execution provider unavailable.
+    #[error("TensorRT requested but unavailable (check CUDA installation and TensorRT libraries)")]
+    TensorRTUnavailable,
+
+    /// `CUDA` execution provider unavailable.
+    #[error("CUDA requested but unavailable (check CUDA installation and GPU drivers)")]
+    CudaUnavailable,
+
     /// Failed to read registry file.
     #[error("failed to read registry file '{path}'")]
     RegistryRead {

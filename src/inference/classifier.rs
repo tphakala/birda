@@ -51,67 +51,61 @@ impl BirdClassifier {
 
         // Add execution provider based on device setting and determine actual device used
         let (builder, actual_device_msg) = match device {
+            InferenceDevice::Auto => {
+                if tensorrt_available {
+                    info!("Auto mode: TensorRT available, registering");
+                    debug!("Registering TensorRT execution provider");
+                    (
+                        builder.with_tensorrt(),
+                        "Auto (TensorRT → CPU fallback)".to_string(),
+                    )
+                } else if cuda_available {
+                    info!("Auto mode: CUDA available, registering");
+                    debug!("Registering CUDA execution provider");
+                    (
+                        builder.with_cuda(),
+                        "Auto (CUDA → CPU fallback)".to_string(),
+                    )
+                } else {
+                    info!("Auto mode: No GPU providers available, using CPU");
+                    (builder, "Auto (CPU only)".to_string())
+                }
+            }
             InferenceDevice::Gpu => {
-                info!("Requested device: GPU (TensorRT/CUDA with fallback)");
-
-                let mut builder = builder;
-                let mut registered = Vec::new();
-
+                info!("Requested device: GPU");
                 if tensorrt_available {
                     debug!("Registering TensorRT execution provider");
-                    builder = builder.with_tensorrt();
-                    registered.push("TensorRT");
-                }
-
-                if cuda_available {
+                    (
+                        builder.with_tensorrt(),
+                        "GPU (TensorRT → CPU fallback)".to_string(),
+                    )
+                } else if cuda_available {
                     debug!("Registering CUDA execution provider");
-                    builder = builder.with_cuda();
-                    registered.push("CUDA");
-                }
-
-                if registered.is_empty() {
-                    warn!("GPU requested but neither TensorRT nor CUDA available");
-                    warn!("Will fall back to CPU at runtime");
-                }
-
-                let msg = if registered.is_empty() {
-                    "GPU requested (will use CPU)".to_string()
+                    (builder.with_cuda(), "GPU (CUDA → CPU fallback)".to_string())
                 } else {
-                    format!("GPU ({} → CPU fallback)", registered.join(" → "))
-                };
-
-                (builder, msg)
+                    warn!("GPU requested but no GPU providers available, will use CPU");
+                    (builder, "GPU requested (using CPU)".to_string())
+                }
+            }
+            InferenceDevice::TensorRT => {
+                info!("Requested device: TensorRT (strict mode)");
+                if !tensorrt_available {
+                    return Err(Error::TensorRTUnavailable);
+                }
+                debug!("Registering TensorRT execution provider (no fallback)");
+                (builder.with_tensorrt(), "TensorRT only".to_string())
+            }
+            InferenceDevice::Cuda => {
+                info!("Requested device: CUDA (strict mode)");
+                if !cuda_available {
+                    return Err(Error::CudaUnavailable);
+                }
+                debug!("Registering CUDA execution provider (no fallback)");
+                (builder.with_cuda(), "CUDA only".to_string())
             }
             InferenceDevice::Cpu => {
                 info!("Requested device: CPU");
                 (builder, "CPU".to_string())
-            }
-            InferenceDevice::Auto => {
-                let mut builder = builder;
-                let mut registered = Vec::new();
-
-                if tensorrt_available {
-                    info!("Auto mode: TensorRT available, registering");
-                    builder = builder.with_tensorrt();
-                    registered.push("TensorRT");
-                }
-
-                if cuda_available {
-                    if !tensorrt_available {
-                        info!("Auto mode: CUDA available, registering");
-                    }
-                    builder = builder.with_cuda();
-                    registered.push("CUDA");
-                }
-
-                let msg = if registered.is_empty() {
-                    info!("Auto mode: No GPU providers available, using CPU");
-                    "Auto (CPU only)".to_string()
-                } else {
-                    format!("Auto ({} → CPU fallback)", registered.join(" → "))
-                };
-
-                (builder, msg)
             }
         };
 

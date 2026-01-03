@@ -11,6 +11,7 @@ A fast, cross-platform CLI tool for bird species detection using [BirdNET](https
 
 - **Multiple AI Models**: Support for BirdNET v2.4, BirdNET v3.0, and Google Perch v2 models
 - **GPU Acceleration**: Optional CUDA support for faster inference on NVIDIA GPUs
+- **Species Filtering**: Dynamic range filtering by location/date or static species list files
 - **Multiple Output Formats**: CSV, Raven selection tables, Audacity labels, Kaleidoscope CSV
 - **Batch Processing**: Process entire directories of audio files
 - **Flexible Configuration**: TOML-based config with CLI overrides
@@ -93,15 +94,46 @@ birda /path/to/recordings/
 birda --gpu -b 64 recording.wav
 ```
 
+## Species Filtering
+
+Birda supports filtering detections by species using two complementary approaches:
+
+### Dynamic Range Filtering
+
+Filter species based on location and date using BirdNET's meta model:
+
+```bash
+# Filter by location and week
+birda recording.wav --lat 60.17 --lon 24.94 --week 24
+
+# Filter by location and month/day
+birda recording.wav --lat 42.36 --lon -71.06 --month 6 --day 15
+```
+
+### Static Species Lists
+
+Use pre-generated species list files compatible with BirdNET-Analyzer:
+
+```bash
+# Generate a species list for your location
+birda species --lat 60.17 --lon 24.94 --week 24 --output my_species.txt
+
+# Use the species list during analysis
+birda recording.wav --slist my_species.txt
+```
+
+**See [Species List Usage Guide](docs/species-list-usage.md) for detailed documentation.**
+
 ## Usage
 
 ```
 birda [OPTIONS] [INPUTS]... [COMMAND]
 
 Commands:
-  config  Manage configuration
-  models  Manage models
-  help    Print help information
+  config   Manage configuration
+  models   Manage models
+  species  Generate species list from range filter
+  help     Print help information
 
 Arguments:
   [INPUTS]...  Input files or directories to analyze
@@ -335,7 +367,6 @@ task build:macos-arm64
 
 Planned features for future releases:
 
-- [ ] **Range Filter** - Geographic and temporal species filtering using BirdNET's meta model to eliminate impossible species based on location and time of year
 - [ ] **Progress indicators** - Real-time progress bars for batch processing
 - [ ] **Parallel file processing** - Process multiple audio files concurrently
 

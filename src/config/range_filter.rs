@@ -165,8 +165,9 @@ mod tests {
         assert_eq!(rf_config.latitude, 60.1699);
         assert_eq!(rf_config.longitude, 24.9384);
         assert_eq!(rf_config.threshold, 0.01); // Default threshold
-        // Week 24 converts to approximately June
-        assert!(rf_config.month >= 6 && rf_config.month <= 7);
+        // Week 24 = day 175 → June 24
+        assert_eq!(rf_config.month, 6);
+        assert_eq!(rf_config.day, 24);
     }
 
     #[test]
@@ -195,9 +196,9 @@ mod tests {
         let rf_config = result.unwrap().unwrap();
         assert_eq!(rf_config.latitude, 60.1699);
         assert_eq!(rf_config.longitude, 24.9384);
-        // Month/day gets converted to week and back, so expect approximately June
-        assert!(rf_config.month >= 6 && rf_config.month <= 6);
-        assert!(rf_config.day >= 1 && rf_config.day <= 31);
+        // June 15 → week 22 → day 160 → June 9 (precision loss in round-trip)
+        assert_eq!(rf_config.month, 6);
+        assert_eq!(rf_config.day, 9);
     }
 
     #[test]

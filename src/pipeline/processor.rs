@@ -102,6 +102,9 @@ fn run_inference(
             classifier.predict_batch(&segments)?
         };
 
+        // Apply range filtering if configured
+        let results = classifier.apply_range_filter(results)?;
+
         for (chunk, result) in batch_chunks.iter().zip(results.iter()) {
             for pred in &result.predictions {
                 if pred.confidence >= min_confidence {

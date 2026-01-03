@@ -76,3 +76,9 @@ pub mod range_filter {
     /// Default range filter threshold.
     pub const DEFAULT_THRESHOLD: f32 = 0.01;
 }
+
+/// Calendar constants.
+pub mod calendar {
+    /// Days in each month (non-leap year).
+    pub const DAYS_IN_MONTH: [u32; 12] = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+}

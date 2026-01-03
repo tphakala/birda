@@ -1,8 +1,17 @@
 //! CLI argument definitions.
 
 use crate::config::{ModelType, OutputFormat};
-use clap::{Args, Parser, Subcommand};
+use clap::{Args, Parser, Subcommand, ValueEnum};
 use std::path::PathBuf;
+
+/// Sort order for species list.
+#[derive(Debug, Clone, Copy, ValueEnum)]
+pub enum SortOrder {
+    /// Sort by occurrence probability (descending).
+    Freq,
+    /// Sort alphabetically.
+    Alpha,
+}
 
 /// Bird species detection using `BirdNET` and Perch models.
 #[derive(Debug, Parser)]
@@ -35,6 +44,54 @@ pub enum Command {
         /// Models action to perform.
         #[command(subcommand)]
         action: ModelsAction,
+    },
+    /// Generate species list from range filter.
+    #[command(group(
+        clap::ArgGroup::new("time")
+            .required(true)
+            .args(["week", "month"]),
+    ))]
+    Species {
+        /// Output file path (default: `species_list.txt` in current directory).
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+
+        /// Latitude for range filtering (-90.0 to 90.0).
+        #[arg(long, value_parser = parse_latitude)]
+        lat: f64,
+
+        /// Longitude for range filtering (-180.0 to 180.0).
+        #[arg(long, value_parser = parse_longitude)]
+        lon: f64,
+
+        /// Week number (1-48).
+        #[arg(long, value_parser = clap::value_parser!(u32).range(1..=48),
+              conflicts_with_all = ["month", "day"])]
+        week: Option<u32>,
+
+        /// Month (1-12).
+        #[arg(long, value_parser = clap::value_parser!(u32).range(1..=12),
+              requires = "day", conflicts_with = "week")]
+        month: Option<u32>,
+
+        /// Day of month (1-31).
+        #[arg(long, value_parser = clap::value_parser!(u32).range(1..=31),
+              requires = "month", conflicts_with = "week")]
+        day: Option<u32>,
+
+        /// Range filter threshold (0.0-1.0).
+        /// Note: Species list generation uses 0.03 default (vs 0.01 for live filtering)
+        /// to reduce noise in generated lists.
+        #[arg(long, value_parser = parse_confidence, default_value = "0.03")]
+        threshold: f32,
+
+        /// Sort order: freq (by occurrence probability) or alpha (alphabetically).
+        #[arg(long, default_value = "freq")]
+        sort: SortOrder,
+
+        /// Model name to use (must have `meta_model` configured).
+        #[arg(short, long)]
+        model: Option<String>,
     },
 }
 
@@ -190,6 +247,12 @@ pub struct AnalyzeArgs {
     /// Re-rank predictions by confidence × location score.
     #[arg(long)]
     pub rerank: bool,
+
+    /// Path to species list file.
+    /// File should contain one species per line in format: `"Genus species_Common Name"`.
+    /// If lat/lon are provided, this will be ignored (dynamic filtering takes precedence).
+    #[arg(long, env = "BIRDA_SPECIES_LIST")]
+    pub slist: Option<PathBuf>,
 
     /// Remove locks older than this duration (e.g., 1h, 30m).
     #[arg(long)]
@@ -354,5 +417,59 @@ mod tests {
             "birda", "test.wav", "--week", "24", "--month", "6", "--day", "15",
         ]);
         assert!(cli.is_err());
+    }
+
+    #[test]
+    fn test_cli_parse_with_species_list() {
+        let cli = Cli::try_parse_from(["birda", "test.wav", "--slist", "species_list.txt"]);
+        assert!(cli.is_ok());
+        let cli = cli.unwrap();
+        assert_eq!(cli.analyze.slist, Some(PathBuf::from("species_list.txt")));
+    }
+
+    #[test]
+    fn test_cli_parse_species_command_with_week() {
+        let cli = Cli::try_parse_from([
+            "birda",
+            "species",
+            "--lat=60.1699",
+            "--lon=24.9384",
+            "--week=24",
+            "--output=my_species.txt",
+        ]);
+        assert!(cli.is_ok());
+    }
+
+    #[test]
+    fn test_cli_parse_species_command_with_month_day() {
+        let cli = Cli::try_parse_from([
+            "birda",
+            "species",
+            "--lat=60.1699",
+            "--lon=24.9384",
+            "--month=6",
+            "--day=15",
+        ]);
+        assert!(cli.is_ok());
+    }
+
+    #[test]
+    fn test_species_command_requires_coordinates() {
+        let cli = Cli::try_parse_from(["birda", "species", "--week=24"]);
+        assert!(cli.is_err()); // Should fail without lat/lon
+    }
+
+    #[test]
+    fn test_species_command_week_month_conflict() {
+        let cli = Cli::try_parse_from([
+            "birda",
+            "species",
+            "--lat=60.1699",
+            "--lon=24.9384",
+            "--week=24",
+            "--month=6",
+            "--day=15",
+        ]);
+        assert!(cli.is_err()); // week and month should conflict
     }
 }

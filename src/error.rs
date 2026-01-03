@@ -301,4 +301,14 @@ pub enum Error {
         /// Invalid longitude value.
         value: f64,
     },
+
+    /// Failed to read species list file.
+    #[error("failed to read species list file '{path}'")]
+    SpeciesListRead {
+        /// Path to the species list file.
+        path: std::path::PathBuf,
+        /// Underlying I/O error.
+        #[source]
+        source: std::io::Error,
+    },
 }

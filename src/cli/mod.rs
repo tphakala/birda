@@ -2,5 +2,6 @@
 
 mod args;
 pub mod help;
+pub mod species;
 
-pub use args::{AnalyzeArgs, Cli, Command, ConfigAction, ModelsAction};
+pub use args::{AnalyzeArgs, Cli, Command, ConfigAction, ModelsAction, SortOrder};

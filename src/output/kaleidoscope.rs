@@ -35,11 +35,11 @@ impl OutputWriter for KaleidoscopeWriter {
         let path = &detection.file_path;
 
         // Get parent directory and grandparent
+        // Use to_string_lossy() to handle non-UTF-8 paths gracefully
         let folder = path
             .parent()
             .and_then(|p| p.file_name())
-            .and_then(|n| n.to_str())
-            .unwrap_or("");
+            .map_or_else(|| std::borrow::Cow::Borrowed(""), |n| n.to_string_lossy());
 
         let indir = path
             .parent()
@@ -47,7 +47,9 @@ impl OutputWriter for KaleidoscopeWriter {
             .map(|p| p.display().to_string())
             .unwrap_or_default();
 
-        let filename = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+        let filename = path
+            .file_name()
+            .map_or_else(|| std::borrow::Cow::Borrowed(""), |n| n.to_string_lossy());
 
         let duration = detection.end_time - detection.start_time;
 

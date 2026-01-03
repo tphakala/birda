@@ -33,22 +33,29 @@ impl BirdClassifier {
             .min_confidence(min_confidence);
 
         // Add execution provider based on device setting
-        builder = match device {
+        let actual_device = match device {
             InferenceDevice::Gpu => {
                 info!("Using CUDA GPU for inference");
-                builder.execution_provider(
+                builder = builder.execution_provider(
                     birdnet_onnx::execution_providers::CUDAExecutionProvider::default(),
-                )
+                );
+                "GPU (CUDA)"
             }
             InferenceDevice::Cpu => {
                 info!("Using CPU for inference");
-                builder
+                "CPU"
             }
             InferenceDevice::Auto => {
-                info!("Using auto device selection (GPU if available)");
-                builder.execution_provider(
+                // Try to detect if CUDA is available by attempting to create the provider
+                // Note: This is a best-effort detection since ONNX Runtime doesn't expose
+                // provider availability directly
+                builder = builder.execution_provider(
                     birdnet_onnx::execution_providers::CUDAExecutionProvider::default(),
-                )
+                );
+                // Log that we're attempting auto-selection
+                // The actual fallback to CPU happens inside ONNX Runtime if CUDA fails
+                info!("Auto device selection: attempting GPU, will fallback to CPU if unavailable");
+                "Auto (GPU preferred, CPU fallback)"
             }
         };
 
@@ -57,10 +64,11 @@ impl BirdClassifier {
         })?;
 
         info!(
-            "Loaded model: {:?}, sample_rate: {}, segment_duration: {}s",
+            "Loaded model: {:?}, sample_rate: {}, segment_duration: {}s, device: {}",
             inner.config().model_type,
             inner.config().sample_rate,
-            inner.config().segment_duration
+            inner.config().segment_duration,
+            actual_device
         );
 
         // Build optional range filter

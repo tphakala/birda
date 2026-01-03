@@ -151,6 +151,7 @@ Options:
       --fail-fast               Stop on first error
   -q, --quiet                   Suppress progress output
       --no-progress             Disable progress bars (useful for scripting/logging)
+      --no-csv-bom              Disable UTF-8 BOM in CSV output
   -v, --verbose                 Increase verbosity (-v, -vv, -vvv)
   -h, --help                    Print help
   -V, --version                 Print version
@@ -274,7 +275,9 @@ All options can be set via environment variables:
 
 ### CSV (default)
 
-Standard CSV with columns: `Start (s)`, `End (s)`, `Scientific name`, `Common name`, `Confidence`, `File`
+Standard CSV with columns: `Start (s)`, `End (s)`, `Scientific name`, `Common name`, `Confidence`, `File`.
+
+CSV files include a UTF-8 BOM (Byte Order Mark) by default for proper encoding detection in Excel on Windows. Use `--no-csv-bom` to disable for compatibility with applications that don't handle BOM.
 
 ```csv
 Start (s),End (s),Scientific name,Common name,Confidence,File

@@ -213,6 +213,10 @@ pub struct AnalyzeArgs {
     #[arg(long)]
     pub no_progress: bool,
 
+    /// Disable UTF-8 BOM in CSV output (for compatibility with apps that don't handle BOM).
+    #[arg(long)]
+    pub no_csv_bom: bool,
+
     /// Enable CUDA GPU acceleration.
     #[arg(long, conflicts_with = "cpu")]
     pub gpu: bool,
@@ -475,5 +479,21 @@ mod tests {
             "--day=15",
         ]);
         assert!(cli.is_err()); // week and month should conflict
+    }
+
+    #[test]
+    fn test_cli_parse_no_csv_bom() {
+        let cli = Cli::try_parse_from(["birda", "test.wav", "--no-csv-bom"]);
+        assert!(cli.is_ok());
+        let cli = cli.unwrap();
+        assert!(cli.analyze.no_csv_bom);
+    }
+
+    #[test]
+    fn test_cli_parse_default_csv_bom() {
+        let cli = Cli::try_parse_from(["birda", "test.wav"]);
+        assert!(cli.is_ok());
+        let cli = cli.unwrap();
+        assert!(!cli.analyze.no_csv_bom); // BOM enabled by default
     }
 }

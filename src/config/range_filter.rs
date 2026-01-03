@@ -94,6 +94,7 @@ mod tests {
             quiet: false,
             verbose: 0,
             no_progress: false,
+            no_csv_bom: false,
             gpu: false,
             cpu: false,
             lat: None,

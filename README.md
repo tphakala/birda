@@ -157,10 +157,11 @@ birda recording.wav --slist my_species.txt
 birda [OPTIONS] [INPUTS]... [COMMAND]
 
 Commands:
-  config   Manage configuration
-  models   Manage models
-  species  Generate species list from range filter
-  help     Print help information
+  config     Manage configuration
+  models     Manage models
+  providers  Show available execution providers (CPU, CUDA, etc.)
+  species    Generate species list from range filter
+  help       Print help information
 
 Arguments:
   [INPUTS]...  Input files or directories to analyze

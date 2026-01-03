@@ -14,8 +14,5 @@ accepted = [
     "Unicode-3.0",
     "Unicode-DFS-2016",
     "OpenSSL",
+    "CDLA-Permissive-2.0",
 ]
-
-# Workarounds for crates with non-standard license files
-[ring.clarify]
-license = "ISC AND MIT AND OpenSSL"

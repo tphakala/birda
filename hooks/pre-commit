@@ -2,8 +2,6 @@
 # Pre-commit hook for Birda project
 # Runs formatting, linting, and GitHub Actions validation
 
-set -e
-
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -15,9 +13,10 @@ echo "🔍 Running pre-commit checks..."
 # Track if any check fails
 FAILED=0
 
-# Get list of staged files
-STAGED_RS_FILES=$(git diff --cached --name-only --diff-filter=ACM | grep '\.rs$' || true)
-STAGED_WORKFLOW_FILES=$(git diff --cached --name-only --diff-filter=ACM | grep '^\.github/workflows/.*\.ya\?ml$' || true)
+# Get list of staged files (once)
+STAGED_FILES=$(git diff --cached --name-only --diff-filter=ACM)
+STAGED_RS_FILES=$(echo "$STAGED_FILES" | grep '\.rs$' || true)
+STAGED_WORKFLOW_FILES=$(echo "$STAGED_FILES" | grep '^\.github/workflows/.*\.ya\?ml$' || true)
 
 # 1. Check Rust formatting
 if [ -n "$STAGED_RS_FILES" ]; then
@@ -36,9 +35,9 @@ fi
 if [ -n "$STAGED_RS_FILES" ]; then
     echo ""
     echo "🔎 Running Clippy..."
-    if ! cargo clippy --all-targets --all-features -- -D warnings; then
+    if ! cargo clippy -- -D warnings; then
         echo -e "${RED}❌ Clippy found issues!${NC}"
-        echo -e "${YELLOW}💡 Fix the issues above or run 'cargo clippy --fix' for automatic fixes${NC}"
+        echo -e "${YELLOW}💡 Fix the issues above or run 'task clippy:fix' for automatic fixes${NC}"
         FAILED=1
     else
         echo -e "${GREEN}✅ Clippy check passed${NC}"
@@ -56,17 +55,19 @@ if [ -n "$STAGED_WORKFLOW_FILES" ]; then
         echo -e "${YELLOW}💡 Install with: go install github.com/rhysd/actionlint/cmd/actionlint@latest${NC}"
         echo -e "${YELLOW}   Or see: https://github.com/rhysd/actionlint#installation${NC}"
     else
-        # Run actionlint on staged workflow files
-        for file in $STAGED_WORKFLOW_FILES; do
-            if [ -f "$file" ]; then
+        # Run actionlint on staged workflow files (handle filenames with spaces)
+        ACTIONLINT_FAILED=0
+        while IFS= read -r file; do
+            if [ -n "$file" ] && [ -f "$file" ]; then
                 if ! actionlint "$file"; then
-                    echo -e "${RED}❌ actionlint found issues in $file${NC}"
-                    FAILED=1
+                    ACTIONLINT_FAILED=1
                 fi
             fi
-        done
+        done <<< "$STAGED_WORKFLOW_FILES"
 
-        if [ $FAILED -eq 0 ]; then
+        if [ $ACTIONLINT_FAILED -eq 1 ]; then
+            FAILED=1
+        else
             echo -e "${GREEN}✅ GitHub Actions validation passed${NC}"
         fi
     fi

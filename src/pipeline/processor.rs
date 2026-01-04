@@ -105,7 +105,9 @@ pub fn process_file(
         progress_guard.get(),
     )?;
 
-    // Guard will automatically finish progress bar when dropped here
+    // Explicitly finish progress bar BEFORE any log output to prevent terminal conflicts
+    // (indicatif and tracing both write to stderr; logging while bar is active causes duplication)
+    drop(progress_guard);
 
     info!(
         "Found {} detections above {:.1}% confidence",

@@ -104,6 +104,10 @@ impl ProgressGuard {
 impl Drop for ProgressGuard {
     fn drop(&mut self) {
         if let Some(pb) = self.progress.take() {
+            // Ensure progress bar shows 100% completion before finishing
+            if let Some(len) = pb.length() {
+                pb.set_position(len);
+            }
             pb.finish_with_message(std::mem::take(&mut self.message));
             // Remove from MultiProgress to prevent duplication
             if let Some(mp) = &self.multi_progress {

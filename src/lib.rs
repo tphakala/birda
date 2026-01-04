@@ -111,33 +111,23 @@ fn analyze_files(inputs: &[PathBuf], args: &AnalyzeArgs, config: &Config) -> Res
     let fail_fast = args.fail_fast;
 
     // Resolve device from command-line flags or config
-    let device = if args.gpu {
-        InferenceDevice::Gpu
-    } else if args.cpu {
-        InferenceDevice::Cpu
-    } else if args.cuda {
-        InferenceDevice::Cuda
-    } else if args.tensorrt {
-        InferenceDevice::TensorRt
-    } else if args.directml {
-        InferenceDevice::DirectMl
-    } else if args.coreml {
-        InferenceDevice::CoreMl
-    } else if args.rocm {
-        InferenceDevice::Rocm
-    } else if args.openvino {
-        InferenceDevice::OpenVino
-    } else if args.onednn {
-        InferenceDevice::OneDnn
-    } else if args.qnn {
-        InferenceDevice::Qnn
-    } else if args.acl {
-        InferenceDevice::Acl
-    } else if args.armnn {
-        InferenceDevice::ArmNn
-    } else {
-        config.inference.device
-    };
+    let device = [
+        (args.gpu, InferenceDevice::Gpu),
+        (args.cpu, InferenceDevice::Cpu),
+        (args.cuda, InferenceDevice::Cuda),
+        (args.tensorrt, InferenceDevice::TensorRt),
+        (args.directml, InferenceDevice::DirectMl),
+        (args.coreml, InferenceDevice::CoreMl),
+        (args.rocm, InferenceDevice::Rocm),
+        (args.openvino, InferenceDevice::OpenVino),
+        (args.onednn, InferenceDevice::OneDnn),
+        (args.qnn, InferenceDevice::Qnn),
+        (args.acl, InferenceDevice::Acl),
+        (args.armnn, InferenceDevice::ArmNn),
+    ]
+    .into_iter()
+    .find(|(flag, _)| *flag)
+    .map_or(config.inference.device, |(_, device)| device);
 
     // Build range filter config
     let range_filter_config = build_range_filter_config(args, config, model_config, &model_name)?;
@@ -369,16 +359,21 @@ fn handle_providers_command() {
     println!("  --gpu          Auto-select best GPU (TensorRT → CUDA → DirectML → ...)");
     println!();
     println!("Explicit providers (fail if unavailable):");
-    println!("  --cuda         Use CUDA");
-    println!("  --tensorrt     Use TensorRT");
-    println!("  --directml     Use DirectML");
-    println!("  --coreml       Use CoreML");
-    println!("  --rocm         Use ROCm");
-    println!("  --openvino     Use OpenVINO");
-    println!("  --onednn       Use oneDNN");
-    println!("  --qnn          Use QNN");
-    println!("  --acl          Use ACL");
-    println!("  --armnn        Use ArmNN");
+    let explicit_providers = [
+        ("cuda", "Use CUDA"),
+        ("tensorrt", "Use TensorRT"),
+        ("directml", "Use DirectML"),
+        ("coreml", "Use CoreML"),
+        ("rocm", "Use ROCm"),
+        ("openvino", "Use OpenVINO"),
+        ("onednn", "Use oneDNN"),
+        ("qnn", "Use QNN"),
+        ("acl", "Use ACL"),
+        ("armnn", "Use ArmNN"),
+    ];
+    for (flag, description) in explicit_providers {
+        println!("  --{flag:<13} {description}");
+    }
     println!();
     println!("Note: This shows compile-time availability. Runtime availability may");
     println!("      differ based on drivers and hardware. Check log output for actual");

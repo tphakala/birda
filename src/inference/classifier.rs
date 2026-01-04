@@ -47,19 +47,30 @@ impl BirdClassifier {
             .min_confidence(min_confidence);
 
         // Select and configure execution provider based on device setting
+        // GPU provider priority order (shared by Auto and --gpu modes)
+        let gpu_priority = [
+            (ExecutionProviderInfo::TensorRt, "TensorRT"),
+            (ExecutionProviderInfo::Cuda, "CUDA"),
+            (ExecutionProviderInfo::DirectMl, "DirectML"),
+            (ExecutionProviderInfo::CoreMl, "CoreML"),
+            (ExecutionProviderInfo::Rocm, "ROCm"),
+            (ExecutionProviderInfo::OpenVino, "OpenVINO"),
+        ];
+
         let (builder, actual_device_msg) = match device {
             InferenceDevice::Cpu => {
                 info!("Requested device: CPU");
                 (builder, "CPU")
             }
             InferenceDevice::Auto => {
-                // Auto mode: try GPU, silent CPU fallback
-                if available_providers.contains(&ExecutionProviderInfo::Cuda) {
-                    info!("Auto mode: CUDA available, attempting GPU");
-                    let builder = builder.execution_provider(
-                        ort_execution_providers::CUDAExecutionProvider::default(),
-                    );
-                    (builder, "Auto (CUDA requested, may fallback to CPU)")
+                // Auto mode: try GPU providers in priority order, silent CPU fallback
+                if let Some(&(provider_info, name)) = gpu_priority
+                    .iter()
+                    .find(|(p, _)| available_providers.contains(p))
+                {
+                    info!("Auto mode: {} available, attempting GPU", name);
+                    let builder = add_execution_provider(builder, provider_info);
+                    (builder, name)
                 } else {
                     info!("Auto mode: No GPU providers available, using CPU");
                     (builder, "Auto (CPU)")
@@ -67,25 +78,11 @@ impl BirdClassifier {
             }
             InferenceDevice::Gpu => {
                 // Best-effort GPU: try providers in priority order, warn if CPU fallback
-                let gpu_priority = [
-                    (ExecutionProviderInfo::TensorRt, "TensorRT"),
-                    (ExecutionProviderInfo::Cuda, "CUDA"),
-                    (ExecutionProviderInfo::DirectMl, "DirectML"),
-                    (ExecutionProviderInfo::CoreMl, "CoreML"),
-                    (ExecutionProviderInfo::Rocm, "ROCm"),
-                    (ExecutionProviderInfo::OpenVino, "OpenVINO"),
-                ];
-
-                let mut selected = None;
-                for (provider_info, name) in &gpu_priority {
-                    if available_providers.contains(provider_info) {
-                        info!("--gpu: Selected {} provider", name);
-                        selected = Some((*provider_info, *name));
-                        break;
-                    }
-                }
-
-                if let Some((provider_info, name)) = selected {
+                if let Some(&(provider_info, name)) = gpu_priority
+                    .iter()
+                    .find(|(p, _)| available_providers.contains(p))
+                {
+                    info!("--gpu: Selected {} provider", name);
                     let builder = add_execution_provider(builder, provider_info);
                     (builder, name)
                 } else {

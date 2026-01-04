@@ -48,6 +48,15 @@ impl BirdClassifier {
 
         // Select and configure execution provider based on device setting
         // GPU provider priority order (shared by Auto and --gpu modes)
+        //
+        // This list includes general-purpose GPU acceleration providers.
+        // Excluded from auto-selection:
+        // - oneDNN: Intel CPU optimizer (not GPU acceleration)
+        // - QNN: Qualcomm-specific hardware (mobile/edge devices only)
+        // - ACL/ArmNN: ARM-specific devices only
+        //
+        // These specialized providers are available via explicit flags
+        // (--onednn, --qnn, --acl, --armnn) for users with specific hardware.
         let gpu_priority = [
             (ExecutionProviderInfo::TensorRt, "TensorRT"),
             (ExecutionProviderInfo::Cuda, "CUDA"),

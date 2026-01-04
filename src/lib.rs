@@ -110,11 +110,31 @@ fn analyze_files(inputs: &[PathBuf], args: &AnalyzeArgs, config: &Config) -> Res
     let force = args.force;
     let fail_fast = args.fail_fast;
 
-    // Resolve device
+    // Resolve device from command-line flags or config
     let device = if args.gpu {
         InferenceDevice::Gpu
     } else if args.cpu {
         InferenceDevice::Cpu
+    } else if args.cuda {
+        InferenceDevice::Cuda
+    } else if args.tensorrt {
+        InferenceDevice::TensorRt
+    } else if args.directml {
+        InferenceDevice::DirectMl
+    } else if args.coreml {
+        InferenceDevice::CoreMl
+    } else if args.rocm {
+        InferenceDevice::Rocm
+    } else if args.openvino {
+        InferenceDevice::OpenVino
+    } else if args.onednn {
+        InferenceDevice::OneDnn
+    } else if args.qnn {
+        InferenceDevice::Qnn
+    } else if args.acl {
+        InferenceDevice::Acl
+    } else if args.armnn {
+        InferenceDevice::ArmNn
     } else {
         config.inference.device
     };
@@ -343,10 +363,22 @@ fn handle_providers_command() {
     }
 
     println!();
-    println!("To use a specific provider:");
-    println!("  --gpu       Use CUDA (if available)");
-    println!("  --cpu       Use CPU only");
-    println!("  (default)   Auto-select (GPU if available, fallback to CPU)");
+    println!("Usage:");
+    println!("  (default)      Auto-select (GPU if available, silent CPU fallback)");
+    println!("  --cpu          Force CPU only");
+    println!("  --gpu          Auto-select best GPU (TensorRT → CUDA → DirectML → ...)");
+    println!();
+    println!("Explicit providers (fail if unavailable):");
+    println!("  --cuda         Use CUDA");
+    println!("  --tensorrt     Use TensorRT");
+    println!("  --directml     Use DirectML");
+    println!("  --coreml       Use CoreML");
+    println!("  --rocm         Use ROCm");
+    println!("  --openvino     Use OpenVINO");
+    println!("  --onednn       Use oneDNN");
+    println!("  --qnn          Use QNN");
+    println!("  --acl          Use ACL");
+    println!("  --armnn        Use ArmNN");
     println!();
     println!("Note: This shows compile-time availability. Runtime availability may");
     println!("      differ based on drivers and hardware. Check log output for actual");

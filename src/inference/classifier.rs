@@ -40,29 +40,29 @@ impl BirdClassifier {
                 .join(", ")
         );
 
-        let mut builder = ClassifierBuilder::new()
+        let builder = ClassifierBuilder::new()
             .model_path(model_config.path.to_string_lossy().to_string())
             .labels_path(model_config.labels.to_string_lossy().to_string())
             .top_k(top_k)
             .min_confidence(min_confidence);
 
         // Select and configure execution provider based on device setting
-        let actual_device_msg = match device {
+        let (builder, actual_device_msg) = match device {
             InferenceDevice::Cpu => {
                 info!("Requested device: CPU");
-                "CPU"
+                (builder, "CPU")
             }
             InferenceDevice::Auto => {
                 // Auto mode: try GPU, silent CPU fallback
                 if available_providers.contains(&ExecutionProviderInfo::Cuda) {
                     info!("Auto mode: CUDA available, attempting GPU");
-                    builder = builder.execution_provider(
+                    let builder = builder.execution_provider(
                         ort_execution_providers::CUDAExecutionProvider::default(),
                     );
-                    "Auto (CUDA requested, may fallback to CPU)"
+                    (builder, "Auto (CUDA requested, may fallback to CPU)")
                 } else {
                     info!("Auto mode: No GPU providers available, using CPU");
-                    "Auto (CPU)"
+                    (builder, "Auto (CPU)")
                 }
             }
             InferenceDevice::Gpu => {
@@ -86,111 +86,74 @@ impl BirdClassifier {
                 }
 
                 if let Some((provider_info, name)) = selected {
-                    builder = add_execution_provider(builder, provider_info);
-                    name
+                    let builder = add_execution_provider(builder, provider_info);
+                    (builder, name)
                 } else {
                     warn!("--gpu requested but no GPU providers available, using CPU");
-                    "GPU (fallback to CPU)"
+                    (builder, "GPU (fallback to CPU)")
                 }
             }
-            InferenceDevice::Cuda => {
-                // Explicit CUDA: fail if unavailable
-                if !available_providers.contains(&ExecutionProviderInfo::Cuda) {
-                    return Err(provider_unavailable_error("CUDA", &available_providers));
-                }
-                info!("Requested device: CUDA");
-                builder = builder
-                    .execution_provider(ort_execution_providers::CUDAExecutionProvider::default());
-                "CUDA"
-            }
-            InferenceDevice::TensorRt => {
-                if !available_providers.contains(&ExecutionProviderInfo::TensorRt) {
-                    return Err(provider_unavailable_error("TensorRT", &available_providers));
-                }
-                info!("Requested device: TensorRT");
-                builder = builder.execution_provider(
-                    ort_execution_providers::TensorRTExecutionProvider::default(),
-                );
-                "TensorRT"
-            }
-            InferenceDevice::DirectMl => {
-                if !available_providers.contains(&ExecutionProviderInfo::DirectMl) {
-                    return Err(provider_unavailable_error("DirectML", &available_providers));
-                }
-                info!("Requested device: DirectML");
-                builder = builder.execution_provider(
-                    ort_execution_providers::DirectMLExecutionProvider::default(),
-                );
-                "DirectML"
-            }
-            InferenceDevice::CoreMl => {
-                if !available_providers.contains(&ExecutionProviderInfo::CoreMl) {
-                    return Err(provider_unavailable_error("CoreML", &available_providers));
-                }
-                info!("Requested device: CoreML");
-                builder =
-                    builder.execution_provider(
-                        ort_execution_providers::CoreMLExecutionProvider::default(),
-                    );
-                "CoreML"
-            }
-            InferenceDevice::Rocm => {
-                if !available_providers.contains(&ExecutionProviderInfo::Rocm) {
-                    return Err(provider_unavailable_error("ROCm", &available_providers));
-                }
-                info!("Requested device: ROCm");
-                builder = builder
-                    .execution_provider(ort_execution_providers::ROCmExecutionProvider::default());
-                "ROCm"
-            }
-            InferenceDevice::OpenVino => {
-                if !available_providers.contains(&ExecutionProviderInfo::OpenVino) {
-                    return Err(provider_unavailable_error("OpenVINO", &available_providers));
-                }
-                info!("Requested device: OpenVINO");
-                builder = builder.execution_provider(
-                    ort_execution_providers::OpenVINOExecutionProvider::default(),
-                );
-                "OpenVINO"
-            }
-            InferenceDevice::OneDnn => {
-                if !available_providers.contains(&ExecutionProviderInfo::OneDnn) {
-                    return Err(provider_unavailable_error("oneDNN", &available_providers));
-                }
-                info!("Requested device: oneDNN");
-                builder =
-                    builder.execution_provider(
-                        ort_execution_providers::OneDNNExecutionProvider::default(),
-                    );
-                "oneDNN"
-            }
-            InferenceDevice::Qnn => {
-                if !available_providers.contains(&ExecutionProviderInfo::Qnn) {
-                    return Err(provider_unavailable_error("QNN", &available_providers));
-                }
-                info!("Requested device: QNN");
-                builder = builder
-                    .execution_provider(ort_execution_providers::QNNExecutionProvider::default());
-                "QNN"
-            }
-            InferenceDevice::Acl => {
-                if !available_providers.contains(&ExecutionProviderInfo::Acl) {
-                    return Err(provider_unavailable_error("ACL", &available_providers));
-                }
-                info!("Requested device: ACL");
-                builder = builder
-                    .execution_provider(ort_execution_providers::ACLExecutionProvider::default());
-                "ACL"
-            }
-            InferenceDevice::ArmNn => {
-                if !available_providers.contains(&ExecutionProviderInfo::ArmNn) {
-                    return Err(provider_unavailable_error("ArmNN", &available_providers));
-                }
-                info!("Requested device: ArmNN");
-                builder = builder
-                    .execution_provider(ort_execution_providers::ArmNNExecutionProvider::default());
-                "ArmNN"
-            }
+            // Explicit providers use the helper function
+            InferenceDevice::Cuda => configure_explicit_provider(
+                builder,
+                &available_providers,
+                ExecutionProviderInfo::Cuda,
+                "CUDA",
+            )?,
+            InferenceDevice::TensorRt => configure_explicit_provider(
+                builder,
+                &available_providers,
+                ExecutionProviderInfo::TensorRt,
+                "TensorRT",
+            )?,
+            InferenceDevice::DirectMl => configure_explicit_provider(
+                builder,
+                &available_providers,
+                ExecutionProviderInfo::DirectMl,
+                "DirectML",
+            )?,
+            InferenceDevice::CoreMl => configure_explicit_provider(
+                builder,
+                &available_providers,
+                ExecutionProviderInfo::CoreMl,
+                "CoreML",
+            )?,
+            InferenceDevice::Rocm => configure_explicit_provider(
+                builder,
+                &available_providers,
+                ExecutionProviderInfo::Rocm,
+                "ROCm",
+            )?,
+            InferenceDevice::OpenVino => configure_explicit_provider(
+                builder,
+                &available_providers,
+                ExecutionProviderInfo::OpenVino,
+                "OpenVINO",
+            )?,
+            InferenceDevice::OneDnn => configure_explicit_provider(
+                builder,
+                &available_providers,
+                ExecutionProviderInfo::OneDnn,
+                "oneDNN",
+            )?,
+            InferenceDevice::Qnn => configure_explicit_provider(
+                builder,
+                &available_providers,
+                ExecutionProviderInfo::Qnn,
+                "QNN",
+            )?,
+            InferenceDevice::Acl => configure_explicit_provider(
+                builder,
+                &available_providers,
+                ExecutionProviderInfo::Acl,
+                "ACL",
+            )?,
+            InferenceDevice::ArmNn => configure_explicit_provider(
+                builder,
+                &available_providers,
+                ExecutionProviderInfo::ArmNn,
+                "ArmNN",
+            )?,
         };
 
         let inner = builder.build().map_err(|e| Error::ClassifierBuild {
@@ -397,6 +360,24 @@ mod tests {
         assert!(filtered.iter().any(|p| p.species.contains("Cyanistes")));
         assert!(!filtered.iter().any(|p| p.species.contains("Turdus")));
     }
+}
+
+/// Configure an explicit execution provider (fail if unavailable).
+fn configure_explicit_provider(
+    builder: ClassifierBuilder,
+    available_providers: &[ExecutionProviderInfo],
+    provider_info: ExecutionProviderInfo,
+    provider_name: &'static str,
+) -> Result<(ClassifierBuilder, &'static str)> {
+    if !available_providers.contains(&provider_info) {
+        return Err(provider_unavailable_error(
+            provider_name,
+            available_providers,
+        ));
+    }
+    info!("Requested device: {provider_name}");
+    let builder = add_execution_provider(builder, provider_info);
+    Ok((builder, provider_name))
 }
 
 /// Helper function to add execution provider to builder based on provider type.

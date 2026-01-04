@@ -73,6 +73,7 @@ pub fn run() -> Result<()> {
 /// Analyze input files with the given options.
 fn analyze_files(inputs: &[PathBuf], args: &AnalyzeArgs, config: &Config) -> Result<()> {
     use crate::output::progress;
+    use indicatif::MultiProgress;
     use std::time::Instant;
 
     let total_start = Instant::now();
@@ -189,9 +190,14 @@ fn analyze_files(inputs: &[PathBuf], args: &AnalyzeArgs, config: &Config) -> Res
         species_list,
     )?;
 
-    // Create file progress bar
+    // Create MultiProgress and file progress bar
     let progress_enabled = !args.quiet && !args.no_progress;
-    let file_progress = progress::create_file_progress(files.len(), progress_enabled);
+    let multi_progress = MultiProgress::new();
+    let file_progress = if progress_enabled {
+        progress::create_file_progress(files.len(), true).map(|pb| multi_progress.add(pb))
+    } else {
+        None
+    };
 
     // Process files
     let mut processed = 0;
@@ -199,6 +205,7 @@ fn analyze_files(inputs: &[PathBuf], args: &AnalyzeArgs, config: &Config) -> Res
     let mut errors = 0;
     let mut total_detections = 0;
     let mut total_segments = 0;
+    let mut total_audio_duration = 0.0f32;
 
     for file in &files {
         let file_output_dir = output_dir_for(file, output_dir.as_deref());
@@ -230,6 +237,7 @@ fn analyze_files(inputs: &[PathBuf], args: &AnalyzeArgs, config: &Config) -> Res
             overlap,
             batch_size,
             &config.defaults.csv_columns.include,
+            &multi_progress,
             progress_enabled,
             !args.no_csv_bom,
         ) {
@@ -237,6 +245,7 @@ fn analyze_files(inputs: &[PathBuf], args: &AnalyzeArgs, config: &Config) -> Res
                 processed += 1;
                 total_detections += result.detections;
                 total_segments += result.segments;
+                total_audio_duration += result.audio_duration_secs;
             }
             Err(e) => {
                 error!("Failed to process {}: {}", file.display(), e);
@@ -266,9 +275,16 @@ fn analyze_files(inputs: &[PathBuf], args: &AnalyzeArgs, config: &Config) -> Res
         } else {
             0.0
         };
+        let overall_realtime_factor = if total_duration > 0.0 {
+            f64::from(total_audio_duration) / total_duration
+        } else {
+            0.0
+        };
         info!(
-            "Performance: {:.1} segments/sec overall",
-            avg_segments_per_sec
+            "Performance: {:.1} segments/sec overall, {:.1}x realtime ({} total audio)",
+            avg_segments_per_sec,
+            overall_realtime_factor,
+            progress::format_duration(total_audio_duration)
         );
     }
 

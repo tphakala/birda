@@ -1,6 +1,6 @@
 //! Progress bar utilities for file processing.
 
-use indicatif::{ProgressBar, ProgressStyle};
+use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use std::time::Duration;
 
 /// Create a progress bar for processing multiple files.
@@ -59,17 +59,33 @@ pub fn inc_progress(pb: Option<&ProgressBar>) {
     }
 }
 
+/// Format seconds as HH:MM:SS.
+pub fn format_duration(secs: f32) -> String {
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    let total_secs = secs.abs() as u32;
+    let hours = total_secs / 3600;
+    let mins = (total_secs % 3600) / 60;
+    let secs_remainder = total_secs % 60;
+    format!("{hours:02}:{mins:02}:{secs_remainder:02}")
+}
+
 /// RAII guard that ensures a progress bar is finished when dropped.
 pub struct ProgressGuard {
     progress: Option<ProgressBar>,
+    multi_progress: Option<MultiProgress>,
     message: String,
 }
 
 impl ProgressGuard {
     /// Create a new progress guard.
-    pub fn new(progress: Option<ProgressBar>, message: impl Into<String>) -> Self {
+    pub fn new(
+        progress: Option<ProgressBar>,
+        multi_progress: Option<MultiProgress>,
+        message: impl Into<String>,
+    ) -> Self {
         Self {
             progress,
+            multi_progress,
             message: message.into(),
         }
     }
@@ -84,6 +100,10 @@ impl Drop for ProgressGuard {
     fn drop(&mut self) {
         if let Some(pb) = self.progress.take() {
             pb.finish_with_message(std::mem::take(&mut self.message));
+            // Remove from MultiProgress to prevent duplication
+            if let Some(mp) = &self.multi_progress {
+                mp.remove(&pb);
+            }
         }
     }
 }
@@ -93,12 +113,23 @@ mod tests {
     use super::*;
 
     #[test]
+    fn test_format_duration() {
+        assert_eq!(format_duration(0.0), "00:00:00");
+        assert_eq!(format_duration(59.0), "00:00:59");
+        assert_eq!(format_duration(60.0), "00:01:00");
+        assert_eq!(format_duration(3661.0), "01:01:01");
+        assert_eq!(format_duration(44589.0), "12:23:09");
+        assert_eq!(format_duration(86399.0), "23:59:59");
+        assert_eq!(format_duration(86400.0), "24:00:00");
+    }
+
+    #[test]
     fn test_progress_guard_finishes_on_drop() {
         // Create a progress bar
         let pb = create_segment_progress(10, "test.wav", true);
 
         // Wrap in guard
-        let guard = ProgressGuard::new(pb, "Complete");
+        let guard = ProgressGuard::new(pb, None, "Complete");
 
         // Guard should finish the progress bar when dropped
         // (This is tested by running without panics - indicatif would complain if not finished properly)
@@ -109,7 +140,7 @@ mod tests {
     fn test_progress_guard_finishes_on_error_path() {
         fn might_error(should_error: bool) -> Result<(), &'static str> {
             let pb = create_segment_progress(10, "test.wav", true);
-            let _guard = ProgressGuard::new(pb, "Complete");
+            let _guard = ProgressGuard::new(pb, None, "Complete");
 
             if should_error {
                 return Err("simulated error");

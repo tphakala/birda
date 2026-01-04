@@ -9,6 +9,7 @@ use crate::output::{
     AudacityWriter, CsvWriter, Detection, KaleidoscopeWriter, OutputWriter, RavenWriter,
 };
 use crate::pipeline::output_path_for;
+use indicatif::MultiProgress;
 use std::path::Path;
 use tracing::{debug, info};
 
@@ -24,6 +25,7 @@ use tracing::{debug, info};
 /// * `overlap` - Overlap between chunks in seconds
 /// * `batch_size` - Number of chunks to process in parallel
 /// * `csv_columns` - Additional columns to include in CSV output
+/// * `multi_progress` - `MultiProgress` for managing progress bars
 /// * `progress_enabled` - Whether to show progress bars
 /// * `csv_bom_enabled` - Whether to include UTF-8 BOM in CSV output for Excel compatibility
 #[allow(clippy::too_many_arguments)]
@@ -36,6 +38,7 @@ pub fn process_file(
     overlap: f32,
     batch_size: usize,
     csv_columns: &[String],
+    multi_progress: &MultiProgress,
     progress_enabled: bool,
     csv_bom_enabled: bool,
 ) -> Result<ProcessResult> {
@@ -50,8 +53,14 @@ pub fn process_file(
     let _lock = FileLock::acquire(input_path, output_dir)?;
 
     // Decode audio
-    debug!("Decoding audio...");
+    info!("Decoding audio...");
     let decoded = decode_audio_file(input_path)?;
+    let audio_duration_secs = decoded.duration_secs;
+    info!(
+        "Decoded {} of audio ({:.1}s)",
+        progress::format_duration(audio_duration_secs),
+        audio_duration_secs
+    );
 
     // Resample to model's expected sample rate
     let target_rate = classifier.sample_rate();
@@ -80,6 +89,7 @@ pub fn process_file(
             detections: 0,
             segments: 0,
             duration_secs,
+            audio_duration_secs,
         });
     }
 
@@ -88,11 +98,23 @@ pub fn process_file(
         .file_name()
         .and_then(|n| n.to_str())
         .unwrap_or("unknown");
-    let segment_progress =
-        progress::create_segment_progress(chunks.len(), file_name, progress_enabled);
+    let segment_progress = if progress_enabled {
+        progress::create_segment_progress(chunks.len(), file_name, true)
+            .map(|pb| multi_progress.add(pb))
+    } else {
+        None
+    };
 
     // Wrap in guard to ensure cleanup on both success and error
-    let progress_guard = progress::ProgressGuard::new(segment_progress, "Inference complete");
+    let progress_guard = progress::ProgressGuard::new(
+        segment_progress,
+        if progress_enabled {
+            Some(multi_progress.clone())
+        } else {
+            None
+        },
+        "Inference complete",
+    );
 
     // Run inference
     debug!("Running inference on {} segments...", chunks.len());
@@ -132,17 +154,24 @@ pub fn process_file(
     } else {
         0.0
     };
+    let realtime_factor = if duration_secs > 0.0 {
+        f64::from(audio_duration_secs) / duration_secs
+    } else {
+        0.0
+    };
     info!(
-        "Processed {} segments in {:.2}s ({:.1} segments/sec)",
+        "Processed {} segments in {:.2}s ({:.1} segments/sec, {:.1}x realtime)",
         chunks.len(),
         duration_secs,
-        segments_per_sec
+        segments_per_sec,
+        realtime_factor
     );
 
     Ok(ProcessResult {
         detections: detections.len(),
         segments: chunks.len(),
         duration_secs,
+        audio_duration_secs,
     })
 }
 
@@ -245,4 +274,6 @@ pub struct ProcessResult {
     pub segments: usize,
     /// Processing duration in seconds.
     pub duration_secs: f64,
+    /// Audio duration in seconds.
+    pub audio_duration_secs: f32,
 }

@@ -389,13 +389,13 @@ fn add_execution_provider(
         ACLExecutionProvider, ArmNNExecutionProvider, CUDAExecutionProvider,
         CoreMLExecutionProvider, DirectMLExecutionProvider, OneDNNExecutionProvider,
         OpenVINOExecutionProvider, QNNExecutionProvider, ROCmExecutionProvider,
-        TensorRTExecutionProvider,
     };
 
     match provider_info {
         ExecutionProviderInfo::Cuda => builder.execution_provider(CUDAExecutionProvider::default()),
         ExecutionProviderInfo::TensorRt => {
-            builder.execution_provider(TensorRTExecutionProvider::default())
+            // Use optimized TensorRT configuration (enables FP16, engine caching, timing cache)
+            builder.with_tensorrt()
         }
         ExecutionProviderInfo::DirectMl => {
             builder.execution_provider(DirectMLExecutionProvider::default())

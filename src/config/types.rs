@@ -122,13 +122,42 @@ pub struct CsvColumnsConfig {
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum InferenceDevice {
-    /// Automatically select (GPU if available, else CPU).
+    /// Automatically select (GPU if available, silent CPU fallback).
     #[default]
     Auto,
-    /// Force GPU (CUDA), fail if unavailable.
-    Gpu,
     /// Force CPU inference.
     Cpu,
+    /// Auto-select best available GPU provider (warn on CPU fallback).
+    Gpu,
+    /// Explicit `CUDA` provider (fail if unavailable).
+    Cuda,
+    /// Explicit `TensorRT` provider (fail if unavailable).
+    #[serde(rename = "tensorrt")]
+    TensorRt,
+    /// Explicit `DirectML` provider (fail if unavailable).
+    #[serde(rename = "directml")]
+    DirectMl,
+    /// Explicit `CoreML` provider (fail if unavailable).
+    #[serde(rename = "coreml")]
+    CoreMl,
+    /// Explicit `ROCm` provider (fail if unavailable).
+    #[serde(rename = "rocm")]
+    Rocm,
+    /// Explicit `OpenVINO` provider (fail if unavailable).
+    #[serde(rename = "openvino")]
+    OpenVino,
+    /// Explicit `oneDNN` provider (fail if unavailable).
+    #[serde(rename = "onednn")]
+    OneDnn,
+    /// Explicit `QNN` provider (fail if unavailable).
+    #[serde(rename = "qnn")]
+    Qnn,
+    /// Explicit `ACL` provider (fail if unavailable).
+    #[serde(rename = "acl")]
+    Acl,
+    /// Explicit `ArmNN` provider (fail if unavailable).
+    #[serde(rename = "armnn")]
+    ArmNn,
 }
 
 /// Inference settings.

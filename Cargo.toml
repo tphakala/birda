@@ -15,7 +15,7 @@ default = ["cuda"]
 cuda = ["birdnet-onnx/cuda"]
 
 [dependencies]
-birdnet-onnx = "1.4.0"
+birdnet-onnx = "2.0.0-rc.1"
 symphonia = { version = "0.5", features = ["aac", "mp3", "flac", "wav", "pcm"] }
 rubato = "1.0"
 audioadapter-buffers = "2.0"

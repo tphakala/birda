@@ -4,7 +4,7 @@ use crate::config::{InferenceDevice, ModelConfig as BirdaModelConfig};
 use crate::error::{Error, Result};
 use birdnet_onnx::{
     Classifier, ClassifierBuilder, ExecutionProviderInfo, PredictionResult,
-    available_execution_providers,
+    available_execution_providers, ort_execution_providers,
 };
 use std::collections::HashSet;
 use tracing::{debug, info, warn};
@@ -40,48 +40,126 @@ impl BirdClassifier {
                 .join(", ")
         );
 
-        let cuda_available = available_providers.contains(&ExecutionProviderInfo::Cuda);
-
         let builder = ClassifierBuilder::new()
             .model_path(model_config.path.to_string_lossy().to_string())
             .labels_path(model_config.labels.to_string_lossy().to_string())
             .top_k(top_k)
             .min_confidence(min_confidence);
 
-        // Add execution provider based on device setting and determine actual device used
+        // Select and configure execution provider based on device setting
+        // GPU provider priority order (shared by Auto and --gpu modes)
+        //
+        // This list includes general-purpose GPU acceleration providers.
+        // Excluded from auto-selection:
+        // - oneDNN: Intel CPU optimizer (not GPU acceleration)
+        // - QNN: Qualcomm-specific hardware (mobile/edge devices only)
+        // - ACL/ArmNN: ARM-specific devices only
+        //
+        // These specialized providers are available via explicit flags
+        // (--onednn, --qnn, --acl, --armnn) for users with specific hardware.
+        let gpu_priority = [
+            (ExecutionProviderInfo::TensorRt, "TensorRT"),
+            (ExecutionProviderInfo::Cuda, "CUDA"),
+            (ExecutionProviderInfo::DirectMl, "DirectML"),
+            (ExecutionProviderInfo::CoreMl, "CoreML"),
+            (ExecutionProviderInfo::Rocm, "ROCm"),
+            (ExecutionProviderInfo::OpenVino, "OpenVINO"),
+        ];
+
         let (builder, actual_device_msg) = match device {
-            InferenceDevice::Gpu => {
-                info!("Requested device: GPU (CUDA)");
-
-                if !cuda_available {
-                    warn!("CUDA not available at compile-time, but GPU was requested");
-                    warn!("Build will proceed, but may fall back to CPU at runtime");
-                }
-
-                let builder = builder.execution_provider(
-                    birdnet_onnx::ort_execution_providers::CUDAExecutionProvider::default(),
-                );
-                (builder, "GPU (CUDA requested, may fallback to CPU)")
-            }
             InferenceDevice::Cpu => {
                 info!("Requested device: CPU");
                 (builder, "CPU")
             }
             InferenceDevice::Auto => {
-                if cuda_available {
-                    info!("Auto mode: CUDA available, attempting to use GPU");
-                    let builder = builder.execution_provider(
-                        birdnet_onnx::ort_execution_providers::CUDAExecutionProvider::default(),
-                    );
-                    (
-                        builder,
-                        "Auto (CUDA available, attempting GPU with CPU fallback)",
-                    )
+                // Auto mode: try GPU providers in priority order, silent CPU fallback
+                if let Some(&(provider_info, name)) = gpu_priority
+                    .iter()
+                    .find(|(p, _)| available_providers.contains(p))
+                {
+                    info!("Auto mode: {} available, attempting GPU", name);
+                    let builder = add_execution_provider(builder, provider_info);
+                    (builder, name)
                 } else {
-                    info!("Auto mode: CUDA not available, using CPU");
-                    (builder, "Auto (CUDA unavailable, using CPU)")
+                    info!("Auto mode: No GPU providers available, using CPU");
+                    (builder, "Auto (CPU)")
                 }
             }
+            InferenceDevice::Gpu => {
+                // Best-effort GPU: try providers in priority order, warn if CPU fallback
+                if let Some(&(provider_info, name)) = gpu_priority
+                    .iter()
+                    .find(|(p, _)| available_providers.contains(p))
+                {
+                    info!("--gpu: Selected {} provider", name);
+                    let builder = add_execution_provider(builder, provider_info);
+                    (builder, name)
+                } else {
+                    warn!("--gpu requested but no GPU providers available, using CPU");
+                    (builder, "GPU (fallback to CPU)")
+                }
+            }
+            // Explicit providers use the helper function
+            InferenceDevice::Cuda => configure_explicit_provider(
+                builder,
+                &available_providers,
+                ExecutionProviderInfo::Cuda,
+                "CUDA",
+            )?,
+            InferenceDevice::TensorRt => configure_explicit_provider(
+                builder,
+                &available_providers,
+                ExecutionProviderInfo::TensorRt,
+                "TensorRT",
+            )?,
+            InferenceDevice::DirectMl => configure_explicit_provider(
+                builder,
+                &available_providers,
+                ExecutionProviderInfo::DirectMl,
+                "DirectML",
+            )?,
+            InferenceDevice::CoreMl => configure_explicit_provider(
+                builder,
+                &available_providers,
+                ExecutionProviderInfo::CoreMl,
+                "CoreML",
+            )?,
+            InferenceDevice::Rocm => configure_explicit_provider(
+                builder,
+                &available_providers,
+                ExecutionProviderInfo::Rocm,
+                "ROCm",
+            )?,
+            InferenceDevice::OpenVino => configure_explicit_provider(
+                builder,
+                &available_providers,
+                ExecutionProviderInfo::OpenVino,
+                "OpenVINO",
+            )?,
+            InferenceDevice::OneDnn => configure_explicit_provider(
+                builder,
+                &available_providers,
+                ExecutionProviderInfo::OneDnn,
+                "oneDNN",
+            )?,
+            InferenceDevice::Qnn => configure_explicit_provider(
+                builder,
+                &available_providers,
+                ExecutionProviderInfo::Qnn,
+                "QNN",
+            )?,
+            InferenceDevice::Acl => configure_explicit_provider(
+                builder,
+                &available_providers,
+                ExecutionProviderInfo::Acl,
+                "ACL",
+            )?,
+            InferenceDevice::ArmNn => configure_explicit_provider(
+                builder,
+                &available_providers,
+                ExecutionProviderInfo::ArmNn,
+                "ArmNN",
+            )?,
         };
 
         let inner = builder.build().map_err(|e| Error::ClassifierBuild {
@@ -288,4 +366,93 @@ mod tests {
         assert!(filtered.iter().any(|p| p.species.contains("Cyanistes")));
         assert!(!filtered.iter().any(|p| p.species.contains("Turdus")));
     }
+}
+
+/// Configure an explicit execution provider (fail if unavailable).
+fn configure_explicit_provider(
+    builder: ClassifierBuilder,
+    available_providers: &[ExecutionProviderInfo],
+    provider_info: ExecutionProviderInfo,
+    provider_name: &'static str,
+) -> Result<(ClassifierBuilder, &'static str)> {
+    if !available_providers.contains(&provider_info) {
+        return Err(provider_unavailable_error(
+            provider_name,
+            available_providers,
+        ));
+    }
+    info!("Requested device: {provider_name}");
+    let builder = add_execution_provider(builder, provider_info);
+    Ok((builder, provider_name))
+}
+
+/// Helper function to add execution provider to builder based on provider type.
+fn add_execution_provider(
+    builder: ClassifierBuilder,
+    provider_info: ExecutionProviderInfo,
+) -> ClassifierBuilder {
+    use ort_execution_providers::{
+        ACLExecutionProvider, ArmNNExecutionProvider, CUDAExecutionProvider,
+        CoreMLExecutionProvider, DirectMLExecutionProvider, OneDNNExecutionProvider,
+        OpenVINOExecutionProvider, QNNExecutionProvider, ROCmExecutionProvider,
+    };
+
+    match provider_info {
+        ExecutionProviderInfo::Cuda => builder.execution_provider(CUDAExecutionProvider::default()),
+        ExecutionProviderInfo::TensorRt => {
+            // Use optimized TensorRT configuration (enables FP16, engine caching, timing cache)
+            builder.with_tensorrt()
+        }
+        ExecutionProviderInfo::DirectMl => {
+            builder.execution_provider(DirectMLExecutionProvider::default())
+        }
+        ExecutionProviderInfo::CoreMl => {
+            builder.execution_provider(CoreMLExecutionProvider::default())
+        }
+        ExecutionProviderInfo::Rocm => builder.execution_provider(ROCmExecutionProvider::default()),
+        ExecutionProviderInfo::OpenVino => {
+            builder.execution_provider(OpenVINOExecutionProvider::default())
+        }
+        ExecutionProviderInfo::OneDnn => {
+            builder.execution_provider(OneDNNExecutionProvider::default())
+        }
+        ExecutionProviderInfo::Qnn => builder.execution_provider(QNNExecutionProvider::default()),
+        ExecutionProviderInfo::Acl => builder.execution_provider(ACLExecutionProvider::default()),
+        ExecutionProviderInfo::ArmNn => {
+            builder.execution_provider(ArmNNExecutionProvider::default())
+        }
+        ExecutionProviderInfo::Cpu => builder, // CPU doesn't need explicit provider
+    }
+}
+
+/// Create a descriptive error for unavailable execution provider.
+fn provider_unavailable_error(provider_name: &str, available: &[ExecutionProviderInfo]) -> Error {
+    use std::fmt::Write;
+
+    let mut message = format!("{provider_name} provider not available\n\n");
+    message.push_str("Available providers:\n");
+
+    for provider in available {
+        let name = match provider {
+            ExecutionProviderInfo::Cpu => "CPU",
+            ExecutionProviderInfo::Cuda => "CUDA",
+            ExecutionProviderInfo::TensorRt => "TensorRT",
+            ExecutionProviderInfo::DirectMl => "DirectML",
+            ExecutionProviderInfo::CoreMl => "CoreML",
+            ExecutionProviderInfo::Rocm => "ROCm",
+            ExecutionProviderInfo::OpenVino => "OpenVINO",
+            ExecutionProviderInfo::OneDnn => "oneDNN",
+            ExecutionProviderInfo::Qnn => "QNN",
+            ExecutionProviderInfo::Acl => "ACL",
+            ExecutionProviderInfo::ArmNn => "ArmNN",
+        };
+        let _ = writeln!(message, "  ✓ {name}");
+    }
+
+    message.push_str("\nTry one of:\n");
+    message.push_str("  birda --cpu <input>     (use CPU)\n");
+    message.push_str("  birda --gpu <input>     (auto-select best GPU)\n");
+    message.push_str("  birda <input>           (auto mode with fallback)\n");
+
+    Error::ClassifierBuild { reason: message }
 }

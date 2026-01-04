@@ -219,13 +219,54 @@ pub struct AnalyzeArgs {
     #[arg(long)]
     pub no_csv_bom: bool,
 
-    /// Enable CUDA GPU acceleration.
-    #[arg(long, conflicts_with = "cpu")]
+    /// Auto-select best available GPU provider (`TensorRT` → `CUDA` → `DirectML` → `CoreML` → `ROCm` → `OpenVINO`).
+    /// Warns and falls back to CPU if no GPU providers available.
+    #[arg(long, group = "provider")]
     pub gpu: bool,
 
-    /// Force CPU inference.
-    #[arg(long, conflicts_with = "gpu")]
+    /// Force CPU inference only.
+    #[arg(long, group = "provider")]
     pub cpu: bool,
+
+    /// Use `CUDA` provider explicitly (fail if unavailable).
+    #[arg(long, group = "provider")]
+    pub cuda: bool,
+
+    /// Use `TensorRT` provider explicitly (fail if unavailable).
+    #[arg(long, group = "provider")]
+    pub tensorrt: bool,
+
+    /// Use `DirectML` provider explicitly (fail if unavailable).
+    #[arg(long, group = "provider")]
+    pub directml: bool,
+
+    /// Use `CoreML` provider explicitly (fail if unavailable).
+    #[arg(long, group = "provider")]
+    pub coreml: bool,
+
+    /// Use `ROCm` provider explicitly (fail if unavailable).
+    #[arg(long, group = "provider")]
+    pub rocm: bool,
+
+    /// Use `OpenVINO` provider explicitly (fail if unavailable).
+    #[arg(long, group = "provider")]
+    pub openvino: bool,
+
+    /// Use `oneDNN` provider explicitly (fail if unavailable).
+    #[arg(long, group = "provider")]
+    pub onednn: bool,
+
+    /// Use `QNN` provider explicitly (fail if unavailable).
+    #[arg(long, group = "provider")]
+    pub qnn: bool,
+
+    /// Use `ACL` provider explicitly (fail if unavailable).
+    #[arg(long, group = "provider")]
+    pub acl: bool,
+
+    /// Use `ArmNN` provider explicitly (fail if unavailable).
+    #[arg(long, group = "provider")]
+    pub armnn: bool,
 
     /// Latitude for range filtering (-90.0 to 90.0).
     #[arg(long, value_parser = parse_latitude, env = "BIRDA_LATITUDE")]

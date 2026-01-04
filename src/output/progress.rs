@@ -1,6 +1,6 @@
 //! Progress bar utilities for file processing.
 
-use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
+use indicatif::{ProgressBar, ProgressStyle};
 use std::time::Duration;
 
 /// Create a progress bar for processing multiple files.
@@ -77,22 +77,12 @@ pub fn format_duration(secs: f32) -> String {
 /// RAII guard that ensures a progress bar is finished when dropped.
 pub struct ProgressGuard {
     progress: Option<ProgressBar>,
-    multi_progress: Option<MultiProgress>,
-    message: String,
 }
 
 impl ProgressGuard {
     /// Create a new progress guard.
-    pub fn new(
-        progress: Option<ProgressBar>,
-        multi_progress: Option<MultiProgress>,
-        message: impl Into<String>,
-    ) -> Self {
-        Self {
-            progress,
-            multi_progress,
-            message: message.into(),
-        }
+    pub fn new(progress: Option<ProgressBar>) -> Self {
+        Self { progress }
     }
 
     /// Get a reference to the progress bar for incrementing.
@@ -104,19 +94,15 @@ impl ProgressGuard {
 impl Drop for ProgressGuard {
     fn drop(&mut self) {
         if let Some(pb) = self.progress.take() {
-            // Ensure progress bar shows 100% completion
+            // Set to 100% completion
             if let Some(len) = pb.length() {
                 pb.set_position(len);
+                // Give the progress bar time to render the final state
+                // before we clear it. This ensures users see 100% completion.
+                std::thread::sleep(std::time::Duration::from_millis(100));
             }
-
-            if self.multi_progress.is_some() {
-                // For MultiProgress, just finish without message (updates in place)
-                // Don't remove - let it stay as completed bar
-                pb.finish();
-            } else {
-                // For standalone progress bars, finish with message
-                pb.finish_with_message(std::mem::take(&mut self.message));
-            }
+            // Now finish and clear to avoid duplication
+            pb.finish_and_clear();
         }
     }
 }
@@ -142,7 +128,7 @@ mod tests {
         let pb = create_segment_progress(10, "test.wav", true);
 
         // Wrap in guard
-        let guard = ProgressGuard::new(pb, None, "Complete");
+        let guard = ProgressGuard::new(pb);
 
         // Guard should finish the progress bar when dropped
         // (This is tested by running without panics - indicatif would complain if not finished properly)
@@ -153,7 +139,7 @@ mod tests {
     fn test_progress_guard_finishes_on_error_path() {
         fn might_error(should_error: bool) -> Result<(), &'static str> {
             let pb = create_segment_progress(10, "test.wav", true);
-            let _guard = ProgressGuard::new(pb, None, "Complete");
+            let _guard = ProgressGuard::new(pb);
 
             if should_error {
                 return Err("simulated error");

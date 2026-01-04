@@ -106,9 +106,7 @@ pub fn process_file(
     };
 
     // Wrap in guard to ensure cleanup on both success and error
-    let multi_progress_opt = segment_progress.as_ref().map(|_| multi_progress.clone());
-    let progress_guard =
-        progress::ProgressGuard::new(segment_progress, multi_progress_opt, "Inference complete");
+    let progress_guard = progress::ProgressGuard::new(segment_progress);
 
     // Run inference
     debug!("Running inference on {} segments...", chunks.len());

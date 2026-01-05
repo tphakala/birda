@@ -168,7 +168,8 @@ fn run_streaming_inference(
 
 /// Watchdog timeout for inference operations (in seconds).
 /// If a single batch takes longer than this, assume GPU hang and terminate.
-const INFERENCE_WATCHDOG_SECS: u64 = 60;
+/// Normal inference is ~74ms per batch, so 1s is generous while catching hangs quickly.
+const INFERENCE_WATCHDOG_SECS: u64 = 1;
 
 /// Process a batch of chunks through the classifier.
 fn process_batch(

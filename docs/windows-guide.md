@@ -5,7 +5,8 @@ This guide covers installing and using Birda on Windows, including GPU accelerat
 ## Table of Contents
 
 - [Installation](#installation)
-- [GPU Setup (CUDA)](#gpu-setup-cuda)
+- [GPU Support](#gpu-support)
+- [TensorRT Setup (Optional)](#tensorrt-setup-optional)
 - [Quick Start](#quick-start)
 - [Troubleshooting](#troubleshooting)
 
@@ -40,46 +41,14 @@ cargo build --release
 # The binary will be at target\release\birda.exe
 ```
 
-## GPU Setup (CUDA)
+## GPU Support
 
-GPU acceleration provides up to 6x faster inference compared to CPU. This requires an NVIDIA GPU with CUDA support.
+Pre-built binaries bundle all required ONNX Runtime and CUDA libraries - no separate CUDA installation needed. Just download and run.
 
-### Prerequisites
+### Requirements
 
-1. **NVIDIA GPU** with Compute Capability 5.0+ (Maxwell or newer)
-2. **NVIDIA Driver** 525.60.13+ (check with `nvidia-smi`)
-3. **CUDA Toolkit 12.x** - [Download](https://developer.nvidia.com/cuda-downloads)
-4. **cuDNN 9.x** for CUDA 12 - [Download](https://developer.nvidia.com/cudnn) (requires NVIDIA account)
-
-### ONNX Runtime CUDA Setup
-
-Birda uses ONNX Runtime for inference. For GPU support, you need the CUDA execution provider DLLs.
-
-#### Option A: Download from ONNX Runtime
-
-1. Download [ONNX Runtime GPU package](https://github.com/microsoft/onnxruntime/releases) (e.g., `onnxruntime-win-x64-gpu-1.x.x.zip`)
-2. Extract and copy these DLLs to the same folder as `birda.exe`:
-   - `onnxruntime.dll`
-   - `onnxruntime_providers_cuda.dll`
-   - `onnxruntime_providers_shared.dll`
-
-#### Option B: Use NuGet Package
-
-```powershell
-# Download via NuGet
-nuget install Microsoft.ML.OnnxRuntime.Gpu -Version 1.20.0
-
-# Copy DLLs from the package to your birda folder
-```
-
-### cuDNN Setup
-
-1. Extract cuDNN archive
-2. Copy all DLLs from `bin\` folder to your birda folder:
-   - `cudnn64_9.dll`
-   - `cudnn_ops64_9.dll`
-   - `cudnn_cnn64_9.dll`
-   - (and other cudnn*.dll files)
+- **NVIDIA GPU** with Compute Capability 5.0+ (GTX 10-series or newer)
+- **Up-to-date NVIDIA drivers** (check with `nvidia-smi`)
 
 ### Verify GPU Setup
 
@@ -88,10 +57,39 @@ nuget install Microsoft.ML.OnnxRuntime.Gpu -Version 1.20.0
 nvidia-smi
 
 # Test GPU inference
-birda --gpu -b 64 your_recording.wav
+birda --gpu -b 256 your_recording.wav
 ```
 
-If GPU is working, you'll see inference complete much faster than CPU mode.
+If GPU is working, you'll see logs indicating CUDA is being used and inference will be much faster.
+
+## TensorRT Setup (Optional)
+
+TensorRT provides ~2x additional speedup over CUDA. Unlike CUDA, TensorRT requires manual setup.
+
+### Prerequisites
+
+1. **CUDA Toolkit 12.x** - [Download](https://developer.nvidia.com/cuda-downloads)
+2. **TensorRT 10.x** - [Download](https://developer.nvidia.com/tensorrt) (requires free NVIDIA Developer account)
+
+### Installation
+
+1. Install CUDA Toolkit 12.x
+2. Download and extract TensorRT
+3. Add TensorRT `lib` folder to your PATH, or copy DLLs to the birda folder:
+   - `nvinfer*.dll`
+   - `nvonnxparser*.dll`
+
+### Verify TensorRT Setup
+
+```powershell
+# Check available providers
+birda providers
+
+# Test TensorRT inference
+birda --tensorrt -b 32 your_recording.wav
+```
+
+> **Note**: TensorRT engines are cached after first run. Initial inference may take longer while the engine is built.
 
 ## Quick Start
 
@@ -109,7 +107,7 @@ Download the ONNX model and labels:
 
 - **ONNX Model**: [BirdNET-onnx on Hugging Face](https://huggingface.co/justinchuby/BirdNET-onnx)
   - Download `birdnet.onnx`
-- **Labels**: [BirdNET-Analyzer Releases](https://github.com/kahst/BirdNET-Analyzer/releases)
+- **Labels**: [BirdNET-Analyzer Releases](https://github.com/birdnet-team/BirdNET-Analyzer/releases)
   - Download `BirdNET_GLOBAL_6K_V2.4_Labels.txt`
 
 Save both files to a permanent location (e.g., `C:\Models\BirdNET\`).
@@ -163,44 +161,41 @@ Results are saved in the same folder as the input file:
 
 | Scenario | Recommended |
 |----------|-------------|
-| CPU inference | 1 (default) |
-| GPU with short files | 32-64 |
-| GPU with long files | 64-128 |
+| CPU inference | 8 |
+| CUDA | 256 |
+| TensorRT | 32 |
 
-### Example Performance (RTX 5080, 16GB VRAM)
+### Example Performance (RTX 5080, 16GB VRAM, BirdNET v2.4)
 
-| Device | Batch Size | Time (1GB WAV) | Speedup |
-|--------|------------|----------------|---------|
-| CPU | 1 | ~36s | 1x |
-| GPU | 1 | ~11s | 3.3x |
-| GPU | 64 | ~7s | 5.1x |
-| GPU | 128 | ~6s | 6x |
+Test file: 12+ hours of audio (14913 segments)
 
-> **Note**: Very large batch sizes (256+) can be slower due to memory overhead.
+| Device | Batch Size | Time | Speedup |
+|--------|------------|------|---------|
+| CPU | 8 | 81.7s | 1x |
+| CUDA | 256 | 9.1s | 9x |
+| TensorRT | 32 | 4.2s | **~20x** |
+
+> **Note**: TensorRT performs best with small batches (16-32) while CUDA needs large batches (256) for peak performance.
 
 ## Troubleshooting
 
-### "onnxruntime.dll not found"
-
-The ONNX Runtime DLLs are not in your PATH or birda folder.
-
-**Solution**: Copy the ONNX Runtime DLLs to the same folder as `birda.exe`.
-
 ### "CUDA provider not available" or falls back to CPU
 
-CUDA dependencies are missing or incompatible.
+GPU drivers may be outdated or incompatible.
+
+**Solutions**:
+1. Update NVIDIA drivers to the latest version
+2. Check driver version: `nvidia-smi`
+3. Verify GPU is detected: `nvidia-smi -L`
+
+### TensorRT not working
+
+TensorRT requires separate installation.
 
 **Solutions**:
 1. Verify CUDA Toolkit is installed: `nvcc --version`
-2. Verify cuDNN DLLs are in the birda folder
-3. Check NVIDIA driver version: `nvidia-smi`
-4. Ensure all ONNX Runtime CUDA DLLs are present
-
-### "Invalid handle" error with GPU
-
-cuDNN version mismatch.
-
-**Solution**: Ensure you have cuDNN 9.x for CUDA 12.x. Download the correct version from NVIDIA.
+2. Verify TensorRT DLLs are in PATH or birda folder
+3. Check available providers: `birda providers`
 
 ### "Model file not found"
 

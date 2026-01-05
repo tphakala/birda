@@ -141,14 +141,26 @@ impl StreamingDecoder {
     ///
     /// # Arguments
     /// * `segment_samples` - Number of samples per segment
-    /// * `overlap_samples` - Number of samples to overlap between segments
+    /// * `overlap_samples` - Number of samples to overlap between segments (must be less than `segment_samples`)
     ///
     /// Returns `None` when the file is exhausted.
+    ///
+    /// # Errors
+    /// Returns an error if `overlap_samples >= segment_samples`.
     pub fn next_segment(
         &mut self,
         segment_samples: usize,
         overlap_samples: usize,
     ) -> Result<Option<RawSegment>> {
+        // Validate parameters
+        if overlap_samples >= segment_samples {
+            return Err(crate::error::Error::Internal {
+                message: format!(
+                    "overlap_samples ({overlap_samples}) must be less than segment_samples ({segment_samples})"
+                ),
+            });
+        }
+
         // Keep decoding until we have enough samples or hit EOF
         while self.buffer.len() < segment_samples && !self.eof {
             self.decode_next_packet()?;
@@ -393,12 +405,13 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_raw_segment_zero_padding() {
-        // Test that segments shorter than requested are zero-padded
+    fn test_raw_segment_construction() {
+        // Basic struct construction test
         let segment = RawSegment {
             samples: vec![1.0, 2.0, 3.0],
             start_sample: 0,
         };
         assert_eq!(segment.samples.len(), 3);
+        assert_eq!(segment.start_sample, 0);
     }
 }

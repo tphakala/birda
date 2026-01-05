@@ -110,6 +110,8 @@ fn decode_and_stream(
 }
 
 /// Run inference on chunks received from the decode channel.
+///
+/// Returns detections and the total segment count processed.
 fn run_streaming_inference(
     rx: Receiver<ChunkResult>,
     classifier: &BirdClassifier,
@@ -117,13 +119,15 @@ fn run_streaming_inference(
     min_confidence: f32,
     batch_size: usize,
     progress: Option<&indicatif::ProgressBar>,
-) -> Result<Vec<Detection>> {
+) -> Result<(Vec<Detection>, usize)> {
     let mut detections = Vec::new();
     let mut batch: Vec<AudioChunk> = Vec::with_capacity(batch_size);
+    let mut segment_count = 0usize;
 
     for item in rx {
         let chunk = item?; // Propagate decode errors
         batch.push(chunk);
+        segment_count += 1;
 
         if batch.len() >= batch_size {
             process_batch(
@@ -162,7 +166,7 @@ fn run_streaming_inference(
             })
     });
 
-    Ok(detections)
+    Ok((detections, segment_count))
 }
 
 /// Process a batch of chunks through the classifier.
@@ -327,7 +331,7 @@ pub fn process_file(
     );
 
     // Run inference on main thread
-    let detections = run_streaming_inference(
+    let (detections, actual_segments) = run_streaming_inference(
         rx,
         classifier,
         input_path,
@@ -338,11 +342,10 @@ pub fn process_file(
 
     // Wait for decode thread to finish
     // Errors are sent through the channel, so we just wait for cleanup
-    let _ = decode_handle.join();
-
-    // Get actual segment count from progress bar
-    #[allow(clippy::cast_possible_truncation)]
-    let actual_segments = progress_guard.get().map_or(0, |pb| pb.position() as usize);
+    // If the thread panicked, log a warning (panics indicate bugs, but shouldn't crash batch jobs)
+    if let Err(panic_payload) = decode_handle.join() {
+        tracing::warn!("Decode thread panicked: {:?}", panic_payload);
+    }
 
     // Finish progress bar
     drop(progress_guard);

@@ -96,8 +96,8 @@ pub fn resample(samples: Vec<f32>, from_rate: u32, to_rate: u32) -> Result<Vec<f
 
 /// Resample a single audio chunk.
 ///
-/// This is optimized for streaming where we process fixed-size segments.
-/// For very small chunks, falls back to simple linear interpolation.
+/// Convenience wrapper for streaming workflows. Delegates to the standard
+/// FFT-based [`resample`] function.
 pub fn resample_chunk(samples: Vec<f32>, from_rate: u32, to_rate: u32) -> Result<Vec<f32>> {
     if from_rate == to_rate {
         return Ok(samples);

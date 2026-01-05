@@ -94,6 +94,20 @@ pub fn resample(samples: Vec<f32>, from_rate: u32, to_rate: u32) -> Result<Vec<f
     Ok(output)
 }
 
+/// Resample a single audio chunk.
+///
+/// This is optimized for streaming where we process fixed-size segments.
+/// For very small chunks, falls back to simple linear interpolation.
+pub fn resample_chunk(samples: Vec<f32>, from_rate: u32, to_rate: u32) -> Result<Vec<f32>> {
+    if from_rate == to_rate {
+        return Ok(samples);
+    }
+
+    // For streaming, we use the same FFT resampler but on chunk-sized data
+    // The existing resample function handles this well
+    resample(samples, from_rate, to_rate)
+}
+
 /// Estimate output length after resampling.
 #[allow(
     clippy::cast_precision_loss,

@@ -3,8 +3,8 @@
 use crate::config::{InferenceDevice, ModelConfig as BirdaModelConfig};
 use crate::error::{Error, Result};
 use birdnet_onnx::{
-    Classifier, ClassifierBuilder, ExecutionProviderInfo, InferenceOptions, PredictionResult,
-    available_execution_providers, ort_execution_providers,
+    BatchInferenceContext, Classifier, ClassifierBuilder, ExecutionProviderInfo, InferenceOptions,
+    PredictionResult, available_execution_providers, ort_execution_providers,
 };
 use std::collections::HashSet;
 use tracing::{debug, info, warn};
@@ -238,6 +238,43 @@ impl BirdClassifier {
     ) -> Result<Vec<PredictionResult>> {
         self.inner
             .predict_batch(segments, options)
+            .map_err(|e| Error::Inference {
+                reason: e.to_string(),
+            })
+    }
+
+    /// Create a batch inference context for efficient repeated batch inference.
+    ///
+    /// Pre-allocates GPU memory for the specified batch size. Use this when processing
+    /// many batches of audio segments to avoid memory growth issues on GPU.
+    ///
+    /// # Arguments
+    ///
+    /// * `max_batch_size` - Maximum number of segments per batch
+    ///
+    /// # Supported Models
+    ///
+    /// Currently supports `BirdNET` v2.4 and v3.0 only. Returns an error for `PerchV2`.
+    pub fn create_batch_context(&self, max_batch_size: usize) -> Result<BatchInferenceContext> {
+        self.inner
+            .create_batch_context(max_batch_size)
+            .map_err(|e| Error::Inference {
+                reason: format!("failed to create batch context: {e}"),
+            })
+    }
+
+    /// Run inference on a batch of audio segments using a pre-allocated context.
+    ///
+    /// This method reuses GPU memory from the context, preventing memory growth
+    /// across repeated batch inference calls.
+    pub fn predict_batch_with_context(
+        &self,
+        context: &mut BatchInferenceContext,
+        segments: &[&[f32]],
+        options: &InferenceOptions,
+    ) -> Result<Vec<PredictionResult>> {
+        self.inner
+            .predict_batch_with_context(context, segments, options)
             .map_err(|e| Error::Inference {
                 reason: e.to_string(),
             })

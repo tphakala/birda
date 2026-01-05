@@ -188,8 +188,9 @@ impl StreamingDecoder {
         if advance > 0 {
             self.buffer.drain(..advance);
             self.samples_emitted += advance;
-        } else if self.buffer.len() <= segment_samples {
-            // Final segment with no more data to process
+        } else {
+            // Final segment: advance is 0 when take_samples <= overlap_samples,
+            // which only happens when buffer has less than a full segment (EOF)
             self.buffer.clear();
             self.samples_emitted += take_samples;
         }

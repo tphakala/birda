@@ -151,7 +151,8 @@ fn run_streaming_inference(
     }
 
     // Sort by start time, then by confidence (descending)
-    detections.sort_by(|a, b| {
+    // Using unstable sort for performance - stability doesn't matter for detections
+    detections.sort_unstable_by(|a, b| {
         a.start_time
             .partial_cmp(&b.start_time)
             .unwrap_or(std::cmp::Ordering::Equal)
@@ -285,6 +286,9 @@ pub fn process_file(
         .and_then(|n| n.to_str())
         .unwrap_or("unknown");
 
+    // Sanitize filename to prevent template injection (curly braces are special in indicatif)
+    let safe_name = file_name.replace(['{', '}'], "");
+
     #[allow(clippy::cast_possible_truncation)]
     let segment_progress = estimated_segments.map_or_else(
         || {
@@ -294,7 +298,7 @@ pub fn process_file(
                 pb.set_style(
                     indicatif::ProgressStyle::default_spinner()
                         .template(&format!(
-                            "{{spinner:.green}} [{{elapsed_precise}}] {{pos}} segments - {file_name}"
+                            "{{spinner:.green}} [{{elapsed_precise}}] {{pos}} segments - {safe_name}"
                         ))
                         .unwrap_or_else(|_| indicatif::ProgressStyle::default_spinner()),
                 );

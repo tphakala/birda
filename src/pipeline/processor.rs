@@ -115,7 +115,7 @@ fn run_streaming_inference(
     min_confidence: f32,
     batch_size: usize,
     progress: Option<&indicatif::ProgressBar>,
-    mut batch_context: Option<&mut BatchInferenceContext>,
+    batch_context: &mut Option<BatchInferenceContext>,
 ) -> Result<(Vec<Detection>, usize)> {
     let mut detections = Vec::new();
     let mut batch: Vec<AudioChunk> = Vec::with_capacity(batch_size);
@@ -134,7 +134,7 @@ fn run_streaming_inference(
                 min_confidence,
                 &mut detections,
                 progress,
-                batch_context.as_deref_mut(),
+                batch_context,
             )?;
             batch.clear();
         }
@@ -198,7 +198,7 @@ fn process_batch(
     min_confidence: f32,
     detections: &mut Vec<Detection>,
     progress: Option<&indicatif::ProgressBar>,
-    batch_context: Option<&mut BatchInferenceContext>,
+    batch_context: &mut Option<BatchInferenceContext>,
 ) -> Result<()> {
     use crate::gpu::start_inference_watchdog;
     use crate::output::progress::inc_progress;
@@ -216,7 +216,7 @@ fn process_batch(
     let options = InferenceOptions::default();
     let results = if batch_size == 1 {
         vec![classifier.predict(segments[0], &options)?]
-    } else if let Some(ctx) = batch_context {
+    } else if let Some(ctx) = batch_context.as_mut() {
         // Use pre-allocated context for memory-efficient batch inference
         classifier.predict_batch_with_context(ctx, &segments, &options)?
     } else {
@@ -404,7 +404,7 @@ pub fn process_file(
         min_confidence,
         batch_size,
         progress_guard.get(),
-        batch_context.as_mut(),
+        &mut batch_context,
     )?;
 
     // Wait for decode thread to finish

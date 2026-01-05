@@ -3,7 +3,7 @@
 use crate::audio::AudioChunk;
 use crate::config::OutputFormat;
 use crate::error::Result;
-use crate::inference::BirdClassifier;
+use crate::inference::{BirdClassifier, InferenceOptions};
 use crate::locking::FileLock;
 use crate::output::{
     AudacityWriter, CsvWriter, Detection, KaleidoscopeWriter, OutputWriter, RavenWriter,
@@ -209,10 +209,11 @@ fn process_batch(
         batch_size,
     );
 
+    let options = InferenceOptions::default();
     let results = if batch_size == 1 {
-        vec![classifier.predict(segments[0])?]
+        vec![classifier.predict(segments[0], &options)?]
     } else {
-        classifier.predict_batch(&segments)?
+        classifier.predict_batch(&segments, &options)?
     };
 
     // Watchdog is automatically cancelled when _watchdog drops here

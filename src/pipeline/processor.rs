@@ -50,8 +50,14 @@ pub fn process_file(
     let _lock = FileLock::acquire(input_path, output_dir)?;
 
     // Decode audio
-    debug!("Decoding audio...");
+    info!("Decoding audio...");
     let decoded = decode_audio_file(input_path)?;
+    let audio_duration_secs = f64::from(decoded.duration_secs);
+    info!(
+        "Decoded {} of audio ({:.1}s)",
+        progress::format_duration(audio_duration_secs),
+        audio_duration_secs
+    );
 
     // Resample to model's expected sample rate
     let target_rate = classifier.sample_rate();
@@ -80,6 +86,7 @@ pub fn process_file(
             detections: 0,
             segments: 0,
             duration_secs,
+            audio_duration_secs,
         });
     }
 
@@ -134,17 +141,24 @@ pub fn process_file(
     } else {
         0.0
     };
+    let realtime_factor = if duration_secs > 0.0 {
+        audio_duration_secs / duration_secs
+    } else {
+        0.0
+    };
     info!(
-        "Processed {} segments in {:.2}s ({:.1} segments/sec)",
+        "Processed {} segments in {:.2}s ({:.1} segments/sec, {:.1}x realtime)",
         chunks.len(),
         duration_secs,
-        segments_per_sec
+        segments_per_sec,
+        realtime_factor
     );
 
     Ok(ProcessResult {
         detections: detections.len(),
         segments: chunks.len(),
         duration_secs,
+        audio_duration_secs,
     })
 }
 
@@ -247,4 +261,6 @@ pub struct ProcessResult {
     pub segments: usize,
     /// Processing duration in seconds.
     pub duration_secs: f64,
+    /// Audio duration in seconds.
+    pub audio_duration_secs: f64,
 }

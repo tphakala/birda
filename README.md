@@ -58,6 +58,17 @@ Copy the ONNX Runtime CUDA DLLs to your executable directory or add them to PATH
 - `onnxruntime_providers_shared.dll`
 - `cudnn*.dll` files
 
+### TensorRT Support (Optional)
+
+For maximum GPU performance, TensorRT provides additional optimizations beyond CUDA:
+
+1. Download [TensorRT](https://developer.nvidia.com/tensorrt) from NVIDIA Developer (free account required)
+2. Copy the TensorRT DLLs to your executable directory or add them to PATH:
+   - `nvinfer*.dll`
+   - `nvonnxparser*.dll`
+
+TensorRT requires an NVIDIA GPU with compute capability 5.0+ (GTX 10-series and newer). See [Performance Tips](#performance-tips) for benchmark comparisons.
+
 ### Checking Available Execution Providers
 
 To see which execution providers are available on your system:
@@ -448,20 +459,12 @@ task build:macos-arm64
 
 - **Model type**: `birdnet-v30`
 - **Status**: Developer preview only
-- **Regional variants available** (e.g., EUNA for Europe/North America)
 
 ### Google Perch v2
 
 - **ONNX Model**: [Perch-onnx on Hugging Face](https://huggingface.co/justinchuby/Perch-onnx) (ONNX conversion by Justin Chu)
 - **Model type**: `perch-v2`
 - **Sample rate**: 32kHz
-
-## Roadmap
-
-Planned features for future releases:
-
-- [x] **Progress indicators** - Real-time progress bars for batch processing
-- [ ] **Parallel file processing** - Process multiple audio files concurrently
 
 ## License
 

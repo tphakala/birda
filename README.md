@@ -46,26 +46,19 @@ cargo install --path .
 
 ### GPU Support (CUDA)
 
-For GPU acceleration, you need:
+Pre-built binaries bundle all required ONNX Runtime and CUDA libraries - no separate installation needed. Just download and run.
 
-1. NVIDIA GPU with CUDA support
-2. [CUDA Toolkit 12.x](https://developer.nvidia.com/cuda-downloads)
-3. [cuDNN 9.x](https://developer.nvidia.com/cudnn) for CUDA 12
-
-Copy the ONNX Runtime CUDA DLLs to your executable directory or add them to PATH:
-- `onnxruntime.dll`
-- `onnxruntime_providers_cuda.dll`
-- `onnxruntime_providers_shared.dll`
-- `cudnn*.dll` files
+Requirements:
+- NVIDIA GPU with CUDA support
+- Up-to-date NVIDIA GPU drivers
 
 ### TensorRT Support (Optional)
 
-For maximum GPU performance, TensorRT provides additional optimizations beyond CUDA:
+For maximum GPU performance, TensorRT provides ~2x speedup over CUDA. TensorRT requires additional setup:
 
-1. Download [TensorRT](https://developer.nvidia.com/tensorrt) from NVIDIA Developer (free account required)
-2. Copy the TensorRT DLLs to your executable directory or add them to PATH:
-   - `nvinfer*.dll`
-   - `nvonnxparser*.dll`
+1. Install [CUDA Toolkit 12.x](https://developer.nvidia.com/cuda-downloads)
+2. Download [TensorRT 10.x](https://developer.nvidia.com/tensorrt) from NVIDIA Developer (free account required)
+3. Add TensorRT libraries to your PATH or copy to executable directory
 
 TensorRT requires an NVIDIA GPU with compute capability 5.0+ (GTX 10-series and newer). See [Performance Tips](#performance-tips) for benchmark comparisons.
 

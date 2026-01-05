@@ -190,6 +190,25 @@ fn analyze_files(inputs: &[PathBuf], args: &AnalyzeArgs, config: &Config) -> Res
         species_list,
     )?;
 
+    // Warm up the classifier to trigger any deferred initialization.
+    // TensorRT compiles/loads its engine during the first inference, which can
+    // take several minutes. We do this before starting the processing loop so
+    // the inference watchdog doesn't kill the process during engine build.
+    if classifier.uses_tensorrt() {
+        info!("TensorRT: Initializing GPU engine (this may take several minutes on first run)...");
+        eprintln!();
+        eprintln!("╔═══════════════════════════════════════════════════════════════╗");
+        eprintln!("║  TensorRT: Building/loading optimized GPU engine...           ║");
+        eprintln!("║  First run may take several minutes while compiling.          ║");
+        eprintln!("║  Subsequent runs will load from cache and be much faster.     ║");
+        eprintln!("╚═══════════════════════════════════════════════════════════════╝");
+        eprintln!();
+    }
+    classifier.warmup()?;
+    if classifier.uses_tensorrt() {
+        info!("TensorRT: Engine ready");
+    }
+
     // Create file progress bar
     let progress_enabled = !args.quiet && !args.no_progress;
     let file_progress = progress::create_file_progress(files.len(), progress_enabled);

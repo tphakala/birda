@@ -255,6 +255,9 @@ birda --help
 # Show version
 birda --version
 
+# Check available GPU providers
+birda providers
+
 # Configuration commands
 birda config init      # Create config file
 birda config show      # Show current config
@@ -265,6 +268,9 @@ birda models list      # List configured models
 birda models check     # Verify model files exist
 birda models info <name>  # Show model details
 
+# Generate species list
+birda species --lat 60.17 --lon 24.94 --week 24 --output species.txt
+
 # Analysis options
 birda [OPTIONS] <FILES>
   -m, --model <NAME>        # Use specific model
@@ -273,10 +279,24 @@ birda [OPTIONS] <FILES>
   -c, --min-confidence <N>  # Confidence threshold (0.0-1.0)
   -b, --batch-size <N>      # Inference batch size
       --overlap <SEC>       # Segment overlap in seconds
-      --gpu                 # Enable GPU acceleration
-      --cpu                 # Force CPU inference
+      --combine             # Generate combined results file
       --force               # Reprocess existing files
       --fail-fast           # Stop on first error
   -q, --quiet               # Suppress progress output
+      --no-progress         # Disable progress bars
   -v, --verbose             # Increase verbosity
+
+# Device selection
+      --gpu                 # Auto-select best GPU (TensorRT → CUDA → ...)
+      --cpu                 # Force CPU inference
+      --cuda                # Use CUDA explicitly
+      --tensorrt            # Use TensorRT explicitly
+
+# Range filtering
+      --lat <LAT>           # Latitude (-90.0 to 90.0)
+      --lon <LON>           # Longitude (-180.0 to 180.0)
+      --week <WEEK>         # Week number (1-48)
+      --month <MONTH>       # Month (1-12)
+      --day <DAY>           # Day of month (1-31)
+      --slist <FILE>        # Path to species list file
 ```

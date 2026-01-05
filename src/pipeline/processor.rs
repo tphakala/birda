@@ -166,6 +166,27 @@ fn run_streaming_inference(
     Ok((detections, segment_count))
 }
 
+/// Default watchdog timeout for inference operations (in seconds).
+/// Can be overridden via `BIRDA_INFERENCE_TIMEOUT` environment variable.
+const DEFAULT_INFERENCE_WATCHDOG_SECS: u64 = 10;
+
+/// Minimum and maximum allowed watchdog timeout values.
+const MIN_WATCHDOG_SECS: u64 = 1;
+const MAX_WATCHDOG_SECS: u64 = 3600;
+
+/// Get the inference watchdog timeout from environment or use default.
+///
+/// Override with `BIRDA_INFERENCE_TIMEOUT=<seconds>` for different hardware.
+/// Normal inference is ~74ms per batch, so 10s default is generous while catching hangs.
+/// Valid range: 1-3600 seconds. Invalid values use default.
+fn inference_watchdog_timeout() -> u64 {
+    std::env::var("BIRDA_INFERENCE_TIMEOUT")
+        .ok()
+        .and_then(|v| v.parse::<u64>().ok())
+        .filter(|&v| (MIN_WATCHDOG_SECS..=MAX_WATCHDOG_SECS).contains(&v))
+        .unwrap_or(DEFAULT_INFERENCE_WATCHDOG_SECS)
+}
+
 /// Process a batch of chunks through the classifier.
 fn process_batch(
     batch: &[AudioChunk],
@@ -175,15 +196,26 @@ fn process_batch(
     detections: &mut Vec<Detection>,
     progress: Option<&indicatif::ProgressBar>,
 ) -> Result<()> {
+    use crate::gpu::start_inference_watchdog;
     use crate::output::progress::inc_progress;
+    use std::time::Duration;
 
     let segments: Vec<&[f32]> = batch.iter().map(|c| c.samples.as_slice()).collect();
+    let batch_size = segments.len();
 
-    let results = if segments.len() == 1 {
+    // Start watchdog timer - kills process if inference hangs
+    let _watchdog = start_inference_watchdog(
+        Duration::from_secs(inference_watchdog_timeout()),
+        batch_size,
+    );
+
+    let results = if batch_size == 1 {
         vec![classifier.predict(segments[0])?]
     } else {
         classifier.predict_batch(&segments)?
     };
+
+    // Watchdog is automatically cancelled when _watchdog drops here
 
     // Apply range filtering if configured
     let results = classifier.apply_range_filter(results)?;

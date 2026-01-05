@@ -258,7 +258,7 @@ impl BirdClassifier {
                 })?;
         } else {
             // Batch inference warmup - TensorRT needs to build engine for this batch size
-            let segments: Vec<&[f32]> = (0..batch_size).map(|_| dummy_segment.as_slice()).collect();
+            let segments = vec![dummy_segment.as_slice(); batch_size];
             self.inner
                 .predict_batch(&segments, &options)
                 .map_err(|e| Error::Inference {

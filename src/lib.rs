@@ -201,6 +201,10 @@ fn analyze_files(inputs: &[PathBuf], args: &AnalyzeArgs, config: &Config) -> Res
         use indicatif::{ProgressBar, ProgressStyle};
         use std::time::{Duration, Instant};
 
+        /// Threshold in seconds to distinguish engine build from cache load.
+        /// Warmup taking >= this long indicates `TensorRT` compiled a new engine.
+        const WARMUP_BUILD_THRESHOLD_SECS: u64 = 2;
+
         // Create a spinner to show activity during warmup
         let spinner = ProgressBar::new_spinner();
         spinner.set_style(
@@ -222,7 +226,7 @@ fn analyze_files(inputs: &[PathBuf], args: &AnalyzeArgs, config: &Config) -> Res
         // Propagate any warmup error
         result?;
 
-        if warmup_duration.as_secs() >= 2 {
+        if warmup_duration.as_secs() >= WARMUP_BUILD_THRESHOLD_SECS {
             // Engine was built - this was a slow initialization
             info!(
                 "TensorRT: Engine built in {:.1}s (cached for future runs)",

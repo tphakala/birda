@@ -329,41 +329,61 @@ Compatible with [Wildlife Acoustics Kaleidoscope](https://www.wildlifeacoustics.
 
 ### GPU vs CPU
 
-- **Small models (BirdNET v2.4)**: CPU is often faster for small files; GPU shines with large batches
-- **Optimal GPU batch size**: 64-128 typically works best; larger batches can be slower due to memory overhead
-- **CPU inference**: Uses AVX2/AVX-512 acceleration automatically
+- **TensorRT**: Fastest option when available; optimal batch size 16-32
+- **CUDA**: Good performance with batch sizes 128-256
+- **CPU inference**: Uses AVX2/AVX-512 acceleration automatically; batch size 8 recommended
 
 ### Batch Size Guidelines
 
 | Scenario | Recommended Batch Size |
 |----------|------------------------|
-| CPU inference | 8 (48% faster than default) |
-| GPU with small files | 32-64 |
-| GPU with large files | 64-128 |
+| CPU inference | 8 |
+| CUDA | 256 |
+| TensorRT | 32 |
 
-**Note:** For CPU inference, batch size 8 provides optimal performance. Larger batch sizes (16+) show diminishing returns due to memory overhead.
-
-### Example Performance
+### Example Performance (BirdNET v2.4)
 
 **Test system:** Intel Core i7-13700K, NVIDIA RTX 5080 (16GB VRAM), Windows 11 Pro
 
-**Test file:** 1GB WAV (~17 minutes of audio, ~3600 segments)
+**Test file:** 12+ hours of audio (44739s, 14913 segments)
 
-| Device | Batch Size | Time | Speedup |
-|--------|------------|------|---------|
-| CPU | 1 | ~36s | 1x |
-| CPU | 8 | ~24s | 1.5x |
-| GPU | 1 | ~11s | 3.3x |
-| GPU | 64 | ~7s | 5.1x |
-| GPU | 128 | ~6s | 6x |
-| GPU | 256 | ~36s | 1x (overhead) |
+| Device | Batch Size | Time | Segments/sec | Realtime | Speedup |
+|--------|------------|------|--------------|----------|---------|
+| CPU | 8 | 81.7s | 183 | 547x | 1x |
+| CUDA | 64 | 11.3s | 1323 | 3970x | 7.2x |
+| CUDA | 128 | 9.7s | 1537 | 4610x | 8.4x |
+| CUDA | 256 | 9.1s | 1636 | 4906x | 9.0x |
+| TensorRT | 32 | 4.2s | 3589 | 10767x | **19.6x** |
+| TensorRT | 64 | 5.0s | 3000 | 9000x | 16.4x |
+| TensorRT | 128 | 5.4s | 2765 | 8295x | 15.1x |
 
 **Key findings:**
 
-- CPU batch size 8 is 48% faster than batch size 1
-- GPU with batch 64-128 is optimal (~6x faster than CPU batch 1, ~4x faster than CPU batch 8)
-- Very large batch sizes (256+) can be slower due to memory allocation overhead
-- GPU with batch=1 is still 3x faster than CPU
+- TensorRT batch 32 is optimal: **~20x faster** than CPU, over 10000x realtime
+- CUDA batch 256 is optimal for CUDA: 9x faster than CPU
+- TensorRT is ~2.2x faster than CUDA at optimal settings
+- TensorRT engine caches after first run (~120ms load time)
+- **Batch size behavior:** TensorRT performs best with small batches (16-32) while CUDA needs large batches (256) for peak performance
+- **VRAM considerations:** TensorRT's small batch efficiency makes it ideal for GPUs with limited VRAM
+- **Note:** TensorRT requires an NVIDIA GPU with compute capability 5.0+ (GTX 10-series and newer); optimal batch sizes may vary by GPU model
+
+### Example Performance (Perch V2)
+
+**Test system:** Intel Core i7-13700K, NVIDIA RTX 5080 (16GB VRAM), Windows 11 Pro
+
+**Test file:** 12+ hours of audio (44739s, 8948 segments at 5s each)
+
+| Device | Batch Size | Time | Segments/sec | Realtime | Speedup |
+|--------|------------|------|--------------|----------|---------|
+| CPU | 8 | 215.4s | 42 | 208x | 1x |
+| CUDA | 32 | 17.4s | 515 | 2550x | **12.4x** |
+
+**Key findings:**
+
+- Perch V2 requires more VRAM; batch size 32 recommended for GPU
+- CUDA provides **12x speedup** over CPU
+- CPU inference is ~4x slower than BirdNET due to larger model
+- **Note:** TensorRT is not supported for Perch V2 at this time
 
 ## Supported Audio Formats
 

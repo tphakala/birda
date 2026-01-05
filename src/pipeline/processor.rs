@@ -79,16 +79,14 @@ fn decode_and_stream(
         ((overlap_samples as f64) * f64::from(source_rate) / f64::from(target_rate)).ceil() as usize
     };
 
-    let mut chunk_index = 0usize;
-
     while let Some(raw) = decoder.next_segment(source_segment_samples, source_overlap_samples)? {
-        // Resample to target rate
-        let samples = resample_chunk(raw.samples, source_rate, target_rate)?;
+        // Resample to target rate and ensure exact segment length
+        let mut samples = resample_chunk(raw.samples, source_rate, target_rate)?;
+        samples.resize(segment_samples, 0.0);
 
-        // Calculate time offsets
-        let step_samples = segment_samples.saturating_sub(overlap_samples);
+        // Calculate time offsets from decoder position (more accurate than index-based)
         #[allow(clippy::cast_precision_loss)]
-        let start_time = (chunk_index * step_samples) as f32 / target_rate as f32;
+        let start_time = raw.start_sample as f32 / source_rate as f32;
         #[allow(clippy::cast_precision_loss)]
         let segment_duration = segment_samples as f32 / target_rate as f32;
         let end_time = start_time + segment_duration;
@@ -102,8 +100,6 @@ fn decode_and_stream(
         // Send chunk, blocks if channel full (backpressure)
         tx.send(Ok(chunk))
             .map_err(|_| crate::error::Error::DecodeChannelClosed)?;
-
-        chunk_index += 1;
     }
 
     Ok(())

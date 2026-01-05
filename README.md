@@ -5,7 +5,7 @@
 [![Rust](https://img.shields.io/badge/rust-1.92%2B-blue.svg)](https://www.rust-lang.org/)
 [![Sponsor](https://img.shields.io/badge/sponsor-GitHub-pink.svg)](https://github.com/sponsors/tphakala)
 
-A fast, cross-platform CLI tool for bird species detection using [BirdNET](https://github.com/kahst/BirdNET-Analyzer) and Google Perch AI models.
+A fast, cross-platform CLI tool for bird species detection using [BirdNET](https://github.com/birdnet-team/BirdNET-Analyzer) and Google Perch AI models.
 
 ## Features
 
@@ -440,7 +440,7 @@ task build:macos-arm64
 ### BirdNET v2.4
 
 - **ONNX Model**: [BirdNET-onnx on Hugging Face](https://huggingface.co/justinchuby/BirdNET-onnx) (required - optimized ONNX conversion by Justin Chu)
-- **Labels**: Download from [BirdNET-Analyzer Releases](https://github.com/kahst/BirdNET-Analyzer/releases) (`BirdNET_GLOBAL_6K_V2.4_Labels.txt`)
+- **Labels**: Download from [BirdNET-Analyzer Releases](https://github.com/birdnet-team/BirdNET-Analyzer/releases) (`BirdNET_GLOBAL_6K_V2.4_Labels.txt`)
 - **Model type**: `birdnet-v24`
 - **Sample rate**: 48kHz
 - **Segment duration**: 3 seconds
@@ -465,7 +465,7 @@ MIT License - see [LICENSE](LICENSE) for details.
 
 ## Acknowledgments
 
-- [BirdNET](https://github.com/kahst/BirdNET-Analyzer) by the K. Lisa Yang Center for Conservation Bioacoustics
+- [BirdNET](https://github.com/birdnet-team/BirdNET-Analyzer) by the K. Lisa Yang Center for Conservation Bioacoustics
 - [Justin Chu](https://github.com/justinchuby) for converting BirdNET TFLite model to optimized ONNX format
 - [Perch](https://github.com/google-research/perch) by Google Research for bioacoustic analysis
 - [ONNX Runtime](https://onnxruntime.ai/) for cross-platform inference

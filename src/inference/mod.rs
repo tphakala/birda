@@ -3,6 +3,7 @@
 mod classifier;
 pub mod range_filter;
 
+pub use birdnet_onnx::InferenceOptions;
 pub use classifier::BirdClassifier;
 
 use std::path::PathBuf;

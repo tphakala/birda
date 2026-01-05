@@ -3,7 +3,7 @@
 use crate::config::{InferenceDevice, ModelConfig as BirdaModelConfig};
 use crate::error::{Error, Result};
 use birdnet_onnx::{
-    Classifier, ClassifierBuilder, ExecutionProviderInfo, PredictionResult,
+    Classifier, ClassifierBuilder, ExecutionProviderInfo, InferenceOptions, PredictionResult,
     available_execution_providers, ort_execution_providers,
 };
 use std::collections::HashSet;
@@ -222,16 +222,22 @@ impl BirdClassifier {
     }
 
     /// Run inference on a single audio segment.
-    pub fn predict(&self, segment: &[f32]) -> Result<PredictionResult> {
-        self.inner.predict(segment).map_err(|e| Error::Inference {
-            reason: e.to_string(),
-        })
+    pub fn predict(&self, segment: &[f32], options: &InferenceOptions) -> Result<PredictionResult> {
+        self.inner
+            .predict(segment, options)
+            .map_err(|e| Error::Inference {
+                reason: e.to_string(),
+            })
     }
 
     /// Run inference on a batch of audio segments.
-    pub fn predict_batch(&self, segments: &[&[f32]]) -> Result<Vec<PredictionResult>> {
+    pub fn predict_batch(
+        &self,
+        segments: &[&[f32]],
+        options: &InferenceOptions,
+    ) -> Result<Vec<PredictionResult>> {
         self.inner
-            .predict_batch(segments)
+            .predict_batch(segments, options)
             .map_err(|e| Error::Inference {
                 reason: e.to_string(),
             })

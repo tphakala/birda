@@ -29,7 +29,6 @@ pub fn start_inference_watchdog(timeout: Duration, batch_size: usize) -> Watchdo
 
         if !cancelled_clone.load(Ordering::SeqCst) {
             // Watchdog fired - inference didn't complete in time
-            let suggested_batch = (batch_size / 2).max(1);
             eprintln!();
             eprintln!("═══════════════════════════════════════════════════════════════");
             eprintln!("FATAL: Inference timeout after {timeout_secs}s (batch size: {batch_size})");
@@ -39,7 +38,7 @@ pub fn start_inference_watchdog(timeout: Duration, batch_size: usize) -> Watchdo
             eprintln!("This usually indicates GPU memory exhaustion causing the system to hang.");
             eprintln!();
             eprintln!("Recommendations:");
-            eprintln!("  1. Reduce batch size: birda -b {suggested_batch} <input>");
+            eprintln!("  1. Reduce batch size with -b flag");
             eprintln!("  2. Use CPU inference: birda --cpu <input>");
             eprintln!("  3. Close other GPU applications and try again");
             eprintln!();

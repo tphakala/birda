@@ -2,8 +2,8 @@
 
 use crate::audio::AudioChunk;
 use crate::config::OutputFormat;
-use crate::error::Result;
-use crate::inference::BirdClassifier;
+use crate::error::{Error, Result};
+use crate::inference::{BirdClassifier, InferenceOptions};
 use crate::locking::FileLock;
 use crate::output::{
     AudacityWriter, CsvWriter, Detection, KaleidoscopeWriter, OutputWriter, RavenWriter,
@@ -166,8 +166,13 @@ fn run_streaming_inference(
     Ok((detections, segment_count))
 }
 
+/// Library-level timeout for inference operations (in seconds).
+/// This is the graceful timeout using ONNX Runtime's `terminate()` function.
+const INFERENCE_TIMEOUT_SECS: u64 = 3;
+
 /// Default watchdog timeout for inference operations (in seconds).
 /// Can be overridden via `BIRDA_INFERENCE_TIMEOUT` environment variable.
+/// This is the fallback for when ONNX Runtime's `terminate()` fails.
 const DEFAULT_INFERENCE_WATCHDOG_SECS: u64 = 10;
 
 /// Minimum and maximum allowed watchdog timeout values.
@@ -187,6 +192,15 @@ fn inference_watchdog_timeout() -> u64 {
         .unwrap_or(DEFAULT_INFERENCE_WATCHDOG_SECS)
 }
 
+/// Check if an error is a timeout error from birdnet-onnx.
+fn is_timeout_error(err: &Error) -> bool {
+    if let Error::Inference { reason } = err {
+        reason.contains("timed out") || reason.contains("Timeout")
+    } else {
+        false
+    }
+}
+
 /// Process a batch of chunks through the classifier.
 fn process_batch(
     batch: &[AudioChunk],
@@ -203,16 +217,37 @@ fn process_batch(
     let segments: Vec<&[f32]> = batch.iter().map(|c| c.samples.as_slice()).collect();
     let batch_size = segments.len();
 
-    // Start watchdog timer - kills process if inference hangs
+    // Layer 2: Watchdog fallback (10s default) - kills process if ONNX terminate() fails
     let _watchdog = start_inference_watchdog(
         Duration::from_secs(inference_watchdog_timeout()),
         batch_size,
     );
 
+    // Layer 1: Library timeout (3s) - graceful timeout via ONNX Runtime terminate()
+    let inference_opts = InferenceOptions::timeout(Duration::from_secs(INFERENCE_TIMEOUT_SECS));
+
     let results = if batch_size == 1 {
-        vec![classifier.predict(segments[0])?]
+        match classifier.predict(segments[0], &inference_opts) {
+            Ok(result) => vec![result],
+            Err(e) if is_timeout_error(&e) => {
+                return Err(Error::InferenceTimeout {
+                    duration: Duration::from_secs(INFERENCE_TIMEOUT_SECS),
+                    batch_size,
+                });
+            }
+            Err(e) => return Err(e),
+        }
     } else {
-        classifier.predict_batch(&segments)?
+        match classifier.predict_batch(&segments, &inference_opts) {
+            Ok(results) => results,
+            Err(e) if is_timeout_error(&e) => {
+                return Err(Error::InferenceTimeout {
+                    duration: Duration::from_secs(INFERENCE_TIMEOUT_SECS),
+                    batch_size,
+                });
+            }
+            Err(e) => return Err(e),
+        }
     };
 
     // Watchdog is automatically cancelled when _watchdog drops here

@@ -180,6 +180,15 @@ pub enum Error {
         reason: String,
     },
 
+    /// Inference timed out.
+    #[error("inference timed out after {duration:?} (batch size: {batch_size})")]
+    InferenceTimeout {
+        /// Duration before timeout.
+        duration: std::time::Duration,
+        /// Batch size being processed.
+        batch_size: usize,
+    },
+
     /// Failed to read registry file.
     #[error("failed to read registry file '{path}'")]
     RegistryRead {

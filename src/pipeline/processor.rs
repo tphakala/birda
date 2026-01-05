@@ -166,10 +166,20 @@ fn run_streaming_inference(
     Ok((detections, segment_count))
 }
 
-/// Watchdog timeout for inference operations (in seconds).
-/// If a single batch takes longer than this, assume GPU hang and terminate.
-/// Normal inference is ~74ms per batch, so 1s is generous while catching hangs quickly.
-const INFERENCE_WATCHDOG_SECS: u64 = 1;
+/// Default watchdog timeout for inference operations (in seconds).
+/// Can be overridden via `BIRDA_INFERENCE_TIMEOUT` environment variable.
+const DEFAULT_INFERENCE_WATCHDOG_SECS: u64 = 10;
+
+/// Get the inference watchdog timeout from environment or use default.
+///
+/// Override with `BIRDA_INFERENCE_TIMEOUT=<seconds>` for different hardware.
+/// Normal inference is ~74ms per batch, so 10s default is generous while catching hangs.
+fn inference_watchdog_timeout() -> u64 {
+    std::env::var("BIRDA_INFERENCE_TIMEOUT")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(DEFAULT_INFERENCE_WATCHDOG_SECS)
+}
 
 /// Process a batch of chunks through the classifier.
 fn process_batch(
@@ -188,8 +198,10 @@ fn process_batch(
     let batch_size = segments.len();
 
     // Start watchdog timer - kills process if inference hangs
-    let _watchdog =
-        start_inference_watchdog(Duration::from_secs(INFERENCE_WATCHDOG_SECS), batch_size);
+    let _watchdog = start_inference_watchdog(
+        Duration::from_secs(inference_watchdog_timeout()),
+        batch_size,
+    );
 
     let results = if batch_size == 1 {
         vec![classifier.predict(segments[0])?]

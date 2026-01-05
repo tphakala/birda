@@ -29,7 +29,7 @@ pub fn start_inference_watchdog(timeout: Duration, batch_size: usize) -> Watchdo
 
         if !cancelled_clone.load(Ordering::SeqCst) {
             // Watchdog fired - inference didn't complete in time
-            let suggested_batch = batch_size / 2;
+            let suggested_batch = (batch_size / 2).max(1);
             eprintln!();
             eprintln!("═══════════════════════════════════════════════════════════════");
             eprintln!("FATAL: Inference timeout after {timeout_secs}s (batch size: {batch_size})");

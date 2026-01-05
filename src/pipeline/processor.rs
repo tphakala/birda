@@ -3,7 +3,7 @@
 use crate::audio::AudioChunk;
 use crate::config::OutputFormat;
 use crate::error::Result;
-use crate::inference::{BirdClassifier, InferenceOptions};
+use crate::inference::{BatchInferenceContext, BirdClassifier, InferenceOptions};
 use crate::locking::FileLock;
 use crate::output::{
     AudacityWriter, CsvWriter, Detection, KaleidoscopeWriter, OutputWriter, RavenWriter,
@@ -115,6 +115,7 @@ fn run_streaming_inference(
     min_confidence: f32,
     batch_size: usize,
     progress: Option<&indicatif::ProgressBar>,
+    mut batch_context: Option<&mut BatchInferenceContext>,
 ) -> Result<(Vec<Detection>, usize)> {
     let mut detections = Vec::new();
     let mut batch: Vec<AudioChunk> = Vec::with_capacity(batch_size);
@@ -133,6 +134,7 @@ fn run_streaming_inference(
                 min_confidence,
                 &mut detections,
                 progress,
+                batch_context.as_deref_mut(),
             )?;
             batch.clear();
         }
@@ -147,6 +149,7 @@ fn run_streaming_inference(
             min_confidence,
             &mut detections,
             progress,
+            batch_context,
         )?;
     }
 
@@ -195,6 +198,7 @@ fn process_batch(
     min_confidence: f32,
     detections: &mut Vec<Detection>,
     progress: Option<&indicatif::ProgressBar>,
+    batch_context: Option<&mut BatchInferenceContext>,
 ) -> Result<()> {
     use crate::gpu::start_inference_watchdog;
     use crate::output::progress::inc_progress;
@@ -212,7 +216,11 @@ fn process_batch(
     let options = InferenceOptions::default();
     let results = if batch_size == 1 {
         vec![classifier.predict(segments[0], &options)?]
+    } else if let Some(ctx) = batch_context {
+        // Use pre-allocated context for memory-efficient batch inference
+        classifier.predict_batch_with_context(ctx, &segments, &options)?
     } else {
+        // Fallback for PerchV2 or when context not available
         classifier.predict_batch(&segments, &options)?
     };
 
@@ -284,6 +292,31 @@ pub fn process_file(
     let duration_hint = decoder.duration_hint();
     let target_rate = classifier.sample_rate();
     let segment_duration = classifier.segment_duration();
+
+    // Create batch context for GPU memory efficiency (if batch_size > 1)
+    // Context is created once and reused for all batches in this file
+    let mut batch_context = if batch_size > 1 {
+        match classifier.create_batch_context(batch_size) {
+            Ok(ctx) => {
+                debug!(
+                    "Created BatchInferenceContext for up to {} segments ({} bytes input buffer)",
+                    batch_size,
+                    ctx.input_buffer_bytes()
+                );
+                Some(ctx)
+            }
+            Err(e) => {
+                // PerchV2 doesn't support BatchInferenceContext - fall back gracefully
+                debug!(
+                    "BatchInferenceContext not available: {}, using standard predict_batch",
+                    e
+                );
+                None
+            }
+        }
+    } else {
+        None
+    };
 
     // Log audio info
     if let Some(duration) = duration_hint {
@@ -371,6 +404,7 @@ pub fn process_file(
         min_confidence,
         batch_size,
         progress_guard.get(),
+        batch_context.as_mut(),
     )?;
 
     // Wait for decode thread to finish

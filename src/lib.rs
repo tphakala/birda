@@ -192,21 +192,45 @@ fn analyze_files(inputs: &[PathBuf], args: &AnalyzeArgs, config: &Config) -> Res
 
     // Warm up the classifier to trigger any deferred initialization.
     // TensorRT compiles/loads its engine during the first inference, which can
-    // take several minutes. We do this before starting the processing loop so
-    // the inference watchdog doesn't kill the process during engine build.
+    // take several minutes on first run. We do this before starting the processing
+    // loop so the inference watchdog doesn't kill the process during engine build.
     if classifier.uses_tensorrt() {
-        info!("TensorRT: Initializing GPU engine (this may take several minutes on first run)...");
-        eprintln!();
-        eprintln!("╔═══════════════════════════════════════════════════════════════╗");
-        eprintln!("║  TensorRT: Building/loading optimized GPU engine...           ║");
-        eprintln!("║  First run may take several minutes while compiling.          ║");
-        eprintln!("║  Subsequent runs will load from cache and be much faster.     ║");
-        eprintln!("╚═══════════════════════════════════════════════════════════════╝");
-        eprintln!();
-    }
-    classifier.warmup()?;
-    if classifier.uses_tensorrt() {
-        info!("TensorRT: Engine ready");
+        use indicatif::{ProgressBar, ProgressStyle};
+        use std::time::{Duration, Instant};
+
+        // Create a spinner to show activity during warmup
+        let spinner = ProgressBar::new_spinner();
+        spinner.set_style(
+            ProgressStyle::default_spinner()
+                .template("{spinner:.cyan} {msg}")
+                .unwrap_or_else(|_| ProgressStyle::default_spinner()),
+        );
+        spinner.set_message("TensorRT: Initializing engine...");
+        spinner.enable_steady_tick(Duration::from_millis(100));
+
+        let warmup_start = Instant::now();
+        let result = classifier.warmup();
+        let warmup_duration = warmup_start.elapsed();
+
+        spinner.finish_and_clear();
+
+        // Propagate any warmup error
+        result?;
+
+        if warmup_duration.as_secs() >= 2 {
+            // Engine was built - this was a slow initialization
+            info!(
+                "TensorRT: Engine built in {:.1}s (cached for future runs)",
+                warmup_duration.as_secs_f64()
+            );
+        } else {
+            info!(
+                "TensorRT: Engine loaded from cache ({:.0}ms)",
+                warmup_duration.as_secs_f64() * 1000.0
+            );
+        }
+    } else {
+        classifier.warmup()?;
     }
 
     // Create file progress bar

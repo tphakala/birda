@@ -64,18 +64,12 @@ If GPU is working, you'll see logs indicating CUDA is being used and inference w
 
 ## TensorRT Setup (Optional)
 
-TensorRT provides ~2x additional speedup over CUDA. Unlike CUDA, TensorRT requires manual setup.
-
-### Prerequisites
-
-1. **CUDA Toolkit 12.x** - [Download](https://developer.nvidia.com/cuda-downloads)
-2. **TensorRT 10.x** - [Download](https://developer.nvidia.com/tensorrt) (requires free NVIDIA Developer account)
+TensorRT provides ~2x additional speedup over CUDA. Unlike CUDA (which is bundled), TensorRT requires manual setup.
 
 ### Installation
 
-1. Install CUDA Toolkit 12.x
-2. Download and extract TensorRT
-3. Add TensorRT `lib` folder to your PATH, or copy DLLs to the birda folder:
+1. Download [TensorRT 10.x](https://developer.nvidia.com/tensorrt) (requires free NVIDIA Developer account)
+2. Extract and add TensorRT `lib` folder to your PATH, or copy DLLs to the birda folder:
    - `nvinfer*.dll`
    - `nvonnxparser*.dll`
 

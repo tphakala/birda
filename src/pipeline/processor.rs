@@ -170,14 +170,20 @@ fn run_streaming_inference(
 /// Can be overridden via `BIRDA_INFERENCE_TIMEOUT` environment variable.
 const DEFAULT_INFERENCE_WATCHDOG_SECS: u64 = 10;
 
+/// Minimum and maximum allowed watchdog timeout values.
+const MIN_WATCHDOG_SECS: u64 = 1;
+const MAX_WATCHDOG_SECS: u64 = 3600;
+
 /// Get the inference watchdog timeout from environment or use default.
 ///
 /// Override with `BIRDA_INFERENCE_TIMEOUT=<seconds>` for different hardware.
 /// Normal inference is ~74ms per batch, so 10s default is generous while catching hangs.
+/// Valid range: 1-3600 seconds. Invalid values use default.
 fn inference_watchdog_timeout() -> u64 {
     std::env::var("BIRDA_INFERENCE_TIMEOUT")
         .ok()
-        .and_then(|v| v.parse().ok())
+        .and_then(|v| v.parse::<u64>().ok())
+        .filter(|&v| (MIN_WATCHDOG_SECS..=MAX_WATCHDOG_SECS).contains(&v))
         .unwrap_or(DEFAULT_INFERENCE_WATCHDOG_SECS)
 }
 

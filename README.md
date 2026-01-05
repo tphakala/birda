@@ -46,7 +46,7 @@ cargo install --path .
 
 ### GPU Support (CUDA)
 
-Pre-built binaries bundle all required ONNX Runtime and CUDA libraries - no separate installation needed. Just download and run.
+Download the CUDA package from [Releases](https://github.com/tphakala/birda/releases) (e.g., `birda-windows-x64-cuda.zip`). These bundles include all required ONNX Runtime and CUDA libraries - no separate CUDA installation needed.
 
 Requirements:
 - NVIDIA GPU with CUDA support

@@ -14,8 +14,17 @@ This guide covers installing and using Birda on Windows, including GPU accelerat
 
 ### Option 1: Pre-built Binary (Recommended)
 
-1. Download `birda-windows-x64.zip` from the [Releases](https://github.com/tphakala/birda/releases) page
-2. Extract to a folder (e.g., `C:\Tools\birda`)
+Download from the [Releases](https://github.com/tphakala/birda/releases) page:
+
+| Package | Size | Description |
+|---------|------|-------------|
+| `birda-windows-x64-cuda-setup.exe` | ~1 GB | **Recommended** - Installer with CUDA support |
+| `birda-windows-x64-cuda.zip` | ~1.5 GB | ZIP with CUDA support |
+| `birda-windows-x64.zip` | ~3.4 MB | CPU-only (no GPU acceleration) |
+
+**Installation:**
+1. Download the CUDA package for GPU support, or the smaller CPU-only package
+2. Run the installer or extract ZIP to a folder (e.g., `C:\Tools\birda`)
 3. Add the folder to your PATH (optional but recommended):
    - Press `Win + X` → "System" → "Advanced system settings"
    - Click "Environment Variables"
@@ -43,10 +52,11 @@ cargo build --release
 
 ## GPU Support
 
-Pre-built binaries bundle all required ONNX Runtime and CUDA libraries - no separate CUDA installation needed. Just download and run.
+The CUDA packages (`birda-windows-x64-cuda-setup.exe` or `birda-windows-x64-cuda.zip`) bundle all required ONNX Runtime and CUDA libraries. No separate CUDA installation needed.
 
 ### Requirements
 
+- Download the **CUDA package** (not the CPU-only package)
 - **NVIDIA GPU** with Compute Capability 5.0+ (GTX 10-series or newer)
 - **Up-to-date NVIDIA drivers** (check with `nvidia-smi`)
 

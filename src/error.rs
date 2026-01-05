@@ -258,6 +258,10 @@ pub enum Error {
         message: String,
     },
 
+    /// Decode thread channel was closed unexpectedly.
+    #[error("decode channel closed unexpectedly")]
+    DecodeChannelClosed,
+
     /// Failed to build range filter.
     #[error("failed to build range filter: {reason}")]
     RangeFilterBuild {

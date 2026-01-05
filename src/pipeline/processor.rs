@@ -1,6 +1,6 @@
 //! Single file processing pipeline.
 
-use crate::audio::{AudioChunk, chunk_audio, decode_audio_file, resample};
+use crate::audio::AudioChunk;
 use crate::config::OutputFormat;
 use crate::error::Result;
 use crate::inference::BirdClassifier;
@@ -10,7 +10,202 @@ use crate::output::{
 };
 use crate::pipeline::output_path_for;
 use std::path::Path;
+use std::sync::mpsc::{Receiver, SyncSender, sync_channel};
+use std::thread::{self, JoinHandle};
 use tracing::{debug, info};
+
+/// Result type for chunks sent through the decode channel.
+type ChunkResult = std::result::Result<AudioChunk, crate::error::Error>;
+
+/// Spawn a thread that decodes audio and sends chunks through the channel.
+fn spawn_decode_thread(
+    path: std::path::PathBuf,
+    source_rate: u32,
+    target_rate: u32,
+    segment_samples: usize,
+    overlap_samples: usize,
+    tx: SyncSender<ChunkResult>,
+) -> JoinHandle<()> {
+    thread::spawn(move || {
+        let result = decode_and_stream(
+            &path,
+            source_rate,
+            target_rate,
+            segment_samples,
+            overlap_samples,
+            &tx,
+        );
+        if let Err(e) = result {
+            // Send error through channel, ignore if receiver dropped
+            let _ = tx.send(Err(e));
+        }
+        // tx drops here, closing channel
+    })
+}
+
+/// Decode audio file and stream chunks through the channel.
+fn decode_and_stream(
+    path: &Path,
+    source_rate: u32,
+    target_rate: u32,
+    segment_samples: usize,
+    overlap_samples: usize,
+    tx: &SyncSender<ChunkResult>,
+) -> Result<()> {
+    use crate::audio::{StreamingDecoder, resample_chunk};
+
+    let mut decoder = StreamingDecoder::open(path)?;
+
+    // Calculate source segment size based on rate ratio
+    #[allow(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        clippy::cast_precision_loss
+    )]
+    let source_segment_samples = if source_rate == target_rate {
+        segment_samples
+    } else {
+        ((segment_samples as f64) * f64::from(source_rate) / f64::from(target_rate)).ceil() as usize
+    };
+
+    #[allow(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        clippy::cast_precision_loss
+    )]
+    let source_overlap_samples = if source_rate == target_rate {
+        overlap_samples
+    } else {
+        ((overlap_samples as f64) * f64::from(source_rate) / f64::from(target_rate)).ceil() as usize
+    };
+
+    while let Some(raw) = decoder.next_segment(source_segment_samples, source_overlap_samples)? {
+        // Resample to target rate and ensure exact segment length
+        let mut samples = resample_chunk(raw.samples, source_rate, target_rate)?;
+        samples.resize(segment_samples, 0.0);
+
+        // Calculate time offsets from decoder position (more accurate than index-based)
+        #[allow(clippy::cast_precision_loss)]
+        let start_time = raw.start_sample as f32 / source_rate as f32;
+        #[allow(clippy::cast_precision_loss)]
+        let segment_duration = segment_samples as f32 / target_rate as f32;
+        let end_time = start_time + segment_duration;
+
+        let chunk = AudioChunk {
+            samples,
+            start_time,
+            end_time,
+        };
+
+        // Send chunk, blocks if channel full (backpressure)
+        tx.send(Ok(chunk))
+            .map_err(|_| crate::error::Error::DecodeChannelClosed)?;
+    }
+
+    Ok(())
+}
+
+/// Run inference on chunks received from the decode channel.
+///
+/// Returns detections and the total segment count processed.
+fn run_streaming_inference(
+    rx: Receiver<ChunkResult>,
+    classifier: &BirdClassifier,
+    file_path: &Path,
+    min_confidence: f32,
+    batch_size: usize,
+    progress: Option<&indicatif::ProgressBar>,
+) -> Result<(Vec<Detection>, usize)> {
+    let mut detections = Vec::new();
+    let mut batch: Vec<AudioChunk> = Vec::with_capacity(batch_size);
+    let mut segment_count = 0usize;
+
+    for item in rx {
+        let chunk = item?; // Propagate decode errors
+        batch.push(chunk);
+        segment_count += 1;
+
+        if batch.len() >= batch_size {
+            process_batch(
+                &batch,
+                classifier,
+                file_path,
+                min_confidence,
+                &mut detections,
+                progress,
+            )?;
+            batch.clear();
+        }
+    }
+
+    // Process remaining partial batch
+    if !batch.is_empty() {
+        process_batch(
+            &batch,
+            classifier,
+            file_path,
+            min_confidence,
+            &mut detections,
+            progress,
+        )?;
+    }
+
+    // Sort by start time, then by confidence (descending)
+    // Using unstable sort for performance - stability doesn't matter for detections
+    detections.sort_unstable_by(|a, b| {
+        a.start_time
+            .partial_cmp(&b.start_time)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| {
+                b.confidence
+                    .partial_cmp(&a.confidence)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            })
+    });
+
+    Ok((detections, segment_count))
+}
+
+/// Process a batch of chunks through the classifier.
+fn process_batch(
+    batch: &[AudioChunk],
+    classifier: &BirdClassifier,
+    file_path: &Path,
+    min_confidence: f32,
+    detections: &mut Vec<Detection>,
+    progress: Option<&indicatif::ProgressBar>,
+) -> Result<()> {
+    use crate::output::progress::inc_progress;
+
+    let segments: Vec<&[f32]> = batch.iter().map(|c| c.samples.as_slice()).collect();
+
+    let results = if segments.len() == 1 {
+        vec![classifier.predict(segments[0])?]
+    } else {
+        classifier.predict_batch(&segments)?
+    };
+
+    // Apply range filtering if configured
+    let results = classifier.apply_range_filter(results)?;
+
+    for (chunk, result) in batch.iter().zip(results.iter()) {
+        for pred in &result.predictions {
+            if pred.confidence >= min_confidence {
+                let detection = Detection::from_label(
+                    &pred.species,
+                    pred.confidence,
+                    chunk.start_time,
+                    chunk.end_time,
+                    file_path.to_path_buf(),
+                );
+                detections.push(detection);
+            }
+        }
+        inc_progress(progress);
+    }
+
+    Ok(())
+}
 
 /// Process a single audio file and write detection results.
 ///
@@ -39,7 +234,8 @@ pub fn process_file(
     progress_enabled: bool,
     csv_bom_enabled: bool,
 ) -> Result<ProcessResult> {
-    use crate::output::progress;
+    use crate::audio::StreamingDecoder;
+    use crate::output::progress::{self, estimate_segment_count};
     use std::time::Instant;
 
     let start_time = Instant::now();
@@ -49,62 +245,94 @@ pub fn process_file(
     // Acquire lock
     let _lock = FileLock::acquire(input_path, output_dir)?;
 
-    // Decode audio
-    info!("Decoding audio...");
-    let decoded = decode_audio_file(input_path)?;
-    let audio_duration_secs = f64::from(decoded.duration_secs);
-    info!(
-        "Decoded {} of audio ({:.1}s)",
-        progress::format_duration(audio_duration_secs),
-        audio_duration_secs
-    );
-
-    // Resample to model's expected sample rate
+    // Open decoder to get metadata
+    let decoder = StreamingDecoder::open(input_path)?;
+    let source_rate = decoder.sample_rate();
+    let duration_hint = decoder.duration_hint();
     let target_rate = classifier.sample_rate();
-    let samples = if decoded.sample_rate == target_rate {
-        decoded.samples
-    } else {
-        debug!(
-            "Resampling from {} Hz to {} Hz...",
-            decoded.sample_rate, target_rate
-        );
-        resample(decoded.samples, decoded.sample_rate, target_rate)?
-    };
-
-    // Chunk audio into segments
     let segment_duration = classifier.segment_duration();
-    debug!(
-        "Chunking into {:.1}s segments with {:.1}s overlap...",
-        segment_duration, overlap
-    );
-    let chunks = chunk_audio(&samples, target_rate, segment_duration, overlap);
 
-    if chunks.is_empty() {
-        info!("No segments to process (audio too short)");
-        let duration_secs = start_time.elapsed().as_secs_f64();
-        return Ok(ProcessResult {
-            detections: 0,
-            segments: 0,
-            duration_secs,
-            audio_duration_secs,
-        });
+    // Log audio info
+    if let Some(duration) = duration_hint {
+        info!(
+            "Processing ~{} of audio ({:.1}s)",
+            progress::format_duration(duration),
+            duration
+        );
+    } else {
+        info!("Processing audio (duration unknown)");
     }
 
-    // Create segment progress bar
+    // Calculate segment parameters
+    #[allow(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        clippy::cast_precision_loss
+    )]
+    let segment_samples = (segment_duration * target_rate as f32) as usize;
+    #[allow(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        clippy::cast_precision_loss
+    )]
+    let overlap_samples = (overlap * target_rate as f32) as usize;
+
+    // Estimate segment count for progress bar
+    let estimated_segments = estimate_segment_count(duration_hint, segment_duration, overlap);
+
+    // Create progress bar
     let file_name = input_path
         .file_name()
         .and_then(|n| n.to_str())
         .unwrap_or("unknown");
-    let segment_progress =
-        progress::create_segment_progress(chunks.len(), file_name, progress_enabled);
 
-    // Wrap in guard to ensure cleanup on both success and error
+    // Sanitize filename to prevent template injection (curly braces are special in indicatif)
+    let safe_name = file_name.replace(['{', '}'], "");
+
+    #[allow(clippy::cast_possible_truncation)]
+    let segment_progress = estimated_segments.map_or_else(
+        || {
+            // No duration hint - create spinner-style progress
+            if progress_enabled {
+                let pb = indicatif::ProgressBar::new_spinner();
+                pb.set_style(
+                    indicatif::ProgressStyle::default_spinner()
+                        .template(&format!(
+                            "{{spinner:.green}} [{{elapsed_precise}}] {{pos}} segments - {safe_name}"
+                        ))
+                        .unwrap_or_else(|_| indicatif::ProgressStyle::default_spinner()),
+                );
+                pb.enable_steady_tick(std::time::Duration::from_millis(100));
+                Some(pb)
+            } else {
+                None
+            }
+        },
+        |est| progress::create_segment_progress(est as usize, file_name, progress_enabled),
+    );
+
     let progress_guard = progress::ProgressGuard::new(segment_progress, "Inference complete");
 
-    // Run inference
-    debug!("Running inference on {} segments...", chunks.len());
-    let detections = run_inference(
-        &chunks,
+    // Create channel with capacity for 2 batches (backpressure)
+    let channel_capacity = batch_size.saturating_mul(2).max(4);
+    let (tx, rx) = sync_channel::<ChunkResult>(channel_capacity);
+
+    // Spawn decode thread
+    // Note: We re-open the decoder in the thread since StreamingDecoder
+    // has consumed state. This is a minor overhead but keeps ownership clean.
+    let path_for_thread = input_path.to_path_buf();
+    let decode_handle = spawn_decode_thread(
+        path_for_thread,
+        source_rate,
+        target_rate,
+        segment_samples,
+        overlap_samples,
+        tx,
+    );
+
+    // Run inference on main thread
+    let (detections, actual_segments) = run_streaming_inference(
+        rx,
         classifier,
         input_path,
         min_confidence,
@@ -112,8 +340,14 @@ pub fn process_file(
         progress_guard.get(),
     )?;
 
-    // Explicitly finish progress bar BEFORE any log output to prevent terminal conflicts
-    // (indicatif and tracing both write to stderr; logging while bar is active causes duplication)
+    // Wait for decode thread to finish
+    // Errors are sent through the channel, so we just wait for cleanup
+    // If the thread panicked, log a warning (panics indicate bugs, but shouldn't crash batch jobs)
+    if let Err(panic_payload) = decode_handle.join() {
+        tracing::warn!("Decode thread panicked: {:?}", panic_payload);
+    }
+
+    // Finish progress bar
     drop(progress_guard);
 
     info!(
@@ -135,89 +369,31 @@ pub fn process_file(
     }
 
     let duration_secs = start_time.elapsed().as_secs_f64();
+    let audio_duration_secs = duration_hint.unwrap_or(0.0);
+
     #[allow(clippy::cast_precision_loss)]
-    let segments_per_sec = if duration_secs > 0.0 {
-        chunks.len() as f64 / duration_secs
+    let segments_per_sec = if duration_secs > 0.0 && actual_segments > 0 {
+        actual_segments as f64 / duration_secs
     } else {
         0.0
     };
-    let realtime_factor = if duration_secs > 0.0 {
+    let realtime_factor = if duration_secs > 0.0 && audio_duration_secs > 0.0 {
         audio_duration_secs / duration_secs
     } else {
         0.0
     };
+
     info!(
         "Processed {} segments in {:.2}s ({:.1} segments/sec, {:.1}x realtime)",
-        chunks.len(),
-        duration_secs,
-        segments_per_sec,
-        realtime_factor
+        actual_segments, duration_secs, segments_per_sec, realtime_factor
     );
 
     Ok(ProcessResult {
         detections: detections.len(),
-        segments: chunks.len(),
+        segments: actual_segments,
         duration_secs,
         audio_duration_secs,
     })
-}
-
-/// Run inference on audio chunks.
-fn run_inference(
-    chunks: &[AudioChunk],
-    classifier: &BirdClassifier,
-    file_path: &Path,
-    min_confidence: f32,
-    batch_size: usize,
-    segment_progress: Option<&indicatif::ProgressBar>,
-) -> Result<Vec<Detection>> {
-    use crate::output::progress;
-    let mut detections = Vec::new();
-
-    // Process in batches
-    for batch_chunks in chunks.chunks(batch_size) {
-        let segments: Vec<&[f32]> = batch_chunks.iter().map(|c| c.samples.as_slice()).collect();
-
-        let results = if segments.len() == 1 {
-            vec![classifier.predict(segments[0])?]
-        } else {
-            classifier.predict_batch(&segments)?
-        };
-
-        // Apply range filtering if configured
-        let results = classifier.apply_range_filter(results)?;
-
-        for (chunk, result) in batch_chunks.iter().zip(results.iter()) {
-            for pred in &result.predictions {
-                if pred.confidence >= min_confidence {
-                    let detection = Detection::from_label(
-                        &pred.species,
-                        pred.confidence,
-                        chunk.start_time,
-                        chunk.end_time,
-                        file_path.to_path_buf(),
-                    );
-                    detections.push(detection);
-                }
-            }
-            // Increment progress for each segment processed
-            progress::inc_progress(segment_progress);
-        }
-    }
-
-    // Sort by start time, then by confidence (descending)
-    detections.sort_by(|a, b| {
-        a.start_time
-            .partial_cmp(&b.start_time)
-            .unwrap_or(std::cmp::Ordering::Equal)
-            .then_with(|| {
-                b.confidence
-                    .partial_cmp(&a.confidence)
-                    .unwrap_or(std::cmp::Ordering::Equal)
-            })
-    });
-
-    Ok(detections)
 }
 
 /// Write detections to an output file.

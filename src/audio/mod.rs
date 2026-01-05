@@ -5,5 +5,5 @@ mod decode;
 mod resample;
 
 pub use chunker::{AudioChunk, chunk_audio};
-pub use decode::{DecodedAudio, decode_audio_file};
-pub use resample::resample;
+pub use decode::{DecodedAudio, RawSegment, StreamingDecoder, decode_audio_file};
+pub use resample::{resample, resample_chunk};

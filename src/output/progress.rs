@@ -74,6 +74,23 @@ pub fn format_duration(secs: f64) -> String {
     format!("{hours:02}:{mins:02}:{secs_remainder:02}")
 }
 
+/// Estimate the number of segments from audio duration.
+///
+/// Returns `None` if duration is unknown or parameters are invalid.
+pub fn estimate_segment_count(
+    duration_secs: Option<f64>,
+    segment_duration: f32,
+    overlap: f32,
+) -> Option<u64> {
+    let duration = duration_secs?;
+    let step = segment_duration - overlap;
+    if step <= 0.0 {
+        return None;
+    }
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    Some((duration / f64::from(step)).ceil() as u64)
+}
+
 /// RAII guard that ensures a progress bar is finished when dropped.
 pub struct ProgressGuard {
     progress: Option<ProgressBar>,
@@ -149,5 +166,21 @@ mod tests {
         // Should not leak even on error
         let result = might_error(true);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_estimate_segment_count() {
+        // 10 seconds, 3s segments, 0s overlap = 4 segments (0-3, 3-6, 6-9, 9-12 padded)
+        assert_eq!(estimate_segment_count(Some(10.0), 3.0, 0.0), Some(4));
+
+        // 10 seconds, 3s segments, 1s overlap = step of 2s = 5 segments
+        assert_eq!(estimate_segment_count(Some(10.0), 3.0, 1.0), Some(5));
+
+        // No duration
+        assert_eq!(estimate_segment_count(None, 3.0, 0.0), None);
+
+        // Invalid: overlap >= segment_duration
+        assert_eq!(estimate_segment_count(Some(10.0), 3.0, 3.0), None);
+        assert_eq!(estimate_segment_count(Some(10.0), 3.0, 4.0), None);
     }
 }

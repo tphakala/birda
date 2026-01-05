@@ -190,6 +190,58 @@ fn analyze_files(inputs: &[PathBuf], args: &AnalyzeArgs, config: &Config) -> Res
         species_list,
     )?;
 
+    // Warm up the classifier to trigger any deferred initialization.
+    // TensorRT compiles/loads its engine during the first inference, which can
+    // take several minutes on first run. We do this before starting the processing
+    // loop so the inference watchdog doesn't kill the process during engine build.
+    //
+    // TensorRT builds separate engines for each batch size, so we must warm up
+    // with the actual batch size that will be used for inference.
+    if classifier.uses_tensorrt() {
+        use indicatif::{ProgressBar, ProgressStyle};
+        use std::time::{Duration, Instant};
+
+        /// Threshold in seconds to distinguish engine build from cache load.
+        /// Warmup taking >= this long indicates `TensorRT` compiled a new engine.
+        const WARMUP_BUILD_THRESHOLD_SECS: u64 = 2;
+
+        // Create a spinner to show activity during warmup
+        let spinner = ProgressBar::new_spinner();
+        spinner.set_style(
+            ProgressStyle::default_spinner()
+                .template("{spinner:.cyan} {msg}")
+                .unwrap_or_else(|_| ProgressStyle::default_spinner()),
+        );
+        spinner.set_message(format!(
+            "TensorRT: Initializing engine for batch size {batch_size} (may take several minutes on first run)..."
+        ));
+        spinner.enable_steady_tick(Duration::from_millis(100));
+
+        let warmup_start = Instant::now();
+        let result = classifier.warmup(batch_size);
+        let warmup_duration = warmup_start.elapsed();
+
+        spinner.finish_and_clear();
+
+        // Propagate any warmup error
+        result?;
+
+        if warmup_duration.as_secs() >= WARMUP_BUILD_THRESHOLD_SECS {
+            // Engine was built - this was a slow initialization
+            info!(
+                "TensorRT: Engine built in {:.1}s (cached for future runs)",
+                warmup_duration.as_secs_f64()
+            );
+        } else {
+            info!(
+                "TensorRT: Engine loaded from cache ({:.0}ms)",
+                warmup_duration.as_secs_f64() * 1000.0
+            );
+        }
+    } else {
+        classifier.warmup(batch_size)?;
+    }
+
     // Create file progress bar
     let progress_enabled = !args.quiet && !args.no_progress;
     let file_progress = progress::create_file_progress(files.len(), progress_enabled);

@@ -17,6 +17,8 @@ pub struct BirdClassifier {
     /// Optional species list for filtering (from file).
     /// None if no species list file provided or if using dynamic range filtering.
     species_list: Option<HashSet<String>>,
+    /// Whether `TensorRT` is being used (for warmup messaging).
+    uses_tensorrt: bool,
 }
 
 impl BirdClassifier {
@@ -193,11 +195,15 @@ impl BirdClassifier {
             None
         };
 
+        // Check if TensorRT is being used (for warmup messaging)
+        let uses_tensorrt = requested_provider == birdnet_onnx::ExecutionProviderInfo::TensorRt;
+
         Ok(Self {
             inner,
             range_filter,
             range_filter_config,
             species_list,
+            uses_tensorrt,
         })
     }
 
@@ -219,6 +225,48 @@ impl BirdClassifier {
     /// Get the expected sample count per segment.
     pub fn sample_count(&self) -> usize {
         self.inner.config().sample_count
+    }
+
+    /// Check if `TensorRT` is being used.
+    pub fn uses_tensorrt(&self) -> bool {
+        self.uses_tensorrt
+    }
+
+    /// Perform a warm-up inference to initialize GPU resources.
+    ///
+    /// This method runs inference with the specified batch size to trigger any
+    /// deferred initialization (such as `TensorRT` engine compilation). This should
+    /// be called before the main processing loop to ensure that the inference
+    /// watchdog doesn't kill the process during engine compilation.
+    ///
+    /// `TensorRT` builds separate optimized engines for each batch size, so the
+    /// warmup must use the same batch size as the actual inference runs.
+    ///
+    /// `TensorRT` engine compilation can take several minutes on first run, but
+    /// the compiled engine is cached for subsequent runs.
+    pub fn warmup(&self, batch_size: usize) -> Result<()> {
+        let sample_count = self.inner.config().sample_count;
+        let dummy_segment = vec![0.0f32; sample_count];
+        let options = InferenceOptions::default();
+
+        if batch_size <= 1 {
+            // Single inference warmup
+            self.inner
+                .predict(&dummy_segment, &options)
+                .map_err(|e| Error::Inference {
+                    reason: format!("warmup inference failed: {e}"),
+                })?;
+        } else {
+            // Batch inference warmup - TensorRT needs to build engine for this batch size
+            let segments = vec![dummy_segment.as_slice(); batch_size];
+            self.inner
+                .predict_batch(&segments, &options)
+                .map_err(|e| Error::Inference {
+                    reason: format!("warmup batch inference failed: {e}"),
+                })?;
+        }
+
+        Ok(())
     }
 
     /// Run inference on a single audio segment.

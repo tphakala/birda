@@ -93,46 +93,29 @@ birda --tensorrt -b 32 your_recording.wav
 
 ## Quick Start
 
-### 1. Initialize Configuration
+### 1. Install a Model
 
 ```powershell
-birda config init
+# List available models
+birda models list-available
+
+# Install BirdNET v2.4 (recommended)
+birda models install birdnet-v24
 ```
 
-This creates the config file at `%APPDATA%\birda\config\config.toml`.
+The installer will download the model, show license terms, and configure it automatically.
 
-### 2. Download BirdNET Model
-
-Download the ONNX model and labels:
-
-- **ONNX Model**: [BirdNET-onnx on Hugging Face](https://huggingface.co/justinchuby/BirdNET-onnx)
-  - Download `birdnet.onnx`
-- **Labels**: [BirdNET-Analyzer Releases](https://github.com/birdnet-team/BirdNET-Analyzer/releases)
-  - Download `BirdNET_GLOBAL_6K_V2.4_Labels.txt`
-
-Save both files to a permanent location (e.g., `C:\Models\BirdNET\`).
-
-### 3. Add Model to Configuration
-
-```powershell
-birda models add birdnet `
-  --path "C:\Models\BirdNET\birdnet.onnx" `
-  --labels "C:\Models\BirdNET\BirdNET_GLOBAL_6K_V2.4_Labels.txt" `
-  --type birdnet-v24 `
-  --default
-```
-
-### 4. Analyze Audio Files
+### 2. Analyze Audio Files
 
 ```powershell
 # Analyze a single file (CPU)
 birda recording.wav
 
-# Analyze with GPU acceleration
-birda --gpu recording.wav
+# Analyze with GPU acceleration (CUDA)
+birda --gpu -b 256 recording.wav
 
-# Analyze with GPU and optimal batch size
-birda --gpu -b 64 recording.wav
+# Analyze with TensorRT (fastest, requires setup)
+birda --tensorrt -b 32 recording.wav
 
 # Analyze a folder
 birda "C:\Recordings\2024\"
@@ -264,9 +247,11 @@ birda config show      # Show current config
 birda config path      # Print config file path
 
 # Model commands
-birda models list      # List configured models
-birda models check     # Verify model files exist
-birda models info <name>  # Show model details
+birda models list-available  # List models available for download
+birda models install <id>    # Download and install a model
+birda models list            # List configured models
+birda models check           # Verify model files exist
+birda models info <name>     # Show model details
 
 # Generate species list
 birda species --lat 60.17 --lon 24.94 --week 24 --output species.txt

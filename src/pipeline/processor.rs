@@ -166,6 +166,10 @@ fn run_streaming_inference(
     Ok((detections, segment_count))
 }
 
+/// Watchdog timeout for inference operations (in seconds).
+/// If a single batch takes longer than this, assume GPU hang and terminate.
+const INFERENCE_WATCHDOG_SECS: u64 = 60;
+
 /// Process a batch of chunks through the classifier.
 fn process_batch(
     batch: &[AudioChunk],
@@ -175,15 +179,24 @@ fn process_batch(
     detections: &mut Vec<Detection>,
     progress: Option<&indicatif::ProgressBar>,
 ) -> Result<()> {
+    use crate::gpu::start_inference_watchdog;
     use crate::output::progress::inc_progress;
+    use std::time::Duration;
 
     let segments: Vec<&[f32]> = batch.iter().map(|c| c.samples.as_slice()).collect();
+    let batch_size = segments.len();
 
-    let results = if segments.len() == 1 {
+    // Start watchdog timer - kills process if inference hangs
+    let _watchdog =
+        start_inference_watchdog(Duration::from_secs(INFERENCE_WATCHDOG_SECS), batch_size);
+
+    let results = if batch_size == 1 {
         vec![classifier.predict(segments[0])?]
     } else {
         classifier.predict_batch(&segments)?
     };
+
+    // Watchdog is automatically cancelled when _watchdog drops here
 
     // Apply range filtering if configured
     let results = classifier.apply_range_filter(results)?;

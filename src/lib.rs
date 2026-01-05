@@ -238,7 +238,7 @@ fn analyze_files(inputs: &[PathBuf], args: &AnalyzeArgs, config: &Config) -> Res
                 processed += 1;
                 total_detections += result.detections;
                 total_segments += result.segments;
-                total_audio_duration += f64::from(result.audio_duration_secs);
+                total_audio_duration += result.audio_duration_secs;
             }
             Err(e) => {
                 error!("Failed to process {}: {}", file.display(), e);
@@ -273,13 +273,11 @@ fn analyze_files(inputs: &[PathBuf], args: &AnalyzeArgs, config: &Config) -> Res
         } else {
             0.0
         };
-        #[allow(clippy::cast_possible_truncation)]
-        let total_audio_duration_f32 = total_audio_duration as f32;
         info!(
             "Performance: {:.1} segments/sec overall, {:.1}x realtime ({} total audio)",
             avg_segments_per_sec,
             overall_realtime_factor,
-            progress::format_duration(total_audio_duration_f32)
+            progress::format_duration(total_audio_duration)
         );
     }
 

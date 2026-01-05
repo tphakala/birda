@@ -52,7 +52,7 @@ pub fn process_file(
     // Decode audio
     info!("Decoding audio...");
     let decoded = decode_audio_file(input_path)?;
-    let audio_duration_secs = decoded.duration_secs;
+    let audio_duration_secs = f64::from(decoded.duration_secs);
     info!(
         "Decoded {} of audio ({:.1}s)",
         progress::format_duration(audio_duration_secs),
@@ -142,7 +142,7 @@ pub fn process_file(
         0.0
     };
     let realtime_factor = if duration_secs > 0.0 {
-        f64::from(audio_duration_secs) / duration_secs
+        audio_duration_secs / duration_secs
     } else {
         0.0
     };
@@ -262,5 +262,5 @@ pub struct ProcessResult {
     /// Processing duration in seconds.
     pub duration_secs: f64,
     /// Audio duration in seconds.
-    pub audio_duration_secs: f32,
+    pub audio_duration_secs: f64,
 }

@@ -60,14 +60,14 @@ pub fn inc_progress(pb: Option<&ProgressBar>) {
 }
 
 /// Format seconds as HH:MM:SS.
-pub fn format_duration(secs: f32) -> String {
-    const SECONDS_PER_HOUR: u32 = 3600;
-    const SECONDS_PER_MINUTE: u32 = 60;
+pub fn format_duration(secs: f64) -> String {
+    const SECONDS_PER_HOUR: u64 = 3600;
+    const SECONDS_PER_MINUTE: u64 = 60;
 
     debug_assert!(secs >= 0.0, "Audio duration should not be negative: {secs}");
 
     #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-    let total_secs = secs.abs() as u32;
+    let total_secs = secs.abs() as u64;
     let hours = total_secs / SECONDS_PER_HOUR;
     let mins = (total_secs % SECONDS_PER_HOUR) / SECONDS_PER_MINUTE;
     let secs_remainder = total_secs % SECONDS_PER_MINUTE;
@@ -111,11 +111,14 @@ mod tests {
     fn test_format_duration() {
         assert_eq!(format_duration(0.0), "00:00:00");
         assert_eq!(format_duration(59.0), "00:00:59");
+        assert_eq!(format_duration(59.9), "00:00:59"); // Documents truncation behavior
         assert_eq!(format_duration(60.0), "00:01:00");
         assert_eq!(format_duration(3661.0), "01:01:01");
         assert_eq!(format_duration(44589.0), "12:23:09");
         assert_eq!(format_duration(86399.0), "23:59:59");
         assert_eq!(format_duration(86400.0), "24:00:00");
+        // Note: Negative values trigger debug_assert in debug builds, but are
+        // handled via .abs() in release builds as a safety fallback.
     }
 
     #[test]

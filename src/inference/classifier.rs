@@ -234,24 +234,37 @@ impl BirdClassifier {
 
     /// Perform a warm-up inference to initialize GPU resources.
     ///
-    /// This method runs a single inference with a dummy segment to trigger any
+    /// This method runs inference with the specified batch size to trigger any
     /// deferred initialization (such as `TensorRT` engine compilation). This should
     /// be called before the main processing loop to ensure that the inference
     /// watchdog doesn't kill the process during engine compilation.
     ///
+    /// `TensorRT` builds separate optimized engines for each batch size, so the
+    /// warmup must use the same batch size as the actual inference runs.
+    ///
     /// `TensorRT` engine compilation can take several minutes on first run, but
     /// the compiled engine is cached for subsequent runs.
-    pub fn warmup(&self) -> Result<()> {
+    pub fn warmup(&self, batch_size: usize) -> Result<()> {
         let sample_count = self.inner.config().sample_count;
         let dummy_segment = vec![0.0f32; sample_count];
         let options = InferenceOptions::default();
 
-        // Run a single inference to warm up the GPU
-        self.inner
-            .predict(&dummy_segment, &options)
-            .map_err(|e| Error::Inference {
-                reason: format!("warmup inference failed: {e}"),
-            })?;
+        if batch_size <= 1 {
+            // Single inference warmup
+            self.inner
+                .predict(&dummy_segment, &options)
+                .map_err(|e| Error::Inference {
+                    reason: format!("warmup inference failed: {e}"),
+                })?;
+        } else {
+            // Batch inference warmup - TensorRT needs to build engine for this batch size
+            let segments: Vec<&[f32]> = (0..batch_size).map(|_| dummy_segment.as_slice()).collect();
+            self.inner
+                .predict_batch(&segments, &options)
+                .map_err(|e| Error::Inference {
+                    reason: format!("warmup batch inference failed: {e}"),
+                })?;
+        }
 
         Ok(())
     }

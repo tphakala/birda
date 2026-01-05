@@ -16,7 +16,7 @@ cuda = ["birdnet-onnx/cuda"]
 
 [dependencies]
 birdnet-onnx = "2.0.0-rc.1"
-symphonia = { version = "0.5", features = ["aac", "mp3", "flac", "wav", "pcm"] }
+symphonia = { git = "https://github.com/tphakala/Symphonia", branch = "feature/rf64-support", features = ["aac", "mp3", "flac", "wav", "pcm"] }
 rubato = "1.0"
 audioadapter-buffers = "2.0"
 clap = { version = "4", features = ["derive", "env"] }

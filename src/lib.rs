@@ -209,7 +209,7 @@ fn analyze_files(inputs: &[PathBuf], args: &AnalyzeArgs, config: &Config) -> Res
                 .unwrap_or_else(|_| ProgressStyle::default_spinner()),
         );
         spinner.set_message(format!(
-            "TensorRT: Initializing engine for batch size {batch_size}..."
+            "TensorRT: Initializing engine for batch size {batch_size} (may take several minutes on first run)..."
         ));
         spinner.enable_steady_tick(Duration::from_millis(100));
 

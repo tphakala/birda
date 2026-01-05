@@ -18,12 +18,12 @@ Download from the [Releases](https://github.com/tphakala/birda/releases) page:
 
 | Package | Size | Description |
 |---------|------|-------------|
-| `birda-windows-x64-cuda-setup.exe` | ~1 GB | **Recommended** - Installer with CUDA support |
-| `birda-windows-x64-cuda.zip` | ~1.5 GB | ZIP with CUDA support |
-| `birda-windows-x64.zip` | ~3.4 MB | CPU-only (no GPU acceleration) |
+| `birda-windows-x64-cuda-setup.exe` | ~1 GB | **Recommended** - Installer with bundled CUDA |
+| `birda-windows-x64-cuda.zip` | ~1.5 GB | ZIP with bundled CUDA |
+| `birda-windows-x64.zip` | ~3.4 MB | Small package (uses system CUDA if available) |
 
 **Installation:**
-1. Download the CUDA package for GPU support, or the smaller CPU-only package
+1. Download the CUDA bundle for easy GPU setup, or the small package if you have CUDA installed
 2. Run the installer or extract ZIP to a folder (e.g., `C:\Tools\birda`)
 3. Add the folder to your PATH (optional but recommended):
    - Press `Win + X` → "System" → "Advanced system settings"
@@ -52,13 +52,15 @@ cargo build --release
 
 ## GPU Support
 
-The CUDA packages (`birda-windows-x64-cuda-setup.exe` or `birda-windows-x64-cuda.zip`) bundle all required ONNX Runtime and CUDA libraries. No separate CUDA installation needed.
+All packages support GPU acceleration:
+- **CUDA bundles**: Include all required libraries - just download and run
+- **Small package**: Requires CUDA 12.x and cuDNN 9.x installed on your system
 
 ### Requirements
 
-- Download the **CUDA package** (not the CPU-only package)
 - **NVIDIA GPU** with Compute Capability 5.0+ (GTX 10-series or newer)
 - **Up-to-date NVIDIA drivers** (check with `nvidia-smi`)
+- For small package: [CUDA Toolkit 12.x](https://developer.nvidia.com/cuda-downloads) and [cuDNN 9.x](https://developer.nvidia.com/cudnn)
 
 ### Verify GPU Setup
 

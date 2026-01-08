@@ -47,11 +47,6 @@ pub fn run() -> Result<()> {
         warn!("Failed to install Ctrl+C handler: {e}");
     }
 
-    // Initialize ONNX Runtime (auto-detects bundled libraries)
-    birdnet_onnx::init_runtime().map_err(|e| Error::RuntimeInitialization {
-        reason: e.to_string(),
-    })?;
-
     // Load configuration
     let config = load_default_config()?;
 

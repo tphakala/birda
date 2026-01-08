@@ -1,6 +1,6 @@
 [package]
 name = "birda"
-version = "1.0.0"
+version = "1.2.0-rc.1"
 edition = "2024"
 rust-version = "1.92"
 description = "CLI tool for bird species detection using BirdNET and Perch models"
@@ -15,7 +15,7 @@ default = ["cuda"]
 cuda = ["birdnet-onnx/cuda"]
 
 [dependencies]
-birdnet-onnx = "2.0.0-rc.4"
+birdnet-onnx = "2.0.0-rc.5"
 symphonia = { git = "https://github.com/tphakala/Symphonia", branch = "feature/rf64-support", features = ["aac", "mp3", "flac", "wav", "pcm"] }
 rubato = "1.0"
 audioadapter-buffers = "2.0"

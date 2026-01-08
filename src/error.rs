@@ -159,13 +159,6 @@ pub enum Error {
         source: std::io::Error,
     },
 
-    /// Failed to initialize ONNX runtime.
-    #[error("failed to initialize ONNX runtime: {reason}")]
-    RuntimeInitialization {
-        /// Description of the initialization failure.
-        reason: String,
-    },
-
     /// Failed to build classifier.
     #[error("failed to build classifier: {reason}")]
     ClassifierBuild {

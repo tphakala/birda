@@ -38,6 +38,7 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
+            ~/.cache/ort.pyke.io
             target
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
@@ -95,6 +96,7 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
+            ~/.cache/ort.pyke.io
             target
           key: ${{ runner.os }}-${{ matrix.target }}-cargo-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
@@ -163,6 +165,7 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
+            ~/.cache/ort.pyke.io
             target
           key: ${{ runner.os }}-${{ env.TARGET }}-cuda-cargo-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
@@ -311,14 +314,14 @@ jobs:
           echo "=== Total size ==="
           du -sh dist/
 
-          # Create archive with gzip compression
-          cd dist && tar -czvf ../${{ env.ARTIFACT }}.tar.gz *
+          # Create archive with gzip compression (include version in filename)
+          cd dist && tar -czvf ../${{ env.ARTIFACT }}-${{ github.ref_name }}.tar.gz *
 
       - name: Upload artifact
         uses: actions/upload-artifact@v6
         with:
           name: ${{ env.ARTIFACT }}
-          path: ${{ env.ARTIFACT }}.tar.gz
+          path: ${{ env.ARTIFACT }}-${{ github.ref_name }}.tar.gz
 
   build-gpu-windows:
     name: Build GPU Windows x64
@@ -353,6 +356,7 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
+            ~/.cache/ort.pyke.io
             target
           key: ${{ runner.os }}-${{ env.TARGET }}-cuda-cargo-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
@@ -490,8 +494,8 @@ jobs:
           Copy-Item "LICENSE" -Destination "dist/" -ErrorAction SilentlyContinue
           Copy-Item "THIRD_PARTY_LICENSES.txt" -Destination "dist/"
 
-          # Create archive
-          Compress-Archive -Path "dist/*" -DestinationPath "${{ env.ARTIFACT }}.zip"
+          # Create archive (include version in filename)
+          Compress-Archive -Path "dist/*" -DestinationPath "${{ env.ARTIFACT }}-${{ github.ref_name }}.zip"
 
       - name: Build installer with Inno Setup
         shell: pwsh
@@ -504,20 +508,20 @@ jobs:
           & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" `
             /DMyAppVersion="$version" `
             /O"." `
-            /F"${{ env.ARTIFACT }}-setup" `
+            /F"${{ env.ARTIFACT }}-${{ github.ref_name }}-setup" `
             "installer\windows\birda.iss"
 
       - name: Upload ZIP artifact
         uses: actions/upload-artifact@v6
         with:
           name: ${{ env.ARTIFACT }}
-          path: ${{ env.ARTIFACT }}.zip
+          path: ${{ env.ARTIFACT }}-${{ github.ref_name }}.zip
 
       - name: Upload installer artifact
         uses: actions/upload-artifact@v6
         with:
           name: ${{ env.ARTIFACT }}-setup
-          path: ${{ env.ARTIFACT }}-setup.exe
+          path: ${{ env.ARTIFACT }}-${{ github.ref_name }}-setup.exe
 
   # ==========================================================================
   # Create GitHub Release with all artifacts
@@ -541,17 +545,19 @@ jobs:
 
       - name: Create CPU archives
         run: |
-          # Create tar.gz for Linux CPU
+          VERSION="${{ github.ref_name }}"
+
+          # Create tar.gz for Linux CPU (include version in filename)
           if [ -d "artifacts/birda-linux-x64" ]; then
             cd artifacts/birda-linux-x64
-            tar -czvf ../birda-linux-x64.tar.gz *
+            tar -czvf ../birda-linux-x64-${VERSION}.tar.gz *
             cd ../..
           fi
 
-          # Create zip for Windows CPU
+          # Create zip for Windows CPU (include version in filename)
           if [ -d "artifacts/birda-windows-x64" ]; then
             cd artifacts/birda-windows-x64
-            zip -r ../birda-windows-x64.zip *
+            zip -r ../birda-windows-x64-${VERSION}.zip *
             cd ../..
           fi
 
@@ -565,13 +571,13 @@ jobs:
           body: |
             ## Download Options
 
-            | Package | Description | Size |
-            |---------|-------------|------|
-            | `birda-linux-x64.tar.gz` | Linux CPU-only | ~5 MB |
-            | `birda-windows-x64.zip` | Windows CPU-only | ~5 MB |
-            | `birda-linux-x64-cuda.tar.gz` | Linux with GPU support (bundled CUDA) | ~450 MB |
-            | `birda-windows-x64-cuda.zip` | Windows with GPU support (bundled CUDA) | ~400 MB |
-            | `birda-windows-x64-cuda-setup.exe` | Windows GPU installer (adds to PATH) | ~400 MB |
+            | Package | Description |
+            |---------|-------------|
+            | `birda-linux-x64-${{ github.ref_name }}.tar.gz` | Linux CPU-only |
+            | `birda-windows-x64-${{ github.ref_name }}.zip` | Windows CPU-only |
+            | `birda-linux-x64-cuda-${{ github.ref_name }}.tar.gz` | Linux with GPU support (bundled CUDA) |
+            | `birda-windows-x64-cuda-${{ github.ref_name }}.zip` | Windows with GPU support (bundled CUDA) |
+            | `birda-windows-x64-cuda-${{ github.ref_name }}-setup.exe` | Windows GPU installer (adds to PATH) |
 
             ### GPU Builds
 

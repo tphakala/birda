@@ -90,25 +90,19 @@ INFO birda::inference::classifier: Loaded model: BirdNetV24, sample_rate: 48000,
 
 ## Quick Start
 
-### 1. Initialize Configuration
+### 1. Install a Model
 
 ```bash
-birda config init
+# List available models
+birda models list-available
+
+# Install BirdNET (recommended for most users)
+birda models install birdnet-v24
 ```
 
-### 2. Add a Model
+This downloads the model, labels, and range filter files automatically.
 
-Download a BirdNET model and labels file, then add it:
-
-```bash
-birda models add birdnet \
-  --path /path/to/birdnet.onnx \
-  --labels /path/to/BirdNET_GLOBAL_6K_V2.4_Labels.txt \
-  --type birdnet-v24 \
-  --default
-```
-
-### 3. Analyze Audio Files
+### 2. Analyze Audio Files
 
 ```bash
 # Analyze a single file
@@ -161,7 +155,7 @@ birda [OPTIONS] [INPUTS]... [COMMAND]
 
 Commands:
   config     Manage configuration
-  models     Manage models
+  models     Manage models (install, list, add, check, info)
   providers  Show available execution providers (CPU, CUDA, etc.)
   species    Generate species list from range filter
   help       Print help information
@@ -227,19 +221,25 @@ birda --no-progress --quiet recording.wav
 ### Model Management
 
 ```bash
+# List models available for download
+birda models list-available
+
+# Install a model (downloads automatically)
+birda models install birdnet-v24
+birda models install perch-v2
+
 # List configured models
 birda models list
-
-# Add a new model
-birda models add <name> --path <model.onnx> --labels <labels.txt> --type <type> [--default]
-
-# Supported types: birdnet-v24, birdnet-v30, perch-v2
 
 # Show model details
 birda models info <name>
 
 # Verify model files exist
 birda models check
+
+# Add a model manually (advanced)
+birda models add <name> --path <model.onnx> --labels <labels.txt> --type <type> [--default]
+# Supported types: birdnet-v24, birdnet-v30, perch-v2
 ```
 
 ### Configuration Management
@@ -436,14 +436,32 @@ task build:macos-arm64
 
 ## Models
 
-### BirdNET v2.4
+Models can be installed automatically using `birda models install <model-id>`.
 
-- **ONNX Model**: [BirdNET-onnx on Hugging Face](https://huggingface.co/justinchuby/BirdNET-onnx) (required - optimized ONNX conversion by Justin Chu)
-- **Labels**: Download from [BirdNET-Analyzer Releases](https://github.com/birdnet-team/BirdNET-Analyzer/releases) (`BirdNET_GLOBAL_6K_V2.4_Labels.txt`)
-- **Model type**: `birdnet-v24`
+### BirdNET v2.4 (Recommended)
+
+```bash
+birda models install birdnet-v24
+```
+
+- **License**: CC-BY-NC-SA-4.0 (non-commercial use only)
+- **Vendor**: Cornell Lab of Ornithology & Chemnitz University of Technology
 - **Sample rate**: 48kHz
 - **Segment duration**: 3 seconds
 - **Species**: ~6,000 bird species globally
+- **Source**: [BirdNET-onnx on Hugging Face](https://huggingface.co/justinchuby/BirdNET-onnx) (optimized ONNX conversion by Justin Chu)
+
+### Google Perch v2
+
+```bash
+birda models install perch-v2
+```
+
+- **License**: Apache-2.0
+- **Vendor**: Google Research
+- **Sample rate**: 32kHz
+- **Segment duration**: 5 seconds
+- **Source**: [Perch-onnx on Hugging Face](https://huggingface.co/justinchuby/Perch-onnx) (ONNX conversion by Justin Chu)
 
 ### BirdNET v3.0
 
@@ -451,12 +469,6 @@ task build:macos-arm64
 
 - **Model type**: `birdnet-v30`
 - **Status**: Developer preview only
-
-### Google Perch v2
-
-- **ONNX Model**: [Perch-onnx on Hugging Face](https://huggingface.co/justinchuby/Perch-onnx) (ONNX conversion by Justin Chu)
-- **Model type**: `perch-v2`
-- **Sample rate**: 32kHz
 
 ## License
 

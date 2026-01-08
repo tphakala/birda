@@ -134,9 +134,8 @@ jobs:
           mkdir -p dist
           cp target/${{ matrix.target }}/release/birda dist/
 
-          # Copy ONNX Runtime next to binary (only versioned .so, create symlink)
-          cp lib-staging/libonnxruntime.so.${{ env.ONNXRUNTIME_VERSION }} dist/
-          ln -s libonnxruntime.so.${{ env.ONNXRUNTIME_VERSION }} dist/libonnxruntime.so
+          # Copy ONNX Runtime next to binary (versioned .so only - runtime finds via ORT_DYLIB_PATH)
+          cp lib-staging/libonnxruntime.so.${{ env.ONNXRUNTIME_VERSION }} dist/libonnxruntime.so
 
           cp README.md dist/
           cp LICENSE dist/ 2>/dev/null || true
@@ -393,23 +392,20 @@ jobs:
           cp target/${{ env.TARGET }}/release/birda dist/
 
           # Copy ONNX Runtime main library next to binary (for load-dynamic)
-          # Only copy actual files, not symlinks (to avoid duplication in archives)
-          cp lib-staging/libonnxruntime.so.${{ env.ONNXRUNTIME_VERSION }} dist/
-          ln -s libonnxruntime.so.${{ env.ONNXRUNTIME_VERSION }} dist/libonnxruntime.so
+          cp lib-staging/libonnxruntime.so.${{ env.ONNXRUNTIME_VERSION }} dist/libonnxruntime.so
 
-          # Copy other GPU libraries to lib/ subdirectory (actual files only)
-          for f in lib-staging/libonnxruntime_providers_*.so lib-staging/libcudart.so.* lib-staging/libcublas*.so.* lib-staging/libcufft*.so.* lib-staging/libcudnn*.so.*; do
+          # Copy GPU libraries to lib/ subdirectory (only actual files, renamed without version)
+          for f in lib-staging/*.so.*; do
             if [ -f "$f" ] && [ ! -L "$f" ]; then
-              cp "$f" dist/lib/
+              # Skip main onnxruntime (already copied above)
+              case "$f" in
+                *libonnxruntime.so.*) continue ;;
+              esac
+              # Get base name (e.g., libcudart.so from libcudart.so.12.9.37)
+              base=$(basename "$f" | sed 's/\.so\..*/\.so/')
+              cp "$f" "dist/lib/$base"
             fi
           done
-          # Create necessary symlinks in lib/
-          cd dist/lib
-          for f in *.so.*; do
-            base=$(echo "$f" | sed 's/\.[0-9]*\.[0-9]*\.[0-9]*$//' | sed 's/\.[0-9]*$//')
-            [ ! -e "$base" ] && ln -s "$f" "$base" 2>/dev/null || true
-          done
-          cd ../..
 
           # Copy documentation
           cp README.md dist/

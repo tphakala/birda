@@ -134,8 +134,9 @@ jobs:
           mkdir -p dist
           cp target/${{ matrix.target }}/release/birda dist/
 
-          # Copy ONNX Runtime next to binary
-          cp -a lib-staging/libonnxruntime.so* dist/
+          # Copy ONNX Runtime next to binary (only versioned .so, create symlink)
+          cp lib-staging/libonnxruntime.so.${{ env.ONNXRUNTIME_VERSION }} dist/
+          ln -s libonnxruntime.so.${{ env.ONNXRUNTIME_VERSION }} dist/libonnxruntime.so
 
           cp README.md dist/
           cp LICENSE dist/ 2>/dev/null || true
@@ -392,14 +393,23 @@ jobs:
           cp target/${{ env.TARGET }}/release/birda dist/
 
           # Copy ONNX Runtime main library next to binary (for load-dynamic)
-          cp -a lib-staging/libonnxruntime.so* dist/
+          # Only copy actual files, not symlinks (to avoid duplication in archives)
+          cp lib-staging/libonnxruntime.so.${{ env.ONNXRUNTIME_VERSION }} dist/
+          ln -s libonnxruntime.so.${{ env.ONNXRUNTIME_VERSION }} dist/libonnxruntime.so
 
-          # Copy other GPU libraries to lib/ subdirectory
-          cp -a lib-staging/libonnxruntime_providers_*.so* dist/lib/
-          cp -a lib-staging/libcudart.so* dist/lib/
-          cp -a lib-staging/libcublas*.so* dist/lib/
-          cp -a lib-staging/libcufft*.so* dist/lib/
-          cp -a lib-staging/libcudnn*.so* dist/lib/
+          # Copy other GPU libraries to lib/ subdirectory (actual files only)
+          for f in lib-staging/libonnxruntime_providers_*.so lib-staging/libcudart.so.* lib-staging/libcublas*.so.* lib-staging/libcufft*.so.* lib-staging/libcudnn*.so.*; do
+            if [ -f "$f" ] && [ ! -L "$f" ]; then
+              cp "$f" dist/lib/
+            fi
+          done
+          # Create necessary symlinks in lib/
+          cd dist/lib
+          for f in *.so.*; do
+            base=$(echo "$f" | sed 's/\.[0-9]*\.[0-9]*\.[0-9]*$//' | sed 's/\.[0-9]*$//')
+            [ ! -e "$base" ] && ln -s "$f" "$base" 2>/dev/null || true
+          done
+          cd ../..
 
           # Copy documentation
           cp README.md dist/

@@ -33,8 +33,8 @@ PrivilegesRequired=admin
 PrivilegesRequiredOverridesAllowed=dialog
 ; Modern installer look
 WizardStyle=modern
-; License
-LicenseFile=..\..\LICENSE
+; License (combined license with third-party notices)
+LicenseFile=INSTALLER_LICENSE.txt
 ; Uninstaller
 UninstallDisplayIcon={app}\{#MyAppExeName}
 UninstallDisplayName={#MyAppName}

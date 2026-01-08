@@ -386,24 +386,17 @@ jobs:
 
       - name: Prepare artifact
         run: |
-          mkdir -p dist/lib
+          mkdir -p dist
 
           # Copy binary
           cp target/${{ env.TARGET }}/release/birda dist/
 
-          # Copy ONNX Runtime main library next to binary (for load-dynamic)
-          cp lib-staging/libonnxruntime.so.${{ env.ONNXRUNTIME_VERSION }} dist/libonnxruntime.so
-
-          # Copy GPU libraries to lib/ subdirectory (only actual files, renamed without version)
+          # Copy all GPU libraries next to binary (only actual files, renamed without version)
           for f in lib-staging/*.so.*; do
             if [ -f "$f" ] && [ ! -L "$f" ]; then
-              # Skip main onnxruntime (already copied above)
-              case "$f" in
-                *libonnxruntime.so.*) continue ;;
-              esac
               # Get base name (e.g., libcudart.so from libcudart.so.12.9.37)
               base=$(basename "$f" | sed 's/\.so\..*/\.so/')
-              cp "$f" "dist/lib/$base"
+              cp "$f" "dist/$base"
             fi
           done
 
@@ -415,8 +408,6 @@ jobs:
           # Show what will be archived and total size
           echo "=== Contents of dist/ ==="
           find dist -type f -exec ls -lh {} \;
-          echo "=== Symlinks in dist/ ==="
-          find dist -type l -exec ls -lh {} \;
           echo "=== Total size ==="
           du -sh dist/
 

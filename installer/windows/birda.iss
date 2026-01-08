@@ -52,13 +52,13 @@ Source: "..\..\dist\birda.exe"; DestDir: "{app}"; Flags: ignoreversion
 ; ONNX Runtime main library must be next to executable (for load-dynamic)
 Source: "..\..\dist\onnxruntime.dll"; DestDir: "{app}"; Flags: ignoreversion
 
-; Other GPU libraries in lib subdirectory
-Source: "..\..\dist\onnxruntime_providers_*.dll"; DestDir: "{app}\lib"; Flags: ignoreversion
-Source: "..\..\dist\cudart64_*.dll"; DestDir: "{app}\lib"; Flags: ignoreversion
-Source: "..\..\dist\cublas64_*.dll"; DestDir: "{app}\lib"; Flags: ignoreversion
-Source: "..\..\dist\cublasLt64_*.dll"; DestDir: "{app}\lib"; Flags: ignoreversion
-Source: "..\..\dist\cufft64_*.dll"; DestDir: "{app}\lib"; Flags: ignoreversion
-Source: "..\..\dist\cudnn*.dll"; DestDir: "{app}\lib"; Flags: ignoreversion
+; GPU libraries next to executable (Windows DLL search order)
+Source: "..\..\dist\onnxruntime_providers_*.dll"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\..\dist\cudart64_*.dll"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\..\dist\cublas64_*.dll"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\..\dist\cublasLt64_*.dll"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\..\dist\cufft64_*.dll"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\..\dist\cudnn*.dll"; DestDir: "{app}"; Flags: ignoreversion
 
 ; Documentation in docs subdirectory
 Source: "..\..\dist\README.md"; DestDir: "{app}\docs"; Flags: ignoreversion
@@ -70,8 +70,8 @@ Name: "{group}\{#MyAppName} Command Prompt"; Filename: "{cmd}"; Parameters: "/k 
 Name: "{group}\Uninstall {#MyAppName}"; Filename: "{uninstallexe}"
 
 [Registry]
-; Add app and lib directories to PATH if user selected that option
-Root: HKLM; Subkey: "SYSTEM\CurrentControlSet\Control\Session Manager\Environment"; ValueType: expandsz; ValueName: "Path"; ValueData: "{olddata};{app};{app}\lib"; Tasks: addtopath; Check: NeedsAddPath('{app}')
+; Add app directory to PATH if user selected that option
+Root: HKLM; Subkey: "SYSTEM\CurrentControlSet\Control\Session Manager\Environment"; ValueType: expandsz; ValueName: "Path"; ValueData: "{olddata};{app}"; Tasks: addtopath; Check: NeedsAddPath('{app}')
 
 [Code]
 function NeedsAddPath(Param: string): boolean;
@@ -93,7 +93,6 @@ procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 var
   Path: string;
   AppPath: string;
-  LibPath: string;
   P: Integer;
 begin
   if CurUninstallStep = usPostUninstall then
@@ -103,12 +102,6 @@ begin
       'Path', Path) then
     begin
       AppPath := ExpandConstant('{app}');
-      LibPath := AppPath + '\lib';
-
-      { Remove lib path first }
-      P := Pos(';' + LibPath, Path);
-      if P <> 0 then
-        Delete(Path, P, Length(';' + LibPath));
 
       { Remove app path }
       P := Pos(';' + AppPath, Path);

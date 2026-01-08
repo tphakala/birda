@@ -105,13 +105,41 @@ jobs:
       - name: Build release binary (CPU only)
         run: cargo build --release --no-default-features --target ${{ matrix.target }}
 
+      - name: Download ONNX Runtime (Linux)
+        if: runner.os != 'Windows'
+        run: |
+          mkdir -p lib-staging
+
+          # Download ONNX Runtime CPU package
+          curl -L "https://github.com/microsoft/onnxruntime/releases/download/v${{ env.ONNXRUNTIME_VERSION }}/onnxruntime-linux-x64-${{ env.ONNXRUNTIME_VERSION }}.tgz" \
+            -o onnxruntime.tgz
+          tar xzf onnxruntime.tgz
+          cp onnxruntime-linux-x64-${{ env.ONNXRUNTIME_VERSION }}/lib/libonnxruntime.so* lib-staging/
+
+      - name: Download ONNX Runtime (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path lib-staging
+
+          # Download ONNX Runtime CPU package
+          Invoke-WebRequest -Uri "https://github.com/microsoft/onnxruntime/releases/download/v${{ env.ONNXRUNTIME_VERSION }}/onnxruntime-win-x64-${{ env.ONNXRUNTIME_VERSION }}.zip" `
+            -OutFile "onnxruntime.zip"
+          Expand-Archive -Path "onnxruntime.zip" -DestinationPath "."
+          Copy-Item "onnxruntime-win-x64-${{ env.ONNXRUNTIME_VERSION }}/lib/onnxruntime.dll" -Destination "lib-staging/"
+
       - name: Prepare artifact (Unix)
         if: runner.os != 'Windows'
         run: |
           mkdir -p dist
           cp target/${{ matrix.target }}/release/birda dist/
+
+          # Copy ONNX Runtime next to binary
+          cp -a lib-staging/libonnxruntime.so* dist/
+
           cp README.md dist/
           cp LICENSE dist/ 2>/dev/null || true
+          cp THIRD_PARTY_LICENSES.txt dist/
 
       - name: Prepare artifact (Windows)
         if: runner.os == 'Windows'
@@ -119,8 +147,13 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force -Path dist
           Copy-Item "target/${{ matrix.target }}/release/birda.exe" -Destination "dist/"
+
+          # Copy ONNX Runtime next to binary
+          Copy-Item "lib-staging/onnxruntime.dll" -Destination "dist/"
+
           Copy-Item "README.md" -Destination "dist/"
           Copy-Item "LICENSE" -Destination "dist/" -ErrorAction SilentlyContinue
+          Copy-Item "THIRD_PARTY_LICENSES.txt" -Destination "dist/"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v6

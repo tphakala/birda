@@ -8,8 +8,8 @@ on:
 env:
   CARGO_TERM_COLOR: always
   # Library versions - update these when upgrading
-  # ONNX Runtime 1.22+ requires CUDA 12.x and cuDNN 9.x
-  ONNXRUNTIME_VERSION: "1.22.0"
+  # ONNX Runtime 1.23+ requires CUDA 12.x and cuDNN 9.x
+  ONNXRUNTIME_VERSION: "1.23.2"
   # CUDA redistributable versions (from https://developer.download.nvidia.com/compute/cuda/redist/redistrib_12.9.0.json)
   CUDA_CUDART_VERSION: "12.9.37"
   CUDA_CUBLAS_VERSION: "12.9.0.13"
@@ -38,6 +38,7 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
+            ~/.cache/ort.pyke.io
             target
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
@@ -95,6 +96,7 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
+            ~/.cache/ort.pyke.io
             target
           key: ${{ runner.os }}-${{ matrix.target }}-cargo-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
@@ -103,13 +105,71 @@ jobs:
       - name: Build release binary (CPU only)
         run: cargo build --release --no-default-features --target ${{ matrix.target }}
 
+      - name: Download ONNX Runtime (Linux)
+        if: runner.os != 'Windows'
+        run: |
+          mkdir -p lib-staging
+
+          # Download ONNX Runtime CPU package
+          curl -L "https://github.com/microsoft/onnxruntime/releases/download/v${{ env.ONNXRUNTIME_VERSION }}/onnxruntime-linux-x64-${{ env.ONNXRUNTIME_VERSION }}.tgz" \
+            -o onnxruntime.tgz
+          tar xzf onnxruntime.tgz
+          cp onnxruntime-linux-x64-${{ env.ONNXRUNTIME_VERSION }}/lib/libonnxruntime.so* lib-staging/
+
+      - name: Download ONNX Runtime (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path lib-staging
+
+          # Download ONNX Runtime CPU package
+          Invoke-WebRequest -Uri "https://github.com/microsoft/onnxruntime/releases/download/v${{ env.ONNXRUNTIME_VERSION }}/onnxruntime-win-x64-${{ env.ONNXRUNTIME_VERSION }}.zip" `
+            -OutFile "onnxruntime.zip"
+          Expand-Archive -Path "onnxruntime.zip" -DestinationPath "."
+          Copy-Item "onnxruntime-win-x64-${{ env.ONNXRUNTIME_VERSION }}/lib/onnxruntime.dll" -Destination "lib-staging/"
+
       - name: Prepare artifact (Unix)
         if: runner.os != 'Windows'
         run: |
           mkdir -p dist
           cp target/${{ matrix.target }}/release/birda dist/
+
+          # Copy ONNX Runtime next to binary (versioned .so only - runtime finds via ORT_DYLIB_PATH)
+          cp lib-staging/libonnxruntime.so.${{ env.ONNXRUNTIME_VERSION }} dist/libonnxruntime.so
+
           cp README.md dist/
           cp LICENSE dist/ 2>/dev/null || true
+
+          # Create minimal license file for CPU build (ONNX Runtime only)
+          cat > dist/THIRD_PARTY_LICENSES.txt << 'EOF'
+          THIRD-PARTY SOFTWARE LICENSES
+          =============================
+
+          ONNX Runtime
+          ------------
+          License: MIT License
+          Copyright (c) Microsoft Corporation
+
+          https://github.com/microsoft/onnxruntime
+
+          Permission is hereby granted, free of charge, to any person obtaining a copy
+          of this software and associated documentation files (the "Software"), to deal
+          in the Software without restriction, including without limitation the rights
+          to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+          copies of the Software, and to permit persons to whom the Software is
+          furnished to do so, subject to the following conditions:
+
+          The above copyright notice and this permission notice shall be included in all
+          copies or substantial portions of the Software.
+
+          THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+          IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+          FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+          AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+          LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+          OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+          SOFTWARE.
+          EOF
 
       - name: Prepare artifact (Windows)
         if: runner.os == 'Windows'
@@ -117,8 +177,43 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force -Path dist
           Copy-Item "target/${{ matrix.target }}/release/birda.exe" -Destination "dist/"
+
+          # Copy ONNX Runtime next to binary
+          Copy-Item "lib-staging/onnxruntime.dll" -Destination "dist/"
+
           Copy-Item "README.md" -Destination "dist/"
           Copy-Item "LICENSE" -Destination "dist/" -ErrorAction SilentlyContinue
+
+          # Create minimal license file for CPU build (ONNX Runtime only)
+          @"
+          THIRD-PARTY SOFTWARE LICENSES
+          =============================
+
+          ONNX Runtime
+          ------------
+          License: MIT License
+          Copyright (c) Microsoft Corporation
+
+          https://github.com/microsoft/onnxruntime
+
+          Permission is hereby granted, free of charge, to any person obtaining a copy
+          of this software and associated documentation files (the "Software"), to deal
+          in the Software without restriction, including without limitation the rights
+          to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+          copies of the Software, and to permit persons to whom the Software is
+          furnished to do so, subject to the following conditions:
+
+          The above copyright notice and this permission notice shall be included in all
+          copies or substantial portions of the Software.
+
+          THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+          IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+          FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+          AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+          LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+          OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+          SOFTWARE.
+          "@ | Set-Content "dist/THIRD_PARTY_LICENSES.txt"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v6
@@ -163,6 +258,7 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
+            ~/.cache/ort.pyke.io
             target
           key: ${{ runner.os }}-${{ env.TARGET }}-cuda-cargo-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
@@ -290,13 +386,19 @@ jobs:
 
       - name: Prepare artifact
         run: |
-          mkdir -p dist/lib
+          mkdir -p dist
 
           # Copy binary
           cp target/${{ env.TARGET }}/release/birda dist/
 
-          # Copy GPU libraries (preserve symlinks to avoid duplicating files)
-          cp -a lib-staging/*.so* dist/lib/
+          # Copy all GPU libraries next to binary (only actual files, renamed without version)
+          for f in lib-staging/*.so.*; do
+            if [ -f "$f" ] && [ ! -L "$f" ]; then
+              # Get base name (e.g., libcudart.so from libcudart.so.12.9.37)
+              base=$(basename "$f" | sed 's/\.so\..*/\.so/')
+              cp "$f" "dist/$base"
+            fi
+          done
 
           # Copy documentation
           cp README.md dist/
@@ -306,19 +408,17 @@ jobs:
           # Show what will be archived and total size
           echo "=== Contents of dist/ ==="
           find dist -type f -exec ls -lh {} \;
-          echo "=== Symlinks in dist/ ==="
-          find dist -type l -exec ls -lh {} \;
           echo "=== Total size ==="
           du -sh dist/
 
-          # Create archive with gzip compression
-          cd dist && tar -czvf ../${{ env.ARTIFACT }}.tar.gz *
+          # Create archive with gzip compression (include version in filename)
+          cd dist && tar -czvf ../${{ env.ARTIFACT }}-${{ github.ref_name }}.tar.gz *
 
       - name: Upload artifact
         uses: actions/upload-artifact@v6
         with:
           name: ${{ env.ARTIFACT }}
-          path: ${{ env.ARTIFACT }}.tar.gz
+          path: ${{ env.ARTIFACT }}-${{ github.ref_name }}.tar.gz
 
   build-gpu-windows:
     name: Build GPU Windows x64
@@ -353,6 +453,7 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
+            ~/.cache/ort.pyke.io
             target
           key: ${{ runner.os }}-${{ env.TARGET }}-cuda-cargo-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
@@ -490,8 +591,8 @@ jobs:
           Copy-Item "LICENSE" -Destination "dist/" -ErrorAction SilentlyContinue
           Copy-Item "THIRD_PARTY_LICENSES.txt" -Destination "dist/"
 
-          # Create archive
-          Compress-Archive -Path "dist/*" -DestinationPath "${{ env.ARTIFACT }}.zip"
+          # Create archive (include version in filename)
+          Compress-Archive -Path "dist/*" -DestinationPath "${{ env.ARTIFACT }}-${{ github.ref_name }}.zip"
 
       - name: Build installer with Inno Setup
         shell: pwsh
@@ -504,20 +605,20 @@ jobs:
           & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" `
             /DMyAppVersion="$version" `
             /O"." `
-            /F"${{ env.ARTIFACT }}-setup" `
+            /F"${{ env.ARTIFACT }}-${{ github.ref_name }}-setup" `
             "installer\windows\birda.iss"
 
       - name: Upload ZIP artifact
         uses: actions/upload-artifact@v6
         with:
           name: ${{ env.ARTIFACT }}
-          path: ${{ env.ARTIFACT }}.zip
+          path: ${{ env.ARTIFACT }}-${{ github.ref_name }}.zip
 
       - name: Upload installer artifact
         uses: actions/upload-artifact@v6
         with:
           name: ${{ env.ARTIFACT }}-setup
-          path: ${{ env.ARTIFACT }}-setup.exe
+          path: ${{ env.ARTIFACT }}-${{ github.ref_name }}-setup.exe
 
   # ==========================================================================
   # Create GitHub Release with all artifacts
@@ -541,17 +642,19 @@ jobs:
 
       - name: Create CPU archives
         run: |
-          # Create tar.gz for Linux CPU
+          VERSION="${{ github.ref_name }}"
+
+          # Create tar.gz for Linux CPU (include version in filename)
           if [ -d "artifacts/birda-linux-x64" ]; then
             cd artifacts/birda-linux-x64
-            tar -czvf ../birda-linux-x64.tar.gz *
+            tar -czvf ../birda-linux-x64-${VERSION}.tar.gz *
             cd ../..
           fi
 
-          # Create zip for Windows CPU
+          # Create zip for Windows CPU (include version in filename)
           if [ -d "artifacts/birda-windows-x64" ]; then
             cd artifacts/birda-windows-x64
-            zip -r ../birda-windows-x64.zip *
+            zip -r ../birda-windows-x64-${VERSION}.zip *
             cd ../..
           fi
 
@@ -565,13 +668,13 @@ jobs:
           body: |
             ## Download Options
 
-            | Package | Description | Size |
-            |---------|-------------|------|
-            | `birda-linux-x64.tar.gz` | Linux CPU-only | ~5 MB |
-            | `birda-windows-x64.zip` | Windows CPU-only | ~5 MB |
-            | `birda-linux-x64-cuda.tar.gz` | Linux with GPU support (bundled CUDA) | ~450 MB |
-            | `birda-windows-x64-cuda.zip` | Windows with GPU support (bundled CUDA) | ~400 MB |
-            | `birda-windows-x64-cuda-setup.exe` | Windows GPU installer (adds to PATH) | ~400 MB |
+            | Package | Description |
+            |---------|-------------|
+            | `birda-linux-x64-${{ github.ref_name }}.tar.gz` | Linux CPU-only |
+            | `birda-windows-x64-${{ github.ref_name }}.zip` | Windows CPU-only |
+            | `birda-linux-x64-cuda-${{ github.ref_name }}.tar.gz` | Linux with GPU support (bundled CUDA) |
+            | `birda-windows-x64-cuda-${{ github.ref_name }}.zip` | Windows with GPU support (bundled CUDA) |
+            | `birda-windows-x64-cuda-${{ github.ref_name }}-setup.exe` | Windows GPU installer (adds to PATH) |
 
             ### GPU Builds
 

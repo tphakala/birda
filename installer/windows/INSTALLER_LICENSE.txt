@@ -1,0 +1,157 @@
+BIRDA SOFTWARE LICENSE AGREEMENT
+================================
+
+This software and its bundled components are subject to the following licenses.
+
+
+================================================================================
+SECTION 1: BIRDA APPLICATION
+================================================================================
+
+MIT License
+
+Copyright (c) 2026 Tomi P. Hakala
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+
+================================================================================
+SECTION 2: BUNDLED THIRD-PARTY SOFTWARE
+================================================================================
+
+This installer bundles the following third-party software components required
+for GPU-accelerated bird species detection. By installing Birda, you acknowledge
+and agree to the license terms of these bundled components.
+
+
+--------------------------------------------------------------------------------
+MICROSOFT ONNX RUNTIME
+--------------------------------------------------------------------------------
+
+ONNX Runtime is an open-source inference engine for machine learning models.
+
+License: MIT License
+Copyright (c) Microsoft Corporation. All rights reserved.
+Website: https://onnxruntime.ai
+Source:  https://github.com/microsoft/onnxruntime
+
+Bundled files:
+  - onnxruntime.dll
+  - onnxruntime_providers_cuda.dll
+  - onnxruntime_providers_shared.dll
+  - onnxruntime_providers_tensorrt.dll
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+
+
+--------------------------------------------------------------------------------
+NVIDIA CUDA TOOLKIT LIBRARIES
+--------------------------------------------------------------------------------
+
+NVIDIA CUDA is a parallel computing platform and programming model for GPUs.
+
+License: NVIDIA CUDA Toolkit End User License Agreement
+Copyright (c) NVIDIA Corporation. All rights reserved.
+EULA:    https://docs.nvidia.com/cuda/eula/index.html
+
+Redistribution of the following CUDA libraries is permitted under Section 2
+of the NVIDIA CUDA Toolkit EULA when bundled with applications that utilize
+these libraries:
+
+Bundled files:
+  - cudart64_*.dll    (CUDA Runtime Library)
+  - cublas64_*.dll    (CUDA Basic Linear Algebra Subroutines)
+  - cublasLt64_*.dll  (CUDA BLAS Light - optimized GEMM routines)
+  - cufft64_*.dll     (CUDA Fast Fourier Transform Library)
+
+These libraries are provided by NVIDIA Corporation and are subject to NVIDIA's
+license terms. Use of these libraries requires an NVIDIA GPU with CUDA support.
+
+
+--------------------------------------------------------------------------------
+NVIDIA cuDNN (CUDA Deep Neural Network Library)
+--------------------------------------------------------------------------------
+
+NVIDIA cuDNN is a GPU-accelerated library for deep neural networks.
+
+License: NVIDIA cuDNN Software License Agreement
+Copyright (c) NVIDIA Corporation. All rights reserved.
+SLA:     https://docs.nvidia.com/deeplearning/cudnn/sla/index.html
+
+Redistribution of the cuDNN runtime libraries is permitted under Section 2.1
+of the cuDNN Software License Agreement when bundled with applications that
+use cuDNN for deep learning inference.
+
+Bundled files:
+  - cudnn*.dll        (cuDNN runtime libraries)
+
+cuDNN is optimized for NVIDIA GPUs and provides highly tuned implementations
+for standard deep learning operations.
+
+
+================================================================================
+ACKNOWLEDGEMENTS
+================================================================================
+
+Birda uses the following technologies for bird species detection:
+
+* BirdNET - Bird sound identification AI developed by the Cornell Lab of
+  Ornithology and Chemnitz University of Technology
+  https://birdnet.cornell.edu
+
+* Google Perch - Bird vocalization embedding model developed by Google Research
+  https://tfhub.dev/google/bird-vocalization-classifier
+
+* ONNX Runtime - Cross-platform inference engine by Microsoft
+  https://onnxruntime.ai
+
+* NVIDIA CUDA & cuDNN - GPU acceleration libraries by NVIDIA Corporation
+  https://developer.nvidia.com/cuda-toolkit
+  https://developer.nvidia.com/cudnn
+
+
+================================================================================
+AGREEMENT
+================================================================================
+
+By clicking "I accept the agreement" and proceeding with the installation,
+you acknowledge that you have read and agree to be bound by:
+
+1. The MIT License for Birda
+2. The MIT License for ONNX Runtime
+3. The NVIDIA CUDA Toolkit End User License Agreement
+4. The NVIDIA cuDNN Software License Agreement
+
+Complete license texts and additional third-party notices are available in
+THIRD_PARTY_LICENSES.txt, which will be installed to the docs subdirectory.
+
+For questions about licensing, please contact the respective license holders
+or visit the URLs provided above.

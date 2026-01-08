@@ -49,8 +49,16 @@ Name: "addtopath"; Description: "Add to PATH environment variable"; GroupDescrip
 ; Main executable (dist is in repo root, not installer/windows/)
 Source: "..\..\dist\birda.exe"; DestDir: "{app}"; Flags: ignoreversion
 
-; GPU libraries in lib subdirectory
-Source: "..\..\dist\*.dll"; DestDir: "{app}\lib"; Flags: ignoreversion
+; ONNX Runtime main library must be next to executable (for load-dynamic)
+Source: "..\..\dist\onnxruntime.dll"; DestDir: "{app}"; Flags: ignoreversion
+
+; Other GPU libraries in lib subdirectory
+Source: "..\..\dist\onnxruntime_providers_*.dll"; DestDir: "{app}\lib"; Flags: ignoreversion
+Source: "..\..\dist\cudart64_*.dll"; DestDir: "{app}\lib"; Flags: ignoreversion
+Source: "..\..\dist\cublas64_*.dll"; DestDir: "{app}\lib"; Flags: ignoreversion
+Source: "..\..\dist\cublasLt64_*.dll"; DestDir: "{app}\lib"; Flags: ignoreversion
+Source: "..\..\dist\cufft64_*.dll"; DestDir: "{app}\lib"; Flags: ignoreversion
+Source: "..\..\dist\cudnn*.dll"; DestDir: "{app}\lib"; Flags: ignoreversion
 
 ; Documentation in docs subdirectory
 Source: "..\..\dist\README.md"; DestDir: "{app}\docs"; Flags: ignoreversion

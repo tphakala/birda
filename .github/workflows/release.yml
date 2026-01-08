@@ -8,8 +8,8 @@ on:
 env:
   CARGO_TERM_COLOR: always
   # Library versions - update these when upgrading
-  # ONNX Runtime 1.22+ requires CUDA 12.x and cuDNN 9.x
-  ONNXRUNTIME_VERSION: "1.22.0"
+  # ONNX Runtime 1.23+ requires CUDA 12.x and cuDNN 9.x
+  ONNXRUNTIME_VERSION: "1.23.2"
   # CUDA redistributable versions (from https://developer.download.nvidia.com/compute/cuda/redist/redistrib_12.9.0.json)
   CUDA_CUDART_VERSION: "12.9.37"
   CUDA_CUBLAS_VERSION: "12.9.0.13"
@@ -298,8 +298,15 @@ jobs:
           # Copy binary
           cp target/${{ env.TARGET }}/release/birda dist/
 
-          # Copy GPU libraries (preserve symlinks to avoid duplicating files)
-          cp -a lib-staging/*.so* dist/lib/
+          # Copy ONNX Runtime main library next to binary (for load-dynamic)
+          cp -a lib-staging/libonnxruntime.so* dist/
+
+          # Copy other GPU libraries to lib/ subdirectory
+          cp -a lib-staging/libonnxruntime_providers_*.so* dist/lib/
+          cp -a lib-staging/libcudart.so* dist/lib/
+          cp -a lib-staging/libcublas*.so* dist/lib/
+          cp -a lib-staging/libcufft*.so* dist/lib/
+          cp -a lib-staging/libcudnn*.so* dist/lib/
 
           # Copy documentation
           cp README.md dist/

@@ -168,6 +168,22 @@ Test file: 12+ hours of audio (14913 segments)
 
 ## Troubleshooting
 
+### "LoadLibraryExW failed" or "failed to initialize ONNX runtime"
+
+The Visual C++ Runtime required by ONNX Runtime may be missing from your system.
+
+**Solutions**:
+1. Install the [Visual C++ Redistributable (x64)](https://aka.ms/vs/17/release/vc_redist.x64.exe)
+2. Check for conflicting DLLs from other applications:
+   ```powershell
+   where onnxruntime.dll
+   ```
+   If multiple paths appear, other applications may have installed incompatible versions. Try running birda directly from its installation folder:
+   ```powershell
+   cd "C:\Program Files\Birda"
+   .\birda.exe providers
+   ```
+
 ### "CUDA provider not available" or falls back to CPU
 
 GPU drivers may be outdated or incompatible.

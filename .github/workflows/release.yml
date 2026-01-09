@@ -575,6 +575,14 @@ jobs:
           ORT_LIB_LOCATION: ${{ github.workspace }}/lib-staging
         run: cargo build --release --features cuda --target ${{ env.TARGET }}
 
+      - name: Download Visual C++ Redistributable
+        shell: pwsh
+        run: |
+          # Download VC++ Redistributable for bundling with installer
+          # This is required by onnxruntime.dll and other native libraries
+          Invoke-WebRequest -Uri "https://aka.ms/vs/17/release/vc_redist.x64.exe" -OutFile "vc_redist.x64.exe"
+          Write-Host "Downloaded VC++ Redistributable"
+
       - name: Prepare artifact
         shell: pwsh
         run: |
@@ -586,13 +594,16 @@ jobs:
           # Copy GPU DLLs to same directory as executable (Windows searches exe directory)
           Copy-Item "lib-staging/*.dll" -Destination "dist/"
 
+          # Copy VC++ Redistributable for installer
+          Copy-Item "vc_redist.x64.exe" -Destination "dist/"
+
           # Copy documentation
           Copy-Item "README.md" -Destination "dist/"
           Copy-Item "LICENSE" -Destination "dist/" -ErrorAction SilentlyContinue
           Copy-Item "THIRD_PARTY_LICENSES.txt" -Destination "dist/"
 
-          # Create archive (include version in filename)
-          Compress-Archive -Path "dist/*" -DestinationPath "${{ env.ARTIFACT }}-${{ github.ref_name }}.zip"
+          # Create archive (include version in filename, exclude vc_redist for ZIP - it's only for installer)
+          Get-ChildItem "dist/*" -Exclude "vc_redist.x64.exe" | Compress-Archive -DestinationPath "${{ env.ARTIFACT }}-${{ github.ref_name }}.zip"
 
       - name: Build installer with Inno Setup
         shell: pwsh

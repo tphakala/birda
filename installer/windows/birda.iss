@@ -65,6 +65,13 @@ Source: "..\..\dist\README.md"; DestDir: "{app}\docs"; Flags: ignoreversion
 Source: "..\..\dist\LICENSE"; DestDir: "{app}\docs"; Flags: ignoreversion skipifsourcedoesntexist
 Source: "..\..\dist\THIRD_PARTY_LICENSES.txt"; DestDir: "{app}\docs"; Flags: ignoreversion
 
+; Visual C++ Redistributable (required by onnxruntime.dll)
+Source: "..\..\dist\vc_redist.x64.exe"; DestDir: "{tmp}"; Flags: deleteafterinstall; Check: VCRedistNeedsInstall
+
+[Run]
+; Install VC++ Redistributable silently if needed (runs before icons are created)
+Filename: "{tmp}\vc_redist.x64.exe"; Parameters: "/quiet /norestart"; StatusMsg: "Installing Visual C++ Runtime..."; Flags: waituntilterminated; Check: VCRedistNeedsInstall
+
 [Icons]
 Name: "{group}\{#MyAppName} Command Prompt"; Filename: "{cmd}"; Parameters: "/k ""{app}\{#MyAppExeName}"" --help"; WorkingDir: "{app}"
 Name: "{group}\Uninstall {#MyAppName}"; Filename: "{uninstallexe}"
@@ -74,6 +81,24 @@ Name: "{group}\Uninstall {#MyAppName}"; Filename: "{uninstallexe}"
 Root: HKLM; Subkey: "SYSTEM\CurrentControlSet\Control\Session Manager\Environment"; ValueType: expandsz; ValueName: "Path"; ValueData: "{olddata};{app}"; Tasks: addtopath; Check: NeedsAddPath('{app}')
 
 [Code]
+// Check if Visual C++ Redistributable 14.x (2015-2022) is installed
+function VCRedistNeedsInstall: Boolean;
+var
+  Version: String;
+begin
+  // Check for VC++ 14.x (Visual Studio 2015-2022 share this version range)
+  // Registry key exists if any version of the redistributable is installed
+  if RegQueryStringValue(HKEY_LOCAL_MACHINE,
+    'SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\x64',
+    'Version', Version) then
+  begin
+    // Version string is like "v14.38.33130" - any v14.x is sufficient
+    Result := False;  // Already installed
+  end
+  else
+    Result := True;  // Need to install
+end;
+
 function NeedsAddPath(Param: string): boolean;
 var
   OrigPath: string;

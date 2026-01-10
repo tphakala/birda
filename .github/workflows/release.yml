@@ -16,6 +16,10 @@ env:
   CUDA_CUFFT_VERSION: "11.4.0.6"
   # cuDNN version (from https://developer.download.nvidia.com/compute/cudnn/redist/redistrib_9.17.1.json)
   CUDNN_VERSION: "9.17.1.4"
+  # NVRTC and nvJitLink versions (from https://developer.download.nvidia.com/compute/cuda/redist/redistrib_12.9.0.json)
+  # Required by ONNX Runtime CUDA provider for runtime kernel compilation
+  CUDA_NVRTC_VERSION: "12.9.41"
+  NVJITLINK_VERSION: "12.9.41"
 
 jobs:
   # ==========================================================================
@@ -268,14 +272,14 @@ jobs:
         uses: actions/cache@v5
         with:
           path: gpu-libs
-          key: gpu-libs-linux-ort${{ env.ONNXRUNTIME_VERSION }}-cuda${{ env.CUDA_CUDART_VERSION }}-${{ env.CUDA_CUBLAS_VERSION }}-${{ env.CUDA_CUFFT_VERSION }}-cudnn${{ env.CUDNN_VERSION }}
+          key: gpu-libs-linux-ort${{ env.ONNXRUNTIME_VERSION }}-cuda${{ env.CUDA_CUDART_VERSION }}-${{ env.CUDA_CUBLAS_VERSION }}-${{ env.CUDA_CUFFT_VERSION }}-cudnn${{ env.CUDNN_VERSION }}-nvrtc${{ env.CUDA_NVRTC_VERSION }}-nvjitlink${{ env.NVJITLINK_VERSION }}
 
       - name: Cache extracted libraries
         id: cache-libs-extracted
         uses: actions/cache@v5
         with:
           path: lib-staging
-          key: lib-staging-linux-ort${{ env.ONNXRUNTIME_VERSION }}-cuda${{ env.CUDA_CUDART_VERSION }}-${{ env.CUDA_CUBLAS_VERSION }}-${{ env.CUDA_CUFFT_VERSION }}-cudnn${{ env.CUDNN_VERSION }}
+          key: lib-staging-linux-ort${{ env.ONNXRUNTIME_VERSION }}-cuda${{ env.CUDA_CUDART_VERSION }}-${{ env.CUDA_CUBLAS_VERSION }}-${{ env.CUDA_CUFFT_VERSION }}-cudnn${{ env.CUDNN_VERSION }}-nvrtc${{ env.CUDA_NVRTC_VERSION }}-nvjitlink${{ env.NVJITLINK_VERSION }}
 
       - name: Download ONNX Runtime GPU
         if: steps.cache-libs-extracted.outputs.cache-hit != 'true'
@@ -310,6 +314,20 @@ jobs:
               "${CUDA_BASE}/libcufft/linux-x86_64/libcufft-linux-x86_64-${{ env.CUDA_CUFFT_VERSION }}-archive.tar.xz"
           ) &
 
+          # NVRTC - runtime compilation library (required by ONNX Runtime CUDA provider)
+          (
+            [ -f "gpu-libs/cuda_nvrtc.tar.xz" ] || \
+            curl -L -o gpu-libs/cuda_nvrtc.tar.xz \
+              "${CUDA_BASE}/cuda_nvrtc/linux-x86_64/cuda_nvrtc-linux-x86_64-${{ env.CUDA_NVRTC_VERSION }}-archive.tar.xz"
+          ) &
+
+          # nvJitLink - JIT linking library (dependency of NVRTC)
+          (
+            [ -f "gpu-libs/libnvjitlink.tar.xz" ] || \
+            curl -L -o gpu-libs/libnvjitlink.tar.xz \
+              "${CUDA_BASE}/libnvjitlink/linux-x86_64/libnvjitlink-linux-x86_64-${{ env.NVJITLINK_VERSION }}-archive.tar.xz"
+          ) &
+
           # Wait for all downloads to complete
           wait
           echo "All CUDA downloads complete"
@@ -333,7 +351,7 @@ jobs:
           cp -a onnxruntime-linux-x64-gpu-${{ env.ONNXRUNTIME_VERSION }}/lib/*.so* lib-staging/
 
           # Extract CUDA libraries (use cp -a to preserve symlinks)
-          for archive in cuda_cudart libcublas libcufft; do
+          for archive in cuda_cudart libcublas libcufft cuda_nvrtc libnvjitlink; do
             tar -xJf gpu-libs/${archive}.tar.xz
             # Find the extracted directory and copy .so files from lib/
             for dir in ${archive}*-archive; do
@@ -365,6 +383,8 @@ jobs:
             "libcublasLt.so"
             "libcufft.so"
             "libcudnn.so"
+            "libnvrtc.so"
+            "libnvJitLink.so"
           )
 
           for lib in "${REQUIRED_LIBS[@]}"; do
@@ -377,7 +397,7 @@ jobs:
           echo "All required libraries present"
 
           # Clean up extracted directories to save space (keep only lib-staging)
-          rm -rf cuda_cudart*-archive libcublas*-archive libcufft*-archive cudnn*-archive
+          rm -rf cuda_cudart*-archive libcublas*-archive libcufft*-archive cuda_nvrtc*-archive libnvjitlink*-archive cudnn*-archive
 
       - name: Build release binary (CUDA)
         env:
@@ -463,14 +483,14 @@ jobs:
         uses: actions/cache@v5
         with:
           path: gpu-libs
-          key: gpu-libs-windows-ort${{ env.ONNXRUNTIME_VERSION }}-cuda${{ env.CUDA_CUDART_VERSION }}-${{ env.CUDA_CUBLAS_VERSION }}-${{ env.CUDA_CUFFT_VERSION }}-cudnn${{ env.CUDNN_VERSION }}
+          key: gpu-libs-windows-ort${{ env.ONNXRUNTIME_VERSION }}-cuda${{ env.CUDA_CUDART_VERSION }}-${{ env.CUDA_CUBLAS_VERSION }}-${{ env.CUDA_CUFFT_VERSION }}-cudnn${{ env.CUDNN_VERSION }}-nvrtc${{ env.CUDA_NVRTC_VERSION }}-nvjitlink${{ env.NVJITLINK_VERSION }}
 
       - name: Cache extracted libraries
         id: cache-libs-extracted
         uses: actions/cache@v5
         with:
           path: lib-staging
-          key: lib-staging-windows-ort${{ env.ONNXRUNTIME_VERSION }}-cuda${{ env.CUDA_CUDART_VERSION }}-${{ env.CUDA_CUBLAS_VERSION }}-${{ env.CUDA_CUFFT_VERSION }}-cudnn${{ env.CUDNN_VERSION }}
+          key: lib-staging-windows-ort${{ env.ONNXRUNTIME_VERSION }}-cuda${{ env.CUDA_CUDART_VERSION }}-${{ env.CUDA_CUBLAS_VERSION }}-${{ env.CUDA_CUFFT_VERSION }}-cudnn${{ env.CUDNN_VERSION }}-nvrtc${{ env.CUDA_NVRTC_VERSION }}-nvjitlink${{ env.NVJITLINK_VERSION }}
 
       - name: Download ONNX Runtime GPU
         if: steps.cache-libs-extracted.outputs.cache-hit != 'true'
@@ -503,6 +523,16 @@ jobs:
             Invoke-WebRequest -Uri "${cudaBase}/libcufft/windows-x86_64/libcufft-windows-x86_64-${{ env.CUDA_CUFFT_VERSION }}-archive.zip" -OutFile "gpu-libs/libcufft.zip"
           }
 
+          # NVRTC - runtime compilation library (required by ONNX Runtime CUDA provider)
+          if (-not (Test-Path "gpu-libs/cuda_nvrtc.zip")) {
+            Invoke-WebRequest -Uri "${cudaBase}/cuda_nvrtc/windows-x86_64/cuda_nvrtc-windows-x86_64-${{ env.CUDA_NVRTC_VERSION }}-archive.zip" -OutFile "gpu-libs/cuda_nvrtc.zip"
+          }
+
+          # nvJitLink - JIT linking library (dependency of NVRTC)
+          if (-not (Test-Path "gpu-libs/libnvjitlink.zip")) {
+            Invoke-WebRequest -Uri "${cudaBase}/libnvjitlink/windows-x86_64/libnvjitlink-windows-x86_64-${{ env.NVJITLINK_VERSION }}-archive.zip" -OutFile "gpu-libs/libnvjitlink.zip"
+          }
+
       - name: Download cuDNN
         if: steps.cache-libs-extracted.outputs.cache-hit != 'true'
         shell: pwsh
@@ -521,8 +551,8 @@ jobs:
           Expand-Archive -Path "gpu-libs/onnxruntime-win-x64-gpu-${{ env.ONNXRUNTIME_VERSION }}.zip" -DestinationPath "ort-extract" -Force
           Copy-Item "ort-extract/onnxruntime-win-x64-gpu-${{ env.ONNXRUNTIME_VERSION }}/lib/*.dll" -Destination "lib-staging/" -ErrorAction SilentlyContinue
 
-          # Extract CUDA libraries
-          @("cuda_cudart", "libcublas", "libcufft") | ForEach-Object {
+          # Extract CUDA libraries (including nvrtc and nvjitlink)
+          @("cuda_cudart", "libcublas", "libcufft", "cuda_nvrtc", "libnvjitlink") | ForEach-Object {
             $name = $_
             Expand-Archive -Path "gpu-libs/${name}.zip" -DestinationPath "${name}-extract" -Force
             Get-ChildItem -Path "${name}-extract" -Recurse -Filter "*.dll" | Copy-Item -Destination "lib-staging/" -ErrorAction SilentlyContinue
@@ -545,7 +575,9 @@ jobs:
             "cublas64_12.dll",
             "cublasLt64_12.dll",
             "cufft64_11.dll",
-            "cudnn64_9.dll"
+            "cudnn64_9.dll",
+            "nvrtc64_120_0.dll",
+            "nvJitLink_120_0.dll"
           )
 
           $missing = @()
@@ -567,6 +599,8 @@ jobs:
           Remove-Item -Recurse -Force "cuda_cudart-extract" -ErrorAction SilentlyContinue
           Remove-Item -Recurse -Force "libcublas-extract" -ErrorAction SilentlyContinue
           Remove-Item -Recurse -Force "libcufft-extract" -ErrorAction SilentlyContinue
+          Remove-Item -Recurse -Force "cuda_nvrtc-extract" -ErrorAction SilentlyContinue
+          Remove-Item -Recurse -Force "libnvjitlink-extract" -ErrorAction SilentlyContinue
           Remove-Item -Recurse -Force "cudnn-extract" -ErrorAction SilentlyContinue
 
       - name: Build release binary (CUDA)

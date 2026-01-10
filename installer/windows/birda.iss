@@ -59,6 +59,8 @@ Source: "..\..\dist\cublas64_*.dll"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\..\dist\cublasLt64_*.dll"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\..\dist\cufft64_*.dll"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\..\dist\cudnn*.dll"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\..\dist\nvrtc*.dll"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\..\dist\nvJitLink*.dll"; DestDir: "{app}"; Flags: ignoreversion
 
 ; Documentation in docs subdirectory
 Source: "..\..\dist\README.md"; DestDir: "{app}\docs"; Flags: ignoreversion

@@ -154,7 +154,7 @@ checksum = "7d809780667f4410e7c41b07f52439b94d2bdf8528eeedc287fa38d3b7f95d82"
 
 [[package]]
 name = "birda"
-version = "1.2.2"
+version = "1.2.3"
 dependencies = [
  "assert_cmd",
  "audioadapter-buffers",

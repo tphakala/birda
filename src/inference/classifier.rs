@@ -497,23 +497,31 @@ fn add_execution_provider(
             // Use optimized TensorRT configuration with app-specific cache directory
             let config = match tensorrt_cache_dir() {
                 Ok(cache_dir) => {
-                    // Ensure cache directory exists, fall back to default if creation fails
-                    match std::fs::create_dir_all(cache_dir.as_path()) {
-                        Ok(()) => {
-                            let cache_path = cache_dir.to_string_lossy().to_string();
-                            debug!("TensorRT cache directory: {}", cache_path);
-                            TensorRTConfig::new()
-                                .with_engine_cache_path(&cache_path)
-                                .with_timing_cache_path(&cache_path)
+                    // Validate path is valid UTF-8 (required by TensorRT C++ backend)
+                    #[allow(clippy::option_if_let_else)] // if-let is clearer than map_or_else here
+                    if let Some(cache_path) = cache_dir.to_str() {
+                        // Ensure cache directory exists, fall back to default if creation fails
+                        match std::fs::create_dir_all(&cache_dir) {
+                            Ok(()) => {
+                                debug!("TensorRT cache directory: {}", cache_path);
+                                TensorRTConfig::new()
+                                    .with_engine_cache_path(cache_path)
+                                    .with_timing_cache_path(cache_path)
+                            }
+                            Err(e) => {
+                                warn!(
+                                    "Failed to create TensorRT cache directory {}: {}, using default",
+                                    cache_path, e
+                                );
+                                TensorRTConfig::new()
+                            }
                         }
-                        Err(e) => {
-                            warn!(
-                                "Failed to create TensorRT cache directory {}: {}, using default",
-                                cache_dir.display(),
-                                e
-                            );
-                            TensorRTConfig::new()
-                        }
+                    } else {
+                        warn!(
+                            "TensorRT cache path contains non-UTF-8 characters: {}, using default",
+                            cache_dir.display()
+                        );
+                        TensorRTConfig::new()
                     }
                 }
                 Err(e) => {

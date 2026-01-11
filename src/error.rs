@@ -14,6 +14,10 @@ pub enum Error {
     #[error("could not determine configuration directory for this platform")]
     ConfigDirNotFound,
 
+    /// Cache directory could not be determined.
+    #[error("could not determine cache directory for this platform")]
+    CacheDirNotFound,
+
     /// Failed to read configuration file.
     #[error("failed to read config file '{path}'")]
     ConfigRead {

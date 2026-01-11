@@ -16,6 +16,17 @@ pub fn config_dir() -> Result<PathBuf> {
         .ok_or(Error::ConfigDirNotFound)
 }
 
+/// Get the cache directory for the current platform.
+///
+/// - Linux: `~/.cache/birda/`
+/// - macOS: `~/Library/Caches/birda/`
+/// - Windows: `%LOCALAPPDATA%\birda\`
+pub fn cache_dir() -> Result<PathBuf> {
+    ProjectDirs::from("", "", APP_NAME)
+        .map(|dirs| dirs.cache_dir().to_path_buf())
+        .ok_or(Error::CacheDirNotFound)
+}
+
 /// Get the full path to the config file.
 pub fn config_file_path() -> Result<PathBuf> {
     Ok(config_dir()?.join("config.toml"))
@@ -23,11 +34,16 @@ pub fn config_file_path() -> Result<PathBuf> {
 
 /// Get the `TensorRT` cache directory for engine and timing caches.
 ///
-/// - Linux: `~/.config/birda/tensorrt_cache/`
-/// - macOS: `~/Library/Application Support/birda/tensorrt_cache/`
-/// - Windows: `%APPDATA%\birda\tensorrt_cache\`
+/// Uses the platform cache directory since `TensorRT` engines are:
+/// - Large binary files (can be 100MB+)
+/// - Machine/GPU-specific (not portable)
+/// - Safely regenerable if deleted
+///
+/// - Linux: `~/.cache/birda/tensorrt_cache/`
+/// - macOS: `~/Library/Caches/birda/tensorrt_cache/`
+/// - Windows: `%LOCALAPPDATA%\birda\tensorrt_cache\`
 pub fn tensorrt_cache_dir() -> Result<PathBuf> {
-    Ok(config_dir()?.join(tensorrt::CACHE_DIR))
+    Ok(cache_dir()?.join(tensorrt::CACHE_DIR))
 }
 
 #[cfg(test)]
@@ -46,6 +62,14 @@ mod tests {
     }
 
     #[test]
+    fn test_cache_dir_returns_path() {
+        let result = cache_dir();
+        assert!(result.is_ok());
+        let path = result.unwrap();
+        assert!(path.to_string_lossy().contains("birda"));
+    }
+
+    #[test]
     fn test_config_file_path_ends_with_toml() {
         let result = config_file_path();
         assert!(result.is_ok());
@@ -60,5 +84,13 @@ mod tests {
         let path = result.unwrap();
         assert!(path.to_string_lossy().contains("birda"));
         assert!(path.ends_with(tensorrt::CACHE_DIR));
+    }
+
+    #[test]
+    fn test_tensorrt_cache_uses_cache_dir_not_config() {
+        let cache = cache_dir().unwrap();
+        let tensorrt = tensorrt_cache_dir().unwrap();
+        // TensorRT cache should be under the cache directory, not config
+        assert!(tensorrt.starts_with(&cache));
     }
 }

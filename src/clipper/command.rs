@@ -2,6 +2,7 @@
 
 use std::path::{Path, PathBuf};
 
+use indicatif::{ProgressBar, ProgressStyle};
 use tracing::{info, warn};
 
 use crate::Error;
@@ -84,10 +85,24 @@ fn process_detection_file(
 
     info!("Using source audio: {}", audio_path.display());
 
+    // Create progress bar for clip extraction
+    #[allow(clippy::cast_possible_truncation)]
+    let pb = ProgressBar::new(groups.len() as u64);
+    // Template is hardcoded and known to be valid
+    #[allow(clippy::expect_used)]
+    pb.set_style(
+        ProgressStyle::default_bar()
+            .template("{spinner:.green} [{bar:40.cyan/blue}] {pos}/{len} clips ({msg})")
+            .expect("valid progress template")
+            .progress_chars("#>-"),
+    );
+
     // Extract and write clips
     let mut clip_count = 0;
 
     for group in &groups {
+        pb.set_message(group.scientific_name.clone());
+
         match extractor.extract_clip(&audio_path, group) {
             Ok(clip) => {
                 match writer.write_clip(
@@ -121,7 +136,11 @@ fn process_detection_file(
                 );
             }
         }
+
+        pb.inc(1);
     }
+
+    pb.finish_with_message("done");
 
     Ok(clip_count)
 }

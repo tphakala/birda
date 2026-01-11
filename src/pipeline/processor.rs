@@ -136,12 +136,13 @@ fn run_streaming_inference(
                 &mut detections,
                 progress,
                 batch_context,
+                batch_size,
             )?;
             batch.clear();
         }
     }
 
-    // Process remaining partial batch
+    // Process remaining partial batch (padding handled inside process_batch)
     if !batch.is_empty() {
         process_batch(
             &batch,
@@ -151,6 +152,7 @@ fn run_streaming_inference(
             &mut detections,
             progress,
             batch_context,
+            batch_size, // Target size for TensorRT alignment
         )?;
     }
 
@@ -192,6 +194,11 @@ fn inference_watchdog_timeout() -> u64 {
 }
 
 /// Process a batch of chunks through the classifier.
+///
+/// # Arguments
+///
+/// * `target_batch_size` - Target batch size for `TensorRT` alignment (pads with silence if needed)
+#[allow(clippy::too_many_arguments)]
 fn process_batch(
     batch: &[AudioChunk],
     classifier: &BirdClassifier,
@@ -200,12 +207,32 @@ fn process_batch(
     detections: &mut Vec<Detection>,
     progress: Option<&indicatif::ProgressBar>,
     batch_context: &mut Option<BatchInferenceContext>,
+    target_batch_size: usize,
 ) -> Result<()> {
     use crate::gpu::start_inference_watchdog;
     use crate::output::progress::inc_progress;
     use std::time::Duration;
 
-    let segments: Vec<&[f32]> = batch.iter().map(|c| c.samples.as_slice()).collect();
+    let valid_count = batch.len();
+    let mut segments: Vec<&[f32]> = batch.iter().map(|c| c.samples.as_slice()).collect();
+
+    // Pad segments with silence for TensorRT batch size alignment (single allocation, no cloning)
+    let padding_buffer: Vec<f32>;
+    if valid_count < target_batch_size {
+        let sample_count = classifier.sample_count();
+        padding_buffer = vec![0.0f32; sample_count];
+        let padding_needed = target_batch_size - valid_count;
+        tracing::debug!(
+            "Padding partial batch: {} → {} segments ({} padding)",
+            valid_count,
+            target_batch_size,
+            padding_needed
+        );
+        for _ in 0..padding_needed {
+            segments.push(padding_buffer.as_slice());
+        }
+    }
+
     let batch_size = segments.len();
 
     // Start watchdog timer - kills process if inference hangs
@@ -230,7 +257,8 @@ fn process_batch(
     // Apply range filtering if configured
     let results = classifier.apply_range_filter(results)?;
 
-    for (chunk, result) in batch.iter().zip(results.iter()) {
+    // Only process results from valid segments (excludes padding)
+    for (chunk, result) in batch.iter().zip(results.iter()).take(valid_count) {
         for pred in &result.predictions {
             if pred.confidence >= min_confidence {
                 let detection = Detection::from_label(

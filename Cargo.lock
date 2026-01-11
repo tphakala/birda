@@ -165,6 +165,7 @@ dependencies = [
  "directories",
  "futures-util",
  "hostname",
+ "hound",
  "indicatif",
  "predicates",
  "reqwest",

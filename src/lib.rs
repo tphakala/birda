@@ -385,7 +385,7 @@ fn handle_command(command: Command, config: &config::Config) -> Result<()> {
         } => cli::species::generate_species_list(
             output, lat, lon, week, month, day, threshold, sort, model,
         ),
-        Command::Clip(args) => clipper::command::execute(args),
+        Command::Clip(args) => clipper::command::execute(&args),
     }
 }
 

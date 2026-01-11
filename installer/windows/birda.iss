@@ -63,6 +63,7 @@ Source: "..\..\dist\nvrtc*.dll"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\..\dist\nvJitLink*.dll"; DestDir: "{app}"; Flags: ignoreversion
 ; TensorRT libraries for TensorRT execution provider
 Source: "..\..\dist\nvinfer*.dll"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\..\dist\nvinfer_plugin*.dll"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\..\dist\nvonnxparser*.dll"; DestDir: "{app}"; Flags: ignoreversion
 
 ; Documentation in docs subdirectory

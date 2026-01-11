@@ -434,14 +434,10 @@ jobs:
           # Copy binary
           cp target/${{ env.TARGET }}/release/birda dist/
 
-          # Copy all GPU libraries next to binary (only actual files, renamed without version)
-          for f in lib-staging/*.so.*; do
-            if [ -f "$f" ] && [ ! -L "$f" ]; then
-              # Get base name (e.g., libcudart.so from libcudart.so.12.9.37)
-              base=$(basename "$f" | sed 's/\.so\..*/\.so/')
-              cp "$f" "dist/$base"
-            fi
-          done
+          # Copy all GPU libraries preserving symlinks
+          # Using -P to preserve symlinks (e.g., libcudart.so.12 -> libcudart.so.12.9.37)
+          # This ensures the binary finds the specific SONAME it was linked against
+          cp -P lib-staging/*.so* dist/
 
           # Copy documentation
           cp README.md dist/

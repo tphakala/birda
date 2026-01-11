@@ -218,6 +218,14 @@ fn find_source_audio(
         .find_map(|ext| clean_stem.strip_suffix(&format!(".{ext}")))
         .unwrap_or(clean_stem);
 
+    // Prevent path traversal: reject stems containing ".." or path separators
+    if base_stem.contains("..") || base_stem.contains('/') || base_stem.contains('\\') {
+        return Err(Error::SourceAudioNotFound {
+            detection_path: detection_file.to_path_buf(),
+            audio_path: search_dir.join(base_stem),
+        });
+    }
+
     for ext in clipper::AUDIO_EXTENSIONS {
         let audio_path = search_dir.join(format!("{base_stem}.{ext}"));
         if audio_path.exists() {

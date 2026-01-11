@@ -358,13 +358,6 @@ pub enum Error {
         source: std::io::Error,
     },
 
-    /// No detections found in file.
-    #[error("no detections found in file '{path}'")]
-    NoDetectionsFound {
-        /// Path to the detection file.
-        path: std::path::PathBuf,
-    },
-
     /// Source audio file not found for detection file.
     #[error(
         "source audio file not found for detection file '{detection_path}', expected '{audio_path}'"

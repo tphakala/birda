@@ -47,14 +47,14 @@ fn test_parse_csv_with_utf8_bom() {
 }
 
 #[test]
-fn test_parse_empty_file_returns_error() {
+fn test_parse_empty_file_returns_empty_vec() {
     let mut file = NamedTempFile::with_suffix(".csv").unwrap();
     file.write_all(b"Start (s),End (s),Scientific name,Common name,Confidence\n")
         .unwrap();
     file.flush().unwrap();
 
-    let result = parse_detection_file(file.path());
-    assert!(result.is_err());
+    let result = parse_detection_file(file.path()).unwrap();
+    assert!(result.is_empty());
 }
 
 #[test]

@@ -53,7 +53,8 @@ pub struct ParsedDetection {
 /// - The file cannot be read
 /// - Required columns are missing
 /// - Values cannot be parsed
-/// - No detections are found
+///
+/// Returns `Ok(vec![])` if the file contains no detections (empty or header-only).
 pub fn parse_detection_file(path: &Path) -> Result<Vec<ParsedDetection>, Error> {
     let mut reader = csv::ReaderBuilder::new()
         .has_headers(true)
@@ -89,12 +90,6 @@ pub fn parse_detection_file(path: &Path) -> Result<Vec<ParsedDetection>, Error> 
             scientific_name: record.scientific_name,
             common_name: record.common_name,
             confidence: record.confidence,
-        });
-    }
-
-    if detections.is_empty() {
-        return Err(Error::NoDetectionsFound {
-            path: path.to_path_buf(),
         });
     }
 
@@ -177,14 +172,15 @@ mod tests {
     }
 
     #[test]
-    fn test_empty_file_error() {
+    fn test_empty_file_returns_empty_vec() {
         let file = NamedTempFile::new().unwrap();
-        let result = parse_detection_file(file.path());
-        assert!(result.is_err());
+        // Empty file returns empty vec (csv crate handles gracefully)
+        let result = parse_detection_file(file.path()).unwrap();
+        assert!(result.is_empty());
     }
 
     #[test]
-    fn test_header_only_error() {
+    fn test_header_only_returns_empty_vec() {
         let mut file = NamedTempFile::new().unwrap();
         writeln!(
             file,
@@ -193,8 +189,8 @@ mod tests {
         .unwrap();
         file.flush().unwrap();
 
-        let result = parse_detection_file(file.path());
-        assert!(matches!(result, Err(Error::NoDetectionsFound { .. })));
+        let result = parse_detection_file(file.path()).unwrap();
+        assert!(result.is_empty());
     }
 
     #[test]

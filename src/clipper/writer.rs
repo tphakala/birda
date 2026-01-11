@@ -71,13 +71,20 @@ impl WavWriter {
 }
 
 /// Sanitize a string for use as a filename/directory name.
+///
+/// Replaces characters that are invalid in filenames across platforms
+/// and prevents path traversal attacks.
 fn sanitize_filename(name: &str) -> String {
-    name.chars()
+    let sanitized: String = name
+        .chars()
         .map(|c| match c {
             '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|' => '_',
             _ => c,
         })
-        .collect()
+        .collect();
+
+    // Prevent path traversal: replace ".." with "__"
+    sanitized.replace("..", "__")
 }
 
 /// Generate a filename for a clip.
@@ -133,6 +140,17 @@ mod tests {
         assert_eq!(sanitize_filename("Parus major"), "Parus major");
         assert_eq!(sanitize_filename("a/b:c*d"), "a_b_c_d");
         assert_eq!(sanitize_filename("file?name"), "file_name");
+    }
+
+    #[test]
+    fn test_sanitize_filename_prevents_path_traversal() {
+        // Direct traversal attempts
+        assert_eq!(sanitize_filename(".."), "__");
+        assert_eq!(sanitize_filename("../etc"), "___etc"); // "/" -> "_", ".." -> "__"
+        assert_eq!(sanitize_filename("foo/../bar"), "foo____bar"); // "/" -> "_", ".." -> "__"
+        // Preserves single dots (e.g., species abbreviations)
+        assert_eq!(sanitize_filename("P. major"), "P. major");
+        assert_eq!(sanitize_filename("sp."), "sp.");
     }
 
     #[test]

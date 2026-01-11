@@ -14,12 +14,9 @@ use symphonia::core::probe::Hint;
 use symphonia::core::units::Time;
 
 use crate::Error;
+use crate::constants::clipper::SEEK_THRESHOLD_SECS;
 
 use super::DetectionGroup;
-
-/// Minimum start time (in seconds) before seeking is attempted.
-/// For clips starting before this threshold, we decode from the beginning.
-const SEEK_THRESHOLD_SECS: f64 = 10.0;
 
 /// Result of clip extraction.
 pub struct ExtractedClip {

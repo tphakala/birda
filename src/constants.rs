@@ -91,3 +91,22 @@ pub mod tensorrt {
     /// Directory name for `TensorRT` engine and timing cache files.
     pub const CACHE_DIR: &str = "tensorrt_cache";
 }
+
+/// Clipper constants for clip extraction.
+pub mod clipper {
+    /// Default pre-padding for clip extraction in seconds.
+    pub const DEFAULT_PRE_PADDING: f64 = 5.0;
+
+    /// Default post-padding for clip extraction in seconds.
+    pub const DEFAULT_POST_PADDING: f64 = 5.0;
+
+    /// Maximum allowed padding in seconds.
+    pub const MAX_PADDING: f64 = 300.0;
+
+    /// Default output directory for clips.
+    pub const DEFAULT_OUTPUT_DIR: &str = "clips";
+
+    /// Minimum start time (in seconds) before seeking is attempted.
+    /// For clips starting before this threshold, we decode from the beginning.
+    pub const SEEK_THRESHOLD_SECS: f64 = 10.0;
+}

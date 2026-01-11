@@ -428,6 +428,13 @@ jobs:
 
           # Clean up extracted directories to save space (keep only lib-staging)
           rm -rf cuda_cudart*-archive libcublas*-archive libcufft*-archive cuda_nvrtc*-archive libnvjitlink*-archive cudnn*-archive TensorRT-*
+          rm -rf onnxruntime-linux-x64-gpu-*
+
+          # CRITICAL: Delete downloaded archives to free disk space (~10GB)
+          # GitHub runners have limited disk space and we need room for the build
+          rm -rf gpu-libs/
+          echo "Disk space after cleanup:"
+          df -h .
 
       - name: Build release binary (CUDA)
         env:
@@ -605,9 +612,33 @@ jobs:
           Expand-Archive -Path "gpu-libs/cudnn.zip" -DestinationPath "cudnn-extract" -Force
           Get-ChildItem -Path "cudnn-extract" -Recurse -Filter "*.dll" | Copy-Item -Destination "lib-staging/" -ErrorAction SilentlyContinue
 
-          # Extract TensorRT
+          # Extract TensorRT - verify archive exists and is valid
+          Write-Host "=== Extracting TensorRT ==="
+          if (-not (Test-Path "gpu-libs/tensorrt.zip")) {
+            Write-Host "ERROR: TensorRT archive not found!"
+            exit 1
+          }
+          $zipSize = (Get-Item "gpu-libs/tensorrt.zip").Length
+          Write-Host "TensorRT archive size: $zipSize bytes"
+
           Expand-Archive -Path "gpu-libs/tensorrt.zip" -DestinationPath "tensorrt-extract" -Force
-          Get-ChildItem -Path "tensorrt-extract" -Recurse -Filter "*.dll" | Where-Object { $_.Directory.Name -eq "lib" } | Copy-Item -Destination "lib-staging/" -ErrorAction SilentlyContinue
+
+          # Debug: Show TensorRT structure to understand where DLLs are located
+          Write-Host "=== TensorRT extracted structure ==="
+          Get-ChildItem -Path "tensorrt-extract" -Recurse -Directory | ForEach-Object { Write-Host $_.FullName }
+          Write-Host "=== TensorRT DLLs found ==="
+          $tensorrtDlls = Get-ChildItem -Path "tensorrt-extract" -Recurse -Filter "*.dll"
+          if ($tensorrtDlls.Count -eq 0) {
+            Write-Host "ERROR: No DLLs found in TensorRT archive!"
+            Write-Host "Archive may be corrupted or have unexpected structure"
+            exit 1
+          }
+          $tensorrtDlls | ForEach-Object { Write-Host "$($_.Directory.Name)/$($_.Name)" }
+
+          # Copy DLLs from lib folder (TensorRT structure: TensorRT-x.x.x/lib/*.dll)
+          $libDlls = $tensorrtDlls | Where-Object { $_.Directory.Name -eq "lib" }
+          Write-Host "=== Copying $($libDlls.Count) DLLs from lib folder ==="
+          $libDlls | Copy-Item -Destination "lib-staging/" -Force
 
           # List collected DLLs
           Write-Host "=== Collected DLLs ==="
@@ -653,6 +684,12 @@ jobs:
           Remove-Item -Recurse -Force "libnvjitlink-extract" -ErrorAction SilentlyContinue
           Remove-Item -Recurse -Force "cudnn-extract" -ErrorAction SilentlyContinue
           Remove-Item -Recurse -Force "tensorrt-extract" -ErrorAction SilentlyContinue
+          Remove-Item -Recurse -Force "ort-extract" -ErrorAction SilentlyContinue
+
+          # CRITICAL: Delete downloaded archives to free disk space
+          Remove-Item -Recurse -Force "gpu-libs" -ErrorAction SilentlyContinue
+          Write-Host "Disk space after cleanup:"
+          Get-PSDrive C | Select-Object Free, Used
 
       - name: Build release binary (CUDA)
         shell: pwsh

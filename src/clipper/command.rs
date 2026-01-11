@@ -211,8 +211,15 @@ fn find_source_audio(
         .or_else(|| stem.strip_suffix(clipper::BIRDNET_SUFFIX))
         .unwrap_or(stem);
 
+    // If clean_stem has an audio extension (e.g., "recording.wav"), strip it
+    // This handles edge cases like recording.wav.BirdNET.results.csv -> recording.flac
+    let base_stem = clipper::AUDIO_EXTENSIONS
+        .iter()
+        .find_map(|ext| clean_stem.strip_suffix(&format!(".{ext}")))
+        .unwrap_or(clean_stem);
+
     for ext in clipper::AUDIO_EXTENSIONS {
-        let audio_path = search_dir.join(format!("{clean_stem}.{ext}"));
+        let audio_path = search_dir.join(format!("{base_stem}.{ext}"));
         if audio_path.exists() {
             return Ok(audio_path);
         }
@@ -220,6 +227,6 @@ fn find_source_audio(
 
     Err(Error::SourceAudioNotFound {
         detection_path: detection_file.to_path_buf(),
-        audio_path: search_dir.join(clean_stem),
+        audio_path: search_dir.join(base_stem),
     })
 }

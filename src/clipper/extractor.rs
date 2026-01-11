@@ -72,8 +72,11 @@ impl ClipExtractor {
 
         let mss = MediaSourceStream::new(Box::new(file), MediaSourceStreamOptions::default());
 
-        // Probe the format
-        let hint = Hint::new();
+        // Probe the format with file extension hint
+        let mut hint = Hint::new();
+        if let Some(ext) = source_path.extension() {
+            hint.with_extension(&ext.to_string_lossy());
+        }
         let format_opts = FormatOptions::default();
         let metadata_opts = MetadataOptions::default();
 

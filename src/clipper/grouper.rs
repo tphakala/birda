@@ -90,7 +90,7 @@ pub fn group_detections(
 
     for (scientific_name, mut detections) in species_detections {
         // Sort by start time
-        detections.sort_by(|a, b| {
+        detections.sort_unstable_by(|a, b| {
             a.start
                 .partial_cmp(&b.start)
                 .unwrap_or(std::cmp::Ordering::Equal)
@@ -129,7 +129,7 @@ pub fn group_detections(
     }
 
     // Sort all groups by start time
-    groups.sort_by(|a, b| {
+    groups.sort_unstable_by(|a, b| {
         a.start
             .partial_cmp(&b.start)
             .unwrap_or(std::cmp::Ordering::Equal)

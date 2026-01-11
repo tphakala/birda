@@ -4,6 +4,7 @@ use std::path::PathBuf;
 
 use clap::Args;
 
+use super::validators::parse_confidence;
 use crate::constants::clipper::{
     DEFAULT_OUTPUT_DIR, DEFAULT_POST_PADDING, DEFAULT_PRE_PADDING, MAX_PADDING,
 };
@@ -39,20 +40,6 @@ pub struct ClipArgs {
     /// If not specified, paths are resolved relative to the detection file location.
     #[arg(long)]
     pub base_dir: Option<PathBuf>,
-}
-
-fn parse_confidence(s: &str) -> Result<f32, String> {
-    let value: f32 = s
-        .parse()
-        .map_err(|_| format!("'{s}' is not a valid number"))?;
-
-    if !(0.0..=1.0).contains(&value) {
-        return Err(format!(
-            "confidence must be between 0.0 and 1.0, got {value}"
-        ));
-    }
-
-    Ok(value)
 }
 
 fn parse_padding(s: &str) -> Result<f64, String> {

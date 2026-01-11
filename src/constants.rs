@@ -85,3 +85,9 @@ pub mod calendar {
 
 /// UTF-8 Byte Order Mark for Excel compatibility in CSV files.
 pub const UTF8_BOM: &[u8; 3] = b"\xEF\xBB\xBF";
+
+/// `TensorRT` execution provider constants.
+pub mod tensorrt {
+    /// Directory name for `TensorRT` engine and timing cache files.
+    pub const CACHE_DIR: &str = "tensorrt_cache";
+}

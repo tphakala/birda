@@ -1,10 +1,10 @@
 //! Inference classifier wrapper around birdnet-onnx.
 
-use crate::config::{InferenceDevice, ModelConfig as BirdaModelConfig};
+use crate::config::{InferenceDevice, ModelConfig as BirdaModelConfig, tensorrt_cache_dir};
 use crate::error::{Error, Result};
 use birdnet_onnx::{
     BatchInferenceContext, Classifier, ClassifierBuilder, ExecutionProviderInfo, InferenceOptions,
-    PredictionResult, available_execution_providers, ort_execution_providers,
+    PredictionResult, TensorRTConfig, available_execution_providers, ort_execution_providers,
 };
 use std::collections::HashSet;
 use tracing::{debug, info, warn};
@@ -494,8 +494,42 @@ fn add_execution_provider(
             builder.with_cuda()
         }
         ExecutionProviderInfo::TensorRt => {
-            // Use optimized TensorRT configuration (enables FP16, engine caching, timing cache)
-            builder.with_tensorrt()
+            // Use optimized TensorRT configuration with app-specific cache directory
+            let config = match tensorrt_cache_dir() {
+                Ok(cache_dir) => {
+                    // Validate path is valid UTF-8 (required by TensorRT C++ backend)
+                    #[allow(clippy::option_if_let_else)] // if-let is clearer than map_or_else here
+                    if let Some(cache_path) = cache_dir.to_str() {
+                        // Ensure cache directory exists, fall back to default if creation fails
+                        match std::fs::create_dir_all(&cache_dir) {
+                            Ok(()) => {
+                                debug!("TensorRT cache directory: {}", cache_path);
+                                TensorRTConfig::new()
+                                    .with_engine_cache_path(cache_path)
+                                    .with_timing_cache_path(cache_path)
+                            }
+                            Err(e) => {
+                                warn!(
+                                    "Failed to create TensorRT cache directory {}: {}, using default",
+                                    cache_path, e
+                                );
+                                TensorRTConfig::new()
+                            }
+                        }
+                    } else {
+                        warn!(
+                            "TensorRT cache path contains non-UTF-8 characters: {}, using default",
+                            cache_dir.display()
+                        );
+                        TensorRTConfig::new()
+                    }
+                }
+                Err(e) => {
+                    warn!("Could not determine TensorRT cache directory: {}", e);
+                    TensorRTConfig::new()
+                }
+            };
+            builder.with_tensorrt_config(config)
         }
         ExecutionProviderInfo::DirectMl => {
             builder.execution_provider(DirectMLExecutionProvider::default())

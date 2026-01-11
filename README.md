@@ -129,6 +129,8 @@ birda clip *.csv -o my_clips --pre 3 --post 5
 
 Clips are saved to species directories (e.g., `clips/Dendrocopos major/`).
 
+**See [Clip Extraction Guide](docs/clip-extraction.md) for detailed documentation.**
+
 ## Species Filtering
 
 Birda supports filtering detections by species using two complementary approaches:

@@ -20,6 +20,9 @@ env:
   # Required by ONNX Runtime CUDA provider for runtime kernel compilation
   CUDA_NVRTC_VERSION: "12.9.41"
   NVJITLINK_VERSION: "12.9.41"
+  # TensorRT version (for TensorRT execution provider support)
+  # Direct download from https://github.com/NVIDIA/TensorRT
+  TENSORRT_VERSION: "10.14.1.48"
 
 jobs:
   # ==========================================================================
@@ -272,14 +275,14 @@ jobs:
         uses: actions/cache@v5
         with:
           path: gpu-libs
-          key: gpu-libs-linux-ort${{ env.ONNXRUNTIME_VERSION }}-cuda${{ env.CUDA_CUDART_VERSION }}-${{ env.CUDA_CUBLAS_VERSION }}-${{ env.CUDA_CUFFT_VERSION }}-cudnn${{ env.CUDNN_VERSION }}-nvrtc${{ env.CUDA_NVRTC_VERSION }}-nvjitlink${{ env.NVJITLINK_VERSION }}
+          key: gpu-libs-linux-ort${{ env.ONNXRUNTIME_VERSION }}-cuda${{ env.CUDA_CUDART_VERSION }}-${{ env.CUDA_CUBLAS_VERSION }}-${{ env.CUDA_CUFFT_VERSION }}-cudnn${{ env.CUDNN_VERSION }}-nvrtc${{ env.CUDA_NVRTC_VERSION }}-nvjitlink${{ env.NVJITLINK_VERSION }}-trt${{ env.TENSORRT_VERSION }}
 
       - name: Cache extracted libraries
         id: cache-libs-extracted
         uses: actions/cache@v5
         with:
           path: lib-staging
-          key: lib-staging-linux-ort${{ env.ONNXRUNTIME_VERSION }}-cuda${{ env.CUDA_CUDART_VERSION }}-${{ env.CUDA_CUBLAS_VERSION }}-${{ env.CUDA_CUFFT_VERSION }}-cudnn${{ env.CUDNN_VERSION }}-nvrtc${{ env.CUDA_NVRTC_VERSION }}-nvjitlink${{ env.NVJITLINK_VERSION }}
+          key: lib-staging-linux-ort${{ env.ONNXRUNTIME_VERSION }}-cuda${{ env.CUDA_CUDART_VERSION }}-${{ env.CUDA_CUBLAS_VERSION }}-${{ env.CUDA_CUFFT_VERSION }}-cudnn${{ env.CUDNN_VERSION }}-nvrtc${{ env.CUDA_NVRTC_VERSION }}-nvjitlink${{ env.NVJITLINK_VERSION }}-trt${{ env.TENSORRT_VERSION }}
 
       - name: Download ONNX Runtime GPU
         if: steps.cache-libs-extracted.outputs.cache-hit != 'true'
@@ -341,6 +344,15 @@ jobs:
               "${CUDNN_BASE}/cudnn-linux-x86_64-${{ env.CUDNN_VERSION }}_cuda12-archive.tar.xz"
           fi
 
+      - name: Download TensorRT libraries
+        if: steps.cache-libs-extracted.outputs.cache-hit != 'true'
+        run: |
+          # Direct download from NVIDIA (no authentication required)
+          if [ ! -f "gpu-libs/tensorrt.tar.gz" ]; then
+            curl -L -o gpu-libs/tensorrt.tar.gz \
+              "https://developer.nvidia.com/downloads/compute/machine-learning/tensorrt/10.14.1/tars/TensorRT-${{ env.TENSORRT_VERSION }}.Linux.x86_64-gnu.cuda-12.9.tar.gz"
+          fi
+
       - name: Extract GPU libraries
         if: steps.cache-libs-extracted.outputs.cache-hit != 'true'
         run: |
@@ -369,6 +381,14 @@ jobs:
             fi
           done
 
+          # Extract TensorRT
+          tar -xzf gpu-libs/tensorrt.tar.gz
+          for dir in TensorRT-*; do
+            if [ -d "$dir/lib" ]; then
+              cp -av "$dir"/lib/*.so* lib-staging/ 2>/dev/null || true
+            fi
+          done
+
           # List what we collected
           echo "=== Collected libraries ==="
           ls -la lib-staging/
@@ -385,6 +405,9 @@ jobs:
             "libcudnn.so"
             "libnvrtc.so"
             "libnvJitLink.so"
+            "libnvinfer.so"
+            "libnvinfer_plugin.so"
+            "libnvonnxparser.so"
           )
 
           for lib in "${REQUIRED_LIBS[@]}"; do
@@ -397,7 +420,7 @@ jobs:
           echo "All required libraries present"
 
           # Clean up extracted directories to save space (keep only lib-staging)
-          rm -rf cuda_cudart*-archive libcublas*-archive libcufft*-archive cuda_nvrtc*-archive libnvjitlink*-archive cudnn*-archive
+          rm -rf cuda_cudart*-archive libcublas*-archive libcufft*-archive cuda_nvrtc*-archive libnvjitlink*-archive cudnn*-archive TensorRT-*
 
       - name: Build release binary (CUDA)
         env:
@@ -483,14 +506,14 @@ jobs:
         uses: actions/cache@v5
         with:
           path: gpu-libs
-          key: gpu-libs-windows-ort${{ env.ONNXRUNTIME_VERSION }}-cuda${{ env.CUDA_CUDART_VERSION }}-${{ env.CUDA_CUBLAS_VERSION }}-${{ env.CUDA_CUFFT_VERSION }}-cudnn${{ env.CUDNN_VERSION }}-nvrtc${{ env.CUDA_NVRTC_VERSION }}-nvjitlink${{ env.NVJITLINK_VERSION }}
+          key: gpu-libs-windows-ort${{ env.ONNXRUNTIME_VERSION }}-cuda${{ env.CUDA_CUDART_VERSION }}-${{ env.CUDA_CUBLAS_VERSION }}-${{ env.CUDA_CUFFT_VERSION }}-cudnn${{ env.CUDNN_VERSION }}-nvrtc${{ env.CUDA_NVRTC_VERSION }}-nvjitlink${{ env.NVJITLINK_VERSION }}-trt${{ env.TENSORRT_VERSION }}
 
       - name: Cache extracted libraries
         id: cache-libs-extracted
         uses: actions/cache@v5
         with:
           path: lib-staging
-          key: lib-staging-windows-ort${{ env.ONNXRUNTIME_VERSION }}-cuda${{ env.CUDA_CUDART_VERSION }}-${{ env.CUDA_CUBLAS_VERSION }}-${{ env.CUDA_CUFFT_VERSION }}-cudnn${{ env.CUDNN_VERSION }}-nvrtc${{ env.CUDA_NVRTC_VERSION }}-nvjitlink${{ env.NVJITLINK_VERSION }}
+          key: lib-staging-windows-ort${{ env.ONNXRUNTIME_VERSION }}-cuda${{ env.CUDA_CUDART_VERSION }}-${{ env.CUDA_CUBLAS_VERSION }}-${{ env.CUDA_CUFFT_VERSION }}-cudnn${{ env.CUDNN_VERSION }}-nvrtc${{ env.CUDA_NVRTC_VERSION }}-nvjitlink${{ env.NVJITLINK_VERSION }}-trt${{ env.TENSORRT_VERSION }}
 
       - name: Download ONNX Runtime GPU
         if: steps.cache-libs-extracted.outputs.cache-hit != 'true'
@@ -541,6 +564,15 @@ jobs:
             Invoke-WebRequest -Uri "https://developer.download.nvidia.com/compute/cudnn/redist/cudnn/windows-x86_64/cudnn-windows-x86_64-${{ env.CUDNN_VERSION }}_cuda12-archive.zip" -OutFile "gpu-libs/cudnn.zip"
           }
 
+      - name: Download TensorRT libraries
+        if: steps.cache-libs-extracted.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: |
+          # Direct download from NVIDIA (no authentication required)
+          if (-not (Test-Path "gpu-libs/tensorrt.zip")) {
+            Invoke-WebRequest -Uri "https://developer.nvidia.com/downloads/compute/machine-learning/tensorrt/10.14.1/zip/TensorRT-${{ env.TENSORRT_VERSION }}.Windows.win10.cuda-12.9.zip" -OutFile "gpu-libs/tensorrt.zip"
+          }
+
       - name: Extract GPU libraries
         if: steps.cache-libs-extracted.outputs.cache-hit != 'true'
         shell: pwsh
@@ -562,6 +594,10 @@ jobs:
           Expand-Archive -Path "gpu-libs/cudnn.zip" -DestinationPath "cudnn-extract" -Force
           Get-ChildItem -Path "cudnn-extract" -Recurse -Filter "*.dll" | Copy-Item -Destination "lib-staging/" -ErrorAction SilentlyContinue
 
+          # Extract TensorRT
+          Expand-Archive -Path "gpu-libs/tensorrt.zip" -DestinationPath "tensorrt-extract" -Force
+          Get-ChildItem -Path "tensorrt-extract" -Recurse -Filter "*.dll" | Where-Object { $_.Directory.Name -eq "lib" } | Copy-Item -Destination "lib-staging/" -ErrorAction SilentlyContinue
+
           # List collected DLLs
           Write-Host "=== Collected DLLs ==="
           Get-ChildItem lib-staging/
@@ -577,7 +613,10 @@ jobs:
             "cufft64_11.dll",
             "cudnn64_9.dll",
             "nvrtc64_120_0.dll",
-            "nvJitLink_120_0.dll"
+            "nvJitLink_120_0.dll",
+            "nvinfer_10.dll",
+            "nvinfer_plugin_10.dll",
+            "nvonnxparser_10.dll"
           )
 
           $missing = @()
@@ -602,6 +641,7 @@ jobs:
           Remove-Item -Recurse -Force "cuda_nvrtc-extract" -ErrorAction SilentlyContinue
           Remove-Item -Recurse -Force "libnvjitlink-extract" -ErrorAction SilentlyContinue
           Remove-Item -Recurse -Force "cudnn-extract" -ErrorAction SilentlyContinue
+          Remove-Item -Recurse -Force "tensorrt-extract" -ErrorAction SilentlyContinue
 
       - name: Build release binary (CUDA)
         shell: pwsh

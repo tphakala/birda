@@ -228,9 +228,10 @@ fn process_batch(
             target_batch_size,
             padding_needed
         );
-        for _ in 0..padding_needed {
-            segments.push(padding_buffer.as_slice());
-        }
+        segments.extend(std::iter::repeat_n(
+            padding_buffer.as_slice(),
+            padding_needed,
+        ));
     }
 
     let batch_size = segments.len();

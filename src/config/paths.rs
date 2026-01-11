@@ -59,6 +59,6 @@ mod tests {
         assert!(result.is_ok());
         let path = result.unwrap();
         assert!(path.to_string_lossy().contains("birda"));
-        assert!(path.to_string_lossy().contains("tensorrt_cache"));
+        assert!(path.ends_with(tensorrt::CACHE_DIR));
     }
 }

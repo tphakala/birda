@@ -31,6 +31,8 @@ pub mod output_extensions {
     pub const AUDACITY: &str = ".BirdNET.results.txt";
     /// Kaleidoscope CSV extension.
     pub const KALEIDOSCOPE: &str = ".BirdNET.results.kaleidoscope.csv";
+    /// JSON output extension.
+    pub const JSON: &str = ".BirdNET.json";
 }
 
 /// Combined output file names.

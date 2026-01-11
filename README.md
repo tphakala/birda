@@ -12,7 +12,8 @@ A fast, cross-platform CLI tool for bird species detection using [BirdNET](https
 - **Multiple AI Models**: Support for BirdNET v2.4, BirdNET v3.0, and Google Perch v2 models
 - **GPU Acceleration**: Optional CUDA support for faster inference on NVIDIA GPUs
 - **Species Filtering**: Dynamic range filtering by location/date or static species list files
-- **Multiple Output Formats**: CSV, Raven selection tables, Audacity labels, Kaleidoscope CSV
+- **Multiple Output Formats**: CSV, JSON, Raven selection tables, Audacity labels, Kaleidoscope CSV
+- **JSON Output Mode**: Structured JSON/NDJSON output for GUI integration and automation
 - **Batch Processing**: Process entire directories of audio files
 - **Flexible Configuration**: TOML-based config with CLI overrides
 - **Cross-Platform**: Works on Linux, Windows, and macOS
@@ -185,7 +186,8 @@ Arguments:
 
 Options:
   -m, --model <MODEL>           Model name from configuration
-  -f, --format <FORMAT>         Output formats (csv,raven,audacity,kaleidoscope)
+  -f, --format <FORMAT>         Output formats (csv,json,raven,audacity,kaleidoscope)
+      --output-mode <MODE>      CLI output mode (human,json,ndjson)
   -o, --output-dir <DIR>        Output directory (default: same as input)
   -c, --min-confidence <VALUE>  Minimum confidence threshold (0.0-1.0)
   -b, --batch-size <SIZE>       Inference batch size
@@ -321,6 +323,7 @@ All options can be set via environment variables:
 | `BIRDA_MIN_CONFIDENCE` | Minimum confidence threshold |
 | `BIRDA_OVERLAP` | Segment overlap in seconds |
 | `BIRDA_BATCH_SIZE` | Inference batch size |
+| `BIRDA_OUTPUT_MODE` | CLI output mode (human, json, ndjson) |
 
 ## Output Formats
 
@@ -347,6 +350,47 @@ Tab-separated format for import into [Audacity](https://www.audacityteam.org/).
 ### Kaleidoscope CSV
 
 Compatible with [Wildlife Acoustics Kaleidoscope](https://www.wildlifeacoustics.com/products/kaleidoscope) software.
+
+### JSON
+
+Structured JSON output with metadata and summary statistics. Use `-f json` to generate `.BirdNET.json` files:
+
+```bash
+birda -f json recording.wav
+```
+
+## JSON Output for Programmatic Use
+
+Birda supports structured JSON output for integration with GUIs, web applications, and automation scripts.
+
+### CLI Output Mode
+
+Use `--output-mode` to get machine-readable output:
+
+```bash
+# Buffered JSON (single object at completion)
+birda --output-mode json config show
+birda --output-mode json models list
+
+# Streaming NDJSON (one event per line, for real-time progress)
+birda --output-mode ndjson recording.wav
+```
+
+### Example: Real-Time Progress
+
+```bash
+birda --output-mode ndjson recording.wav 2>/dev/null
+```
+
+Outputs events like `pipeline_started`, `file_started`, `progress`, `file_completed`, and `pipeline_completed` - ideal for progress bars in GUI applications.
+
+### Environment Variable
+
+```bash
+export BIRDA_OUTPUT_MODE=json
+```
+
+**See [JSON Output Guide](docs/json-output.md) for complete documentation including payload schemas, integration examples, and error handling.**
 
 ## Performance Tips
 

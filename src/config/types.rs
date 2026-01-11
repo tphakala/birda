@@ -168,24 +168,59 @@ pub struct InferenceConfig {
     pub device: InferenceDevice,
 }
 
+/// CLI output mode for structured output.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, clap::ValueEnum)]
+#[serde(rename_all = "lowercase")]
+pub enum OutputMode {
+    /// Human-readable output with progress bars and colors.
+    #[default]
+    Human,
+    /// Single buffered JSON object at completion.
+    Json,
+    /// Newline-delimited JSON, one event per line (streaming).
+    Ndjson,
+}
+
+impl OutputMode {
+    /// Check if output mode is structured (JSON or NDJSON).
+    #[must_use]
+    pub fn is_structured(self) -> bool {
+        matches!(self, Self::Json | Self::Ndjson)
+    }
+}
+
+impl std::fmt::Display for OutputMode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Human => write!(f, "human"),
+            Self::Json => write!(f, "json"),
+            Self::Ndjson => write!(f, "ndjson"),
+        }
+    }
+}
+
 /// Output settings.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct OutputConfig {
     /// Prefix for combined output files.
     pub combined_prefix: String,
+
+    /// Default CLI output format.
+    pub default_format: OutputMode,
 }
 
 impl Default for OutputConfig {
     fn default() -> Self {
         Self {
             combined_prefix: "BirdNET".to_string(),
+            default_format: OutputMode::Human,
         }
     }
 }
 
-/// Supported output formats.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+/// Supported output formats for detection results.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, clap::ValueEnum)]
 #[serde(rename_all = "lowercase")]
 pub enum OutputFormat {
     /// Generic CSV format.
@@ -196,6 +231,8 @@ pub enum OutputFormat {
     Audacity,
     /// Kaleidoscope CSV.
     Kaleidoscope,
+    /// JSON format with metadata and summary.
+    Json,
 }
 
 impl std::fmt::Display for OutputFormat {
@@ -205,6 +242,7 @@ impl std::fmt::Display for OutputFormat {
             Self::Raven => write!(f, "raven"),
             Self::Audacity => write!(f, "audacity"),
             Self::Kaleidoscope => write!(f, "kaleidoscope"),
+            Self::Json => write!(f, "json"),
         }
     }
 }
@@ -218,6 +256,7 @@ impl std::str::FromStr for OutputFormat {
             "raven" | "table" => Ok(Self::Raven),
             "audacity" => Ok(Self::Audacity),
             "kaleidoscope" => Ok(Self::Kaleidoscope),
+            "json" => Ok(Self::Json),
             other => Err(format!("unknown output format: {other}")),
         }
     }
@@ -285,6 +324,10 @@ mod tests {
             "kaleidoscope".parse::<OutputFormat>().ok(),
             Some(OutputFormat::Kaleidoscope)
         );
+        assert_eq!(
+            "json".parse::<OutputFormat>().ok(),
+            Some(OutputFormat::Json)
+        );
         assert!("unknown".parse::<OutputFormat>().is_err());
     }
 
@@ -292,6 +335,21 @@ mod tests {
     fn test_output_format_display() {
         assert_eq!(OutputFormat::Csv.to_string(), "csv");
         assert_eq!(OutputFormat::Raven.to_string(), "raven");
+        assert_eq!(OutputFormat::Json.to_string(), "json");
+    }
+
+    #[test]
+    fn test_output_mode_display() {
+        assert_eq!(OutputMode::Human.to_string(), "human");
+        assert_eq!(OutputMode::Json.to_string(), "json");
+        assert_eq!(OutputMode::Ndjson.to_string(), "ndjson");
+    }
+
+    #[test]
+    fn test_output_config_default() {
+        let config = OutputConfig::default();
+        assert_eq!(config.combined_prefix, "BirdNET");
+        assert_eq!(config.default_format, OutputMode::Human);
     }
 
     #[test]

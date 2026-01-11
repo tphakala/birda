@@ -1,11 +1,12 @@
 //! Species list generation from range filter.
 
 use crate::cli::SortOrder;
-use crate::config::load_default_config;
+use crate::config::{OutputMode, load_default_config};
 use crate::constants::range_filter::DAYS_PER_WEEK;
 use crate::error::{Error, Result};
 use crate::inference::range_filter::RangeFilter;
-use crate::utils::date::day_of_year_to_date;
+use crate::output::{ResultType, SpeciesEntry, SpeciesListPayload, emit_json_result};
+use crate::utils::date::{date_to_week, day_of_year_to_date};
 use std::fs::File;
 use std::io::Write;
 use std::path::PathBuf;
@@ -25,6 +26,7 @@ const DEFAULT_OUTPUT_FILE: &str = "species_list.txt";
 /// - `threshold`: Range filter threshold (0.0-1.0)
 /// - `sort`: Sort order (Freq or Alpha)
 /// - `model`: Model name to use
+/// - `output_mode`: Output mode (Human, Json, Ndjson)
 ///
 /// # Errors
 /// Returns error if:
@@ -44,6 +46,7 @@ pub fn generate_species_list(
     threshold: f32,
     sort: SortOrder,
     model: Option<String>,
+    output_mode: OutputMode,
 ) -> Result<()> {
     // Load configuration
     let config = load_default_config()?;
@@ -73,13 +76,19 @@ pub fn generate_species_list(
         });
     }
 
+    let is_json = output_mode.is_structured();
+
     // Read classifier labels
-    println!(
-        "Loading model labels from: {}",
-        model_config.labels.display()
-    );
+    if !is_json {
+        println!(
+            "Loading model labels from: {}",
+            model_config.labels.display()
+        );
+    }
     let labels = read_labels_file(&model_config.labels)?;
-    println!("Loaded {} species labels", labels.len());
+    if !is_json {
+        println!("Loaded {} species labels", labels.len());
+    }
 
     // Get month/day for range filter
     let (filter_month, filter_day) = if let Some(week_num) = week {
@@ -94,14 +103,21 @@ pub fn generate_species_list(
         });
     };
 
+    // Calculate week for JSON output using canonical date_to_week function
+    let week_num = week.unwrap_or_else(|| date_to_week(filter_month, filter_day));
+
     // Build range filter
-    println!("Loading range filter model: {}", meta_model_path.display());
+    if !is_json {
+        println!("Loading range filter model: {}", meta_model_path.display());
+    }
     let range_filter = RangeFilter::from_config(meta_model_path, &labels, threshold)?;
 
     // Get location scores
-    println!(
-        "Predicting species for: lat={lat:.4}, lon={lon:.4}, month={filter_month}, day={filter_day}, threshold={threshold}"
-    );
+    if !is_json {
+        println!(
+            "Predicting species for: lat={lat:.4}, lon={lon:.4}, month={filter_month}, day={filter_day}, threshold={threshold}"
+        );
+    }
     let location_scores = range_filter.predict(lat, lon, filter_month, filter_day)?;
 
     // Filter species based on threshold and create list
@@ -111,11 +127,13 @@ pub fn generate_species_list(
         .map(|score| (score.species.clone(), score.score))
         .collect();
 
-    println!(
-        "Found {} species above threshold {:.3}",
-        species_list.len(),
-        threshold
-    );
+    if !is_json {
+        println!(
+            "Found {} species above threshold {:.3}",
+            species_list.len(),
+            threshold
+        );
+    }
 
     // Sort according to user preference
     match sort {
@@ -129,12 +147,50 @@ pub fn generate_species_list(
         }
     }
 
-    // Determine output file path
-    let output_path = output.unwrap_or_else(|| PathBuf::from(DEFAULT_OUTPUT_FILE));
+    // Determine output file path (only used for human mode or when output is specified)
+    let output_path = output
+        .clone()
+        .unwrap_or_else(|| PathBuf::from(DEFAULT_OUTPUT_FILE));
 
-    // Write species list to file
-    write_species_list(&output_path, &species_list)?;
+    // Write species list to file (only in human mode)
+    if !is_json {
+        write_species_list(&output_path, &species_list)?;
+    }
 
+    // JSON/NDJSON output
+    if is_json {
+        // Parse species names into scientific/common name pairs
+        let species_entries: Vec<SpeciesEntry> = species_list
+            .iter()
+            .map(|(label, score)| {
+                // Label format is typically "Genus species_Common Name"
+                let (scientific, common) = label.find('_').map_or_else(
+                    || (label.clone(), String::new()),
+                    |idx| (label[..idx].to_string(), label[idx + 1..].to_string()),
+                );
+                SpeciesEntry {
+                    scientific_name: scientific,
+                    common_name: common,
+                    frequency: *score,
+                }
+            })
+            .collect();
+
+        let payload = SpeciesListPayload {
+            result_type: ResultType::SpeciesList,
+            lat,
+            lon,
+            week: week_num,
+            threshold,
+            species_count: species_entries.len(),
+            output_file: output,
+            species: species_entries,
+        };
+        emit_json_result(&payload);
+        return Ok(());
+    }
+
+    // Human-readable output
     println!("Species list written to: {}", output_path.display());
     println!(
         "Sort order: {}",

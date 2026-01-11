@@ -368,4 +368,14 @@ pub enum Error {
         /// Expected path to the audio file.
         audio_path: std::path::PathBuf,
     },
+
+    /// Failed to write JSON output file.
+    #[error("failed to write JSON output file '{path}'")]
+    JsonWrite {
+        /// Path to the JSON file.
+        path: std::path::PathBuf,
+        /// Underlying serialization error.
+        #[source]
+        source: serde_json::Error,
+    },
 }

@@ -6,7 +6,8 @@ use crate::error::Result;
 use crate::inference::{BatchInferenceContext, BirdClassifier, InferenceOptions};
 use crate::locking::FileLock;
 use crate::output::{
-    AudacityWriter, CsvWriter, Detection, KaleidoscopeWriter, OutputWriter, RavenWriter,
+    AudacityWriter, CsvWriter, Detection, JsonResultWriter, KaleidoscopeWriter, OutputWriter,
+    RavenWriter,
 };
 use crate::pipeline::output_path_for;
 use std::path::Path;
@@ -262,6 +263,8 @@ fn process_batch(
 /// * `csv_columns` - Additional columns to include in CSV output
 /// * `progress_enabled` - Whether to show progress bars
 /// * `csv_bom_enabled` - Whether to include UTF-8 BOM in CSV output for Excel compatibility
+/// * `model_name` - Model name for JSON output metadata
+/// * `range_filter_params` - Optional (lat, lon, week) for JSON output metadata
 #[allow(clippy::too_many_arguments)]
 pub fn process_file(
     input_path: &Path,
@@ -274,6 +277,8 @@ pub fn process_file(
     csv_columns: &[String],
     progress_enabled: bool,
     csv_bom_enabled: bool,
+    model_name: &str,
+    range_filter_params: Option<(f64, f64, u8)>,
 ) -> Result<ProcessResult> {
     use crate::audio::StreamingDecoder;
     use crate::output::progress::{self, estimate_segment_count};
@@ -423,6 +428,37 @@ pub fn process_file(
         min_confidence * 100.0
     );
 
+    // Prepare JSON config if JSON output is requested
+    // Use decoder hint if available, otherwise estimate from processed segments
+    let audio_duration_secs = duration_hint.unwrap_or_else(|| {
+        // Estimate: segment_duration + (n-1) * (segment_duration - overlap)
+        if actual_segments > 0 {
+            let seg_dur = f64::from(segment_duration);
+            let ovr = f64::from(overlap);
+            let non_overlap = seg_dur - ovr;
+            #[allow(clippy::cast_precision_loss)]
+            let estimated = (actual_segments as f64 - 1.0).mul_add(non_overlap, seg_dur);
+            estimated
+        } else {
+            0.0
+        }
+    });
+    let json_config = if formats.contains(&OutputFormat::Json) {
+        #[allow(clippy::cast_possible_truncation)]
+        let audio_duration_f32 = audio_duration_secs as f32;
+        Some(JsonOutputConfig {
+            model: model_name.to_string(),
+            min_confidence,
+            overlap,
+            audio_duration: audio_duration_f32,
+            lat: range_filter_params.map(|(lat, _, _)| lat),
+            lon: range_filter_params.map(|(_, lon, _)| lon),
+            week: range_filter_params.map(|(_, _, week)| week),
+        })
+    } else {
+        None
+    };
+
     // Write output files
     for format in formats {
         write_output(
@@ -432,11 +468,11 @@ pub fn process_file(
             &detections,
             csv_columns,
             csv_bom_enabled,
+            json_config.as_ref(),
         )?;
     }
 
     let duration_secs = start_time.elapsed().as_secs_f64();
-    let audio_duration_secs = duration_hint.unwrap_or(0.0);
 
     #[allow(clippy::cast_precision_loss)]
     let segments_per_sec = if duration_secs > 0.0 && actual_segments > 0 {
@@ -463,7 +499,27 @@ pub fn process_file(
     })
 }
 
+/// Configuration for JSON output writer.
+#[derive(Debug, Clone)]
+pub struct JsonOutputConfig {
+    /// Model name used for analysis.
+    pub model: String,
+    /// Minimum confidence threshold.
+    pub min_confidence: f32,
+    /// Segment overlap.
+    pub overlap: f32,
+    /// Audio file duration in seconds.
+    pub audio_duration: f32,
+    /// Latitude for range filtering.
+    pub lat: Option<f64>,
+    /// Longitude for range filtering.
+    pub lon: Option<f64>,
+    /// Week for range filtering.
+    pub week: Option<u8>,
+}
+
 /// Write detections to an output file.
+#[allow(clippy::too_many_arguments)]
 fn write_output(
     input_path: &Path,
     output_dir: &Path,
@@ -471,6 +527,7 @@ fn write_output(
     detections: &[Detection],
     csv_columns: &[String],
     csv_bom_enabled: bool,
+    json_config: Option<&JsonOutputConfig>,
 ) -> Result<()> {
     let output_path = output_path_for(input_path, output_dir, format);
     debug!("Writing {} output: {}", format, output_path.display());
@@ -484,6 +541,29 @@ fn write_output(
         OutputFormat::Raven => Box::new(RavenWriter::new(&output_path)?),
         OutputFormat::Audacity => Box::new(AudacityWriter::new(&output_path)?),
         OutputFormat::Kaleidoscope => Box::new(KaleidoscopeWriter::new(&output_path)?),
+        OutputFormat::Json => {
+            let source_file = input_path.file_name().map_or_else(
+                || "unknown".to_string(),
+                |n| n.to_string_lossy().to_string(),
+            );
+
+            // JsonOutputConfig must be provided when JSON format is requested
+            let config = json_config.ok_or_else(|| crate::error::Error::Internal {
+                message: "JsonOutputConfig required for JSON format".to_string(),
+            })?;
+
+            Box::new(JsonResultWriter::new(
+                &output_path,
+                &source_file,
+                config.audio_duration,
+                &config.model,
+                config.min_confidence,
+                config.overlap,
+                config.lat,
+                config.lon,
+                config.week,
+            )?)
+        }
     };
 
     writer.write_header()?;

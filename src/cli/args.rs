@@ -1,6 +1,6 @@
 //! CLI argument definitions.
 
-use crate::config::{ModelType, OutputFormat};
+use crate::config::{ModelType, OutputFormat, OutputMode};
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use std::path::PathBuf;
 
@@ -26,6 +26,12 @@ pub struct Cli {
 
     /// Input files or directories to analyze.
     pub inputs: Vec<PathBuf>,
+
+    /// CLI output format: human (default), json (buffered), or ndjson (streaming).
+    /// Note: This controls CLI output format, not detection result file format.
+    /// For file formats, use `-f/--format`.
+    #[arg(long, value_enum, global = true, env = "BIRDA_OUTPUT_MODE")]
+    pub output_mode: Option<OutputMode>,
 
     /// Common options for analysis.
     #[command(flatten)]

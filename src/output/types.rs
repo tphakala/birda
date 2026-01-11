@@ -1,9 +1,10 @@
 //! Output type definitions.
 
+use serde::Serialize;
 use std::path::PathBuf;
 
 /// A single bird detection.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct Detection {
     /// Path to the source audio file.
     pub file_path: PathBuf,
@@ -22,23 +23,31 @@ pub struct Detection {
 }
 
 /// Optional metadata for detections.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize)]
 pub struct DetectionMetadata {
     /// Recording latitude.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub lat: Option<f64>,
     /// Recording longitude.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub lon: Option<f64>,
     /// Week of year (1-48).
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub week: Option<u8>,
     /// Model name used for detection.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
     /// Overlap setting used.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub overlap: Option<f32>,
     /// Sensitivity setting used.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub sensitivity: Option<f32>,
     /// Minimum confidence threshold used.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub min_conf: Option<f32>,
     /// Species list file path.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub species_list: Option<String>,
 }
 

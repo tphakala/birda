@@ -164,10 +164,11 @@ pub fn generate_species_list(
             .iter()
             .map(|(label, score)| {
                 // Label format is typically "Genus species_Common Name"
-                let (scientific, common) = label.find('_').map_or_else(
-                    || (label.clone(), String::new()),
-                    |idx| (label[..idx].to_string(), label[idx + 1..].to_string()),
-                );
+                let (scientific, common) = if let Some((s, c)) = label.split_once('_') {
+                    (s.to_string(), c.to_string())
+                } else {
+                    (label.clone(), String::new())
+                };
                 SpeciesEntry {
                     scientific_name: scientific,
                     common_name: common,

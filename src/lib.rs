@@ -649,25 +649,25 @@ fn handle_models_command(
 
     match action {
         ModelsAction::List => {
-            // Build model entries (sorted by ID for deterministic output)
-            let mut model_names: Vec<_> = config.models.keys().collect();
-            model_names.sort();
-            let models: Vec<ModelEntry> = model_names
+            // Build model entries
+            let mut models: Vec<ModelEntry> = config
+                .models
                 .iter()
-                .filter_map(|name| {
-                    config.models.get(*name).map(|model| {
-                        let is_default = config.defaults.model.as_ref().is_some_and(|d| d == *name);
-                        ModelEntry {
-                            id: (*name).clone(),
-                            model_type: model.model_type.to_string(),
-                            is_default,
-                            path: Some(model.path.clone()),
-                            labels_path: Some(model.labels.clone()),
-                            has_meta_model: model.meta_model.is_some(),
-                        }
-                    })
+                .map(|(name, model)| {
+                    let is_default = config.defaults.model.as_ref().is_some_and(|d| d == name);
+                    ModelEntry {
+                        id: name.clone(),
+                        model_type: model.model_type.to_string(),
+                        is_default,
+                        path: Some(model.path.clone()),
+                        labels_path: Some(model.labels.clone()),
+                        has_meta_model: model.meta_model.is_some(),
+                    }
                 })
                 .collect();
+
+            // Sort by ID for deterministic output
+            models.sort_unstable_by(|a, b| a.id.cmp(&b.id));
 
             // JSON/NDJSON output
             if output_mode.is_structured() {

@@ -175,7 +175,7 @@ pub enum OutputMode {
     /// Human-readable output with progress bars and colors.
     #[default]
     Human,
-    /// Single buffered JSON object at completion.
+    /// Buffered JSON array of envelopes at completion.
     Json,
     /// Newline-delimited JSON, one event per line (streaming).
     Ndjson,

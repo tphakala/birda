@@ -6,6 +6,7 @@
 
 pub mod audio;
 pub mod cli;
+pub mod clipper;
 pub mod config;
 pub mod constants;
 pub mod error;

@@ -117,5 +117,5 @@ pub mod clipper {
     pub const BIRDNET_SUFFIX: &str = ".BirdNET";
 
     /// Supported audio file extensions for source audio resolution.
-    pub const AUDIO_EXTENSIONS: &[&str] = &["wav", "flac", "mp3", "ogg", "m4a"];
+    pub const AUDIO_EXTENSIONS: &[&str] = &["wav", "flac", "mp3", "m4a", "aac"];
 }

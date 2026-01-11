@@ -181,7 +181,6 @@ Input (source audio):
 - WAV (recommended for fastest seeking)
 - FLAC
 - MP3
-- OGG Vorbis
 - M4A/AAC
 
 Output: WAV only (for maximum compatibility)

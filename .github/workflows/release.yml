@@ -635,10 +635,10 @@ jobs:
           }
           $tensorrtDlls | ForEach-Object { Write-Host "$($_.Directory.Name)/$($_.Name)" }
 
-          # Copy DLLs from lib folder (TensorRT structure: TensorRT-x.x.x/lib/*.dll)
-          $libDlls = $tensorrtDlls | Where-Object { $_.Directory.Name -eq "lib" }
-          Write-Host "=== Copying $($libDlls.Count) DLLs from lib folder ==="
-          $libDlls | Copy-Item -Destination "lib-staging/" -Force
+          # Copy DLLs from bin folder (TensorRT Windows structure: TensorRT-x.x.x/bin/*.dll)
+          $binDlls = $tensorrtDlls | Where-Object { $_.Directory.Name -eq "bin" }
+          Write-Host "=== Copying $($binDlls.Count) DLLs from bin folder ==="
+          $binDlls | Copy-Item -Destination "lib-staging/" -Force
 
           # List collected DLLs
           Write-Host "=== Collected DLLs ==="

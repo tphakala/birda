@@ -63,6 +63,7 @@ pub fn output_path_for(input: &Path, output_dir: &Path, format: OutputFormat) ->
         OutputFormat::Raven => output_extensions::RAVEN,
         OutputFormat::Audacity => output_extensions::AUDACITY,
         OutputFormat::Kaleidoscope => output_extensions::KALEIDOSCOPE,
+        OutputFormat::Json => output_extensions::JSON,
     };
 
     output_dir.join(format!("{stem}{extension}"))

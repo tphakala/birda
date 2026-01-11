@@ -21,14 +21,20 @@ pub mod utils;
 use clap::Parser;
 use cli::{AnalyzeArgs, Cli, Command};
 use config::{
-    Config, InferenceDevice, ModelConfig, ModelType, config_file_path, load_default_config,
-    range_filter::build_range_filter_config, save_default_config,
+    Config, InferenceDevice, ModelConfig, ModelType, OutputMode, config_file_path,
+    load_default_config, range_filter::build_range_filter_config, save_default_config,
 };
 use constants::DEFAULT_TOP_K;
 use inference::BirdClassifier;
+use output::{
+    ConfigPayload, FileStatus, ModelDetails, ModelEntry, ModelInfoPayload, ModelListPayload,
+    PipelineSummary, ProgressReporter, ProviderInfo, ProvidersPayload, ResultType, create_reporter,
+    emit_json_result,
+};
 use pipeline::{ProcessCheck, collect_input_files, output_dir_for, process_file, should_process};
 use std::collections::HashSet;
 use std::path::PathBuf;
+use std::sync::Arc;
 use tracing::{error, info, warn};
 
 pub use error::{Error, Result};
@@ -56,9 +62,15 @@ pub fn run() -> Result<()> {
     // Load configuration
     let config = load_default_config()?;
 
+    // Determine output mode (CLI flag takes precedence over config)
+    let output_mode = cli.output_mode.unwrap_or(config.output.default_format);
+
+    // Create reporter based on output mode
+    let reporter: Arc<dyn ProgressReporter> = Arc::from(create_reporter(output_mode));
+
     // Handle subcommands
     if let Some(command) = cli.command {
-        return handle_command(command, &config);
+        return handle_command(command, &config, output_mode, &reporter);
     }
 
     // Default: analyze files
@@ -69,11 +81,17 @@ pub fn run() -> Result<()> {
     }
 
     // Run analysis
-    analyze_files(&cli.inputs, &cli.analyze, &config)
+    analyze_files(&cli.inputs, &cli.analyze, &config, output_mode, &reporter)
 }
 
 /// Analyze input files with the given options.
-fn analyze_files(inputs: &[PathBuf], args: &AnalyzeArgs, config: &Config) -> Result<()> {
+fn analyze_files(
+    inputs: &[PathBuf],
+    args: &AnalyzeArgs,
+    config: &Config,
+    output_mode: OutputMode,
+    reporter: &Arc<dyn ProgressReporter>,
+) -> Result<()> {
     use crate::output::progress;
     use std::time::Instant;
 
@@ -102,6 +120,9 @@ fn analyze_files(inputs: &[PathBuf], args: &AnalyzeArgs, config: &Config) -> Res
     let min_confidence = args
         .min_confidence
         .unwrap_or(config.defaults.min_confidence);
+
+    // Report pipeline start
+    reporter.pipeline_started(files.len(), &model_name, min_confidence);
     let overlap = args.overlap.unwrap_or(config.defaults.overlap);
     let batch_size = args.batch_size.unwrap_or(config.defaults.batch_size);
     let formats = args
@@ -180,6 +201,13 @@ fn analyze_files(inputs: &[PathBuf], args: &AnalyzeArgs, config: &Config) -> Res
         );
     }
 
+    // Extract range filter params before moving range_filter_config
+    #[allow(clippy::cast_possible_truncation)]
+    let range_filter_params = range_filter_config.as_ref().map(|rf| {
+        let week = crate::utils::date::date_to_week(rf.month, rf.day) as u8;
+        (rf.latitude, rf.longitude, week)
+    });
+
     // Build classifier
     info!("Loading model: {}", model_name);
     let classifier = BirdClassifier::from_config(
@@ -243,8 +271,9 @@ fn analyze_files(inputs: &[PathBuf], args: &AnalyzeArgs, config: &Config) -> Res
         classifier.warmup(batch_size)?;
     }
 
-    // Create file progress bar
-    let progress_enabled = !args.quiet && !args.no_progress;
+    // Create file progress bar (disabled in JSON mode - reporter handles progress)
+    let is_json_output = matches!(output_mode, OutputMode::Json | OutputMode::Ndjson);
+    let progress_enabled = !args.quiet && !args.no_progress && !is_json_output;
     let file_progress = progress::create_file_progress(files.len(), progress_enabled);
 
     // Process files
@@ -255,19 +284,21 @@ fn analyze_files(inputs: &[PathBuf], args: &AnalyzeArgs, config: &Config) -> Res
     let mut total_segments = 0;
     let mut total_audio_duration = 0.0f64;
 
-    for file in &files {
+    for (index, file) in files.iter().enumerate() {
         let file_output_dir = output_dir_for(file, output_dir.as_deref());
 
         // Check if should process
         match should_process(file, &file_output_dir, &formats, force) {
             ProcessCheck::SkipExists => {
                 info!("Skipping (output exists): {}", file.display());
+                reporter.file_skipped(file, FileStatus::Skipped);
                 skipped += 1;
                 progress::inc_progress(file_progress.as_ref());
                 continue;
             }
             ProcessCheck::SkipLocked => {
                 info!("Skipping (locked): {}", file.display());
+                reporter.file_skipped(file, FileStatus::Locked);
                 skipped += 1;
                 progress::inc_progress(file_progress.as_ref());
                 continue;
@@ -275,7 +306,17 @@ fn analyze_files(inputs: &[PathBuf], args: &AnalyzeArgs, config: &Config) -> Res
             ProcessCheck::Process => {}
         }
 
+        // Estimate segments for reporter (using overlap from config)
+        let segment_duration = classifier.segment_duration();
+        #[allow(clippy::cast_possible_truncation)]
+        let estimated_segments =
+            progress::estimate_segment_count(None, segment_duration, overlap).unwrap_or(0) as usize;
+
+        // Report file start
+        reporter.file_started(file, index, estimated_segments, None);
+
         // Process the file
+        let file_start = std::time::Instant::now();
         match process_file(
             file,
             &file_output_dir,
@@ -287,8 +328,13 @@ fn analyze_files(inputs: &[PathBuf], args: &AnalyzeArgs, config: &Config) -> Res
             &config.defaults.csv_columns.include,
             progress_enabled,
             !args.no_csv_bom,
+            &model_name,
+            range_filter_params,
         ) {
             Ok(result) => {
+                #[allow(clippy::cast_possible_truncation)]
+                let duration_ms = file_start.elapsed().as_millis() as u64;
+                reporter.file_completed_success(file, result.detections, duration_ms);
                 processed += 1;
                 total_detections += result.detections;
                 total_segments += result.segments;
@@ -296,9 +342,28 @@ fn analyze_files(inputs: &[PathBuf], args: &AnalyzeArgs, config: &Config) -> Res
             }
             Err(e) => {
                 error!("Failed to process {}: {}", file.display(), e);
+                reporter.file_completed_failure(file, "processing_error", &e.to_string());
                 errors += 1;
                 if fail_fast {
                     progress::finish_progress(file_progress, "Failed");
+                    // Report pipeline failure
+                    #[allow(clippy::cast_possible_truncation, clippy::cast_precision_loss)]
+                    let duration_ms = total_start.elapsed().as_millis() as u64;
+                    #[allow(clippy::cast_precision_loss)]
+                    let realtime_factor = if duration_ms > 0 {
+                        total_audio_duration / (duration_ms as f64 / 1000.0)
+                    } else {
+                        0.0
+                    };
+                    reporter.pipeline_completed(&PipelineSummary {
+                        files_processed: processed,
+                        files_failed: errors,
+                        files_skipped: skipped,
+                        total_detections,
+                        total_segments,
+                        duration_ms,
+                        realtime_factor,
+                    });
                     return Err(e);
                 }
             }
@@ -310,20 +375,24 @@ fn analyze_files(inputs: &[PathBuf], args: &AnalyzeArgs, config: &Config) -> Res
 
     // Summary
     let total_duration = total_start.elapsed().as_secs_f64();
+    #[allow(clippy::cast_possible_truncation)]
+    let duration_ms = total_start.elapsed().as_millis() as u64;
     info!(
         "Complete: {} processed, {} skipped, {} errors, {} total detections in {:.2}s",
         processed, skipped, errors, total_detections, total_duration
     );
 
+    #[allow(clippy::cast_precision_loss)]
+    let overall_realtime_factor = if total_duration > 0.0 {
+        total_audio_duration / total_duration
+    } else {
+        0.0
+    };
+
     if processed > 0 {
         #[allow(clippy::cast_precision_loss)]
         let avg_segments_per_sec = if total_duration > 0.0 {
             total_segments as f64 / total_duration
-        } else {
-            0.0
-        };
-        let overall_realtime_factor = if total_duration > 0.0 {
-            total_audio_duration / total_duration
         } else {
             0.0
         };
@@ -338,6 +407,17 @@ fn analyze_files(inputs: &[PathBuf], args: &AnalyzeArgs, config: &Config) -> Res
     if errors > 0 && !fail_fast {
         warn!("{} file(s) had errors", errors);
     }
+
+    // Report pipeline completion
+    reporter.pipeline_completed(&PipelineSummary {
+        files_processed: processed,
+        files_failed: errors,
+        files_skipped: skipped,
+        total_detections,
+        total_segments,
+        duration_ms,
+        realtime_factor: overall_realtime_factor,
+    });
 
     Ok(())
 }
@@ -361,15 +441,24 @@ fn init_logging(verbose: u8, quiet: bool) {
 
     let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(&filter_str));
 
-    fmt().with_env_filter(filter).init();
+    // Write logs to stderr to keep stdout clean for JSON output
+    fmt()
+        .with_env_filter(filter)
+        .with_writer(std::io::stderr)
+        .init();
 }
 
-fn handle_command(command: Command, config: &config::Config) -> Result<()> {
+fn handle_command(
+    command: Command,
+    config: &config::Config,
+    output_mode: OutputMode,
+    _reporter: &Arc<dyn ProgressReporter>,
+) -> Result<()> {
     match command {
-        Command::Config { action } => handle_config_command(action),
-        Command::Models { action } => handle_models_command(action, config),
+        Command::Config { action } => handle_config_command(action, output_mode),
+        Command::Models { action } => handle_models_command(action, config, output_mode),
         Command::Providers => {
-            handle_providers_command();
+            handle_providers_command(output_mode);
             Ok(())
         }
         Command::Species {
@@ -383,37 +472,93 @@ fn handle_command(command: Command, config: &config::Config) -> Result<()> {
             sort,
             model,
         } => cli::species::generate_species_list(
-            output, lat, lon, week, month, day, threshold, sort, model,
+            output,
+            lat,
+            lon,
+            week,
+            month,
+            day,
+            threshold,
+            sort,
+            model,
+            output_mode,
         ),
-        Command::Clip(args) => clipper::command::execute(&args),
+        Command::Clip(args) => clipper::command::execute(&args, output_mode),
     }
 }
 
-fn handle_providers_command() {
+fn handle_providers_command(output_mode: OutputMode) {
     use birdnet_onnx::available_execution_providers;
 
     let providers = available_execution_providers();
 
+    // Build provider info list
+    let provider_infos: Vec<ProviderInfo> = providers
+        .iter()
+        .map(|provider| {
+            let (id, name, description) = match provider {
+                birdnet_onnx::ExecutionProviderInfo::Cpu => {
+                    ("cpu", "CPU", "CPU (always available)")
+                }
+                birdnet_onnx::ExecutionProviderInfo::Cuda => {
+                    ("cuda", "CUDA", "CUDA (NVIDIA GPU acceleration)")
+                }
+                birdnet_onnx::ExecutionProviderInfo::TensorRt => (
+                    "tensorrt",
+                    "TensorRT",
+                    "TensorRT (NVIDIA optimized inference)",
+                ),
+                birdnet_onnx::ExecutionProviderInfo::DirectMl => (
+                    "directml",
+                    "DirectML",
+                    "DirectML (Windows GPU acceleration)",
+                ),
+                birdnet_onnx::ExecutionProviderInfo::CoreMl => {
+                    ("coreml", "CoreML", "CoreML (Apple GPU/Neural Engine)")
+                }
+                birdnet_onnx::ExecutionProviderInfo::Rocm => {
+                    ("rocm", "ROCm", "ROCm (AMD GPU acceleration)")
+                }
+                birdnet_onnx::ExecutionProviderInfo::OpenVino => {
+                    ("openvino", "OpenVINO", "OpenVINO (Intel optimization)")
+                }
+                birdnet_onnx::ExecutionProviderInfo::OneDnn => {
+                    ("onednn", "oneDNN", "oneDNN (Intel CPU optimization)")
+                }
+                birdnet_onnx::ExecutionProviderInfo::Qnn => {
+                    ("qnn", "QNN", "QNN (Qualcomm Neural Network)")
+                }
+                birdnet_onnx::ExecutionProviderInfo::Acl => {
+                    ("acl", "ACL", "ACL (Arm Compute Library)")
+                }
+                birdnet_onnx::ExecutionProviderInfo::ArmNn => {
+                    ("armnn", "ArmNN", "ArmNN (Arm Neural Network)")
+                }
+            };
+            ProviderInfo {
+                id: id.to_string(),
+                name: name.to_string(),
+                description: description.to_string(),
+            }
+        })
+        .collect();
+
+    // JSON/NDJSON output
+    if output_mode.is_structured() {
+        let payload = ProvidersPayload {
+            result_type: ResultType::Providers,
+            providers: provider_infos,
+        };
+        emit_json_result(&payload);
+        return;
+    }
+
+    // Human-readable output
     println!("Available execution providers:");
     println!();
 
-    for provider in &providers {
-        let description = match provider {
-            birdnet_onnx::ExecutionProviderInfo::Cpu => "CPU (always available)",
-            birdnet_onnx::ExecutionProviderInfo::Cuda => "CUDA (NVIDIA GPU acceleration)",
-            birdnet_onnx::ExecutionProviderInfo::TensorRt => {
-                "TensorRT (NVIDIA optimized inference)"
-            }
-            birdnet_onnx::ExecutionProviderInfo::DirectMl => "DirectML (Windows GPU acceleration)",
-            birdnet_onnx::ExecutionProviderInfo::CoreMl => "CoreML (Apple GPU/Neural Engine)",
-            birdnet_onnx::ExecutionProviderInfo::Rocm => "ROCm (AMD GPU acceleration)",
-            birdnet_onnx::ExecutionProviderInfo::OpenVino => "OpenVINO (Intel optimization)",
-            birdnet_onnx::ExecutionProviderInfo::OneDnn => "oneDNN (Intel CPU optimization)",
-            birdnet_onnx::ExecutionProviderInfo::Qnn => "QNN (Qualcomm Neural Network)",
-            birdnet_onnx::ExecutionProviderInfo::Acl => "ACL (Arm Compute Library)",
-            birdnet_onnx::ExecutionProviderInfo::ArmNn => "ArmNN (Arm Neural Network)",
-        };
-        println!("  ✓ {description}");
+    for info in &provider_infos {
+        println!("  ✓ {}", info.description);
     }
 
     println!();
@@ -444,7 +589,7 @@ fn handle_providers_command() {
     println!("      provider selection during inference.");
 }
 
-fn handle_config_command(action: cli::ConfigAction) -> Result<()> {
+fn handle_config_command(action: cli::ConfigAction, output_mode: OutputMode) -> Result<()> {
     use cli::ConfigAction;
 
     match action {
@@ -466,33 +611,85 @@ fn handle_config_command(action: cli::ConfigAction) -> Result<()> {
         }
         ConfigAction::Show => {
             let config = load_default_config()?;
+            let config_path = config_file_path()?;
+
+            // JSON/NDJSON output
+            if output_mode.is_structured() {
+                let config_json =
+                    serde_json::to_value(&config).map_err(|e| Error::ConfigValidation {
+                        message: format!("failed to serialize config to JSON: {e}"),
+                    })?;
+                let payload = ConfigPayload {
+                    result_type: ResultType::Config,
+                    config_path,
+                    config: config_json,
+                };
+                emit_json_result(&payload);
+                return Ok(());
+            }
+
+            // Human-readable output
             println!("{config:#?}");
             Ok(())
         }
         ConfigAction::Path => {
-            let path = config::config_file_path()?;
+            let path = config_file_path()?;
             println!("{}", path.display());
             Ok(())
         }
     }
 }
 
-fn handle_models_command(action: cli::ModelsAction, config: &config::Config) -> Result<()> {
+fn handle_models_command(
+    action: cli::ModelsAction,
+    config: &config::Config,
+    output_mode: OutputMode,
+) -> Result<()> {
     use cli::ModelsAction;
 
     match action {
         ModelsAction::List => {
+            // Build model entries
+            let mut models: Vec<ModelEntry> = config
+                .models
+                .iter()
+                .map(|(name, model)| {
+                    let is_default = config.defaults.model.as_ref().is_some_and(|d| d == name);
+                    ModelEntry {
+                        id: name.clone(),
+                        model_type: model.model_type.to_string(),
+                        is_default,
+                        path: Some(model.path.clone()),
+                        labels_path: Some(model.labels.clone()),
+                        has_meta_model: model.meta_model.is_some(),
+                    }
+                })
+                .collect();
+
+            // Sort by ID for deterministic output
+            models.sort_unstable_by(|a, b| a.id.cmp(&b.id));
+
+            // JSON/NDJSON output
+            if output_mode.is_structured() {
+                let payload = ModelListPayload {
+                    result_type: ResultType::ModelList,
+                    models,
+                };
+                emit_json_result(&payload);
+                return Ok(());
+            }
+
+            // Human-readable output
             if config.models.is_empty() {
                 println!("No models configured.");
             } else {
                 println!("Configured models:");
-                for (name, model) in &config.models {
-                    let default_marker = config.defaults.model.as_ref().is_some_and(|d| d == name);
+                for entry in &models {
                     println!(
                         "  {} ({}){}",
-                        name,
-                        model.model_type,
-                        if default_marker { " [default]" } else { "" }
+                        entry.id,
+                        entry.model_type,
+                        if entry.is_default { " [default]" } else { "" }
                     );
                 }
             }
@@ -520,7 +717,26 @@ fn handle_models_command(action: cli::ModelsAction, config: &config::Config) -> 
         ModelsAction::Info { id, languages } => {
             // Try registry first
             let registry = registry::load_registry()?;
-            if registry::find_model(&registry, &id).is_some() {
+            if let Some(reg_model) = registry::find_model(&registry, &id) {
+                // JSON/NDJSON output for registry model
+                if output_mode.is_structured() {
+                    // Note: --languages flag doesn't apply to JSON output - we include all info
+                    let payload = ModelInfoPayload {
+                        result_type: ResultType::ModelInfo,
+                        model: ModelDetails {
+                            id: reg_model.id.clone(),
+                            model_type: reg_model.model_type.clone(),
+                            path: None,
+                            labels_path: None,
+                            meta_model_path: None,
+                            source: "registry".to_string(),
+                        },
+                    };
+                    emit_json_result(&payload);
+                    return Ok(());
+                }
+
+                // Human-readable output
                 if languages {
                     registry::show_languages(&registry, &id)?;
                 } else {
@@ -529,6 +745,25 @@ fn handle_models_command(action: cli::ModelsAction, config: &config::Config) -> 
             } else {
                 // Fall back to configured model
                 let model = config::get_model(config, &id)?;
+
+                // JSON/NDJSON output
+                if output_mode.is_structured() {
+                    let payload = ModelInfoPayload {
+                        result_type: ResultType::ModelInfo,
+                        model: ModelDetails {
+                            id: id.clone(),
+                            model_type: model.model_type.to_string(),
+                            path: Some(model.path.clone()),
+                            labels_path: Some(model.labels.clone()),
+                            meta_model_path: model.meta_model.clone(),
+                            source: "configured".to_string(),
+                        },
+                    };
+                    emit_json_result(&payload);
+                    return Ok(());
+                }
+
+                // Human-readable output
                 println!("Model: {id}");
                 println!("  Type: {}", model.model_type);
                 println!("  Path: {}", model.path.display());

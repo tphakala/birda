@@ -147,10 +147,8 @@ pub fn generate_species_list(
         }
     }
 
-    // Determine output file path (only used for human mode or when output is specified)
-    let output_path = output
-        .clone()
-        .unwrap_or_else(|| PathBuf::from(DEFAULT_OUTPUT_FILE));
+    // Determine output file path (only used for human mode)
+    let output_path = output.unwrap_or_else(|| PathBuf::from(DEFAULT_OUTPUT_FILE));
 
     // Write species list to file (only in human mode)
     if !is_json {
@@ -184,7 +182,7 @@ pub fn generate_species_list(
             week: week_num,
             threshold,
             species_count: species_entries.len(),
-            output_file: output,
+            output_file: None, // No file written in JSON mode
             species: species_entries,
         };
         emit_json_result(&payload);

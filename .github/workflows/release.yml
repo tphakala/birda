@@ -281,7 +281,7 @@ jobs:
         uses: actions/cache@v5
         with:
           path: lib-staging
-          key: lib-staging-linux-ort${{ env.ONNXRUNTIME_VERSION }}-cuda${{ env.CUDA_CUDART_VERSION }}-${{ env.CUDA_CUBLAS_VERSION }}-${{ env.CUDA_CUFFT_VERSION }}-cudnn${{ env.CUDNN_VERSION }}-nvrtc${{ env.CUDA_NVRTC_VERSION }}-nvjitlink${{ env.NVJITLINK_VERSION }}
+          key: lib-staging-linux-v2-ort${{ env.ONNXRUNTIME_VERSION }}-cuda${{ env.CUDA_CUDART_VERSION }}-${{ env.CUDA_CUBLAS_VERSION }}-${{ env.CUDA_CUFFT_VERSION }}-cudnn${{ env.CUDNN_VERSION }}-nvrtc${{ env.CUDA_NVRTC_VERSION }}-nvjitlink${{ env.NVJITLINK_VERSION }}
 
       - name: Download ONNX Runtime GPU
         if: steps.cache-libs-extracted.outputs.cache-hit != 'true'
@@ -497,7 +497,7 @@ jobs:
         uses: actions/cache@v5
         with:
           path: lib-staging
-          key: lib-staging-windows-ort${{ env.ONNXRUNTIME_VERSION }}-cuda${{ env.CUDA_CUDART_VERSION }}-${{ env.CUDA_CUBLAS_VERSION }}-${{ env.CUDA_CUFFT_VERSION }}-cudnn${{ env.CUDNN_VERSION }}-nvrtc${{ env.CUDA_NVRTC_VERSION }}-nvjitlink${{ env.NVJITLINK_VERSION }}
+          key: lib-staging-windows-v2-ort${{ env.ONNXRUNTIME_VERSION }}-cuda${{ env.CUDA_CUDART_VERSION }}-${{ env.CUDA_CUBLAS_VERSION }}-${{ env.CUDA_CUFFT_VERSION }}-cudnn${{ env.CUDNN_VERSION }}-nvrtc${{ env.CUDA_NVRTC_VERSION }}-nvjitlink${{ env.NVJITLINK_VERSION }}
 
       - name: Download ONNX Runtime GPU
         if: steps.cache-libs-extracted.outputs.cache-hit != 'true'

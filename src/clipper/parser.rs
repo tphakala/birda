@@ -35,12 +35,12 @@ struct ColumnIndices {
 
 impl ColumnIndices {
     fn from_header(header: &str) -> Result<Self, Error> {
-        let columns: Vec<&str> = header.split(',').map(str::trim).collect();
+        let columns = split_csv_line(header);
 
         let find_column = |name: &str| -> Result<usize, Error> {
             columns
                 .iter()
-                .position(|&c| c == name)
+                .position(|c| c == name)
                 .ok_or_else(|| Error::MissingDetectionColumn {
                     column: name.to_string(),
                 })
@@ -56,12 +56,35 @@ impl ColumnIndices {
     }
 }
 
+/// Split a CSV line respecting quoted fields.
+///
+/// Handles commas within double-quoted fields correctly.
+/// Strips quotes from quoted fields.
+fn split_csv_line(line: &str) -> Vec<String> {
+    let mut fields = Vec::new();
+    let mut current_field = String::new();
+    let mut in_quotes = false;
+
+    for c in line.chars() {
+        match c {
+            '"' => in_quotes = !in_quotes,
+            ',' if !in_quotes => {
+                fields.push(current_field.trim().to_string());
+                current_field.clear();
+            }
+            _ => current_field.push(c),
+        }
+    }
+    fields.push(current_field.trim().to_string());
+    fields
+}
+
 /// Parse a detection file and return detections.
 ///
 /// Supports birda CSV format with columns:
 /// - Start (s), End (s), Scientific name, Common name, Confidence
 ///
-/// Handles UTF-8 BOM if present.
+/// Handles UTF-8 BOM if present and quoted fields with embedded commas.
 ///
 /// # Errors
 ///
@@ -107,12 +130,12 @@ pub fn parse_detection_file(path: &Path) -> Result<Vec<ParsedDetection>, Error> 
             continue;
         }
 
-        let fields: Vec<&str> = line.split(',').collect();
+        let fields = split_csv_line(&line);
 
         let parse_field = |idx: usize, name: &str| -> Result<&str, Error> {
             fields
                 .get(idx)
-                .copied()
+                .map(String::as_str)
                 .ok_or_else(|| Error::InvalidDetectionFormat {
                     message: format!("line {}: missing field '{name}'", line_num + 2),
                 })
@@ -173,4 +196,27 @@ pub fn parse_detection_file(path: &Path) -> Result<Vec<ParsedDetection>, Error> 
     }
 
     Ok(detections)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_split_csv_line_simple() {
+        let fields = split_csv_line("a,b,c");
+        assert_eq!(fields, vec!["a", "b", "c"]);
+    }
+
+    #[test]
+    fn test_split_csv_line_quoted() {
+        let fields = split_csv_line("a,\"b,c\",d");
+        assert_eq!(fields, vec!["a", "b,c", "d"]);
+    }
+
+    #[test]
+    fn test_split_csv_line_quoted_with_spaces() {
+        let fields = split_csv_line("1.0, \"Owl, Barn\", 0.85");
+        assert_eq!(fields, vec!["1.0", "Owl, Barn", "0.85"]);
+    }
 }

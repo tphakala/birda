@@ -101,3 +101,20 @@ fn test_parse_invalid_time_range_returns_error() {
     let result = parse_detection_file(file.path());
     assert!(result.is_err());
 }
+
+#[test]
+fn test_parse_csv_with_quoted_fields() {
+    // birda CSV output may quote fields containing commas
+    let csv_content = r#"Start (s),End (s),Scientific name,Common name,Confidence
+0.0,3.0,Tyto alba,"Owl, Barn",0.8542
+"#;
+
+    let mut file = NamedTempFile::with_suffix(".csv").unwrap();
+    file.write_all(csv_content.as_bytes()).unwrap();
+    file.flush().unwrap();
+
+    let detections = parse_detection_file(file.path()).unwrap();
+    assert_eq!(detections.len(), 1);
+    assert_eq!(detections[0].scientific_name, "Tyto alba");
+    assert_eq!(detections[0].common_name, "Owl, Barn");
+}

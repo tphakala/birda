@@ -4,6 +4,8 @@ use crate::config::{ModelType, OutputFormat};
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use std::path::PathBuf;
 
+use super::clip::ClipArgs;
+
 /// Sort order for species list.
 #[derive(Debug, Clone, Copy, ValueEnum)]
 pub enum SortOrder {
@@ -47,6 +49,8 @@ pub enum Command {
     },
     /// Show available execution providers (CPU, CUDA, etc.).
     Providers,
+    /// Extract audio clips from detection results.
+    Clip(ClipArgs),
     /// Generate species list from range filter.
     #[command(group(
         clap::ArgGroup::new("time")

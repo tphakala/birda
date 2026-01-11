@@ -1,10 +1,10 @@
 //! Inference classifier wrapper around birdnet-onnx.
 
-use crate::config::{InferenceDevice, ModelConfig as BirdaModelConfig};
+use crate::config::{InferenceDevice, ModelConfig as BirdaModelConfig, tensorrt_cache_dir};
 use crate::error::{Error, Result};
 use birdnet_onnx::{
     BatchInferenceContext, Classifier, ClassifierBuilder, ExecutionProviderInfo, InferenceOptions,
-    PredictionResult, available_execution_providers, ort_execution_providers,
+    PredictionResult, TensorRTConfig, available_execution_providers, ort_execution_providers,
 };
 use std::collections::HashSet;
 use tracing::{debug, info, warn};
@@ -494,8 +494,29 @@ fn add_execution_provider(
             builder.with_cuda()
         }
         ExecutionProviderInfo::TensorRt => {
-            // Use optimized TensorRT configuration (enables FP16, engine caching, timing cache)
-            builder.with_tensorrt()
+            // Use optimized TensorRT configuration with app-specific cache directory
+            let config = match tensorrt_cache_dir() {
+                Ok(cache_dir) => {
+                    // Ensure cache directory exists
+                    if let Err(e) = std::fs::create_dir_all(cache_dir.as_path()) {
+                        warn!(
+                            "Failed to create TensorRT cache directory {}: {}",
+                            cache_dir.display(),
+                            e
+                        );
+                    }
+                    let cache_path = cache_dir.to_string_lossy().to_string();
+                    debug!("TensorRT cache directory: {}", cache_path);
+                    TensorRTConfig::new()
+                        .with_engine_cache_path(&cache_path)
+                        .with_timing_cache_path(&cache_path)
+                }
+                Err(e) => {
+                    warn!("Could not determine TensorRT cache directory: {}", e);
+                    TensorRTConfig::new()
+                }
+            };
+            builder.with_tensorrt_config(config)
         }
         ExecutionProviderInfo::DirectMl => {
             builder.execution_provider(DirectMLExecutionProvider::default())

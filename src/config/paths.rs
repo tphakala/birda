@@ -21,6 +21,15 @@ pub fn config_file_path() -> Result<PathBuf> {
     Ok(config_dir()?.join("config.toml"))
 }
 
+/// Get the `TensorRT` cache directory for engine and timing caches.
+///
+/// - Linux: `~/.config/birda/tensorrt_cache/`
+/// - macOS: `~/Library/Application Support/birda/tensorrt_cache/`
+/// - Windows: `%APPDATA%\birda\tensorrt_cache\`
+pub fn tensorrt_cache_dir() -> Result<PathBuf> {
+    Ok(config_dir()?.join("tensorrt_cache"))
+}
+
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
@@ -42,5 +51,14 @@ mod tests {
         assert!(result.is_ok());
         let path = result.ok().unwrap();
         assert!(path.to_string_lossy().ends_with("config.toml"));
+    }
+
+    #[test]
+    fn test_tensorrt_cache_dir_returns_path() {
+        let result = tensorrt_cache_dir();
+        assert!(result.is_ok());
+        let path = result.unwrap();
+        assert!(path.to_string_lossy().contains("birda"));
+        assert!(path.to_string_lossy().contains("tensorrt_cache"));
     }
 }

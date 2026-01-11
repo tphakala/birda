@@ -52,9 +52,15 @@ Requirements:
 - NVIDIA GPU with CUDA support
 - Up-to-date NVIDIA GPU drivers
 
-### TensorRT Support
+### TensorRT Support (Optional)
 
-For maximum GPU performance, TensorRT provides ~2x speedup over CUDA. TensorRT libraries are bundled with GPU builds - no separate installation required.
+For maximum GPU performance, TensorRT provides ~2x speedup over CUDA. TensorRT is **not bundled** due to size constraints but can be installed separately:
+
+1. Download TensorRT for CUDA 12.9 from [NVIDIA TensorRT](https://github.com/NVIDIA/TensorRT#downloading-tensorrt-build)
+2. Copy the TensorRT DLLs/libs to the birda installation directory:
+   - Windows: `nvinfer_10.dll`, `nvinfer_plugin_10.dll`, `nvonnxparser_10.dll`
+   - Linux: `libnvinfer.so.10`, `libnvinfer_plugin.so.10`, `libnvonnxparser.so.10`
+3. Run with `--tensorrt` flag: `birda --tensorrt recording.wav`
 
 TensorRT requires an NVIDIA GPU with compute capability 5.0+ (GTX 10-series and newer). See [Performance Tips](#performance-tips) for benchmark comparisons.
 

@@ -1,0 +1,25 @@
+TensorRT Support (Optional)
+============================
+
+For maximum GPU performance (~2x speedup over CUDA), you can optionally
+install NVIDIA TensorRT.
+
+Installation Steps:
+1. Download TensorRT for CUDA 12.9 from:
+   https://github.com/NVIDIA/TensorRT#downloading-tensorrt-build
+
+2. Extract the archive and copy these DLLs to the Birda installation folder:
+   - nvinfer_10.dll
+   - nvinfer_plugin_10.dll
+   - nvonnxparser_10.dll
+
+3. Run birda with the --tensorrt flag:
+   birda --tensorrt recording.wav
+
+Requirements:
+- NVIDIA GPU with compute capability 5.0+ (GTX 10-series and newer)
+- TensorRT 10.x for CUDA 12.9
+
+Note: CUDA acceleration (--gpu) works without TensorRT and provides
+good performance for most use cases. TensorRT is recommended for
+processing large volumes of audio files.

@@ -20,9 +20,8 @@ env:
   # Required by ONNX Runtime CUDA provider for runtime kernel compilation
   CUDA_NVRTC_VERSION: "12.9.41"
   NVJITLINK_VERSION: "12.9.41"
-  # TensorRT version (for TensorRT execution provider support)
-  # Direct download from https://github.com/NVIDIA/TensorRT
-  TENSORRT_VERSION: "10.14.1.48"
+  # TensorRT is NOT bundled due to GitHub's 2GB release asset limit
+  # Users can optionally install TensorRT from https://github.com/NVIDIA/TensorRT
 
 jobs:
   # ==========================================================================
@@ -275,14 +274,14 @@ jobs:
         uses: actions/cache@v5
         with:
           path: gpu-libs
-          key: gpu-libs-linux-ort${{ env.ONNXRUNTIME_VERSION }}-cuda${{ env.CUDA_CUDART_VERSION }}-${{ env.CUDA_CUBLAS_VERSION }}-${{ env.CUDA_CUFFT_VERSION }}-cudnn${{ env.CUDNN_VERSION }}-nvrtc${{ env.CUDA_NVRTC_VERSION }}-nvjitlink${{ env.NVJITLINK_VERSION }}-trt${{ env.TENSORRT_VERSION }}
+          key: gpu-libs-linux-ort${{ env.ONNXRUNTIME_VERSION }}-cuda${{ env.CUDA_CUDART_VERSION }}-${{ env.CUDA_CUBLAS_VERSION }}-${{ env.CUDA_CUFFT_VERSION }}-cudnn${{ env.CUDNN_VERSION }}-nvrtc${{ env.CUDA_NVRTC_VERSION }}-nvjitlink${{ env.NVJITLINK_VERSION }}
 
       - name: Cache extracted libraries
         id: cache-libs-extracted
         uses: actions/cache@v5
         with:
           path: lib-staging
-          key: lib-staging-linux-ort${{ env.ONNXRUNTIME_VERSION }}-cuda${{ env.CUDA_CUDART_VERSION }}-${{ env.CUDA_CUBLAS_VERSION }}-${{ env.CUDA_CUFFT_VERSION }}-cudnn${{ env.CUDNN_VERSION }}-nvrtc${{ env.CUDA_NVRTC_VERSION }}-nvjitlink${{ env.NVJITLINK_VERSION }}-trt${{ env.TENSORRT_VERSION }}
+          key: lib-staging-linux-ort${{ env.ONNXRUNTIME_VERSION }}-cuda${{ env.CUDA_CUDART_VERSION }}-${{ env.CUDA_CUBLAS_VERSION }}-${{ env.CUDA_CUFFT_VERSION }}-cudnn${{ env.CUDNN_VERSION }}-nvrtc${{ env.CUDA_NVRTC_VERSION }}-nvjitlink${{ env.NVJITLINK_VERSION }}
 
       - name: Download ONNX Runtime GPU
         if: steps.cache-libs-extracted.outputs.cache-hit != 'true'
@@ -344,22 +343,6 @@ jobs:
               "${CUDNN_BASE}/cudnn-linux-x86_64-${{ env.CUDNN_VERSION }}_cuda12-archive.tar.xz"
           fi
 
-      - name: Download TensorRT libraries
-        if: steps.cache-libs-extracted.outputs.cache-hit != 'true'
-        run: |
-          # Direct download from NVIDIA CDN (skip redirect for reliability)
-          if [ ! -f "gpu-libs/tensorrt.tar.gz" ]; then
-            curl -L -o gpu-libs/tensorrt.tar.gz \
-              "https://developer.download.nvidia.com/compute/machine-learning/tensorrt/10.14.1/tars/TensorRT-${{ env.TENSORRT_VERSION }}.Linux.x86_64-gnu.cuda-12.9.tar.gz"
-          fi
-          # Verify download (file should be ~7.5GB)
-          TENSORRT_SIZE=$(stat -c%s "gpu-libs/tensorrt.tar.gz" 2>/dev/null || echo 0)
-          if [ "$TENSORRT_SIZE" -lt 1000000000 ]; then
-            echo "ERROR: TensorRT download failed or incomplete (size: $TENSORRT_SIZE bytes)"
-            exit 1
-          fi
-          echo "TensorRT download verified: $TENSORRT_SIZE bytes"
-
       - name: Extract GPU libraries
         if: steps.cache-libs-extracted.outputs.cache-hit != 'true'
         run: |
@@ -388,19 +371,8 @@ jobs:
             fi
           done
 
-          # Extract only required TensorRT libraries (archive is ~7.5GB, we only need ~200MB)
-          # Use --wildcards to extract specific .so files directly, skip static libs and stubs
-          echo "Extracting TensorRT libraries (selective extraction to save disk space)..."
-          tar -xzf gpu-libs/tensorrt.tar.gz --wildcards \
-            'TensorRT-*/lib/libnvinfer.so*' \
-            'TensorRT-*/lib/libnvinfer_plugin.so*' \
-            'TensorRT-*/lib/libnvonnxparser.so*' \
-            --exclude='*.a' --exclude='stubs/*'
-          # Delete archive immediately to free 7.5GB
-          rm -f gpu-libs/tensorrt.tar.gz
-          # Copy extracted libs to staging and cleanup
-          cp -av TensorRT-*/lib/*.so* lib-staging/ 2>/dev/null || true
-          rm -rf TensorRT-*
+          # Note: TensorRT is NOT bundled due to GitHub's 2GB release asset limit
+          # Users can optionally download from https://github.com/NVIDIA/TensorRT
 
           # List what we collected
           echo "=== Collected libraries ==="
@@ -418,9 +390,6 @@ jobs:
             "libcudnn.so"
             "libnvrtc.so"
             "libnvJitLink.so"
-            "libnvinfer.so"
-            "libnvinfer_plugin.so"
-            "libnvonnxparser.so"
           )
 
           for lib in "${REQUIRED_LIBS[@]}"; do
@@ -433,7 +402,6 @@ jobs:
           echo "All required libraries present"
 
           # Clean up extracted directories to save space (keep only lib-staging)
-          # Note: TensorRT-* already cleaned up immediately after extraction
           rm -rf cuda_cudart*-archive libcublas*-archive libcufft*-archive cuda_nvrtc*-archive libnvjitlink*-archive cudnn*-archive
           rm -rf onnxruntime-linux-x64-gpu-*
 
@@ -522,14 +490,14 @@ jobs:
         uses: actions/cache@v5
         with:
           path: gpu-libs
-          key: gpu-libs-windows-ort${{ env.ONNXRUNTIME_VERSION }}-cuda${{ env.CUDA_CUDART_VERSION }}-${{ env.CUDA_CUBLAS_VERSION }}-${{ env.CUDA_CUFFT_VERSION }}-cudnn${{ env.CUDNN_VERSION }}-nvrtc${{ env.CUDA_NVRTC_VERSION }}-nvjitlink${{ env.NVJITLINK_VERSION }}-trt${{ env.TENSORRT_VERSION }}
+          key: gpu-libs-windows-ort${{ env.ONNXRUNTIME_VERSION }}-cuda${{ env.CUDA_CUDART_VERSION }}-${{ env.CUDA_CUBLAS_VERSION }}-${{ env.CUDA_CUFFT_VERSION }}-cudnn${{ env.CUDNN_VERSION }}-nvrtc${{ env.CUDA_NVRTC_VERSION }}-nvjitlink${{ env.NVJITLINK_VERSION }}
 
       - name: Cache extracted libraries
         id: cache-libs-extracted
         uses: actions/cache@v5
         with:
           path: lib-staging
-          key: lib-staging-windows-ort${{ env.ONNXRUNTIME_VERSION }}-cuda${{ env.CUDA_CUDART_VERSION }}-${{ env.CUDA_CUBLAS_VERSION }}-${{ env.CUDA_CUFFT_VERSION }}-cudnn${{ env.CUDNN_VERSION }}-nvrtc${{ env.CUDA_NVRTC_VERSION }}-nvjitlink${{ env.NVJITLINK_VERSION }}-trt${{ env.TENSORRT_VERSION }}
+          key: lib-staging-windows-ort${{ env.ONNXRUNTIME_VERSION }}-cuda${{ env.CUDA_CUDART_VERSION }}-${{ env.CUDA_CUBLAS_VERSION }}-${{ env.CUDA_CUFFT_VERSION }}-cudnn${{ env.CUDNN_VERSION }}-nvrtc${{ env.CUDA_NVRTC_VERSION }}-nvjitlink${{ env.NVJITLINK_VERSION }}
 
       - name: Download ONNX Runtime GPU
         if: steps.cache-libs-extracted.outputs.cache-hit != 'true'
@@ -580,23 +548,6 @@ jobs:
             Invoke-WebRequest -Uri "https://developer.download.nvidia.com/compute/cudnn/redist/cudnn/windows-x86_64/cudnn-windows-x86_64-${{ env.CUDNN_VERSION }}_cuda12-archive.zip" -OutFile "gpu-libs/cudnn.zip"
           }
 
-      - name: Download TensorRT libraries
-        if: steps.cache-libs-extracted.outputs.cache-hit != 'true'
-        shell: pwsh
-        run: |
-          # Direct download from NVIDIA CDN (skip redirect for reliability)
-          if (-not (Test-Path "gpu-libs/tensorrt.zip")) {
-            Write-Host "Downloading TensorRT (~1.8GB)..."
-            Invoke-WebRequest -Uri "https://developer.download.nvidia.com/compute/machine-learning/tensorrt/10.14.1/zip/TensorRT-${{ env.TENSORRT_VERSION }}.Windows.win10.cuda-12.9.zip" -OutFile "gpu-libs/tensorrt.zip" -UseBasicParsing
-          }
-          # Verify download (file should be ~1.8GB)
-          $tensorrtSize = (Get-Item "gpu-libs/tensorrt.zip").Length
-          if ($tensorrtSize -lt 1000000000) {
-            Write-Host "ERROR: TensorRT download failed or incomplete (size: $tensorrtSize bytes)"
-            exit 1
-          }
-          Write-Host "TensorRT download verified: $tensorrtSize bytes"
-
       - name: Extract GPU libraries
         if: steps.cache-libs-extracted.outputs.cache-hit != 'true'
         shell: pwsh
@@ -618,33 +569,8 @@ jobs:
           Expand-Archive -Path "gpu-libs/cudnn.zip" -DestinationPath "cudnn-extract" -Force
           Get-ChildItem -Path "cudnn-extract" -Recurse -Filter "*.dll" | Copy-Item -Destination "lib-staging/" -ErrorAction SilentlyContinue
 
-          # Extract TensorRT - verify archive exists and is valid
-          Write-Host "=== Extracting TensorRT ==="
-          if (-not (Test-Path "gpu-libs/tensorrt.zip")) {
-            Write-Host "ERROR: TensorRT archive not found!"
-            exit 1
-          }
-          $zipSize = (Get-Item "gpu-libs/tensorrt.zip").Length
-          Write-Host "TensorRT archive size: $zipSize bytes"
-
-          Expand-Archive -Path "gpu-libs/tensorrt.zip" -DestinationPath "tensorrt-extract" -Force
-
-          # Debug: Show TensorRT structure to understand where DLLs are located
-          Write-Host "=== TensorRT extracted structure ==="
-          Get-ChildItem -Path "tensorrt-extract" -Recurse -Directory | ForEach-Object { Write-Host $_.FullName }
-          Write-Host "=== TensorRT DLLs found ==="
-          $tensorrtDlls = Get-ChildItem -Path "tensorrt-extract" -Recurse -Filter "*.dll"
-          if ($tensorrtDlls.Count -eq 0) {
-            Write-Host "ERROR: No DLLs found in TensorRT archive!"
-            Write-Host "Archive may be corrupted or have unexpected structure"
-            exit 1
-          }
-          $tensorrtDlls | ForEach-Object { Write-Host "$($_.Directory.Name)/$($_.Name)" }
-
-          # Copy DLLs from bin folder (TensorRT Windows structure: TensorRT-x.x.x/bin/*.dll)
-          $binDlls = $tensorrtDlls | Where-Object { $_.Directory.Name -eq "bin" }
-          Write-Host "=== Copying $($binDlls.Count) DLLs from bin folder ==="
-          $binDlls | Copy-Item -Destination "lib-staging/" -Force
+          # Note: TensorRT is NOT bundled due to GitHub's 2GB release asset limit
+          # Users can optionally download from https://github.com/NVIDIA/TensorRT
 
           # List collected DLLs
           Write-Host "=== Collected DLLs ==="
@@ -661,10 +587,7 @@ jobs:
             "cufft64_11.dll",
             "cudnn64_9.dll",
             "nvrtc64_120_0.dll",
-            "nvJitLink_120_0.dll",
-            "nvinfer_10.dll",
-            "nvinfer_plugin_10.dll",
-            "nvonnxparser_10.dll"
+            "nvJitLink_120_0.dll"
           )
 
           $missing = @()
@@ -689,7 +612,6 @@ jobs:
           Remove-Item -Recurse -Force "cuda_nvrtc-extract" -ErrorAction SilentlyContinue
           Remove-Item -Recurse -Force "libnvjitlink-extract" -ErrorAction SilentlyContinue
           Remove-Item -Recurse -Force "cudnn-extract" -ErrorAction SilentlyContinue
-          Remove-Item -Recurse -Force "tensorrt-extract" -ErrorAction SilentlyContinue
           Remove-Item -Recurse -Force "ort-extract" -ErrorAction SilentlyContinue
 
           # CRITICAL: Delete downloaded archives to free disk space
@@ -824,6 +746,13 @@ jobs:
             **Portable:** Extract ZIP/tar.gz and run `birda` directly.
 
             **Requirements:** NVIDIA GPU with CUDA compute capability 5.0+
+
+            ### TensorRT Support (Optional)
+
+            For maximum GPU performance (~2x speedup over CUDA), install TensorRT separately:
+            1. Download TensorRT for CUDA 12.x from [NVIDIA TensorRT](https://github.com/NVIDIA/TensorRT#downloading-tensorrt-build)
+            2. Copy the TensorRT DLLs/libs to the birda installation directory
+            3. Run with `--tensorrt` flag
 
             See [THIRD_PARTY_LICENSES.txt](THIRD_PARTY_LICENSES.txt) for bundled library licenses.
           files: |

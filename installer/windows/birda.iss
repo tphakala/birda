@@ -35,6 +35,8 @@ PrivilegesRequiredOverridesAllowed=dialog
 WizardStyle=modern
 ; License (combined license with third-party notices)
 LicenseFile=INSTALLER_LICENSE.txt
+; Info page after installation (TensorRT instructions)
+InfoAfterFile=TENSORRT_INFO.txt
 ; Uninstaller
 UninstallDisplayIcon={app}\{#MyAppExeName}
 UninstallDisplayName={#MyAppName}
@@ -61,10 +63,8 @@ Source: "..\..\dist\cufft64_*.dll"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\..\dist\cudnn*.dll"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\..\dist\nvrtc*.dll"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\..\dist\nvJitLink*.dll"; DestDir: "{app}"; Flags: ignoreversion
-; TensorRT libraries for TensorRT execution provider
-Source: "..\..\dist\nvinfer*.dll"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\..\dist\nvinfer_plugin*.dll"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\..\dist\nvonnxparser*.dll"; DestDir: "{app}"; Flags: ignoreversion
+; Note: TensorRT libraries are NOT bundled due to size constraints
+; Users can optionally download TensorRT from https://github.com/NVIDIA/TensorRT
 
 ; Documentation in docs subdirectory
 Source: "..\..\dist\README.md"; DestDir: "{app}\docs"; Flags: ignoreversion

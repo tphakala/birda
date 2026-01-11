@@ -7,6 +7,7 @@ use tracing::{info, warn};
 
 use crate::Error;
 use crate::cli::ClipArgs;
+use crate::constants::output_extensions;
 
 use super::{ClipExtractor, ParsedDetection, WavWriter, group_detections, parse_detection_file};
 
@@ -114,14 +115,15 @@ fn process_detection_file(
                     group.end,
                 ) {
                     Ok(path) => {
-                        info!(
+                        // Use pb.println to avoid progress bar stuttering
+                        pb.println(format!(
                             "  {} ({:.0}%): {:.1}s-{:.1}s -> {}",
                             group.scientific_name,
                             group.max_confidence * 100.0,
                             group.start,
                             group.end,
                             path.file_name().unwrap_or_default().to_string_lossy()
-                        );
+                        ));
                         clip_count += 1;
                     }
                     Err(e) => {
@@ -174,12 +176,12 @@ fn find_source_audio(
         .and_then(|n| n.to_str())
         .unwrap_or("");
 
-    // Common suffixes to strip
+    // Common suffixes to strip (use constants from output_extensions)
     let suffixes = [
-        ".BirdNET.results.csv",
-        ".BirdNET.selection.table.txt",
-        ".BirdNET.results.txt",
-        ".BirdNET.results.kaleidoscope.csv",
+        output_extensions::CSV,
+        output_extensions::RAVEN,
+        output_extensions::AUDACITY,
+        output_extensions::KALEIDOSCOPE,
     ];
 
     // Determine search directory: --base-dir if provided, otherwise detection file's parent

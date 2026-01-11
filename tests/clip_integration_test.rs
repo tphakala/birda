@@ -4,17 +4,38 @@ use std::io::Write;
 use std::path::PathBuf;
 use std::process::Command;
 
+use hound::{SampleFormat, WavSpec, WavWriter};
 use tempfile::TempDir;
 
-#[test]
-#[ignore = "requires audio file"]
-fn test_clip_command_extracts_clips() {
-    // This test requires a real audio file to be present
-    // It's marked as ignored by default
+/// Create a dummy WAV file with silence for testing.
+fn create_test_wav(path: &std::path::Path, duration_secs: u32, sample_rate: u32) {
+    let spec = WavSpec {
+        channels: 1,
+        sample_rate,
+        bits_per_sample: 16,
+        sample_format: SampleFormat::Int,
+    };
 
+    let mut writer = WavWriter::create(path, spec).unwrap();
+
+    // Write silence (zeros) for the specified duration
+    let num_samples = sample_rate * duration_secs;
+    for _ in 0..num_samples {
+        writer.write_sample(0i16).unwrap();
+    }
+
+    writer.finalize().unwrap();
+}
+
+#[test]
+fn test_clip_command_extracts_clips() {
     let temp_dir = TempDir::new().unwrap();
 
-    // Create a mock detection CSV
+    // Create a test WAV file (5 seconds of silence at 48kHz)
+    let wav_path = temp_dir.path().join("test.wav");
+    create_test_wav(&wav_path, 5, 48000);
+
+    // Create a detection CSV pointing to the WAV
     let csv_path = temp_dir.path().join("test.wav.BirdNET.results.csv");
     let mut csv_file = std::fs::File::create(&csv_path).unwrap();
     writeln!(
@@ -24,18 +45,41 @@ fn test_clip_command_extracts_clips() {
     .unwrap();
     writeln!(csv_file, "0.0,3.0,Parus major,Great Tit,0.85").unwrap();
 
+    let output_dir = temp_dir.path().join("clips");
+
     let output = Command::new(env!("CARGO_BIN_EXE_birda"))
         .args([
             "clip",
             csv_path.to_str().unwrap(),
             "--output",
-            temp_dir.path().join("clips").to_str().unwrap(),
+            output_dir.to_str().unwrap(),
+            "--pre",
+            "0",
+            "--post",
+            "0",
         ])
         .output()
         .expect("failed to execute birda clip");
 
-    // Check that the command ran (may fail due to missing audio, which is expected)
-    assert!(output.status.success() || String::from_utf8_lossy(&output.stderr).contains("audio"));
+    // Check that the command succeeded
+    assert!(
+        output.status.success(),
+        "clip command failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    // Check that the output directory was created with species subdirectory
+    let species_dir = output_dir.join("Parus major");
+    assert!(species_dir.exists(), "Species directory should exist");
+
+    // Check that at least one clip was extracted
+    let clips: Vec<_> = std::fs::read_dir(&species_dir)
+        .unwrap()
+        .filter_map(Result::ok)
+        .filter(|e| e.path().extension().is_some_and(|ext| ext == "wav"))
+        .collect();
+
+    assert!(!clips.is_empty(), "Should have extracted at least one clip");
 }
 
 #[test]

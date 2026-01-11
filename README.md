@@ -115,6 +115,20 @@ birda /path/to/recordings/
 birda --gpu -b 64 recording.wav
 ```
 
+## Clip Extraction
+
+Extract audio clips from detection results, organized by species:
+
+```bash
+# Extract clips with 70% confidence threshold
+birda clip results.BirdNET.results.csv -c 0.7
+
+# Custom output directory and padding
+birda clip *.csv -o my_clips --pre 3 --post 5
+```
+
+Clips are saved to species directories (e.g., `clips/Dendrocopos major/`).
+
 ## Species Filtering
 
 Birda supports filtering detections by species using two complementary approaches:
@@ -151,6 +165,7 @@ birda recording.wav --slist my_species.txt
 birda [OPTIONS] [INPUTS]... [COMMAND]
 
 Commands:
+  clip       Extract audio clips from detection results
   config     Manage configuration
   models     Manage models (install, list, add, check, info)
   providers  Show available execution providers (CPU, CUDA, etc.)

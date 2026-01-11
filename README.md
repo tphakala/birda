@@ -52,12 +52,9 @@ Requirements:
 - NVIDIA GPU with CUDA support
 - Up-to-date NVIDIA GPU drivers
 
-### TensorRT Support (Optional)
+### TensorRT Support
 
-For maximum GPU performance, TensorRT provides ~2x speedup over CUDA. Unlike CUDA (which is bundled), TensorRT requires manual setup:
-
-1. Download [TensorRT 10.x](https://developer.nvidia.com/tensorrt) from NVIDIA Developer (free account required)
-2. Add TensorRT libraries to your PATH or copy to executable directory
+For maximum GPU performance, TensorRT provides ~2x speedup over CUDA. TensorRT libraries are bundled with GPU builds - no separate installation required.
 
 TensorRT requires an NVIDIA GPU with compute capability 5.0+ (GTX 10-series and newer). See [Performance Tips](#performance-tips) for benchmark comparisons.
 

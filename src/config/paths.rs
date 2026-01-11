@@ -1,6 +1,6 @@
 //! Platform-specific configuration paths.
 
-use crate::constants::APP_NAME;
+use crate::constants::{APP_NAME, tensorrt};
 use crate::error::{Error, Result};
 use directories::ProjectDirs;
 use std::path::PathBuf;
@@ -27,7 +27,7 @@ pub fn config_file_path() -> Result<PathBuf> {
 /// - macOS: `~/Library/Application Support/birda/tensorrt_cache/`
 /// - Windows: `%APPDATA%\birda\tensorrt_cache\`
 pub fn tensorrt_cache_dir() -> Result<PathBuf> {
-    Ok(config_dir()?.join("tensorrt_cache"))
+    Ok(config_dir()?.join(tensorrt::CACHE_DIR))
 }
 
 #[cfg(test)]

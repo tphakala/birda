@@ -497,19 +497,24 @@ fn add_execution_provider(
             // Use optimized TensorRT configuration with app-specific cache directory
             let config = match tensorrt_cache_dir() {
                 Ok(cache_dir) => {
-                    // Ensure cache directory exists
-                    if let Err(e) = std::fs::create_dir_all(cache_dir.as_path()) {
-                        warn!(
-                            "Failed to create TensorRT cache directory {}: {}",
-                            cache_dir.display(),
-                            e
-                        );
+                    // Ensure cache directory exists, fall back to default if creation fails
+                    match std::fs::create_dir_all(cache_dir.as_path()) {
+                        Ok(()) => {
+                            let cache_path = cache_dir.to_string_lossy().to_string();
+                            debug!("TensorRT cache directory: {}", cache_path);
+                            TensorRTConfig::new()
+                                .with_engine_cache_path(&cache_path)
+                                .with_timing_cache_path(&cache_path)
+                        }
+                        Err(e) => {
+                            warn!(
+                                "Failed to create TensorRT cache directory {}: {}, using default",
+                                cache_dir.display(),
+                                e
+                            );
+                            TensorRTConfig::new()
+                        }
                     }
-                    let cache_path = cache_dir.to_string_lossy().to_string();
-                    debug!("TensorRT cache directory: {}", cache_path);
-                    TensorRTConfig::new()
-                        .with_engine_cache_path(&cache_path)
-                        .with_timing_cache_path(&cache_path)
                 }
                 Err(e) => {
                     warn!("Could not determine TensorRT cache directory: {}", e);

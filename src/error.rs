@@ -319,4 +319,53 @@ pub enum Error {
         #[source]
         source: std::io::Error,
     },
+
+    // Clipper errors
+    /// Failed to parse detection file.
+    #[error("failed to parse detection file '{path}'")]
+    DetectionParseFailed {
+        /// Path to the detection file.
+        path: std::path::PathBuf,
+        /// Underlying error.
+        #[source]
+        source: Box<dyn std::error::Error + Send + Sync>,
+    },
+
+    /// Invalid detection file format.
+    #[error("invalid detection file format: {message}")]
+    InvalidDetectionFormat {
+        /// Description of the format error.
+        message: String,
+    },
+
+    /// Failed to write WAV file.
+    #[error("failed to write WAV file '{path}'")]
+    WavWriteFailed {
+        /// Path to the WAV file.
+        path: std::path::PathBuf,
+        /// Underlying error.
+        #[source]
+        source: hound::Error,
+    },
+
+    /// Failed to create output directory.
+    #[error("failed to create output directory '{path}'")]
+    OutputDirCreateFailed {
+        /// Path to the output directory.
+        path: std::path::PathBuf,
+        /// Underlying I/O error.
+        #[source]
+        source: std::io::Error,
+    },
+
+    /// Source audio file not found for detection file.
+    #[error(
+        "source audio file not found for detection file '{detection_path}', expected '{audio_path}'"
+    )]
+    SourceAudioNotFound {
+        /// Path to the detection file.
+        detection_path: std::path::PathBuf,
+        /// Expected path to the audio file.
+        audio_path: std::path::PathBuf,
+    },
 }

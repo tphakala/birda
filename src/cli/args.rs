@@ -4,6 +4,8 @@ use crate::config::{ModelType, OutputFormat};
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use std::path::PathBuf;
 
+use super::clip::ClipArgs;
+
 /// Sort order for species list.
 #[derive(Debug, Clone, Copy, ValueEnum)]
 pub enum SortOrder {
@@ -47,6 +49,8 @@ pub enum Command {
     },
     /// Show available execution providers (CPU, CUDA, etc.).
     Providers,
+    /// Extract audio clips from detection results.
+    Clip(ClipArgs),
     /// Generate species list from range filter.
     #[command(group(
         clap::ArgGroup::new("time")
@@ -340,20 +344,8 @@ fn parse_longitude(s: &str) -> Result<f64, String> {
     Ok(value)
 }
 
-/// Parse and validate confidence value.
-fn parse_confidence(s: &str) -> Result<f32, String> {
-    let value: f32 = s
-        .parse()
-        .map_err(|_| format!("'{s}' is not a valid number"))?;
-
-    if !(0.0..=1.0).contains(&value) {
-        return Err(format!(
-            "confidence must be between 0.0 and 1.0, got {value}"
-        ));
-    }
-
-    Ok(value)
-}
+// Re-use shared confidence validator
+use super::validators::parse_confidence;
 
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::float_cmp)]

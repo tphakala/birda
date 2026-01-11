@@ -7,7 +7,7 @@ use tracing::{info, warn};
 
 use crate::Error;
 use crate::cli::ClipArgs;
-use crate::constants::output_extensions;
+use crate::constants::{clipper, output_extensions};
 
 use super::{ClipExtractor, ParsedDetection, WavWriter, group_detections, parse_detection_file};
 
@@ -17,7 +17,7 @@ use super::{ClipExtractor, ParsedDetection, WavWriter, group_detections, parse_d
 ///
 /// Returns an error if clip extraction fails.
 pub fn execute(args: &ClipArgs) -> Result<(), Error> {
-    let extractor = ClipExtractor::new(args.pre, args.post);
+    let extractor = ClipExtractor::new();
     let writer = WavWriter::new(args.output.clone());
 
     let mut total_clips = 0;
@@ -207,11 +207,11 @@ fn find_source_audio(
 
     // Remove any remaining ".BirdNET" or similar suffixes from stem
     let clean_stem = stem
-        .strip_suffix(".BirdNET.results")
-        .or_else(|| stem.strip_suffix(".BirdNET"))
+        .strip_suffix(clipper::BIRDNET_RESULTS_SUFFIX)
+        .or_else(|| stem.strip_suffix(clipper::BIRDNET_SUFFIX))
         .unwrap_or(stem);
 
-    for ext in ["wav", "flac", "mp3", "ogg", "m4a"] {
+    for ext in clipper::AUDIO_EXTENSIONS {
         let audio_path = search_dir.join(format!("{clean_stem}.{ext}"));
         if audio_path.exists() {
             return Ok(audio_path);

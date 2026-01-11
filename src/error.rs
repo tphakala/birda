@@ -338,13 +338,6 @@ pub enum Error {
         message: String,
     },
 
-    /// Missing required column in detection file.
-    #[error("missing required column '{column}' in detection file")]
-    MissingDetectionColumn {
-        /// Name of the missing column.
-        column: String,
-    },
-
     /// Failed to write WAV file.
     #[error("failed to write WAV file '{path}'")]
     WavWriteFailed {

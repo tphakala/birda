@@ -103,7 +103,7 @@ pub fn group_detections(
             .unwrap_or_default();
 
         // Create time ranges with padding
-        let mut ranges: Vec<TimeRange> = detections
+        let ranges: Vec<TimeRange> = detections
             .iter()
             .map(|d| {
                 let start = (d.start - pre_padding).max(0.0);
@@ -112,8 +112,8 @@ pub fn group_detections(
             })
             .collect();
 
-        // Merge overlapping ranges
-        let merged = merge_overlapping_ranges(&mut ranges);
+        // Merge overlapping ranges (already sorted by start time above)
+        let merged = merge_overlapping_ranges(&ranges);
 
         // Convert to groups
         for range in merged {
@@ -139,17 +139,12 @@ pub fn group_detections(
 }
 
 /// Merge overlapping time ranges into consolidated ranges.
-fn merge_overlapping_ranges(ranges: &mut [TimeRange]) -> Vec<TimeRange> {
+///
+/// Assumes ranges are already sorted by start time.
+fn merge_overlapping_ranges(ranges: &[TimeRange]) -> Vec<TimeRange> {
     if ranges.is_empty() {
         return Vec::new();
     }
-
-    // Sort by start time
-    ranges.sort_by(|a, b| {
-        a.start
-            .partial_cmp(&b.start)
-            .unwrap_or(std::cmp::Ordering::Equal)
-    });
 
     let mut merged = Vec::new();
     let mut current = ranges[0].clone();

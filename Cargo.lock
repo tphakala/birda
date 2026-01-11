@@ -161,6 +161,7 @@ dependencies = [
  "birdnet-onnx",
  "chrono",
  "clap",
+ "csv",
  "ctrlc",
  "directories",
  "futures-util",

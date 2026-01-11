@@ -39,10 +39,6 @@ pub struct ClipArgs {
     /// If not specified, paths are resolved relative to the detection file location.
     #[arg(long)]
     pub base_dir: Option<PathBuf>,
-
-    /// Process files even if clips already exist.
-    #[arg(long)]
-    pub force: bool,
 }
 
 fn parse_confidence(s: &str) -> Result<f32, String> {

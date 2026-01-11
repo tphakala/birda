@@ -1,13 +1,28 @@
 //! Detection file parsing.
 //!
 //! Parses birda CSV detection files to extract detection information
-//! for clip extraction.
+//! for clip extraction. Uses the `csv` crate for robust parsing.
 
-use std::fs::File;
-use std::io::{BufRead, BufReader};
 use std::path::Path;
 
+use serde::Deserialize;
+
 use crate::Error;
+
+/// Internal record for CSV deserialization.
+#[derive(Debug, Deserialize)]
+struct DetectionRecord {
+    #[serde(rename = "Start (s)")]
+    start: f64,
+    #[serde(rename = "End (s)")]
+    end: f64,
+    #[serde(rename = "Scientific name")]
+    scientific_name: String,
+    #[serde(rename = "Common name")]
+    common_name: String,
+    #[serde(rename = "Confidence")]
+    confidence: f32,
+}
 
 /// A detection parsed from a results file.
 #[derive(Debug, Clone)]
@@ -24,67 +39,13 @@ pub struct ParsedDetection {
     pub confidence: f32,
 }
 
-/// Column indices for CSV parsing.
-struct ColumnIndices {
-    start: usize,
-    end: usize,
-    scientific_name: usize,
-    common_name: usize,
-    confidence: usize,
-}
-
-impl ColumnIndices {
-    fn from_header(header: &str) -> Result<Self, Error> {
-        let columns = split_csv_line(header);
-
-        let find_column = |name: &str| -> Result<usize, Error> {
-            columns
-                .iter()
-                .position(|c| c == name)
-                .ok_or_else(|| Error::MissingDetectionColumn {
-                    column: name.to_string(),
-                })
-        };
-
-        Ok(Self {
-            start: find_column("Start (s)")?,
-            end: find_column("End (s)")?,
-            scientific_name: find_column("Scientific name")?,
-            common_name: find_column("Common name")?,
-            confidence: find_column("Confidence")?,
-        })
-    }
-}
-
-/// Split a CSV line respecting quoted fields.
-///
-/// Handles commas within double-quoted fields correctly.
-/// Strips quotes from quoted fields.
-fn split_csv_line(line: &str) -> Vec<String> {
-    let mut fields = Vec::new();
-    let mut current_field = String::new();
-    let mut in_quotes = false;
-
-    for c in line.chars() {
-        match c {
-            '"' => in_quotes = !in_quotes,
-            ',' if !in_quotes => {
-                fields.push(current_field.trim().to_string());
-                current_field.clear();
-            }
-            _ => current_field.push(c),
-        }
-    }
-    fields.push(current_field.trim().to_string());
-    fields
-}
-
 /// Parse a detection file and return detections.
 ///
 /// Supports birda CSV format with columns:
 /// - Start (s), End (s), Scientific name, Common name, Confidence
 ///
-/// Handles UTF-8 BOM if present and quoted fields with embedded commas.
+/// Handles UTF-8 BOM if present, quoted fields with embedded commas,
+/// and escaped quotes within fields.
 ///
 /// # Errors
 ///
@@ -94,98 +55,40 @@ fn split_csv_line(line: &str) -> Vec<String> {
 /// - Values cannot be parsed
 /// - No detections are found
 pub fn parse_detection_file(path: &Path) -> Result<Vec<ParsedDetection>, Error> {
-    let file = File::open(path).map_err(|e| Error::DetectionParseFailed {
-        path: path.to_path_buf(),
-        source: Box::new(e),
-    })?;
-
-    let reader = BufReader::new(file);
-    let mut lines = reader.lines();
-
-    // Read header line
-    let header = lines
-        .next()
-        .ok_or_else(|| Error::InvalidDetectionFormat {
-            message: "file is empty".to_string(),
-        })?
+    let mut reader = csv::ReaderBuilder::new()
+        .has_headers(true)
+        .trim(csv::Trim::All)
+        .from_path(path)
         .map_err(|e| Error::DetectionParseFailed {
             path: path.to_path_buf(),
             source: Box::new(e),
         })?;
 
-    // Strip UTF-8 BOM if present
-    let header = header.strip_prefix('\u{FEFF}').unwrap_or(&header);
-
-    let indices = ColumnIndices::from_header(header)?;
-
     let mut detections = Vec::new();
 
-    for (line_num, line_result) in lines.enumerate() {
-        let line = line_result.map_err(|e| Error::DetectionParseFailed {
-            path: path.to_path_buf(),
-            source: Box::new(e),
+    for (line_num, result) in reader.deserialize::<DetectionRecord>().enumerate() {
+        let record = result.map_err(|e| Error::InvalidDetectionFormat {
+            message: format!("line {}: {e}", line_num + 2),
         })?;
 
-        if line.trim().is_empty() {
-            continue;
-        }
-
-        let fields = split_csv_line(&line);
-
-        let parse_field = |idx: usize, name: &str| -> Result<&str, Error> {
-            fields
-                .get(idx)
-                .map(String::as_str)
-                .ok_or_else(|| Error::InvalidDetectionFormat {
-                    message: format!("line {}: missing field '{name}'", line_num + 2),
-                })
-        };
-
-        let start: f64 = parse_field(indices.start, "Start (s)")?
-            .trim()
-            .parse()
-            .map_err(|_| Error::InvalidDetectionFormat {
-                message: format!("line {}: invalid start time", line_num + 2),
-            })?;
-
-        let end: f64 = parse_field(indices.end, "End (s)")?
-            .trim()
-            .parse()
-            .map_err(|_| Error::InvalidDetectionFormat {
-                message: format!("line {}: invalid end time", line_num + 2),
-            })?;
-
-        let scientific_name = parse_field(indices.scientific_name, "Scientific name")?
-            .trim()
-            .to_string();
-
-        let common_name = parse_field(indices.common_name, "Common name")?
-            .trim()
-            .to_string();
-
-        let confidence: f32 = parse_field(indices.confidence, "Confidence")?
-            .trim()
-            .parse()
-            .map_err(|_| Error::InvalidDetectionFormat {
-                message: format!("line {}: invalid confidence", line_num + 2),
-            })?;
-
         // Validate time range
-        if end <= start {
+        if record.end <= record.start {
             return Err(Error::InvalidDetectionFormat {
                 message: format!(
-                    "line {}: end time ({end}) must be greater than start time ({start})",
-                    line_num + 2
+                    "line {}: end time ({}) must be greater than start time ({})",
+                    line_num + 2,
+                    record.end,
+                    record.start
                 ),
             });
         }
 
         detections.push(ParsedDetection {
-            start,
-            end,
-            scientific_name,
-            common_name,
-            confidence,
+            start: record.start,
+            end: record.end,
+            scientific_name: record.scientific_name,
+            common_name: record.common_name,
+            confidence: record.confidence,
         });
     }
 
@@ -201,22 +104,112 @@ pub fn parse_detection_file(path: &Path) -> Result<Vec<ParsedDetection>, Error> 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::Write;
+    use tempfile::NamedTempFile;
 
     #[test]
-    fn test_split_csv_line_simple() {
-        let fields = split_csv_line("a,b,c");
-        assert_eq!(fields, vec!["a", "b", "c"]);
+    fn test_parse_simple_csv() {
+        let mut file = NamedTempFile::new().unwrap();
+        writeln!(
+            file,
+            "Start (s),End (s),Scientific name,Common name,Confidence"
+        )
+        .unwrap();
+        writeln!(file, "0.0,3.0,Turdus merula,Eurasian Blackbird,0.85").unwrap();
+        writeln!(file, "5.0,8.0,Parus major,Great Tit,0.92").unwrap();
+        file.flush().unwrap();
+
+        let detections = parse_detection_file(file.path()).unwrap();
+        assert_eq!(detections.len(), 2);
+        assert_eq!(detections[0].scientific_name, "Turdus merula");
+        assert!((detections[0].confidence - 0.85).abs() < 0.001);
+        assert_eq!(detections[1].scientific_name, "Parus major");
     }
 
     #[test]
-    fn test_split_csv_line_quoted() {
-        let fields = split_csv_line("a,\"b,c\",d");
-        assert_eq!(fields, vec!["a", "b,c", "d"]);
+    fn test_parse_quoted_fields_with_commas() {
+        let mut file = NamedTempFile::new().unwrap();
+        writeln!(
+            file,
+            "Start (s),End (s),Scientific name,Common name,Confidence"
+        )
+        .unwrap();
+        writeln!(file, "1.0,4.0,Tyto alba,\"Owl, Barn\",0.78").unwrap();
+        file.flush().unwrap();
+
+        let detections = parse_detection_file(file.path()).unwrap();
+        assert_eq!(detections.len(), 1);
+        assert_eq!(detections[0].common_name, "Owl, Barn");
     }
 
     #[test]
-    fn test_split_csv_line_quoted_with_spaces() {
-        let fields = split_csv_line("1.0, \"Owl, Barn\", 0.85");
-        assert_eq!(fields, vec!["1.0", "Owl, Barn", "0.85"]);
+    fn test_parse_escaped_quotes() {
+        let mut file = NamedTempFile::new().unwrap();
+        writeln!(
+            file,
+            "Start (s),End (s),Scientific name,Common name,Confidence"
+        )
+        .unwrap();
+        // CSV escaped quotes: "" becomes "
+        writeln!(file, "2.0,5.0,Test species,\"The \"\"Big\"\" Bird\",0.65").unwrap();
+        file.flush().unwrap();
+
+        let detections = parse_detection_file(file.path()).unwrap();
+        assert_eq!(detections.len(), 1);
+        assert_eq!(detections[0].common_name, "The \"Big\" Bird");
+    }
+
+    #[test]
+    fn test_parse_with_bom() {
+        let mut file = NamedTempFile::new().unwrap();
+        // Write UTF-8 BOM
+        file.write_all(b"\xEF\xBB\xBF").unwrap();
+        writeln!(
+            file,
+            "Start (s),End (s),Scientific name,Common name,Confidence"
+        )
+        .unwrap();
+        writeln!(file, "0.0,3.0,Turdus merula,Eurasian Blackbird,0.85").unwrap();
+        file.flush().unwrap();
+
+        let detections = parse_detection_file(file.path()).unwrap();
+        assert_eq!(detections.len(), 1);
+    }
+
+    #[test]
+    fn test_empty_file_error() {
+        let file = NamedTempFile::new().unwrap();
+        let result = parse_detection_file(file.path());
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_header_only_error() {
+        let mut file = NamedTempFile::new().unwrap();
+        writeln!(
+            file,
+            "Start (s),End (s),Scientific name,Common name,Confidence"
+        )
+        .unwrap();
+        file.flush().unwrap();
+
+        let result = parse_detection_file(file.path());
+        assert!(matches!(result, Err(Error::NoDetectionsFound { .. })));
+    }
+
+    #[test]
+    fn test_invalid_time_range_error() {
+        let mut file = NamedTempFile::new().unwrap();
+        writeln!(
+            file,
+            "Start (s),End (s),Scientific name,Common name,Confidence"
+        )
+        .unwrap();
+        // End time before start time
+        writeln!(file, "5.0,3.0,Turdus merula,Eurasian Blackbird,0.85").unwrap();
+        file.flush().unwrap();
+
+        let result = parse_detection_file(file.path());
+        assert!(matches!(result, Err(Error::InvalidDetectionFormat { .. })));
     }
 }

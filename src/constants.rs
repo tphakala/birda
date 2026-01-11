@@ -109,4 +109,13 @@ pub mod clipper {
     /// Minimum start time (in seconds) before seeking is attempted.
     /// For clips starting before this threshold, we decode from the beginning.
     pub const SEEK_THRESHOLD_SECS: f64 = 10.0;
+
+    /// `BirdNET` results suffix in detection filenames.
+    pub const BIRDNET_RESULTS_SUFFIX: &str = ".BirdNET.results";
+
+    /// `BirdNET` suffix in detection filenames.
+    pub const BIRDNET_SUFFIX: &str = ".BirdNET";
+
+    /// Supported audio file extensions for source audio resolution.
+    pub const AUDIO_EXTENSIONS: &[&str] = &["wav", "flac", "mp3", "ogg", "m4a"];
 }

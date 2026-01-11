@@ -12,6 +12,7 @@ use symphonia::core::io::{MediaSourceStream, MediaSourceStreamOptions};
 use symphonia::core::meta::MetadataOptions;
 use symphonia::core::probe::Hint;
 use symphonia::core::units::Time;
+use tracing::trace;
 
 use crate::Error;
 use crate::constants::clipper::SEEK_THRESHOLD_SECS;
@@ -27,25 +28,22 @@ pub struct ExtractedClip {
 }
 
 /// Extracts audio clips from source files.
-pub struct ClipExtractor {
-    /// Pre-padding in seconds (applied during grouping, not here).
-    #[allow(dead_code)]
-    pre_padding: f64,
-    /// Post-padding in seconds (applied during grouping, not here).
-    #[allow(dead_code)]
-    post_padding: f64,
+///
+/// Note: Padding is applied during detection grouping, not during extraction.
+/// The extractor receives groups with already-padded time ranges.
+pub struct ClipExtractor;
+
+impl Default for ClipExtractor {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl ClipExtractor {
-    /// Create a new clip extractor with the given padding settings.
-    ///
-    /// Note: Padding is applied during detection grouping, not during extraction.
+    /// Create a new clip extractor.
     #[must_use]
-    pub fn new(pre_padding: f64, post_padding: f64) -> Self {
-        Self {
-            pre_padding,
-            post_padding,
-        }
+    pub fn new() -> Self {
+        Self
     }
 
     /// Extract a clip from the source audio file.
@@ -166,7 +164,10 @@ impl ClipExtractor {
 
             let decoded = match decoder.decode(&packet) {
                 Ok(decoded) => decoded,
-                Err(symphonia::core::errors::Error::DecodeError(_)) => continue,
+                Err(symphonia::core::errors::Error::DecodeError(msg)) => {
+                    trace!("Skipping corrupted audio frame: {msg}");
+                    continue;
+                }
                 Err(e) => {
                     return Err(Error::AudioDecode {
                         path: source_path.to_path_buf(),

@@ -388,13 +388,19 @@ jobs:
             fi
           done
 
-          # Extract TensorRT
-          tar -xzf gpu-libs/tensorrt.tar.gz
-          for dir in TensorRT-*; do
-            if [ -d "$dir/lib" ]; then
-              cp -av "$dir"/lib/*.so* lib-staging/ 2>/dev/null || true
-            fi
-          done
+          # Extract only required TensorRT libraries (archive is ~7.5GB, we only need ~200MB)
+          # Use --wildcards to extract specific .so files directly, skip static libs and stubs
+          echo "Extracting TensorRT libraries (selective extraction to save disk space)..."
+          tar -xzf gpu-libs/tensorrt.tar.gz --wildcards \
+            'TensorRT-*/lib/libnvinfer.so*' \
+            'TensorRT-*/lib/libnvinfer_plugin.so*' \
+            'TensorRT-*/lib/libnvonnxparser.so*' \
+            --exclude='*.a' --exclude='stubs/*'
+          # Delete archive immediately to free 7.5GB
+          rm -f gpu-libs/tensorrt.tar.gz
+          # Copy extracted libs to staging and cleanup
+          cp -av TensorRT-*/lib/*.so* lib-staging/ 2>/dev/null || true
+          rm -rf TensorRT-*
 
           # List what we collected
           echo "=== Collected libraries ==="
@@ -427,11 +433,11 @@ jobs:
           echo "All required libraries present"
 
           # Clean up extracted directories to save space (keep only lib-staging)
-          rm -rf cuda_cudart*-archive libcublas*-archive libcufft*-archive cuda_nvrtc*-archive libnvjitlink*-archive cudnn*-archive TensorRT-*
+          # Note: TensorRT-* already cleaned up immediately after extraction
+          rm -rf cuda_cudart*-archive libcublas*-archive libcufft*-archive cuda_nvrtc*-archive libnvjitlink*-archive cudnn*-archive
           rm -rf onnxruntime-linux-x64-gpu-*
 
-          # CRITICAL: Delete downloaded archives to free disk space (~10GB)
-          # GitHub runners have limited disk space and we need room for the build
+          # Delete remaining downloaded archives to free disk space
           rm -rf gpu-libs/
           echo "Disk space after cleanup:"
           df -h .

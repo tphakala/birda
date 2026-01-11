@@ -25,8 +25,8 @@ AllowNoIcons=yes
 ; Output settings (overridden by command line)
 OutputDir=.
 OutputBaseFilename=birda-windows-x64-cuda-setup
-; Compression
-Compression=lzma2/ultra64
+; Compression (using fast for quicker builds, files are already compressed)
+Compression=lzma2/fast
 SolidCompression=yes
 ; Require admin for Program Files installation
 PrivilegesRequired=admin
@@ -61,6 +61,10 @@ Source: "..\..\dist\cufft64_*.dll"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\..\dist\cudnn*.dll"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\..\dist\nvrtc*.dll"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\..\dist\nvJitLink*.dll"; DestDir: "{app}"; Flags: ignoreversion
+; TensorRT libraries for TensorRT execution provider
+Source: "..\..\dist\nvinfer*.dll"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\..\dist\nvinfer_plugin*.dll"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\..\dist\nvonnxparser*.dll"; DestDir: "{app}"; Flags: ignoreversion
 
 ; Documentation in docs subdirectory
 Source: "..\..\dist\README.md"; DestDir: "{app}\docs"; Flags: ignoreversion

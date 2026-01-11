@@ -347,11 +347,18 @@ jobs:
       - name: Download TensorRT libraries
         if: steps.cache-libs-extracted.outputs.cache-hit != 'true'
         run: |
-          # Direct download from NVIDIA (no authentication required)
+          # Direct download from NVIDIA CDN (skip redirect for reliability)
           if [ ! -f "gpu-libs/tensorrt.tar.gz" ]; then
             curl -L -o gpu-libs/tensorrt.tar.gz \
-              "https://developer.nvidia.com/downloads/compute/machine-learning/tensorrt/10.14.1/tars/TensorRT-${{ env.TENSORRT_VERSION }}.Linux.x86_64-gnu.cuda-12.9.tar.gz"
+              "https://developer.download.nvidia.com/compute/machine-learning/tensorrt/10.14.1/tars/TensorRT-${{ env.TENSORRT_VERSION }}.Linux.x86_64-gnu.cuda-12.9.tar.gz"
           fi
+          # Verify download (file should be ~7.5GB)
+          TENSORRT_SIZE=$(stat -c%s "gpu-libs/tensorrt.tar.gz" 2>/dev/null || echo 0)
+          if [ "$TENSORRT_SIZE" -lt 1000000000 ]; then
+            echo "ERROR: TensorRT download failed or incomplete (size: $TENSORRT_SIZE bytes)"
+            exit 1
+          fi
+          echo "TensorRT download verified: $TENSORRT_SIZE bytes"
 
       - name: Extract GPU libraries
         if: steps.cache-libs-extracted.outputs.cache-hit != 'true'
@@ -564,10 +571,18 @@ jobs:
         if: steps.cache-libs-extracted.outputs.cache-hit != 'true'
         shell: pwsh
         run: |
-          # Direct download from NVIDIA (no authentication required)
+          # Direct download from NVIDIA CDN (skip redirect for reliability)
           if (-not (Test-Path "gpu-libs/tensorrt.zip")) {
-            Invoke-WebRequest -Uri "https://developer.nvidia.com/downloads/compute/machine-learning/tensorrt/10.14.1/zip/TensorRT-${{ env.TENSORRT_VERSION }}.Windows.win10.cuda-12.9.zip" -OutFile "gpu-libs/tensorrt.zip"
+            Write-Host "Downloading TensorRT (~1.8GB)..."
+            Invoke-WebRequest -Uri "https://developer.download.nvidia.com/compute/machine-learning/tensorrt/10.14.1/zip/TensorRT-${{ env.TENSORRT_VERSION }}.Windows.win10.cuda-12.9.zip" -OutFile "gpu-libs/tensorrt.zip" -UseBasicParsing
           }
+          # Verify download (file should be ~1.8GB)
+          $tensorrtSize = (Get-Item "gpu-libs/tensorrt.zip").Length
+          if ($tensorrtSize -lt 1000000000) {
+            Write-Host "ERROR: TensorRT download failed or incomplete (size: $tensorrtSize bytes)"
+            exit 1
+          }
+          Write-Host "TensorRT download verified: $tensorrtSize bytes"
 
       - name: Extract GPU libraries
         if: steps.cache-libs-extracted.outputs.cache-hit != 'true'

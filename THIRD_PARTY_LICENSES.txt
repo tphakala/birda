@@ -5206,18 +5206,3 @@ with applications that use cuDNN.
 
 Copyright (c) NVIDIA Corporation. All rights reserved.
 
---------------------------------------------------------------------------------
-NVIDIA TensorRT
---------------------------------------------------------------------------------
-
-License: NVIDIA TensorRT Software License Agreement
-https://docs.nvidia.com/deeplearning/tensorrt/latest/reference/sla.html
-
-This software contains source code provided by NVIDIA Corporation.
-
-Redistribution of TensorRT runtime libraries (.dll/.so files) is permitted
-under Section 2.1.2 of the TensorRT SLA when incorporated into applications
-with material additional functionality.
-
-Copyright (c) 2021-2026, NVIDIA Corporation. All rights reserved.
-

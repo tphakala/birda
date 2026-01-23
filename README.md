@@ -534,6 +534,14 @@ birda models install perch-v2
 - **Model type**: `birdnet-v30`
 - **Status**: Developer preview only
 
+### Custom Model Conversion
+
+For converting custom BirdNET classifiers or optimizing models for specific hardware (Raspberry Pi, embedded devices), see [birdnet-onnx-converter](https://github.com/tphakala/birdnet-onnx-converter). This tool supports:
+
+- TFLite to ONNX conversion
+- Multiple precision formats: FP32 (GPU/desktop), FP16 (RPi 5, modern GPUs), INT8 (CPU optimization)
+- Platform-specific optimizations for ARM devices
+
 ## License
 
 MIT License - see [LICENSE](LICENSE) for details.
@@ -542,6 +550,7 @@ MIT License - see [LICENSE](LICENSE) for details.
 
 - [BirdNET](https://github.com/birdnet-team/BirdNET-Analyzer) by the K. Lisa Yang Center for Conservation Bioacoustics
 - [Justin Chu](https://github.com/justinchuby) for converting BirdNET TFLite model to optimized ONNX format
+- [birdnet-onnx-converter](https://github.com/tphakala/birdnet-onnx-converter) for custom model conversion and optimization
 - [Perch](https://github.com/google-research/perch) by Google Research for bioacoustic analysis
 - [ONNX Runtime](https://onnxruntime.ai/) for cross-platform inference
 - [Symphonia](https://github.com/pdeljanov/Symphonia) for audio decoding

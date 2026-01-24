@@ -64,6 +64,11 @@ echo "Generated file: ${GENERATED_FILE}"
 
 # Handle output file placement
 if [[ -n "${INPUT_OUTPUT:-}" ]]; then
+    # Validate output path - prevent path traversal attacks
+    if [[ "${INPUT_OUTPUT}" == /* || "${INPUT_OUTPUT}" == *..* ]]; then
+        echo "::error::Invalid output path (absolute paths and '..' not allowed): ${INPUT_OUTPUT}"
+        exit 1
+    fi
     # User specified output path - ensure parent directory exists
     OUTPUT_DIR=$(dirname "${INPUT_OUTPUT}")
     if [[ -n "${OUTPUT_DIR}" && "${OUTPUT_DIR}" != "." ]]; then
@@ -71,7 +76,12 @@ if [[ -n "${INPUT_OUTPUT:-}" ]]; then
     fi
     # Move/rename to requested location
     mv "${GENERATED_FILE}" "${INPUT_OUTPUT}"
-    FINAL_OUTPUT="$(cd "$(dirname "${INPUT_OUTPUT}")" && pwd)/$(basename "${INPUT_OUTPUT}")"
+    # Handle case where INPUT_OUTPUT is a directory
+    if [[ -d "${INPUT_OUTPUT}" ]]; then
+        FINAL_OUTPUT="$(cd "${INPUT_OUTPUT}" && pwd)/$(basename "${GENERATED_FILE}")"
+    else
+        FINAL_OUTPUT="$(cd "$(dirname "${INPUT_OUTPUT}")" && pwd)/$(basename "${INPUT_OUTPUT}")"
+    fi
 else
     # No output specified - move to current directory with original name
     FILENAME=$(basename "${GENERATED_FILE}")
@@ -81,5 +91,9 @@ fi
 
 echo "Output file: ${FINAL_OUTPUT}"
 
-# Set output for subsequent steps
-echo "results=${FINAL_OUTPUT}" >> "${GITHUB_OUTPUT}"
+# Set output for subsequent steps (use heredoc to prevent injection)
+{
+    echo "results<<EOF"
+    echo "${FINAL_OUTPUT}"
+    echo "EOF"
+} >> "${GITHUB_OUTPUT}"

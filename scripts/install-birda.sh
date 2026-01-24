@@ -11,6 +11,11 @@ fi
 # e.g., "v1.3.0" when used as tphakala/birda@v1.3.0
 VERSION="${INPUT_VERSION:-}"
 
+# If action is referenced by tag ref, extract the tag name
+if [[ "$VERSION" =~ ^refs/tags/ ]]; then
+    VERSION="${VERSION#refs/tags/}"
+fi
+
 # Handle non-tag refs (main branch, PR refs, etc.) by falling back to latest
 if [[ -z "$VERSION" || "$VERSION" == "main" || "$VERSION" == "master" || "$VERSION" =~ ^refs/ ]]; then
     echo "Resolving latest release version..."

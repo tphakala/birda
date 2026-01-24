@@ -759,3 +759,14 @@ jobs:
             artifacts/**/*.tar.gz
             artifacts/**/*.zip
             artifacts/**/*-setup.exe
+
+      - name: Update major version tag
+        run: |
+          VERSION="${{ github.ref_name }}"
+          MAJOR=$(echo "$VERSION" | cut -d. -f1)
+
+          # Dereference to commit to avoid tag-of-a-tag with annotated tags
+          COMMIT=$(git rev-parse "${VERSION}^{commit}")
+          echo "Updating major version tag: $MAJOR -> $COMMIT (from $VERSION)"
+          git tag -f "$MAJOR" "$COMMIT"
+          git push origin "$MAJOR" --force

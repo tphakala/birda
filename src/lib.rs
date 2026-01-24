@@ -186,14 +186,7 @@ fn analyze_files(
 
     let total_start = Instant::now();
 
-    // Collect all input files
-    let files = collect_input_files(inputs)?;
-    if files.is_empty() {
-        return Err(Error::NoValidAudioFiles);
-    }
-
-    info!("Found {} audio file(s) to process", files.len());
-
+    // Fail fast on configuration errors before scanning filesystem
     // Resolve model configuration using priority-based resolution
     let (model_config, model_name) = resolve_model_config(args, config)?;
 
@@ -213,6 +206,14 @@ fn analyze_files(
     {
         return Err(Error::MetaModelNotFound { path: meta.clone() });
     }
+
+    // Collect input files only after config is validated
+    let files = collect_input_files(inputs)?;
+    if files.is_empty() {
+        return Err(Error::NoValidAudioFiles);
+    }
+
+    info!("Found {} audio file(s) to process", files.len());
 
     // Resolve other settings
     let min_confidence = args

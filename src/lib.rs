@@ -89,6 +89,14 @@ fn resolve_model_config(args: &AnalyzeArgs, config: &Config) -> Result<(ModelCon
     if let Some(ref name) = config.defaults.model {
         let mut model_config = config::get_model(config, name)?.clone();
 
+        // Warn if --model-type is also provided (will be ignored)
+        if args.model_type.is_some() {
+            warn!(
+                "--model-type is ignored when using default model '{}' (use --model-path to trigger ad-hoc mode)",
+                name
+            );
+        }
+
         // Apply CLI overrides (allows patching default model)
         apply_model_overrides(&mut model_config, args);
         return Ok((model_config, name.clone()));

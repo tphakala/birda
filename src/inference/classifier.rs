@@ -7,6 +7,7 @@ use birdnet_onnx::{
     PredictionResult, TensorRTConfig, available_execution_providers, ort_execution_providers,
 };
 use std::collections::HashSet;
+use std::path::PathBuf;
 use tracing::{debug, info, warn};
 
 /// Wrapper around birdnet-onnx Classifier with birda configuration.
@@ -161,6 +162,12 @@ impl BirdClassifier {
                 &available_providers,
                 ExecutionProviderInfo::ArmNn,
                 "ArmNN",
+            )?,
+            InferenceDevice::Xnnpack => configure_explicit_provider(
+                builder,
+                &available_providers,
+                ExecutionProviderInfo::Xnnpack,
+                "XNNPACK",
             )?,
         };
 
@@ -477,6 +484,46 @@ fn configure_explicit_provider(
     Ok((builder, provider_name))
 }
 
+/// Setup `TensorRT` cache directory, returning the path if successful.
+///
+/// This function handles all the filesystem operations needed for `TensorRT` caching:
+/// - Determines the platform-specific cache directory
+/// - Validates the path is valid UTF-8 (required by `TensorRT` C++ backend)
+/// - Creates the directory if it doesn't exist
+///
+/// Returns `None` if any step fails, with appropriate warning logs.
+fn setup_tensorrt_cache() -> Option<PathBuf> {
+    let cache_dir = match tensorrt_cache_dir() {
+        Ok(dir) => dir,
+        Err(e) => {
+            warn!("Could not determine TensorRT cache directory: {}", e);
+            return None;
+        }
+    };
+
+    // Validate path is valid UTF-8 (required by TensorRT C++ backend)
+    if cache_dir.to_str().is_none() {
+        warn!(
+            "TensorRT cache path contains non-UTF-8 characters: {}, using default",
+            cache_dir.display()
+        );
+        return None;
+    }
+
+    // Create directory if it doesn't exist
+    if let Err(e) = std::fs::create_dir_all(&cache_dir) {
+        warn!(
+            "Failed to create TensorRT cache directory {}: {}, using default",
+            cache_dir.display(),
+            e
+        );
+        return None;
+    }
+
+    debug!("TensorRT cache directory: {}", cache_dir.display());
+    Some(cache_dir)
+}
+
 /// Helper function to add execution provider to builder based on provider type.
 fn add_execution_provider(
     builder: ClassifierBuilder,
@@ -495,40 +542,16 @@ fn add_execution_provider(
         }
         ExecutionProviderInfo::TensorRt => {
             // Use optimized TensorRT configuration with app-specific cache directory
-            let config = match tensorrt_cache_dir() {
-                Ok(cache_dir) => {
-                    // Validate path is valid UTF-8 (required by TensorRT C++ backend)
-                    #[allow(clippy::option_if_let_else)] // if-let is clearer than map_or_else here
-                    if let Some(cache_path) = cache_dir.to_str() {
-                        // Ensure cache directory exists, fall back to default if creation fails
-                        match std::fs::create_dir_all(&cache_dir) {
-                            Ok(()) => {
-                                debug!("TensorRT cache directory: {}", cache_path);
-                                TensorRTConfig::new()
-                                    .with_engine_cache_path(cache_path)
-                                    .with_timing_cache_path(cache_path)
-                            }
-                            Err(e) => {
-                                warn!(
-                                    "Failed to create TensorRT cache directory {}: {}, using default",
-                                    cache_path, e
-                                );
-                                TensorRTConfig::new()
-                            }
-                        }
-                    } else {
-                        warn!(
-                            "TensorRT cache path contains non-UTF-8 characters: {}, using default",
-                            cache_dir.display()
-                        );
-                        TensorRTConfig::new()
-                    }
-                }
-                Err(e) => {
-                    warn!("Could not determine TensorRT cache directory: {}", e);
-                    TensorRTConfig::new()
-                }
-            };
+            let config = setup_tensorrt_cache().map_or_else(TensorRTConfig::new, |cache_dir| {
+                // UTF-8 validated in setup_tensorrt_cache; panic if invariant violated
+                #[allow(clippy::expect_used)]
+                let cache_path = cache_dir
+                    .to_str()
+                    .expect("UTF-8 validated in setup_tensorrt_cache");
+                TensorRTConfig::new()
+                    .with_engine_cache_path(cache_path)
+                    .with_timing_cache_path(cache_path)
+            });
             builder.with_tensorrt_config(config)
         }
         ExecutionProviderInfo::DirectMl => {
@@ -549,7 +572,16 @@ fn add_execution_provider(
         ExecutionProviderInfo::ArmNn => {
             builder.execution_provider(ArmNNExecutionProvider::default())
         }
-        ExecutionProviderInfo::Cpu => builder, // CPU doesn't need explicit provider
+        ExecutionProviderInfo::Xnnpack => builder.with_xnnpack(),
+        // CPU is handled by not calling this function at all (default builder behavior).
+        // Unknown/future providers fall back to CPU with a warning.
+        _ => {
+            warn!(
+                "Unknown execution provider {:?}, using CPU fallback",
+                provider_info
+            );
+            builder
+        }
     }
 }
 
@@ -561,20 +593,7 @@ fn provider_unavailable_error(provider_name: &str, available: &[ExecutionProvide
     message.push_str("Available providers:\n");
 
     for provider in available {
-        let name = match provider {
-            ExecutionProviderInfo::Cpu => "CPU",
-            ExecutionProviderInfo::Cuda => "CUDA",
-            ExecutionProviderInfo::TensorRt => "TensorRT",
-            ExecutionProviderInfo::DirectMl => "DirectML",
-            ExecutionProviderInfo::CoreMl => "CoreML",
-            ExecutionProviderInfo::Rocm => "ROCm",
-            ExecutionProviderInfo::OpenVino => "OpenVINO",
-            ExecutionProviderInfo::OneDnn => "oneDNN",
-            ExecutionProviderInfo::Qnn => "QNN",
-            ExecutionProviderInfo::Acl => "ACL",
-            ExecutionProviderInfo::ArmNn => "ArmNN",
-        };
-        let _ = writeln!(message, "  ✓ {name}");
+        let _ = writeln!(message, "  ✓ {}", super::provider_metadata(*provider).name);
     }
 
     message.push_str("\nTry one of:\n");

@@ -158,6 +158,10 @@ pub enum InferenceDevice {
     /// Explicit `ArmNN` provider (fail if unavailable).
     #[serde(rename = "armnn")]
     ArmNn,
+    /// Explicit `XNNPACK` provider (fail if unavailable).
+    /// Optimized CPU inference for ARM/x86 platforms.
+    #[serde(rename = "xnnpack")]
+    Xnnpack,
 }
 
 /// Inference settings.
@@ -248,7 +252,7 @@ impl std::fmt::Display for OutputFormat {
 }
 
 impl std::str::FromStr for OutputFormat {
-    type Err = String;
+    type Err = crate::error::Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_lowercase().as_str() {
@@ -257,7 +261,9 @@ impl std::str::FromStr for OutputFormat {
             "audacity" => Ok(Self::Audacity),
             "kaleidoscope" => Ok(Self::Kaleidoscope),
             "json" => Ok(Self::Json),
-            other => Err(format!("unknown output format: {other}")),
+            other => Err(crate::error::Error::InvalidOutputFormat {
+                value: other.to_string(),
+            }),
         }
     }
 }
@@ -288,14 +294,16 @@ impl std::fmt::Display for ModelType {
 }
 
 impl std::str::FromStr for ModelType {
-    type Err = String;
+    type Err = crate::error::Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_lowercase().as_str() {
             "birdnet-v24" => Ok(Self::BirdnetV24),
             "birdnet-v30" => Ok(Self::BirdnetV30),
             "perch-v2" => Ok(Self::PerchV2),
-            other => Err(format!("unknown model type: {other}")),
+            other => Err(crate::error::Error::InvalidModelType {
+                value: other.to_string(),
+            }),
         }
     }
 }

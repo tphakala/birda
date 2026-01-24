@@ -378,4 +378,24 @@ pub enum Error {
         #[source]
         source: serde_json::Error,
     },
+
+    /// Invalid output format string.
+    #[error("invalid output format: {value}")]
+    InvalidOutputFormat {
+        /// The invalid value.
+        value: String,
+    },
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_invalid_output_format_error_display() {
+        let err = Error::InvalidOutputFormat {
+            value: "foobar".to_string(),
+        };
+        assert_eq!(err.to_string(), "invalid output format: foobar");
+    }
 }

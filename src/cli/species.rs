@@ -2,11 +2,10 @@
 
 use crate::cli::SortOrder;
 use crate::config::{OutputMode, load_default_config};
-use crate::constants::range_filter::DAYS_PER_WEEK;
 use crate::error::{Error, Result};
 use crate::inference::range_filter::RangeFilter;
 use crate::output::{ResultType, SpeciesEntry, SpeciesListPayload, emit_json_result};
-use crate::utils::date::{date_to_week, day_of_year_to_date};
+use crate::utils::date::{date_to_week, day_of_year_to_date, week_to_start_day};
 use std::fs::File;
 use std::io::Write;
 use std::path::PathBuf;
@@ -136,14 +135,15 @@ pub fn generate_species_list(
     }
 
     // Sort according to user preference
+    // Use sort_unstable_by for performance - stability not needed here
     match sort {
         SortOrder::Freq => {
             // Sort by score descending (most likely first)
-            species_list.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+            species_list.sort_unstable_by(|a, b| b.1.total_cmp(&a.1));
         }
         SortOrder::Alpha => {
             // Sort alphabetically
-            species_list.sort_by(|a, b| a.0.cmp(&b.0));
+            species_list.sort_unstable_by(|a, b| a.0.cmp(&b.0));
         }
     }
 
@@ -206,13 +206,7 @@ pub fn generate_species_list(
 ///
 /// Week 1 = Jan 1 (day 1), Week 48 = Dec 24 (day 358)
 fn week_to_date(week: u32) -> (u32, u32) {
-    #[allow(
-        clippy::cast_precision_loss,
-        clippy::cast_possible_truncation,
-        clippy::cast_sign_loss
-    )]
-    let day_of_year = ((week - 1) as f32).mul_add(DAYS_PER_WEEK, 1.0) as u32;
-    day_of_year_to_date(day_of_year)
+    day_of_year_to_date(week_to_start_day(week))
 }
 
 /// Read labels file.
@@ -278,26 +272,5 @@ mod tests {
     fn test_week_to_date_week_48() {
         // Week 48 = day 358 → Dec 24
         assert_eq!(week_to_date(48), (12, 24));
-    }
-
-    #[test]
-    fn test_day_of_year_to_date_jan_1() {
-        assert_eq!(day_of_year_to_date(1), (1, 1));
-    }
-
-    #[test]
-    fn test_day_of_year_to_date_dec_31() {
-        assert_eq!(day_of_year_to_date(365), (12, 31));
-    }
-
-    #[test]
-    fn test_day_of_year_to_date_jun_15() {
-        assert_eq!(day_of_year_to_date(166), (6, 15));
-    }
-
-    #[test]
-    fn test_day_of_year_to_date_overflow() {
-        // Day 400 should return Dec 31 (overflow protection)
-        assert_eq!(day_of_year_to_date(400), (12, 31));
     }
 }

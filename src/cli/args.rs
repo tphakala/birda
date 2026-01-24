@@ -166,7 +166,12 @@ pub enum ModelsAction {
 }
 
 /// Arguments for the analyze command.
-#[derive(Debug, Args)]
+///
+/// # Default Implementation
+///
+/// All fields default to `None`/`false`/`0`, representing "no user input".
+/// This allows configuration file values to take precedence over defaults.
+#[derive(Debug, Clone, Args, Default)]
 #[allow(clippy::struct_excessive_bools)]
 pub struct AnalyzeArgs {
     /// Model name from configuration.
@@ -180,6 +185,14 @@ pub struct AnalyzeArgs {
     /// Path to labels file (overrides config).
     #[arg(long, env = "BIRDA_LABELS_PATH")]
     pub labels_path: Option<PathBuf>,
+
+    /// Model type for ad-hoc model (required with --model-path when no -m is provided).
+    #[arg(long, value_enum, env = "BIRDA_MODEL_TYPE")]
+    pub model_type: Option<ModelType>,
+
+    /// Path to meta model file for range filtering (overrides config).
+    #[arg(long, env = "BIRDA_META_MODEL_PATH")]
+    pub meta_model_path: Option<PathBuf>,
 
     /// Output formats (comma-separated: csv,raven,audacity,kaleidoscope).
     #[arg(short, long, value_delimiter = ',', env = "BIRDA_FORMAT")]
@@ -278,6 +291,10 @@ pub struct AnalyzeArgs {
     #[arg(long, group = "provider")]
     pub armnn: bool,
 
+    /// Use `XNNPACK` provider explicitly (optimized CPU for ARM/x86).
+    #[arg(long, group = "provider")]
+    pub xnnpack: bool,
+
     /// Latitude for range filtering (-90.0 to 90.0).
     #[arg(long, value_parser = parse_latitude, env = "BIRDA_LATITUDE")]
     pub lat: Option<f64>,
@@ -320,57 +337,13 @@ pub struct AnalyzeArgs {
     pub stale_lock_timeout: Option<String>,
 }
 
-/// Parse and validate latitude value.
-fn parse_latitude(s: &str) -> Result<f64, String> {
-    let value: f64 = s
-        .parse()
-        .map_err(|_| format!("'{s}' is not a valid number"))?;
-
-    if !(-90.0..=90.0).contains(&value) {
-        return Err(format!(
-            "latitude must be between -90.0 and 90.0, got {value}"
-        ));
-    }
-
-    Ok(value)
-}
-
-/// Parse and validate longitude value.
-fn parse_longitude(s: &str) -> Result<f64, String> {
-    let value: f64 = s
-        .parse()
-        .map_err(|_| format!("'{s}' is not a valid number"))?;
-
-    if !(-180.0..=180.0).contains(&value) {
-        return Err(format!(
-            "longitude must be between -180.0 and 180.0, got {value}"
-        ));
-    }
-
-    Ok(value)
-}
-
-// Re-use shared confidence validator
-use super::validators::parse_confidence;
+// Re-use shared validators
+use super::validators::{parse_confidence, parse_latitude, parse_longitude};
 
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::float_cmp)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_parse_confidence_valid() {
-        assert_eq!(parse_confidence("0.5").ok(), Some(0.5));
-        assert_eq!(parse_confidence("0.0").ok(), Some(0.0));
-        assert_eq!(parse_confidence("1.0").ok(), Some(1.0));
-    }
-
-    #[test]
-    fn test_parse_confidence_invalid() {
-        assert!(parse_confidence("1.5").is_err());
-        assert!(parse_confidence("-0.1").is_err());
-        assert!(parse_confidence("abc").is_err());
-    }
 
     #[test]
     fn test_cli_parse_simple() {
@@ -536,5 +509,129 @@ mod tests {
         assert!(cli.is_ok());
         let cli = cli.unwrap();
         assert!(!cli.analyze.no_csv_bom); // BOM enabled by default
+    }
+
+    #[test]
+    fn test_cli_parse_model_type() {
+        let cli = Cli::try_parse_from([
+            "birda",
+            "test.wav",
+            "--model-type",
+            "birdnet-v24",
+            "--model-path",
+            "/path/to/model.onnx",
+            "--labels-path",
+            "/path/to/labels.txt",
+        ]);
+        assert!(cli.is_ok());
+        let cli = cli.unwrap();
+        assert_eq!(cli.analyze.model_type, Some(ModelType::BirdnetV24));
+        assert_eq!(
+            cli.analyze.model_path,
+            Some(PathBuf::from("/path/to/model.onnx"))
+        );
+        assert_eq!(
+            cli.analyze.labels_path,
+            Some(PathBuf::from("/path/to/labels.txt"))
+        );
+    }
+
+    #[test]
+    fn test_cli_parse_model_type_perch() {
+        let cli = Cli::try_parse_from([
+            "birda",
+            "test.wav",
+            "--model-type",
+            "perch-v2",
+            "--model-path",
+            "/path/to/model.onnx",
+            "--labels-path",
+            "/path/to/labels.txt",
+        ]);
+        assert!(cli.is_ok());
+        let cli = cli.unwrap();
+        assert_eq!(cli.analyze.model_type, Some(ModelType::PerchV2));
+    }
+
+    #[test]
+    fn test_cli_parse_model_type_birdnet_v30() {
+        let cli = Cli::try_parse_from([
+            "birda",
+            "test.wav",
+            "--model-type",
+            "birdnet-v30",
+            "--model-path",
+            "/path/to/model.onnx",
+            "--labels-path",
+            "/path/to/labels.txt",
+        ]);
+        assert!(cli.is_ok());
+        let cli = cli.unwrap();
+        assert_eq!(cli.analyze.model_type, Some(ModelType::BirdnetV30));
+    }
+
+    #[test]
+    fn test_cli_parse_invalid_model_type() {
+        let cli = Cli::try_parse_from([
+            "birda",
+            "test.wav",
+            "--model-type",
+            "invalid-type",
+            "--model-path",
+            "/path/to/model.onnx",
+        ]);
+        assert!(cli.is_err());
+    }
+
+    #[test]
+    fn test_cli_parse_meta_model_path() {
+        let cli = Cli::try_parse_from([
+            "birda",
+            "test.wav",
+            "--model-type",
+            "birdnet-v24",
+            "--model-path",
+            "/path/to/model.onnx",
+            "--labels-path",
+            "/path/to/labels.txt",
+            "--meta-model-path",
+            "/path/to/meta.onnx",
+        ]);
+        assert!(cli.is_ok());
+        let cli = cli.unwrap();
+        assert_eq!(
+            cli.analyze.meta_model_path,
+            Some(PathBuf::from("/path/to/meta.onnx"))
+        );
+    }
+
+    #[test]
+    fn test_cli_adhoc_model_complete() {
+        // Full ad-hoc model specification with range filtering
+        let cli = Cli::try_parse_from([
+            "birda",
+            "test.wav",
+            "--model-type",
+            "birdnet-v24",
+            "--model-path",
+            "/path/to/model.onnx",
+            "--labels-path",
+            "/path/to/labels.txt",
+            "--meta-model-path",
+            "/path/to/meta.onnx",
+            "--lat",
+            "60.17",
+            "--lon",
+            "24.94",
+            "--week",
+            "24",
+        ]);
+        assert!(cli.is_ok());
+        let cli = cli.unwrap();
+        assert_eq!(cli.analyze.model_type, Some(ModelType::BirdnetV24));
+        assert!(cli.analyze.meta_model_path.is_some());
+        assert_eq!(cli.analyze.lat, Some(60.17));
+        assert_eq!(cli.analyze.lon, Some(24.94));
+        assert_eq!(cli.analyze.week, Some(24));
     }
 }

@@ -75,6 +75,9 @@ pub mod range_filter {
     /// Days per `BirdNET` week (365.25 / 48).
     pub const DAYS_PER_WEEK: f32 = 7.6;
 
+    /// First day of the year (January 1st) for week-to-day offset calculation.
+    pub const YEAR_START_DAY: f32 = 1.0;
+
     /// Default range filter threshold.
     pub const DEFAULT_THRESHOLD: f32 = 0.01;
 }

@@ -332,57 +332,13 @@ pub struct AnalyzeArgs {
     pub stale_lock_timeout: Option<String>,
 }
 
-/// Parse and validate latitude value.
-fn parse_latitude(s: &str) -> Result<f64, String> {
-    let value: f64 = s
-        .parse()
-        .map_err(|_| format!("'{s}' is not a valid number"))?;
-
-    if !(-90.0..=90.0).contains(&value) {
-        return Err(format!(
-            "latitude must be between -90.0 and 90.0, got {value}"
-        ));
-    }
-
-    Ok(value)
-}
-
-/// Parse and validate longitude value.
-fn parse_longitude(s: &str) -> Result<f64, String> {
-    let value: f64 = s
-        .parse()
-        .map_err(|_| format!("'{s}' is not a valid number"))?;
-
-    if !(-180.0..=180.0).contains(&value) {
-        return Err(format!(
-            "longitude must be between -180.0 and 180.0, got {value}"
-        ));
-    }
-
-    Ok(value)
-}
-
-// Re-use shared confidence validator
-use super::validators::parse_confidence;
+// Re-use shared validators
+use super::validators::{parse_confidence, parse_latitude, parse_longitude};
 
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::float_cmp)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_parse_confidence_valid() {
-        assert_eq!(parse_confidence("0.5").ok(), Some(0.5));
-        assert_eq!(parse_confidence("0.0").ok(), Some(0.0));
-        assert_eq!(parse_confidence("1.0").ok(), Some(1.0));
-    }
-
-    #[test]
-    fn test_parse_confidence_invalid() {
-        assert!(parse_confidence("1.5").is_err());
-        assert!(parse_confidence("-0.1").is_err());
-        assert!(parse_confidence("abc").is_err());
-    }
 
     #[test]
     fn test_cli_parse_simple() {

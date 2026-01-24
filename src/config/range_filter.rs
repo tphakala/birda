@@ -83,6 +83,8 @@ mod tests {
             model: None,
             model_path: None,
             labels_path: None,
+            model_type: None,
+            meta_model_path: None,
             format: None,
             output_dir: None,
             min_confidence: None,

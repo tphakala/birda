@@ -4,7 +4,7 @@ mod classifier;
 pub mod range_filter;
 
 pub use birdnet_onnx::{BatchInferenceContext, InferenceOptions};
-pub use classifier::BirdClassifier;
+pub use classifier::{BirdClassifier, provider_display_name};
 
 use std::path::PathBuf;
 

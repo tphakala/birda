@@ -464,41 +464,6 @@ mod tests {
         assert!(filtered.iter().any(|p| p.species.contains("Cyanistes")));
         assert!(!filtered.iter().any(|p| p.species.contains("Turdus")));
     }
-
-    #[test]
-    fn test_provider_display_name_returns_expected_strings() {
-        // Test all known providers return expected display names
-        assert_eq!(provider_display_name(ExecutionProviderInfo::Cpu), "CPU");
-        assert_eq!(provider_display_name(ExecutionProviderInfo::Cuda), "CUDA");
-        assert_eq!(
-            provider_display_name(ExecutionProviderInfo::TensorRt),
-            "TensorRT"
-        );
-        assert_eq!(
-            provider_display_name(ExecutionProviderInfo::DirectMl),
-            "DirectML"
-        );
-        assert_eq!(
-            provider_display_name(ExecutionProviderInfo::CoreMl),
-            "CoreML"
-        );
-        assert_eq!(provider_display_name(ExecutionProviderInfo::Rocm), "ROCm");
-        assert_eq!(
-            provider_display_name(ExecutionProviderInfo::OpenVino),
-            "OpenVINO"
-        );
-        assert_eq!(
-            provider_display_name(ExecutionProviderInfo::OneDnn),
-            "oneDNN"
-        );
-        assert_eq!(provider_display_name(ExecutionProviderInfo::Qnn), "QNN");
-        assert_eq!(provider_display_name(ExecutionProviderInfo::Acl), "ACL");
-        assert_eq!(provider_display_name(ExecutionProviderInfo::ArmNn), "ArmNN");
-        assert_eq!(
-            provider_display_name(ExecutionProviderInfo::Xnnpack),
-            "XNNPACK"
-        );
-    }
 }
 
 /// Configure an explicit execution provider (fail if unavailable).
@@ -517,27 +482,6 @@ fn configure_explicit_provider(
     info!("Requested device: {provider_name}");
     let builder = add_execution_provider(builder, provider_info);
     Ok((builder, provider_name))
-}
-
-/// Get human-readable display name for an execution provider.
-///
-/// Returns a consistent string representation used for logging and error messages.
-pub fn provider_display_name(provider: ExecutionProviderInfo) -> &'static str {
-    match provider {
-        ExecutionProviderInfo::Cpu => "CPU",
-        ExecutionProviderInfo::Cuda => "CUDA",
-        ExecutionProviderInfo::TensorRt => "TensorRT",
-        ExecutionProviderInfo::DirectMl => "DirectML",
-        ExecutionProviderInfo::CoreMl => "CoreML",
-        ExecutionProviderInfo::Rocm => "ROCm",
-        ExecutionProviderInfo::OpenVino => "OpenVINO",
-        ExecutionProviderInfo::OneDnn => "oneDNN",
-        ExecutionProviderInfo::Qnn => "QNN",
-        ExecutionProviderInfo::Acl => "ACL",
-        ExecutionProviderInfo::ArmNn => "ArmNN",
-        ExecutionProviderInfo::Xnnpack => "XNNPACK",
-        _ => "Unknown",
-    }
 }
 
 /// Setup `TensorRT` cache directory, returning the path if successful.
@@ -649,7 +593,7 @@ fn provider_unavailable_error(provider_name: &str, available: &[ExecutionProvide
     message.push_str("Available providers:\n");
 
     for provider in available {
-        let _ = writeln!(message, "  ✓ {}", provider_display_name(*provider));
+        let _ = writeln!(message, "  ✓ {}", super::provider_metadata(*provider).name);
     }
 
     message.push_str("\nTry one of:\n");

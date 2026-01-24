@@ -1,10 +1,12 @@
 //! Inference module for bird species detection.
 
 mod classifier;
+mod provider;
 pub mod range_filter;
 
 pub use birdnet_onnx::{BatchInferenceContext, InferenceOptions};
-pub use classifier::{BirdClassifier, provider_display_name};
+pub use classifier::BirdClassifier;
+pub use provider::{ProviderMetadata, provider_metadata};
 
 use std::path::PathBuf;
 

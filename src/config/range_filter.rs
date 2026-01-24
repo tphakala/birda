@@ -71,57 +71,12 @@ pub fn build_range_filter_config(
 mod tests {
     use super::*;
 
-    // Helper function to create minimal AnalyzeArgs for testing
-    fn create_analyze_args() -> crate::cli::AnalyzeArgs {
-        crate::cli::AnalyzeArgs {
-            model: None,
-            model_path: None,
-            labels_path: None,
-            model_type: None,
-            meta_model_path: None,
-            format: None,
-            output_dir: None,
-            min_confidence: None,
-            overlap: None,
-            batch_size: None,
-            combine: false,
-            force: false,
-            fail_fast: false,
-            quiet: false,
-            verbose: 0,
-            no_progress: false,
-            no_csv_bom: false,
-            gpu: false,
-            cpu: false,
-            cuda: false,
-            tensorrt: false,
-            directml: false,
-            coreml: false,
-            rocm: false,
-            openvino: false,
-            onednn: false,
-            qnn: false,
-            acl: false,
-            armnn: false,
-            xnnpack: false,
-            lat: None,
-            lon: None,
-            week: None,
-            month: None,
-            day: None,
-            range_threshold: None,
-            rerank: false,
-            slist: None,
-            stale_lock_timeout: None,
-        }
-    }
-
     #[test]
     fn test_build_range_filter_with_week() {
         use crate::config::types::{Config, ModelConfig, ModelType};
         use std::path::PathBuf;
 
-        let mut args = create_analyze_args();
+        let mut args = crate::cli::AnalyzeArgs::default();
         args.lat = Some(60.1699);
         args.lon = Some(24.9384);
         args.week = Some(24);
@@ -152,7 +107,7 @@ mod tests {
         use crate::config::types::{Config, ModelConfig, ModelType};
         use std::path::PathBuf;
 
-        let mut args = create_analyze_args();
+        let mut args = crate::cli::AnalyzeArgs::default();
         args.lat = Some(60.1699);
         args.lon = Some(24.9384);
         args.month = Some(6);
@@ -183,7 +138,7 @@ mod tests {
         use crate::config::types::{Config, ModelConfig, ModelType};
         use std::path::PathBuf;
 
-        let mut args = create_analyze_args();
+        let mut args = crate::cli::AnalyzeArgs::default();
         args.week = Some(24);
 
         let mut config = Config::default();
@@ -211,7 +166,7 @@ mod tests {
         use crate::config::types::{Config, ModelConfig, ModelType};
         use std::path::PathBuf;
 
-        let mut args = create_analyze_args();
+        let mut args = crate::cli::AnalyzeArgs::default();
         args.week = Some(24);
 
         let config = Config::default();
@@ -234,7 +189,7 @@ mod tests {
         use crate::config::types::{Config, ModelConfig, ModelType};
         use std::path::PathBuf;
 
-        let mut args = create_analyze_args();
+        let mut args = crate::cli::AnalyzeArgs::default();
         args.lat = Some(60.1699);
         args.lon = Some(24.9384);
 
@@ -258,7 +213,7 @@ mod tests {
         use crate::config::types::{Config, ModelConfig, ModelType};
         use std::path::PathBuf;
 
-        let mut args = create_analyze_args();
+        let mut args = crate::cli::AnalyzeArgs::default();
         args.lat = Some(60.1699);
         args.lon = Some(24.9384);
         args.week = Some(24);

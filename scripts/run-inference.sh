@@ -7,6 +7,11 @@ if [[ -z "${INPUT_MODEL:-}" ]]; then
     exit 1
 fi
 
+if [[ -z "${INPUT_MODEL_TYPE:-}" ]]; then
+    echo "::error::Input 'model-type' is required (birdnet-v24, birdnet-v30, or perch-v2)"
+    exit 1
+fi
+
 if [[ -z "${INPUT_AUDIO:-}" ]]; then
     echo "::error::Input 'audio' is required"
     exit 1
@@ -29,9 +34,10 @@ TEMP_OUT="${RUNNER_TEMP}/birda-output"
 rm -rf "${TEMP_OUT}"
 mkdir -p "${TEMP_OUT}"
 
-# Build command arguments
+# Build command arguments (ad-hoc model: requires both --model-type and --model-path)
 ARGS=(
     "${INPUT_AUDIO}"
+    "--model-type" "${INPUT_MODEL_TYPE}"
     "--model-path" "${INPUT_MODEL}"
     "--min-confidence" "${INPUT_CONFIDENCE}"
     "--format" "${INPUT_FORMAT}"

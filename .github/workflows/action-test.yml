@@ -47,6 +47,7 @@ jobs:
         uses: ./
         with:
           model: models/birdnet-v24.onnx
+          model-type: birdnet-v24
           audio: tests/fixtures/test.wav
           output: test-results.csv
           confidence: 0.01
@@ -95,6 +96,7 @@ jobs:
         uses: ./
         with:
           model: models/birdnet-v24.onnx
+          model-type: birdnet-v24
           audio: tests/fixtures/test.wav
           output: results/subdir/predictions.csv
           confidence: 0.01

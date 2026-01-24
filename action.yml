@@ -9,6 +9,9 @@ inputs:
   model:
     description: 'Path to the ONNX model file'
     required: true
+  model-type:
+    description: 'Model type: birdnet-v24, birdnet-v30, or perch-v2'
+    required: true
   audio:
     description: 'Path to audio file to analyze'
     required: true
@@ -51,6 +54,7 @@ runs:
       shell: bash
       env:
         INPUT_MODEL: ${{ inputs.model }}
+        INPUT_MODEL_TYPE: ${{ inputs.model-type }}
         INPUT_AUDIO: ${{ inputs.audio }}
         INPUT_OUTPUT: ${{ inputs.output }}
         INPUT_FORMAT: ${{ inputs.format }}

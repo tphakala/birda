@@ -765,6 +765,8 @@ jobs:
           VERSION="${{ github.ref_name }}"
           MAJOR=$(echo "$VERSION" | cut -d. -f1)
 
-          echo "Updating major version tag: $MAJOR -> $VERSION"
-          git tag -f "$MAJOR" "$VERSION"
+          # Dereference to commit to avoid tag-of-a-tag with annotated tags
+          COMMIT=$(git rev-parse "${VERSION}^{commit}")
+          echo "Updating major version tag: $MAJOR -> $COMMIT (from $VERSION)"
+          git tag -f "$MAJOR" "$COMMIT"
           git push origin "$MAJOR" --force

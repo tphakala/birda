@@ -76,9 +76,14 @@ if [[ -n "${INPUT_OUTPUT:-}" ]]; then
         exit 1
     fi
     # User specified output path - ensure parent directory exists
-    OUTPUT_DIR=$(dirname "${INPUT_OUTPUT}")
-    if [[ -n "${OUTPUT_DIR}" && "${OUTPUT_DIR}" != "." ]]; then
-        mkdir -p "${OUTPUT_DIR}"
+    # Handle trailing-slash paths as directories (dirname "results/" returns ".")
+    if [[ "${INPUT_OUTPUT}" == */ ]]; then
+        mkdir -p "${INPUT_OUTPUT}"
+    else
+        OUTPUT_DIR=$(dirname "${INPUT_OUTPUT}")
+        if [[ -n "${OUTPUT_DIR}" && "${OUTPUT_DIR}" != "." ]]; then
+            mkdir -p "${OUTPUT_DIR}"
+        fi
     fi
     # Move/rename to requested location
     mv "${GENERATED_FILE}" "${INPUT_OUTPUT}"

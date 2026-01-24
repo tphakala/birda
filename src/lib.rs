@@ -21,7 +21,7 @@ pub mod utils;
 use clap::Parser;
 use cli::{AnalyzeArgs, Cli, Command};
 use config::{
-    Config, InferenceDevice, ModelConfig, ModelType, OutputMode, config_file_path,
+    Config, InferenceDevice, ModelConfig, ModelType, OutputFormat, OutputMode, config_file_path,
     load_default_config, range_filter::build_range_filter_config, save_default_config,
 };
 use constants::DEFAULT_TOP_K;
@@ -33,7 +33,7 @@ use output::{
 };
 use pipeline::{ProcessCheck, collect_input_files, output_dir_for, process_file, should_process};
 use std::collections::HashSet;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tracing::{error, info, warn};
 
@@ -41,6 +41,10 @@ pub use error::{Error, Result};
 
 /// Model name used for ad-hoc (CLI-specified) models.
 const ADHOC_MODEL_NAME: &str = "<ad-hoc>";
+
+/// Threshold in seconds to distinguish `TensorRT` engine build from cache load.
+/// Warmup taking >= this long indicates `TensorRT` compiled a new engine.
+const WARMUP_BUILD_THRESHOLD_SECS: u64 = 2;
 
 /// Resolve model configuration using priority-based logic.
 ///
@@ -128,6 +132,34 @@ fn apply_model_overrides(model_config: &mut ModelConfig, args: &AnalyzeArgs) {
     }
 }
 
+/// Parameters for file processing.
+#[allow(clippy::struct_excessive_bools)]
+struct ProcessingParams<'a> {
+    formats: &'a [OutputFormat],
+    output_dir: Option<&'a Path>,
+    min_confidence: f32,
+    overlap: f32,
+    batch_size: usize,
+    csv_columns: &'a [String],
+    csv_bom: bool,
+    model_name: &'a str,
+    range_filter_params: Option<(f64, f64, u8)>,
+    force: bool,
+    fail_fast: bool,
+    progress_enabled: bool,
+}
+
+/// Statistics from processing all files.
+#[derive(Debug, Default)]
+struct ProcessingStats {
+    processed: usize,
+    skipped: usize,
+    errors: usize,
+    total_detections: usize,
+    total_segments: usize,
+    total_audio_duration: f64,
+}
+
 /// Main entry point for birda CLI.
 pub fn run() -> Result<()> {
     let cli = Cli::parse();
@@ -173,6 +205,275 @@ pub fn run() -> Result<()> {
     analyze_files(&cli.inputs, &cli.analyze, &config, output_mode, &reporter)
 }
 
+/// Resolve inference device from CLI flags or config default.
+fn resolve_device(args: &AnalyzeArgs, config: &Config) -> InferenceDevice {
+    [
+        (args.gpu, InferenceDevice::Gpu),
+        (args.cpu, InferenceDevice::Cpu),
+        (args.cuda, InferenceDevice::Cuda),
+        (args.tensorrt, InferenceDevice::TensorRt),
+        (args.directml, InferenceDevice::DirectMl),
+        (args.coreml, InferenceDevice::CoreMl),
+        (args.rocm, InferenceDevice::Rocm),
+        (args.openvino, InferenceDevice::OpenVino),
+        (args.onednn, InferenceDevice::OneDnn),
+        (args.qnn, InferenceDevice::Qnn),
+        (args.acl, InferenceDevice::Acl),
+        (args.armnn, InferenceDevice::ArmNn),
+        (args.xnnpack, InferenceDevice::Xnnpack),
+    ]
+    .into_iter()
+    .find(|(flag, _)| *flag)
+    .map_or(config.inference.device, |(_, device)| device)
+}
+
+/// Load species list from file if no range filter is active.
+///
+/// Priority: range filter (dynamic) > species list file (static) > no filtering.
+/// When range filter is active, species filtering comes from the range filter,
+/// so we return `None` here.
+fn resolve_species_filter(
+    args: &AnalyzeArgs,
+    config: &Config,
+    has_range_filter: bool,
+) -> Result<Option<HashSet<String>>> {
+    if has_range_filter {
+        // Dynamic filtering - species list will come from range filter
+        return Ok(None);
+    }
+
+    if let Some(slist_path) = args
+        .slist
+        .as_ref()
+        .or(config.defaults.species_list_file.as_ref())
+    {
+        info!("Loading species list: {}", slist_path.display());
+        let species = utils::species_list::read_species_list(slist_path)?
+            .into_iter()
+            .collect::<HashSet<_>>();
+        info!(
+            "Species list filter enabled: {} species loaded",
+            species.len()
+        );
+        return Ok(Some(species));
+    }
+
+    Ok(None)
+}
+
+/// Validate that model, labels, and optional meta-model files exist.
+fn validate_model_files(model_config: &ModelConfig) -> Result<()> {
+    if !model_config.path.exists() {
+        return Err(Error::ModelFileNotFound {
+            path: model_config.path.clone(),
+        });
+    }
+    if !model_config.labels.exists() {
+        return Err(Error::LabelsFileNotFound {
+            path: model_config.labels.clone(),
+        });
+    }
+    if let Some(ref meta) = model_config.meta_model
+        && !meta.exists()
+    {
+        return Err(Error::MetaModelNotFound { path: meta.clone() });
+    }
+    Ok(())
+}
+
+/// Warm up the classifier, with special `TensorRT` spinner handling.
+///
+/// `TensorRT` compiles/loads its engine during the first inference, which can
+/// take several minutes on first run. This warmup triggers that initialization
+/// before the main processing loop starts.
+fn warmup_classifier(classifier: &BirdClassifier, batch_size: usize) -> Result<()> {
+    use indicatif::{ProgressBar, ProgressStyle};
+    use std::time::{Duration, Instant};
+
+    if !classifier.uses_tensorrt() {
+        return classifier.warmup(batch_size);
+    }
+
+    let spinner = ProgressBar::new_spinner();
+    spinner.set_style(
+        ProgressStyle::default_spinner()
+            .template("{spinner:.cyan} {msg}")
+            .unwrap_or_else(|_| ProgressStyle::default_spinner()),
+    );
+    spinner.set_message(format!(
+        "TensorRT: Initializing engine for batch size {batch_size} (may take several minutes on first run)..."
+    ));
+    spinner.enable_steady_tick(Duration::from_millis(100));
+
+    let warmup_start = Instant::now();
+    let result = classifier.warmup(batch_size);
+    let warmup_duration = warmup_start.elapsed();
+
+    spinner.finish_and_clear();
+    result?;
+
+    if warmup_duration.as_secs() >= WARMUP_BUILD_THRESHOLD_SECS {
+        info!(
+            "TensorRT: Engine built in {:.1}s (cached for future runs)",
+            warmup_duration.as_secs_f64()
+        );
+    } else {
+        info!(
+            "TensorRT: Engine loaded from cache ({:.0}ms)",
+            warmup_duration.as_secs_f64() * 1000.0
+        );
+    }
+
+    Ok(())
+}
+
+/// Report final summary statistics.
+///
+/// Logs processing summary and performance metrics, then reports to the reporter.
+fn report_summary(
+    stats: &ProcessingStats,
+    total_start: std::time::Instant,
+    fail_fast: bool,
+    reporter: &Arc<dyn ProgressReporter>,
+) {
+    use crate::output::progress;
+
+    let elapsed = total_start.elapsed();
+    let total_duration = elapsed.as_secs_f64();
+    #[allow(clippy::cast_possible_truncation)]
+    let duration_ms = elapsed.as_millis() as u64;
+
+    info!(
+        "Complete: {} processed, {} skipped, {} errors, {} total detections in {:.2}s",
+        stats.processed, stats.skipped, stats.errors, stats.total_detections, total_duration
+    );
+
+    #[allow(clippy::cast_precision_loss)]
+    let realtime_factor = if total_duration > 0.0 {
+        stats.total_audio_duration / total_duration
+    } else {
+        0.0
+    };
+
+    if stats.processed > 0 {
+        #[allow(clippy::cast_precision_loss)]
+        let avg_segments_per_sec = if total_duration > 0.0 {
+            stats.total_segments as f64 / total_duration
+        } else {
+            0.0
+        };
+        info!(
+            "Performance: {:.1} segments/sec overall, {:.1}x realtime ({} total audio)",
+            avg_segments_per_sec,
+            realtime_factor,
+            progress::format_duration(stats.total_audio_duration)
+        );
+    }
+
+    if stats.errors > 0 && !fail_fast {
+        warn!("{} file(s) had errors", stats.errors);
+    }
+
+    reporter.pipeline_completed(&PipelineSummary {
+        files_processed: stats.processed,
+        files_failed: stats.errors,
+        files_skipped: stats.skipped,
+        total_detections: stats.total_detections,
+        total_segments: stats.total_segments,
+        duration_ms,
+        realtime_factor,
+    });
+}
+
+/// Process all files, updating stats in place.
+///
+/// On fail-fast error, returns `Err` immediately but `stats` contains partial results.
+/// The caller is responsible for all summary reporting (success or failure).
+fn process_all_files(
+    files: &[PathBuf],
+    classifier: &BirdClassifier,
+    params: &ProcessingParams<'_>,
+    reporter: &Arc<dyn ProgressReporter>,
+    stats: &mut ProcessingStats,
+) -> Result<()> {
+    use crate::output::progress;
+
+    let file_progress = progress::create_file_progress(files.len(), params.progress_enabled);
+
+    for (index, file) in files.iter().enumerate() {
+        let file_output_dir = output_dir_for(file, params.output_dir);
+
+        // Check if should process
+        match should_process(file, &file_output_dir, params.formats, params.force) {
+            ProcessCheck::SkipExists => {
+                info!("Skipping (output exists): {}", file.display());
+                reporter.file_skipped(file, FileStatus::Skipped);
+                stats.skipped += 1;
+                progress::inc_progress(file_progress.as_ref());
+                continue;
+            }
+            ProcessCheck::SkipLocked => {
+                info!("Skipping (locked): {}", file.display());
+                reporter.file_skipped(file, FileStatus::Locked);
+                stats.skipped += 1;
+                progress::inc_progress(file_progress.as_ref());
+                continue;
+            }
+            ProcessCheck::Process => {}
+        }
+
+        // Estimate segments for reporter
+        let segment_duration = classifier.segment_duration();
+        #[allow(clippy::cast_possible_truncation)]
+        let estimated_segments =
+            progress::estimate_segment_count(None, segment_duration, params.overlap).unwrap_or(0)
+                as usize;
+
+        // Report file start
+        reporter.file_started(file, index, estimated_segments, None);
+
+        // Process the file
+        let file_start = std::time::Instant::now();
+        match process_file(
+            file,
+            &file_output_dir,
+            classifier,
+            params.formats,
+            params.min_confidence,
+            params.overlap,
+            params.batch_size,
+            params.csv_columns,
+            params.progress_enabled,
+            params.csv_bom,
+            params.model_name,
+            params.range_filter_params,
+        ) {
+            Ok(result) => {
+                #[allow(clippy::cast_possible_truncation)]
+                let duration_ms = file_start.elapsed().as_millis() as u64;
+                reporter.file_completed_success(file, result.detections, duration_ms);
+                stats.processed += 1;
+                stats.total_detections += result.detections;
+                stats.total_segments += result.segments;
+                stats.total_audio_duration += result.audio_duration_secs;
+            }
+            Err(e) => {
+                error!("Failed to process {}: {}", file.display(), e);
+                reporter.file_completed_failure(file, "processing_error", &e.to_string());
+                stats.errors += 1;
+                if params.fail_fast {
+                    progress::finish_progress(file_progress, "Failed");
+                    return Err(e);
+                }
+            }
+        }
+        progress::inc_progress(file_progress.as_ref());
+    }
+
+    progress::finish_progress(file_progress, "Complete");
+    Ok(())
+}
+
 /// Analyze input files with the given options.
 fn analyze_files(
     inputs: &[PathBuf],
@@ -181,7 +482,6 @@ fn analyze_files(
     output_mode: OutputMode,
     reporter: &Arc<dyn ProgressReporter>,
 ) -> Result<()> {
-    use crate::output::progress;
     use std::time::Instant;
 
     let total_start = Instant::now();
@@ -189,23 +489,7 @@ fn analyze_files(
     // Fail fast on configuration errors before scanning filesystem
     // Resolve model configuration using priority-based resolution
     let (model_config, model_name) = resolve_model_config(args, config)?;
-
-    // Validate model files exist
-    if !model_config.path.exists() {
-        return Err(Error::ModelFileNotFound {
-            path: model_config.path,
-        });
-    }
-    if !model_config.labels.exists() {
-        return Err(Error::LabelsFileNotFound {
-            path: model_config.labels,
-        });
-    }
-    if let Some(ref meta) = model_config.meta_model
-        && !meta.exists()
-    {
-        return Err(Error::MetaModelNotFound { path: meta.clone() });
-    }
+    validate_model_files(&model_config)?;
 
     // Collect input files only after config is validated
     let files = collect_input_files(inputs)?;
@@ -233,24 +517,7 @@ fn analyze_files(
     let fail_fast = args.fail_fast;
 
     // Resolve device from command-line flags or config
-    let device = [
-        (args.gpu, InferenceDevice::Gpu),
-        (args.cpu, InferenceDevice::Cpu),
-        (args.cuda, InferenceDevice::Cuda),
-        (args.tensorrt, InferenceDevice::TensorRt),
-        (args.directml, InferenceDevice::DirectMl),
-        (args.coreml, InferenceDevice::CoreMl),
-        (args.rocm, InferenceDevice::Rocm),
-        (args.openvino, InferenceDevice::OpenVino),
-        (args.onednn, InferenceDevice::OneDnn),
-        (args.qnn, InferenceDevice::Qnn),
-        (args.acl, InferenceDevice::Acl),
-        (args.armnn, InferenceDevice::ArmNn),
-        (args.xnnpack, InferenceDevice::Xnnpack),
-    ]
-    .into_iter()
-    .find(|(flag, _)| *flag)
-    .map_or(config.inference.device, |(_, device)| device);
+    let device = resolve_device(args, config);
 
     // Build range filter config
     let range_filter_config = build_range_filter_config(args, config, &model_config, &model_name)?;
@@ -272,34 +539,8 @@ fn analyze_files(
         );
     }
 
-    // Priority: lat/lon (dynamic) > species list file (static) > no filtering
-    let species_list = if range_filter_config.is_some() {
-        // Dynamic filtering - species list will come from range filter
-        None
-    } else if let Some(slist_path) = args
-        .slist
-        .as_ref()
-        .or(config.defaults.species_list_file.as_ref())
-    {
-        // Static filtering from file
-        info!("Loading species list: {}", slist_path.display());
-        Some(
-            utils::species_list::read_species_list(slist_path)?
-                .into_iter()
-                .collect::<HashSet<_>>(),
-        )
-    } else {
-        // No filtering
-        None
-    };
-
-    // Log if species list filtering is enabled
-    if let Some(ref species) = species_list {
-        info!(
-            "Species list filter enabled: {} species loaded",
-            species.len()
-        );
-    }
+    // Resolve species list filter
+    let species_list = resolve_species_filter(args, config, range_filter_config.is_some())?;
 
     // Extract range filter params before moving range_filter_config
     #[allow(clippy::cast_possible_truncation)]
@@ -319,207 +560,37 @@ fn analyze_files(
         species_list,
     )?;
 
-    // Warm up the classifier to trigger any deferred initialization.
-    // TensorRT compiles/loads its engine during the first inference, which can
-    // take several minutes on first run. We do this before starting the processing
-    // loop so the inference watchdog doesn't kill the process during engine build.
-    //
-    // TensorRT builds separate engines for each batch size, so we must warm up
-    // with the actual batch size that will be used for inference.
-    if classifier.uses_tensorrt() {
-        use indicatif::{ProgressBar, ProgressStyle};
-        use std::time::{Duration, Instant};
+    // Warm up the classifier (handles TensorRT spinner internally)
+    warmup_classifier(&classifier, batch_size)?;
 
-        /// Threshold in seconds to distinguish engine build from cache load.
-        /// Warmup taking >= this long indicates `TensorRT` compiled a new engine.
-        const WARMUP_BUILD_THRESHOLD_SECS: u64 = 2;
-
-        // Create a spinner to show activity during warmup
-        let spinner = ProgressBar::new_spinner();
-        spinner.set_style(
-            ProgressStyle::default_spinner()
-                .template("{spinner:.cyan} {msg}")
-                .unwrap_or_else(|_| ProgressStyle::default_spinner()),
-        );
-        spinner.set_message(format!(
-            "TensorRT: Initializing engine for batch size {batch_size} (may take several minutes on first run)..."
-        ));
-        spinner.enable_steady_tick(Duration::from_millis(100));
-
-        let warmup_start = Instant::now();
-        let result = classifier.warmup(batch_size);
-        let warmup_duration = warmup_start.elapsed();
-
-        spinner.finish_and_clear();
-
-        // Propagate any warmup error
-        result?;
-
-        if warmup_duration.as_secs() >= WARMUP_BUILD_THRESHOLD_SECS {
-            // Engine was built - this was a slow initialization
-            info!(
-                "TensorRT: Engine built in {:.1}s (cached for future runs)",
-                warmup_duration.as_secs_f64()
-            );
-        } else {
-            info!(
-                "TensorRT: Engine loaded from cache ({:.0}ms)",
-                warmup_duration.as_secs_f64() * 1000.0
-            );
-        }
-    } else {
-        classifier.warmup(batch_size)?;
-    }
-
-    // Create file progress bar (disabled in JSON mode - reporter handles progress)
+    // Build processing parameters
     let is_json_output = matches!(output_mode, OutputMode::Json | OutputMode::Ndjson);
     let progress_enabled = !args.quiet && !args.no_progress && !is_json_output;
-    let file_progress = progress::create_file_progress(files.len(), progress_enabled);
 
-    // Process files
-    let mut processed = 0;
-    let mut skipped = 0;
-    let mut errors = 0;
-    let mut total_detections = 0;
-    let mut total_segments = 0;
-    let mut total_audio_duration = 0.0f64;
-
-    for (index, file) in files.iter().enumerate() {
-        let file_output_dir = output_dir_for(file, output_dir.as_deref());
-
-        // Check if should process
-        match should_process(file, &file_output_dir, &formats, force) {
-            ProcessCheck::SkipExists => {
-                info!("Skipping (output exists): {}", file.display());
-                reporter.file_skipped(file, FileStatus::Skipped);
-                skipped += 1;
-                progress::inc_progress(file_progress.as_ref());
-                continue;
-            }
-            ProcessCheck::SkipLocked => {
-                info!("Skipping (locked): {}", file.display());
-                reporter.file_skipped(file, FileStatus::Locked);
-                skipped += 1;
-                progress::inc_progress(file_progress.as_ref());
-                continue;
-            }
-            ProcessCheck::Process => {}
-        }
-
-        // Estimate segments for reporter (using overlap from config)
-        let segment_duration = classifier.segment_duration();
-        #[allow(clippy::cast_possible_truncation)]
-        let estimated_segments =
-            progress::estimate_segment_count(None, segment_duration, overlap).unwrap_or(0) as usize;
-
-        // Report file start
-        reporter.file_started(file, index, estimated_segments, None);
-
-        // Process the file
-        let file_start = std::time::Instant::now();
-        match process_file(
-            file,
-            &file_output_dir,
-            &classifier,
-            &formats,
-            min_confidence,
-            overlap,
-            batch_size,
-            &config.defaults.csv_columns.include,
-            progress_enabled,
-            !args.no_csv_bom,
-            &model_name,
-            range_filter_params,
-        ) {
-            Ok(result) => {
-                #[allow(clippy::cast_possible_truncation)]
-                let duration_ms = file_start.elapsed().as_millis() as u64;
-                reporter.file_completed_success(file, result.detections, duration_ms);
-                processed += 1;
-                total_detections += result.detections;
-                total_segments += result.segments;
-                total_audio_duration += result.audio_duration_secs;
-            }
-            Err(e) => {
-                error!("Failed to process {}: {}", file.display(), e);
-                reporter.file_completed_failure(file, "processing_error", &e.to_string());
-                errors += 1;
-                if fail_fast {
-                    progress::finish_progress(file_progress, "Failed");
-                    // Report pipeline failure
-                    #[allow(clippy::cast_possible_truncation, clippy::cast_precision_loss)]
-                    let duration_ms = total_start.elapsed().as_millis() as u64;
-                    #[allow(clippy::cast_precision_loss)]
-                    let realtime_factor = if duration_ms > 0 {
-                        total_audio_duration / (duration_ms as f64 / 1000.0)
-                    } else {
-                        0.0
-                    };
-                    reporter.pipeline_completed(&PipelineSummary {
-                        files_processed: processed,
-                        files_failed: errors,
-                        files_skipped: skipped,
-                        total_detections,
-                        total_segments,
-                        duration_ms,
-                        realtime_factor,
-                    });
-                    return Err(e);
-                }
-            }
-        }
-        progress::inc_progress(file_progress.as_ref());
-    }
-
-    progress::finish_progress(file_progress, "Complete");
-
-    // Summary
-    let total_duration = total_start.elapsed().as_secs_f64();
-    #[allow(clippy::cast_possible_truncation)]
-    let duration_ms = total_start.elapsed().as_millis() as u64;
-    info!(
-        "Complete: {} processed, {} skipped, {} errors, {} total detections in {:.2}s",
-        processed, skipped, errors, total_detections, total_duration
-    );
-
-    #[allow(clippy::cast_precision_loss)]
-    let overall_realtime_factor = if total_duration > 0.0 {
-        total_audio_duration / total_duration
-    } else {
-        0.0
+    let params = ProcessingParams {
+        formats: &formats,
+        output_dir: output_dir.as_deref(),
+        min_confidence,
+        overlap,
+        batch_size,
+        csv_columns: &config.defaults.csv_columns.include,
+        csv_bom: !args.no_csv_bom,
+        model_name: &model_name,
+        range_filter_params,
+        force,
+        fail_fast,
+        progress_enabled,
     };
 
-    if processed > 0 {
-        #[allow(clippy::cast_precision_loss)]
-        let avg_segments_per_sec = if total_duration > 0.0 {
-            total_segments as f64 / total_duration
-        } else {
-            0.0
-        };
-        info!(
-            "Performance: {:.1} segments/sec overall, {:.1}x realtime ({} total audio)",
-            avg_segments_per_sec,
-            overall_realtime_factor,
-            progress::format_duration(total_audio_duration)
-        );
-    }
+    // Process all files - stats owned here so partial results available on fail-fast
+    let mut stats = ProcessingStats::default();
+    let result = process_all_files(&files, &classifier, &params, reporter, &mut stats);
 
-    if errors > 0 && !fail_fast {
-        warn!("{} file(s) had errors", errors);
-    }
+    // analyze_files is sole authority for all reporting (success or failure)
+    report_summary(&stats, total_start, fail_fast, reporter);
 
-    // Report pipeline completion
-    reporter.pipeline_completed(&PipelineSummary {
-        files_processed: processed,
-        files_failed: errors,
-        files_skipped: skipped,
-        total_detections,
-        total_segments,
-        duration_ms,
-        realtime_factor: overall_realtime_factor,
-    });
-
-    Ok(())
+    // Propagate any error after reporting
+    result
 }
 
 fn init_logging(verbose: u8, quiet: bool) {
@@ -542,10 +613,11 @@ fn init_logging(verbose: u8, quiet: bool) {
     let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(&filter_str));
 
     // Write logs to stderr to keep stdout clean for JSON output
-    fmt()
+    // Use try_init() to avoid panic if subscriber is already set (e.g., in tests)
+    let _ = fmt()
         .with_env_filter(filter)
         .with_writer(std::io::stderr)
-        .init();
+        .try_init();
 }
 
 fn handle_command(
@@ -1208,5 +1280,232 @@ mod tests {
             model_config.meta_model,
             Some(PathBuf::from("/adhoc/meta.onnx"))
         );
+    }
+
+    // Tests for validate_model_files
+
+    #[test]
+    fn test_validate_model_files_all_exist() {
+        let dir = tempfile::tempdir().unwrap();
+        let model_path = dir.path().join("model.onnx");
+        let labels_path = dir.path().join("labels.txt");
+        std::fs::write(&model_path, "model").unwrap();
+        std::fs::write(&labels_path, "labels").unwrap();
+
+        let config = ModelConfig {
+            path: model_path,
+            labels: labels_path,
+            model_type: ModelType::BirdnetV24,
+            meta_model: None,
+        };
+
+        assert!(validate_model_files(&config).is_ok());
+    }
+
+    #[test]
+    fn test_validate_model_files_missing_model() {
+        let dir = tempfile::tempdir().unwrap();
+        let model_path = dir.path().join("missing.onnx");
+        let labels_path = dir.path().join("labels.txt");
+        std::fs::write(&labels_path, "labels").unwrap();
+
+        let config = ModelConfig {
+            path: model_path,
+            labels: labels_path,
+            model_type: ModelType::BirdnetV24,
+            meta_model: None,
+        };
+
+        let err = validate_model_files(&config).unwrap_err();
+        assert!(matches!(err, Error::ModelFileNotFound { .. }));
+    }
+
+    #[test]
+    fn test_validate_model_files_missing_labels() {
+        let dir = tempfile::tempdir().unwrap();
+        let model_path = dir.path().join("model.onnx");
+        let labels_path = dir.path().join("missing.txt");
+        std::fs::write(&model_path, "model").unwrap();
+
+        let config = ModelConfig {
+            path: model_path,
+            labels: labels_path,
+            model_type: ModelType::BirdnetV24,
+            meta_model: None,
+        };
+
+        let err = validate_model_files(&config).unwrap_err();
+        assert!(matches!(err, Error::LabelsFileNotFound { .. }));
+    }
+
+    #[test]
+    fn test_validate_model_files_missing_meta_model() {
+        let dir = tempfile::tempdir().unwrap();
+        let model_path = dir.path().join("model.onnx");
+        let labels_path = dir.path().join("labels.txt");
+        let meta_path = dir.path().join("missing_meta.onnx");
+        std::fs::write(&model_path, "model").unwrap();
+        std::fs::write(&labels_path, "labels").unwrap();
+
+        let config = ModelConfig {
+            path: model_path,
+            labels: labels_path,
+            model_type: ModelType::BirdnetV24,
+            meta_model: Some(meta_path),
+        };
+
+        let err = validate_model_files(&config).unwrap_err();
+        assert!(matches!(err, Error::MetaModelNotFound { .. }));
+    }
+
+    #[test]
+    fn test_validate_model_files_with_existing_meta_model() {
+        let dir = tempfile::tempdir().unwrap();
+        let model_path = dir.path().join("model.onnx");
+        let labels_path = dir.path().join("labels.txt");
+        let meta_path = dir.path().join("meta.onnx");
+        std::fs::write(&model_path, "model").unwrap();
+        std::fs::write(&labels_path, "labels").unwrap();
+        std::fs::write(&meta_path, "meta").unwrap();
+
+        let config = ModelConfig {
+            path: model_path,
+            labels: labels_path,
+            model_type: ModelType::BirdnetV24,
+            meta_model: Some(meta_path),
+        };
+
+        assert!(validate_model_files(&config).is_ok());
+    }
+
+    // Tests for resolve_device
+
+    #[test]
+    fn test_resolve_device_defaults_to_config() {
+        let args = default_args();
+        let mut config = Config::default();
+        config.inference.device = InferenceDevice::Cuda;
+
+        let device = resolve_device(&args, &config);
+        assert_eq!(device, InferenceDevice::Cuda);
+    }
+
+    #[test]
+    fn test_resolve_device_cli_flag_overrides_config() {
+        let mut args = default_args();
+        args.cpu = true;
+
+        let mut config = Config::default();
+        config.inference.device = InferenceDevice::Cuda;
+
+        let device = resolve_device(&args, &config);
+        assert_eq!(device, InferenceDevice::Cpu);
+    }
+
+    #[test]
+    fn test_resolve_device_first_flag_wins() {
+        let mut args = default_args();
+        args.cpu = true;
+        args.cuda = true; // Both set, but cpu comes first in the array
+
+        let config = Config::default();
+
+        let device = resolve_device(&args, &config);
+        // cpu is checked before cuda in the array (order: gpu, cpu, cuda, ...)
+        assert_eq!(device, InferenceDevice::Cpu);
+    }
+
+    #[test]
+    fn test_resolve_device_tensorrt_flag() {
+        let mut args = default_args();
+        args.tensorrt = true;
+
+        let config = Config::default();
+
+        let device = resolve_device(&args, &config);
+        assert_eq!(device, InferenceDevice::TensorRt);
+    }
+
+    // Tests for resolve_species_filter
+
+    #[test]
+    fn test_resolve_species_filter_returns_none_when_range_filter_active() {
+        let args = default_args();
+        let config = Config::default();
+
+        // When range filter is active, species list should be None
+        let result = resolve_species_filter(&args, &config, true).unwrap();
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_resolve_species_filter_returns_none_when_no_filter() {
+        let args = default_args();
+        let config = Config::default();
+
+        // No range filter, no species list file
+        let result = resolve_species_filter(&args, &config, false).unwrap();
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_resolve_species_filter_loads_from_args() {
+        let dir = tempfile::tempdir().unwrap();
+        let slist_path = dir.path().join("species.txt");
+        std::fs::write(&slist_path, "Species One\nSpecies Two\nSpecies Three\n").unwrap();
+
+        let mut args = default_args();
+        args.slist = Some(slist_path);
+
+        let config = Config::default();
+
+        let result = resolve_species_filter(&args, &config, false).unwrap();
+        assert!(result.is_some());
+
+        let species = result.unwrap();
+        assert_eq!(species.len(), 3);
+        assert!(species.contains("Species One"));
+        assert!(species.contains("Species Two"));
+        assert!(species.contains("Species Three"));
+    }
+
+    #[test]
+    fn test_resolve_species_filter_loads_from_config() {
+        let dir = tempfile::tempdir().unwrap();
+        let slist_path = dir.path().join("species.txt");
+        std::fs::write(&slist_path, "Config Species\n").unwrap();
+
+        let args = default_args();
+        let mut config = Config::default();
+        config.defaults.species_list_file = Some(slist_path);
+
+        let result = resolve_species_filter(&args, &config, false).unwrap();
+        assert!(result.is_some());
+
+        let species = result.unwrap();
+        assert_eq!(species.len(), 1);
+        assert!(species.contains("Config Species"));
+    }
+
+    #[test]
+    fn test_resolve_species_filter_args_takes_precedence_over_config() {
+        let dir = tempfile::tempdir().unwrap();
+        let args_slist = dir.path().join("args_species.txt");
+        let config_slist = dir.path().join("config_species.txt");
+        std::fs::write(&args_slist, "Args Species\n").unwrap();
+        std::fs::write(&config_slist, "Config Species\n").unwrap();
+
+        let mut args = default_args();
+        args.slist = Some(args_slist);
+
+        let mut config = Config::default();
+        config.defaults.species_list_file = Some(config_slist);
+
+        let result = resolve_species_filter(&args, &config, false).unwrap();
+        let species = result.unwrap();
+
+        // Args should take precedence
+        assert!(species.contains("Args Species"));
+        assert!(!species.contains("Config Species"));
     }
 }

@@ -759,3 +759,12 @@ jobs:
             artifacts/**/*.tar.gz
             artifacts/**/*.zip
             artifacts/**/*-setup.exe
+
+      - name: Update major version tag
+        run: |
+          VERSION="${{ github.ref_name }}"
+          MAJOR=$(echo "$VERSION" | cut -d. -f1)
+
+          echo "Updating major version tag: $MAJOR -> $VERSION"
+          git tag -f "$MAJOR" "$VERSION"
+          git push origin "$MAJOR" --force

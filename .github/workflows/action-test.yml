@@ -1,0 +1,104 @@
+name: Test Action
+
+on:
+  push:
+    paths:
+      - 'action.yml'
+      - 'scripts/**'
+      - '.github/workflows/action-test.yml'
+  pull_request:
+    paths:
+      - 'action.yml'
+      - 'scripts/**'
+      - '.github/workflows/action-test.yml'
+  workflow_dispatch:
+
+jobs:
+  test-action:
+    name: Test Birda Action
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download BirdNET model
+        run: |
+          mkdir -p models
+          echo "Downloading BirdNET v2.4 model..."
+          curl -fsSL -o models/birdnet-v24.onnx \
+            "https://huggingface.co/justinchuby/BirdNET-onnx/resolve/main/birdnet.onnx"
+          echo "Downloading labels..."
+          curl -fsSL -o models/labels.txt \
+            "https://github.com/tphakala/birda/raw/main/data/labels/birdnet_v2.4/BirdNET_GLOBAL_6K_V2.4_Labels_en_uk.txt"
+          ls -la models/
+
+      - name: Create test audio
+        run: |
+          # Create a 3-second test audio file at 48kHz (BirdNET sample rate)
+          mkdir -p tests/fixtures
+          ffmpeg -f lavfi -i "sine=frequency=3000:duration=3" -ar 48000 tests/fixtures/test.wav
+          ls -la tests/fixtures/
+
+      - name: Run action (local reference)
+        id: birda
+        uses: ./
+        with:
+          model: models/birdnet-v24.onnx
+          audio: tests/fixtures/test.wav
+          output: test-results.csv
+          confidence: 0.01
+          labels: models/labels.txt
+
+      - name: Verify output exists
+        run: |
+          if [[ ! -f "${{ steps.birda.outputs.results }}" ]]; then
+            echo "::error::Output file not found"
+            exit 1
+          fi
+          echo "=== Output file contents ==="
+          cat "${{ steps.birda.outputs.results }}"
+
+      - name: Upload results
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: test-results.csv
+
+  test-nested-output:
+    name: Test Nested Output Directory
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download BirdNET model
+        run: |
+          mkdir -p models
+          curl -fsSL -o models/birdnet-v24.onnx \
+            "https://huggingface.co/justinchuby/BirdNET-onnx/resolve/main/birdnet.onnx"
+          curl -fsSL -o models/labels.txt \
+            "https://github.com/tphakala/birda/raw/main/data/labels/birdnet_v2.4/BirdNET_GLOBAL_6K_V2.4_Labels_en_uk.txt"
+
+      - name: Create test audio
+        run: |
+          mkdir -p tests/fixtures
+          ffmpeg -f lavfi -i "sine=frequency=3000:duration=3" -ar 48000 tests/fixtures/test.wav
+
+      - name: Run action with nested output path
+        id: birda
+        uses: ./
+        with:
+          model: models/birdnet-v24.onnx
+          audio: tests/fixtures/test.wav
+          output: results/subdir/predictions.csv
+          confidence: 0.01
+          labels: models/labels.txt
+
+      - name: Verify nested output exists
+        run: |
+          if [[ ! -f "results/subdir/predictions.csv" ]]; then
+            echo "::error::Nested output file not found"
+            exit 1
+          fi
+          echo "Nested output directory handling works correctly"
+          cat results/subdir/predictions.csv

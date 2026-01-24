@@ -1,0 +1,58 @@
+name: 'Run Birda Inference'
+description: 'Analyze audio using BirdNET ONNX models via the Birda CLI'
+author: 'tphakala'
+branding:
+  icon: 'mic'
+  color: 'green'
+
+inputs:
+  model:
+    description: 'Path to the ONNX model file'
+    required: true
+  audio:
+    description: 'Path to audio file to analyze'
+    required: true
+  output:
+    description: 'Output filename (optional)'
+    required: false
+    default: ''
+  format:
+    description: 'Output format: csv, json, or raven'
+    required: false
+    default: 'csv'
+  confidence:
+    description: 'Minimum confidence threshold (0.0-1.0)'
+    required: false
+    default: '0.1'
+  labels:
+    description: 'Path to labels.txt file'
+    required: false
+    default: ''
+
+outputs:
+  results:
+    description: 'Absolute path to the generated output file'
+    value: ${{ steps.inference.outputs.results }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Install Birda
+      shell: bash
+      env:
+        # Pass the action's ref (e.g., 'v1.3.0') to resolve version dynamically
+        INPUT_VERSION: ${{ github.action_ref }}
+      run: ${{ github.action_path }}/scripts/install-birda.sh
+
+    - name: Run Inference
+      id: inference
+      shell: bash
+      env:
+        INPUT_MODEL: ${{ inputs.model }}
+        INPUT_AUDIO: ${{ inputs.audio }}
+        INPUT_OUTPUT: ${{ inputs.output }}
+        INPUT_FORMAT: ${{ inputs.format }}
+        INPUT_CONFIDENCE: ${{ inputs.confidence }}
+        INPUT_LABELS: ${{ inputs.labels }}
+        ACTION_PATH: ${{ github.action_path }}
+      run: ${{ github.action_path }}/scripts/run-inference.sh

@@ -1,0 +1,85 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Validate required inputs
+if [[ -z "${INPUT_MODEL:-}" ]]; then
+    echo "::error::Input 'model' is required"
+    exit 1
+fi
+
+if [[ -z "${INPUT_AUDIO:-}" ]]; then
+    echo "::error::Input 'audio' is required"
+    exit 1
+fi
+
+# Validate input files exist
+if [[ ! -f "${INPUT_MODEL}" ]]; then
+    echo "::error::Model file not found: ${INPUT_MODEL}"
+    exit 1
+fi
+
+if [[ ! -f "${INPUT_AUDIO}" ]]; then
+    echo "::error::Audio file not found: ${INPUT_AUDIO}"
+    exit 1
+fi
+
+# Use temp directory for raw output to avoid naming conflicts
+# Clean any stale results from previous runs in same job
+TEMP_OUT="${RUNNER_TEMP}/birda-output"
+rm -rf "${TEMP_OUT}"
+mkdir -p "${TEMP_OUT}"
+
+# Build command arguments
+ARGS=(
+    "${INPUT_AUDIO}"
+    "--model-path" "${INPUT_MODEL}"
+    "--min-confidence" "${INPUT_CONFIDENCE}"
+    "--format" "${INPUT_FORMAT}"
+    "--output-dir" "${TEMP_OUT}"
+)
+
+# Add optional labels path
+if [[ -n "${INPUT_LABELS:-}" ]]; then
+    if [[ ! -f "${INPUT_LABELS}" ]]; then
+        echo "::error::Labels file not found: ${INPUT_LABELS}"
+        exit 1
+    fi
+    ARGS+=("--labels-path" "${INPUT_LABELS}")
+fi
+
+# Run birda (set LD_LIBRARY_PATH locally to avoid polluting global environment)
+echo "Running: birda ${ARGS[*]}"
+LD_LIBRARY_PATH="${BIRDA_LIB_PATH}:${LD_LIBRARY_PATH:-}" birda "${ARGS[@]}"
+
+# Find the generated output file
+# Birda generates files like: {input_stem}.BirdNET.results.{format}
+GENERATED_FILE=$(find "${TEMP_OUT}" -type f -name "*.BirdNET.results.*" | head -n 1)
+
+if [[ -z "${GENERATED_FILE}" ]]; then
+    echo "::error::No output file was generated"
+    exit 1
+fi
+
+echo "Generated file: ${GENERATED_FILE}"
+
+# Handle output file placement
+if [[ -n "${INPUT_OUTPUT:-}" ]]; then
+    # User specified output path - ensure parent directory exists
+    OUTPUT_DIR=$(dirname "${INPUT_OUTPUT}")
+    if [[ -n "${OUTPUT_DIR}" && "${OUTPUT_DIR}" != "." ]]; then
+        mkdir -p "${OUTPUT_DIR}"
+    fi
+    # Move/rename to requested location
+    mv "${GENERATED_FILE}" "${INPUT_OUTPUT}"
+    FINAL_OUTPUT="$(cd "$(dirname "${INPUT_OUTPUT}")" && pwd)/$(basename "${INPUT_OUTPUT}")"
+else
+    # No output specified - move to current directory with original name
+    FILENAME=$(basename "${GENERATED_FILE}")
+    mv "${GENERATED_FILE}" "./${FILENAME}"
+    FINAL_OUTPUT="$(pwd)/${FILENAME}"
+fi
+
+echo "Output file: ${FINAL_OUTPUT}"
+
+# Set output for subsequent steps
+echo "results=${FINAL_OUTPUT}" >> "${GITHUB_OUTPUT}"

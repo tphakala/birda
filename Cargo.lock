@@ -184,9 +184,9 @@ dependencies = [
 
 [[package]]
 name = "birdnet-onnx"
-version = "2.0.0-rc.5"
+version = "2.0.0-rc.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "14d8b7ad2ad7ec96c7c837354c2a7723cbcdfed919408117709e12a41a8c2cc1"
+checksum = "342f425d71bf3b0d14592b728ee026e83ed71019a9b5af197314b679d1fcd2ae"
 dependencies = [
  "chrono",
  "clap",

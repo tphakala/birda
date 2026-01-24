@@ -181,6 +181,14 @@ pub struct AnalyzeArgs {
     #[arg(long, env = "BIRDA_LABELS_PATH")]
     pub labels_path: Option<PathBuf>,
 
+    /// Model type for ad-hoc model (required with --model-path when no -m is provided).
+    #[arg(long, value_enum, env = "BIRDA_MODEL_TYPE")]
+    pub model_type: Option<ModelType>,
+
+    /// Path to meta model file for range filtering (overrides config).
+    #[arg(long, env = "BIRDA_META_MODEL_PATH")]
+    pub meta_model_path: Option<PathBuf>,
+
     /// Output formats (comma-separated: csv,raven,audacity,kaleidoscope).
     #[arg(short, long, value_delimiter = ',', env = "BIRDA_FORMAT")]
     pub format: Option<Vec<OutputFormat>>,
@@ -536,5 +544,129 @@ mod tests {
         assert!(cli.is_ok());
         let cli = cli.unwrap();
         assert!(!cli.analyze.no_csv_bom); // BOM enabled by default
+    }
+
+    #[test]
+    fn test_cli_parse_model_type() {
+        let cli = Cli::try_parse_from([
+            "birda",
+            "test.wav",
+            "--model-type",
+            "birdnet-v24",
+            "--model-path",
+            "/path/to/model.onnx",
+            "--labels-path",
+            "/path/to/labels.txt",
+        ]);
+        assert!(cli.is_ok());
+        let cli = cli.unwrap();
+        assert_eq!(cli.analyze.model_type, Some(ModelType::BirdnetV24));
+        assert_eq!(
+            cli.analyze.model_path,
+            Some(PathBuf::from("/path/to/model.onnx"))
+        );
+        assert_eq!(
+            cli.analyze.labels_path,
+            Some(PathBuf::from("/path/to/labels.txt"))
+        );
+    }
+
+    #[test]
+    fn test_cli_parse_model_type_perch() {
+        let cli = Cli::try_parse_from([
+            "birda",
+            "test.wav",
+            "--model-type",
+            "perch-v2",
+            "--model-path",
+            "/path/to/model.onnx",
+            "--labels-path",
+            "/path/to/labels.txt",
+        ]);
+        assert!(cli.is_ok());
+        let cli = cli.unwrap();
+        assert_eq!(cli.analyze.model_type, Some(ModelType::PerchV2));
+    }
+
+    #[test]
+    fn test_cli_parse_model_type_birdnet_v30() {
+        let cli = Cli::try_parse_from([
+            "birda",
+            "test.wav",
+            "--model-type",
+            "birdnet-v30",
+            "--model-path",
+            "/path/to/model.onnx",
+            "--labels-path",
+            "/path/to/labels.txt",
+        ]);
+        assert!(cli.is_ok());
+        let cli = cli.unwrap();
+        assert_eq!(cli.analyze.model_type, Some(ModelType::BirdnetV30));
+    }
+
+    #[test]
+    fn test_cli_parse_invalid_model_type() {
+        let cli = Cli::try_parse_from([
+            "birda",
+            "test.wav",
+            "--model-type",
+            "invalid-type",
+            "--model-path",
+            "/path/to/model.onnx",
+        ]);
+        assert!(cli.is_err());
+    }
+
+    #[test]
+    fn test_cli_parse_meta_model_path() {
+        let cli = Cli::try_parse_from([
+            "birda",
+            "test.wav",
+            "--model-type",
+            "birdnet-v24",
+            "--model-path",
+            "/path/to/model.onnx",
+            "--labels-path",
+            "/path/to/labels.txt",
+            "--meta-model-path",
+            "/path/to/meta.onnx",
+        ]);
+        assert!(cli.is_ok());
+        let cli = cli.unwrap();
+        assert_eq!(
+            cli.analyze.meta_model_path,
+            Some(PathBuf::from("/path/to/meta.onnx"))
+        );
+    }
+
+    #[test]
+    fn test_cli_adhoc_model_complete() {
+        // Full ad-hoc model specification with range filtering
+        let cli = Cli::try_parse_from([
+            "birda",
+            "test.wav",
+            "--model-type",
+            "birdnet-v24",
+            "--model-path",
+            "/path/to/model.onnx",
+            "--labels-path",
+            "/path/to/labels.txt",
+            "--meta-model-path",
+            "/path/to/meta.onnx",
+            "--lat",
+            "60.17",
+            "--lon",
+            "24.94",
+            "--week",
+            "24",
+        ]);
+        assert!(cli.is_ok());
+        let cli = cli.unwrap();
+        assert_eq!(cli.analyze.model_type, Some(ModelType::BirdnetV24));
+        assert!(cli.analyze.meta_model_path.is_some());
+        assert_eq!(cli.analyze.lat, Some(60.17));
+        assert_eq!(cli.analyze.lon, Some(24.94));
+        assert_eq!(cli.analyze.week, Some(24));
     }
 }

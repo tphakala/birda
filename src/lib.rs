@@ -39,6 +39,95 @@ use tracing::{error, info, warn};
 
 pub use error::{Error, Result};
 
+/// Model name used for ad-hoc (CLI-specified) models.
+const ADHOC_MODEL_NAME: &str = "<ad-hoc>";
+
+/// Resolve model configuration using priority-based logic.
+///
+/// # Priority Order
+///
+/// 1. **Explicit Named Model** (`-m <name>` provided): Load from config, apply overrides
+/// 2. **Explicit Ad-hoc Model** (both `--model-type` AND `--model-path` provided): Build from CLI args
+/// 3. **Implicit Default Model** (`defaults.model` set, no explicit model): Load default
+/// 4. **Incomplete Ad-hoc** (`--model-path` but no `--model-type`): Error
+/// 5. **No Model** (nothing specified): Error
+fn resolve_model_config(args: &AnalyzeArgs, config: &Config) -> Result<(ModelConfig, String)> {
+    // Priority 1: Explicit named model via -m
+    if let Some(ref name) = args.model {
+        let mut model_config = config::get_model(config, name)?.clone();
+
+        // Warn if --model-type is also provided (will be ignored)
+        if args.model_type.is_some() {
+            warn!("--model-type is ignored when -m is provided (using model type from config)");
+        }
+
+        // Apply CLI overrides
+        apply_model_overrides(&mut model_config, args);
+        return Ok((model_config, name.clone()));
+    }
+
+    // Priority 2: Explicit ad-hoc model (requires both --model-type AND --model-path)
+    if let (Some(model_type), Some(path)) = (args.model_type, &args.model_path) {
+        let labels = args
+            .labels_path
+            .clone()
+            .ok_or_else(|| Error::ConfigValidation {
+                message: "--labels-path required when using --model-path with --model-type".into(),
+            })?;
+
+        let model_config = ModelConfig {
+            path: path.clone(),
+            labels,
+            model_type,
+            meta_model: args.meta_model_path.clone(),
+        };
+
+        return Ok((model_config, ADHOC_MODEL_NAME.to_string()));
+    }
+
+    // Priority 3: Implicit default model from config
+    if let Some(ref name) = config.defaults.model {
+        let mut model_config = config::get_model(config, name)?.clone();
+
+        // Warn if --model-type is also provided (will be ignored)
+        if args.model_type.is_some() {
+            warn!(
+                "--model-type is ignored when using default model '{}' (use --model-path to trigger ad-hoc mode)",
+                name
+            );
+        }
+
+        // Apply CLI overrides (allows patching default model)
+        apply_model_overrides(&mut model_config, args);
+        return Ok((model_config, name.clone()));
+    }
+
+    // Priority 4: Incomplete ad-hoc (has --model-path but no --model-type)
+    if args.model_path.is_some() {
+        return Err(Error::ConfigValidation {
+            message: "--model-type required when using --model-path without -m".into(),
+        });
+    }
+
+    // Priority 5: Nothing specified
+    Err(Error::ConfigValidation {
+        message: "no model specified (use -m, set defaults.model in config, or provide --model-path with --labels-path and --model-type)".into(),
+    })
+}
+
+/// Apply CLI overrides to a model configuration.
+fn apply_model_overrides(model_config: &mut ModelConfig, args: &AnalyzeArgs) {
+    if let Some(ref path) = args.model_path {
+        model_config.path.clone_from(path);
+    }
+    if let Some(ref labels) = args.labels_path {
+        model_config.labels.clone_from(labels);
+    }
+    if let Some(ref meta) = args.meta_model_path {
+        model_config.meta_model = Some(meta.clone());
+    }
+}
+
 /// Main entry point for birda CLI.
 pub fn run() -> Result<()> {
     let cli = Cli::parse();
@@ -105,16 +194,25 @@ fn analyze_files(
 
     info!("Found {} audio file(s) to process", files.len());
 
-    // Resolve model configuration
-    let model_name = args
-        .model
-        .clone()
-        .or_else(|| config.defaults.model.clone())
-        .ok_or_else(|| Error::ConfigValidation {
-            message: "no model specified (use -m or set defaults.model in config)".to_string(),
-        })?;
+    // Resolve model configuration using priority-based resolution
+    let (model_config, model_name) = resolve_model_config(args, config)?;
 
-    let model_config = config::get_model(config, &model_name)?;
+    // Validate model files exist
+    if !model_config.path.exists() {
+        return Err(Error::ModelFileNotFound {
+            path: model_config.path,
+        });
+    }
+    if !model_config.labels.exists() {
+        return Err(Error::LabelsFileNotFound {
+            path: model_config.labels,
+        });
+    }
+    if let Some(ref meta) = model_config.meta_model
+        && !meta.exists()
+    {
+        return Err(Error::MetaModelNotFound { path: meta.clone() });
+    }
 
     // Resolve other settings
     let min_confidence = args
@@ -153,7 +251,7 @@ fn analyze_files(
     .map_or(config.inference.device, |(_, device)| device);
 
     // Build range filter config
-    let range_filter_config = build_range_filter_config(args, config, model_config, &model_name)?;
+    let range_filter_config = build_range_filter_config(args, config, &model_config, &model_name)?;
 
     // Log if range filtering is enabled
     if let Some(ref rf_config) = range_filter_config {
@@ -211,7 +309,7 @@ fn analyze_files(
     // Build classifier
     info!("Loading model: {}", model_name);
     let classifier = BirdClassifier::from_config(
-        model_config,
+        &model_config,
         device,
         min_confidence,
         DEFAULT_TOP_K,
@@ -914,4 +1012,274 @@ fn handle_models_install(id: &str, language: Option<&str>, set_default: bool) ->
     println!("  birda recording.wav");
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashMap;
+
+    /// Create a minimal Config with a named model.
+    fn config_with_model(name: &str) -> Config {
+        let mut models = HashMap::new();
+        models.insert(
+            name.to_string(),
+            ModelConfig {
+                path: PathBuf::from("/path/to/model.onnx"),
+                labels: PathBuf::from("/path/to/labels.txt"),
+                model_type: ModelType::BirdnetV24,
+                meta_model: None,
+            },
+        );
+        Config {
+            models,
+            defaults: config::DefaultsConfig::default(),
+            ..Default::default()
+        }
+    }
+
+    /// Create default AnalyzeArgs (all None/false).
+    fn default_args() -> AnalyzeArgs {
+        AnalyzeArgs {
+            model: None,
+            model_path: None,
+            labels_path: None,
+            model_type: None,
+            meta_model_path: None,
+            format: None,
+            output_dir: None,
+            min_confidence: None,
+            overlap: None,
+            batch_size: None,
+            combine: false,
+            force: false,
+            fail_fast: false,
+            quiet: false,
+            verbose: 0,
+            no_progress: false,
+            no_csv_bom: false,
+            gpu: false,
+            cpu: false,
+            cuda: false,
+            tensorrt: false,
+            directml: false,
+            coreml: false,
+            rocm: false,
+            openvino: false,
+            onednn: false,
+            qnn: false,
+            acl: false,
+            armnn: false,
+            lat: None,
+            lon: None,
+            week: None,
+            month: None,
+            day: None,
+            range_threshold: None,
+            rerank: false,
+            slist: None,
+            stale_lock_timeout: None,
+        }
+    }
+
+    #[test]
+    fn test_priority_1_explicit_named_model() {
+        let config = config_with_model("birdnet");
+        let mut args = default_args();
+        args.model = Some("birdnet".to_string());
+
+        let result = resolve_model_config(&args, &config);
+        assert!(result.is_ok());
+
+        let (model_config, name) = result.unwrap();
+        assert_eq!(name, "birdnet");
+        assert_eq!(model_config.model_type, ModelType::BirdnetV24);
+    }
+
+    #[test]
+    fn test_priority_1_named_model_with_path_override() {
+        let config = config_with_model("birdnet");
+        let mut args = default_args();
+        args.model = Some("birdnet".to_string());
+        args.model_path = Some(PathBuf::from("/custom/path.onnx"));
+
+        let result = resolve_model_config(&args, &config);
+        assert!(result.is_ok());
+
+        let (model_config, _) = result.unwrap();
+        assert_eq!(model_config.path, PathBuf::from("/custom/path.onnx"));
+        // Type should still be from config
+        assert_eq!(model_config.model_type, ModelType::BirdnetV24);
+    }
+
+    #[test]
+    fn test_priority_2_adhoc_model() {
+        let config = Config::default();
+        let mut args = default_args();
+        args.model_type = Some(ModelType::PerchV2);
+        args.model_path = Some(PathBuf::from("/adhoc/model.onnx"));
+        args.labels_path = Some(PathBuf::from("/adhoc/labels.txt"));
+
+        let result = resolve_model_config(&args, &config);
+        assert!(result.is_ok());
+
+        let (model_config, name) = result.unwrap();
+        assert_eq!(name, "<ad-hoc>");
+        assert_eq!(model_config.model_type, ModelType::PerchV2);
+        assert_eq!(model_config.path, PathBuf::from("/adhoc/model.onnx"));
+        assert_eq!(model_config.labels, PathBuf::from("/adhoc/labels.txt"));
+    }
+
+    #[test]
+    fn test_model_type_only_falls_through_to_no_model() {
+        // When --model-type is set but no --model-path (and no default),
+        // should fall through to Priority 5 (no model specified)
+        let config = Config::default();
+        let mut args = default_args();
+        args.model_type = Some(ModelType::BirdnetV24);
+        // Missing model_path - should NOT trigger ad-hoc mode
+        args.labels_path = Some(PathBuf::from("/adhoc/labels.txt"));
+
+        let result = resolve_model_config(&args, &config);
+        assert!(result.is_err());
+
+        let err = result.unwrap_err();
+        // Should be "no model specified", not "--model-path required"
+        assert!(err.to_string().contains("no model specified"));
+    }
+
+    #[test]
+    fn test_model_type_only_falls_through_to_default() {
+        // When --model-type is set (e.g., via env var) but no --model-path,
+        // should use default model, not error about missing --model-path
+        let mut config = config_with_model("birdnet");
+        config.defaults.model = Some("birdnet".to_string());
+
+        let mut args = default_args();
+        args.model_type = Some(ModelType::PerchV2); // e.g., from BIRDA_MODEL_TYPE env var
+
+        let result = resolve_model_config(&args, &config);
+        assert!(result.is_ok());
+
+        let (model_config, name) = result.unwrap();
+        // Should fall through to default, not ad-hoc
+        assert_eq!(name, "birdnet");
+        // Type should be from config, NOT from args.model_type
+        assert_eq!(model_config.model_type, ModelType::BirdnetV24);
+    }
+
+    #[test]
+    fn test_priority_2_adhoc_missing_labels_path() {
+        let config = Config::default();
+        let mut args = default_args();
+        args.model_type = Some(ModelType::BirdnetV24);
+        args.model_path = Some(PathBuf::from("/adhoc/model.onnx"));
+        // Missing labels_path
+
+        let result = resolve_model_config(&args, &config);
+        assert!(result.is_err());
+
+        let err = result.unwrap_err();
+        assert!(err.to_string().contains("--labels-path required"));
+    }
+
+    #[test]
+    fn test_priority_2_adhoc_ignores_defaults_model() {
+        // Even if defaults.model is set, --model-type should trigger ad-hoc mode
+        let mut config = config_with_model("birdnet");
+        config.defaults.model = Some("birdnet".to_string());
+
+        let mut args = default_args();
+        args.model_type = Some(ModelType::PerchV2);
+        args.model_path = Some(PathBuf::from("/adhoc/model.onnx"));
+        args.labels_path = Some(PathBuf::from("/adhoc/labels.txt"));
+
+        let result = resolve_model_config(&args, &config);
+        assert!(result.is_ok());
+
+        let (model_config, name) = result.unwrap();
+        // Should be ad-hoc, not the default
+        assert_eq!(name, "<ad-hoc>");
+        assert_eq!(model_config.model_type, ModelType::PerchV2);
+    }
+
+    #[test]
+    fn test_priority_3_implicit_default_model() {
+        let mut config = config_with_model("birdnet");
+        config.defaults.model = Some("birdnet".to_string());
+
+        let args = default_args();
+        // No -m, no --model-type
+
+        let result = resolve_model_config(&args, &config);
+        assert!(result.is_ok());
+
+        let (model_config, name) = result.unwrap();
+        assert_eq!(name, "birdnet");
+        assert_eq!(model_config.model_type, ModelType::BirdnetV24);
+    }
+
+    #[test]
+    fn test_priority_3_default_model_with_path_override() {
+        let mut config = config_with_model("birdnet");
+        config.defaults.model = Some("birdnet".to_string());
+
+        let mut args = default_args();
+        args.model_path = Some(PathBuf::from("/custom/model.onnx"));
+        // No -m, no --model-type (so uses default and patches path)
+
+        let result = resolve_model_config(&args, &config);
+        assert!(result.is_ok());
+
+        let (model_config, name) = result.unwrap();
+        assert_eq!(name, "birdnet");
+        assert_eq!(model_config.path, PathBuf::from("/custom/model.onnx"));
+        // Type unchanged
+        assert_eq!(model_config.model_type, ModelType::BirdnetV24);
+    }
+
+    #[test]
+    fn test_priority_4_incomplete_adhoc() {
+        let config = Config::default();
+        let mut args = default_args();
+        args.model_path = Some(PathBuf::from("/some/model.onnx"));
+        // Missing --model-type
+
+        let result = resolve_model_config(&args, &config);
+        assert!(result.is_err());
+
+        let err = result.unwrap_err();
+        assert!(err.to_string().contains("--model-type"));
+    }
+
+    #[test]
+    fn test_priority_5_no_model() {
+        let config = Config::default();
+        let args = default_args();
+
+        let result = resolve_model_config(&args, &config);
+        assert!(result.is_err());
+
+        let err = result.unwrap_err();
+        assert!(err.to_string().contains("no model specified"));
+    }
+
+    #[test]
+    fn test_adhoc_with_meta_model() {
+        let config = Config::default();
+        let mut args = default_args();
+        args.model_type = Some(ModelType::BirdnetV24);
+        args.model_path = Some(PathBuf::from("/adhoc/model.onnx"));
+        args.labels_path = Some(PathBuf::from("/adhoc/labels.txt"));
+        args.meta_model_path = Some(PathBuf::from("/adhoc/meta.onnx"));
+
+        let result = resolve_model_config(&args, &config);
+        assert!(result.is_ok());
+
+        let (model_config, _) = result.unwrap();
+        assert_eq!(
+            model_config.meta_model,
+            Some(PathBuf::from("/adhoc/meta.onnx"))
+        );
+    }
 }

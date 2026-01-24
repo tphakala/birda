@@ -162,6 +162,12 @@ impl BirdClassifier {
                 ExecutionProviderInfo::ArmNn,
                 "ArmNN",
             )?,
+            InferenceDevice::Xnnpack => configure_explicit_provider(
+                builder,
+                &available_providers,
+                ExecutionProviderInfo::Xnnpack,
+                "XNNPACK",
+            )?,
         };
 
         let inner = builder.build().map_err(|e| Error::ClassifierBuild {
@@ -549,7 +555,13 @@ fn add_execution_provider(
         ExecutionProviderInfo::ArmNn => {
             builder.execution_provider(ArmNNExecutionProvider::default())
         }
+        ExecutionProviderInfo::Xnnpack => builder.with_xnnpack(),
         ExecutionProviderInfo::Cpu => builder, // CPU doesn't need explicit provider
+        _ => {
+            // Future-proof: unknown providers fall back to CPU
+            warn!("Unknown execution provider, using CPU fallback");
+            builder
+        }
     }
 }
 
@@ -573,6 +585,8 @@ fn provider_unavailable_error(provider_name: &str, available: &[ExecutionProvide
             ExecutionProviderInfo::Qnn => "QNN",
             ExecutionProviderInfo::Acl => "ACL",
             ExecutionProviderInfo::ArmNn => "ArmNN",
+            ExecutionProviderInfo::Xnnpack => "XNNPACK",
+            _ => "Unknown",
         };
         let _ = writeln!(message, "  ✓ {name}");
     }

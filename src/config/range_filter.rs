@@ -109,6 +109,7 @@ mod tests {
             qnn: false,
             acl: false,
             armnn: false,
+            xnnpack: false,
             lat: None,
             lon: None,
             week: None,

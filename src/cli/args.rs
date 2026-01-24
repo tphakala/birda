@@ -286,6 +286,10 @@ pub struct AnalyzeArgs {
     #[arg(long, group = "provider")]
     pub armnn: bool,
 
+    /// Use `XNNPACK` provider explicitly (optimized CPU for ARM/x86).
+    #[arg(long, group = "provider")]
+    pub xnnpack: bool,
+
     /// Latitude for range filtering (-90.0 to 90.0).
     #[arg(long, value_parser = parse_latitude, env = "BIRDA_LATITUDE")]
     pub lat: Option<f64>,

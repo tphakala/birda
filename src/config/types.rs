@@ -158,6 +158,10 @@ pub enum InferenceDevice {
     /// Explicit `ArmNN` provider (fail if unavailable).
     #[serde(rename = "armnn")]
     ArmNn,
+    /// Explicit `XNNPACK` provider (fail if unavailable).
+    /// Optimized CPU inference for ARM/x86 platforms.
+    #[serde(rename = "xnnpack")]
+    Xnnpack,
 }
 
 /// Inference settings.

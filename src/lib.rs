@@ -92,7 +92,7 @@ fn resolve_model_config(args: &AnalyzeArgs, config: &Config) -> Result<(ModelCon
         // Warn if --model-type is also provided (will be ignored)
         if args.model_type.is_some() {
             warn!(
-                "--model-type is ignored when using default model '{}' (use --model-path to trigger ad-hoc mode)",
+                "--model-type is ignored when using default model '{}' (provide both --model-path and --model-type to use ad-hoc mode)",
                 name
             );
         }
@@ -245,6 +245,7 @@ fn analyze_files(
         (args.qnn, InferenceDevice::Qnn),
         (args.acl, InferenceDevice::Acl),
         (args.armnn, InferenceDevice::ArmNn),
+        (args.xnnpack, InferenceDevice::Xnnpack),
     ]
     .into_iter()
     .find(|(flag, _)| *flag)
@@ -632,6 +633,10 @@ fn handle_providers_command(output_mode: OutputMode) {
                 birdnet_onnx::ExecutionProviderInfo::ArmNn => {
                     ("armnn", "ArmNN", "ArmNN (Arm Neural Network)")
                 }
+                birdnet_onnx::ExecutionProviderInfo::Xnnpack => {
+                    ("xnnpack", "XNNPACK", "XNNPACK (optimized CPU for ARM/x86)")
+                }
+                _ => ("unknown", "Unknown", "Unknown provider"),
             };
             ProviderInfo {
                 id: id.to_string(),
@@ -677,6 +682,7 @@ fn handle_providers_command(output_mode: OutputMode) {
         ("qnn", "Use QNN"),
         ("acl", "Use ACL"),
         ("armnn", "Use ArmNN"),
+        ("xnnpack", "Use XNNPACK"),
     ];
     for (flag, description) in explicit_providers {
         println!("  --{flag:<13} {description}");
@@ -1070,6 +1076,7 @@ mod tests {
             qnn: false,
             acl: false,
             armnn: false,
+            xnnpack: false,
             lat: None,
             lon: None,
             week: None,

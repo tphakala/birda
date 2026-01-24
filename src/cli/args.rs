@@ -166,7 +166,12 @@ pub enum ModelsAction {
 }
 
 /// Arguments for the analyze command.
-#[derive(Debug, Args)]
+///
+/// # Default Implementation
+///
+/// All fields default to `None`/`false`/`0`, representing "no user input".
+/// This allows configuration file values to take precedence over defaults.
+#[derive(Debug, Clone, Args, Default)]
 #[allow(clippy::struct_excessive_bools)]
 pub struct AnalyzeArgs {
     /// Model name from configuration.

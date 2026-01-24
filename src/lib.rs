@@ -588,6 +588,7 @@ fn handle_command(
 }
 
 fn handle_providers_command(output_mode: OutputMode) {
+    use crate::inference::provider_metadata;
     use birdnet_onnx::available_execution_providers;
 
     let providers = available_execution_providers();
@@ -596,53 +597,11 @@ fn handle_providers_command(output_mode: OutputMode) {
     let provider_infos: Vec<ProviderInfo> = providers
         .iter()
         .map(|provider| {
-            let (id, name, description) = match provider {
-                birdnet_onnx::ExecutionProviderInfo::Cpu => {
-                    ("cpu", "CPU", "CPU (always available)")
-                }
-                birdnet_onnx::ExecutionProviderInfo::Cuda => {
-                    ("cuda", "CUDA", "CUDA (NVIDIA GPU acceleration)")
-                }
-                birdnet_onnx::ExecutionProviderInfo::TensorRt => (
-                    "tensorrt",
-                    "TensorRT",
-                    "TensorRT (NVIDIA optimized inference)",
-                ),
-                birdnet_onnx::ExecutionProviderInfo::DirectMl => (
-                    "directml",
-                    "DirectML",
-                    "DirectML (Windows GPU acceleration)",
-                ),
-                birdnet_onnx::ExecutionProviderInfo::CoreMl => {
-                    ("coreml", "CoreML", "CoreML (Apple GPU/Neural Engine)")
-                }
-                birdnet_onnx::ExecutionProviderInfo::Rocm => {
-                    ("rocm", "ROCm", "ROCm (AMD GPU acceleration)")
-                }
-                birdnet_onnx::ExecutionProviderInfo::OpenVino => {
-                    ("openvino", "OpenVINO", "OpenVINO (Intel optimization)")
-                }
-                birdnet_onnx::ExecutionProviderInfo::OneDnn => {
-                    ("onednn", "oneDNN", "oneDNN (Intel CPU optimization)")
-                }
-                birdnet_onnx::ExecutionProviderInfo::Qnn => {
-                    ("qnn", "QNN", "QNN (Qualcomm Neural Network)")
-                }
-                birdnet_onnx::ExecutionProviderInfo::Acl => {
-                    ("acl", "ACL", "ACL (Arm Compute Library)")
-                }
-                birdnet_onnx::ExecutionProviderInfo::ArmNn => {
-                    ("armnn", "ArmNN", "ArmNN (Arm Neural Network)")
-                }
-                birdnet_onnx::ExecutionProviderInfo::Xnnpack => {
-                    ("xnnpack", "XNNPACK", "XNNPACK (optimized CPU for ARM/x86)")
-                }
-                _ => ("unknown", "Unknown", "Unknown provider"),
-            };
+            let meta = provider_metadata(*provider);
             ProviderInfo {
-                id: id.to_string(),
-                name: name.to_string(),
-                description: description.to_string(),
+                id: meta.id.to_string(),
+                name: meta.name.to_string(),
+                description: meta.description.to_string(),
             }
         })
         .collect();
@@ -1047,47 +1006,7 @@ mod tests {
 
     /// Create default AnalyzeArgs (all None/false).
     fn default_args() -> AnalyzeArgs {
-        AnalyzeArgs {
-            model: None,
-            model_path: None,
-            labels_path: None,
-            model_type: None,
-            meta_model_path: None,
-            format: None,
-            output_dir: None,
-            min_confidence: None,
-            overlap: None,
-            batch_size: None,
-            combine: false,
-            force: false,
-            fail_fast: false,
-            quiet: false,
-            verbose: 0,
-            no_progress: false,
-            no_csv_bom: false,
-            gpu: false,
-            cpu: false,
-            cuda: false,
-            tensorrt: false,
-            directml: false,
-            coreml: false,
-            rocm: false,
-            openvino: false,
-            onednn: false,
-            qnn: false,
-            acl: false,
-            armnn: false,
-            xnnpack: false,
-            lat: None,
-            lon: None,
-            week: None,
-            month: None,
-            day: None,
-            range_threshold: None,
-            rerank: false,
-            slist: None,
-            stale_lock_timeout: None,
-        }
+        AnalyzeArgs::default()
     }
 
     #[test]

@@ -42,6 +42,8 @@ runs:
       env:
         # Pass the action's ref (e.g., 'v1.3.0') to resolve version dynamically
         INPUT_VERSION: ${{ github.action_ref }}
+        # Use GITHUB_TOKEN for authenticated API requests (higher rate limit)
+        GITHUB_TOKEN: ${{ github.token }}
       run: ${{ github.action_path }}/scripts/install-birda.sh
 
     - name: Run Inference

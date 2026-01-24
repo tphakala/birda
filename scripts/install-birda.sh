@@ -14,7 +14,13 @@ VERSION="${INPUT_VERSION:-}"
 # Handle non-tag refs (main branch, PR refs, etc.) by falling back to latest
 if [[ -z "$VERSION" || "$VERSION" == "main" || "$VERSION" == "master" || "$VERSION" =~ ^refs/ ]]; then
     echo "Resolving latest release version..."
-    VERSION=$(curl -fsSL https://api.github.com/repos/tphakala/birda/releases/latest | jq -r '.tag_name')
+    # Use GITHUB_TOKEN if available to avoid rate limiting
+    if [[ -n "${GITHUB_TOKEN:-}" ]]; then
+        VERSION=$(curl -fsSL -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+            https://api.github.com/repos/tphakala/birda/releases/latest | jq -r '.tag_name')
+    else
+        VERSION=$(curl -fsSL https://api.github.com/repos/tphakala/birda/releases/latest | jq -r '.tag_name')
+    fi
     if [[ -z "$VERSION" ]]; then
         echo "::error::Failed to resolve latest version from GitHub API"
         exit 1
@@ -36,6 +42,9 @@ if ! curl -fsSL "${URL}" | tar -xz -C "${INSTALL_DIR}"; then
     echo "::error::Failed to download birda ${VERSION}. Check that the release exists."
     exit 1
 fi
+
+# Ensure binary is executable (tar may not preserve permissions)
+chmod +x "${INSTALL_DIR}/birda"
 
 # Add to PATH for subsequent steps
 echo "${INSTALL_DIR}" >> "${GITHUB_PATH}"

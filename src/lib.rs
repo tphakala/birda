@@ -39,13 +39,16 @@ use tracing::{error, info, warn};
 
 pub use error::{Error, Result};
 
+/// Model name used for ad-hoc (CLI-specified) models.
+const ADHOC_MODEL_NAME: &str = "<ad-hoc>";
+
 /// Resolve model configuration using priority-based logic.
 ///
 /// # Priority Order
 ///
 /// 1. **Explicit Named Model** (`-m <name>` provided): Load from config, apply overrides
-/// 2. **Explicit Ad-hoc Model** (`--model-type` provided without `-m`): Build from CLI args
-/// 3. **Implicit Default Model** (`defaults.model` set, no `-m` or `--model-type`): Load default
+/// 2. **Explicit Ad-hoc Model** (both `--model-type` AND `--model-path` provided): Build from CLI args
+/// 3. **Implicit Default Model** (`defaults.model` set, no explicit model): Load default
 /// 4. **Incomplete Ad-hoc** (`--model-path` but no `--model-type`): Error
 /// 5. **No Model** (nothing specified): Error
 fn resolve_model_config(args: &AnalyzeArgs, config: &Config) -> Result<(ModelConfig, String)> {
@@ -63,29 +66,23 @@ fn resolve_model_config(args: &AnalyzeArgs, config: &Config) -> Result<(ModelCon
         return Ok((model_config, name.clone()));
     }
 
-    // Priority 2: Explicit ad-hoc model (--model-type triggers this mode)
-    if let Some(model_type) = args.model_type {
-        let path = args
-            .model_path
-            .clone()
-            .ok_or_else(|| Error::ConfigValidation {
-                message: "--model-path required when using --model-type".into(),
-            })?;
+    // Priority 2: Explicit ad-hoc model (requires both --model-type AND --model-path)
+    if let (Some(model_type), Some(path)) = (args.model_type, &args.model_path) {
         let labels = args
             .labels_path
             .clone()
             .ok_or_else(|| Error::ConfigValidation {
-                message: "--labels-path required when using --model-type".into(),
+                message: "--labels-path required when using --model-path with --model-type".into(),
             })?;
 
         let model_config = ModelConfig {
-            path,
+            path: path.clone(),
             labels,
             model_type,
             meta_model: args.meta_model_path.clone(),
         };
 
-        return Ok((model_config, "<ad-hoc>".to_string()));
+        return Ok((model_config, ADHOC_MODEL_NAME.to_string()));
     }
 
     // Priority 3: Implicit default model from config
@@ -100,7 +97,7 @@ fn resolve_model_config(args: &AnalyzeArgs, config: &Config) -> Result<(ModelCon
     // Priority 4: Incomplete ad-hoc (has --model-path but no --model-type)
     if args.model_path.is_some() {
         return Err(Error::ConfigValidation {
-            message: "--model-type and --labels-path required when using --model-path without a configured model".into(),
+            message: "--model-type required when using --model-path without -m".into(),
         });
     }
 
@@ -1126,18 +1123,41 @@ mod tests {
     }
 
     #[test]
-    fn test_priority_2_adhoc_missing_model_path() {
+    fn test_model_type_only_falls_through_to_no_model() {
+        // When --model-type is set but no --model-path (and no default),
+        // should fall through to Priority 5 (no model specified)
         let config = Config::default();
         let mut args = default_args();
         args.model_type = Some(ModelType::BirdnetV24);
-        // Missing model_path
+        // Missing model_path - should NOT trigger ad-hoc mode
         args.labels_path = Some(PathBuf::from("/adhoc/labels.txt"));
 
         let result = resolve_model_config(&args, &config);
         assert!(result.is_err());
 
         let err = result.unwrap_err();
-        assert!(err.to_string().contains("--model-path required"));
+        // Should be "no model specified", not "--model-path required"
+        assert!(err.to_string().contains("no model specified"));
+    }
+
+    #[test]
+    fn test_model_type_only_falls_through_to_default() {
+        // When --model-type is set (e.g., via env var) but no --model-path,
+        // should use default model, not error about missing --model-path
+        let mut config = config_with_model("birdnet");
+        config.defaults.model = Some("birdnet".to_string());
+
+        let mut args = default_args();
+        args.model_type = Some(ModelType::PerchV2); // e.g., from BIRDA_MODEL_TYPE env var
+
+        let result = resolve_model_config(&args, &config);
+        assert!(result.is_ok());
+
+        let (model_config, name) = result.unwrap();
+        // Should fall through to default, not ad-hoc
+        assert_eq!(name, "birdnet");
+        // Type should be from config, NOT from args.model_type
+        assert_eq!(model_config.model_type, ModelType::BirdnetV24);
     }
 
     #[test]

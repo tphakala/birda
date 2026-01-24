@@ -2,10 +2,9 @@
 
 use crate::cli::AnalyzeArgs;
 use crate::config::types::{Config, ModelConfig};
-use crate::constants::range_filter::DAYS_PER_WEEK;
 use crate::error::{Error, Result};
 use crate::inference::RangeFilterConfig;
-use crate::utils::date::{date_to_week, day_of_year_to_date};
+use crate::utils::date::{date_to_week, day_of_year_to_date, week_to_start_day};
 
 /// Build `RangeFilterConfig` from CLI args and config file.
 ///
@@ -38,13 +37,8 @@ pub fn build_range_filter_config(
     };
 
     // Convert week to month/day for RangeFilter::predict
-    // Week 1 = ~Jan 4 (day 4), Week 48 = ~Dec 29 (day 363)
-    #[allow(
-        clippy::cast_precision_loss,
-        clippy::cast_possible_truncation,
-        clippy::cast_sign_loss
-    )]
-    let day_of_year = ((week - 1) as f32).mul_add(DAYS_PER_WEEK, 1.0) as u32;
+    // Week 1 = Jan 1 (day 1), Week 48 = Dec 24 (day 358)
+    let day_of_year = week_to_start_day(week);
     let (month, day) = day_of_year_to_date(day_of_year);
 
     // Get meta model path (per-model overrides global default)
@@ -120,22 +114,6 @@ mod tests {
             slist: None,
             stale_lock_timeout: None,
         }
-    }
-
-    #[test]
-    fn test_day_of_year_to_date_jan_1() {
-        assert_eq!(day_of_year_to_date(1), (1, 1));
-    }
-
-    #[test]
-    fn test_day_of_year_to_date_dec_31() {
-        assert_eq!(day_of_year_to_date(365), (12, 31));
-    }
-
-    #[test]
-    fn test_day_of_year_to_date_jun_15() {
-        // Day 166
-        assert_eq!(day_of_year_to_date(166), (6, 15));
     }
 
     #[test]

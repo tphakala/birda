@@ -52,6 +52,9 @@ pub trait ProgressReporter: Send + Sync {
 
     /// Report cancellation.
     fn cancelled(&self, reason: CancelReason, files_completed: usize, files_total: usize);
+
+    /// Report detection results.
+    fn detections(&self, file: &Path, detections: &[crate::output::Detection]);
 }
 
 /// Summary of pipeline execution.
@@ -192,7 +195,17 @@ impl JsonProgressReporter {
                 OutputMode::Ndjson => {
                     // Write directly to stdout
                     if let Ok(mut writer) = self.writer.lock() {
-                        let _ = writeln!(writer, "{json}");
+                        if let Err(e) = writeln!(writer, "{json}") {
+                            // Log first error only to avoid spam on broken pipe
+                            use std::sync::atomic::{AtomicBool, Ordering};
+                            static STDOUT_ERROR_LOGGED: AtomicBool = AtomicBool::new(false);
+                            if !STDOUT_ERROR_LOGGED.swap(true, Ordering::Relaxed) {
+                                eprintln!(
+                                    "birda: warning: failed to write to stdout: {e} (subsequent errors suppressed)"
+                                );
+                            }
+                        }
+                        // Flush errors are less critical - silent ignore is OK
                         let _ = writer.flush();
                     }
                 }
@@ -371,6 +384,30 @@ impl ProgressReporter for JsonProgressReporter {
         // Flush buffer for Json mode
         self.flush();
     }
+
+    fn detections(&self, file: &Path, detections: &[crate::output::Detection]) {
+        use crate::output::{DetectionInfo, DetectionsPayload};
+
+        let detection_infos: Vec<DetectionInfo> = detections
+            .iter()
+            .map(|d| DetectionInfo {
+                species: format!("{}_{}", d.scientific_name, d.common_name),
+                common_name: d.common_name.clone(),
+                scientific_name: d.scientific_name.clone(),
+                confidence: d.confidence,
+                start_time: d.start_time,
+                end_time: d.end_time,
+            })
+            .collect();
+
+        self.emit(
+            EventType::Detections,
+            DetectionsPayload {
+                file: file.to_path_buf(),
+                detections: detection_infos,
+            },
+        );
+    }
 }
 
 /// Null reporter that does nothing (for human mode or disabled progress).
@@ -403,6 +440,7 @@ impl ProgressReporter for NullReporter {
     ) {
     }
     fn cancelled(&self, _reason: CancelReason, _files_completed: usize, _files_total: usize) {}
+    fn detections(&self, _file: &Path, _detections: &[crate::output::Detection]) {}
 }
 
 /// Create a reporter based on output mode.
@@ -486,6 +524,58 @@ mod tests {
         reporter.file_started(Path::new("test.wav"), 0, 100, Some(60.0));
         reporter.file_completed_success(Path::new("test.wav"), 5, 1000);
         // No assertions - just verifying it doesn't panic
+    }
+
+    #[test]
+    fn test_json_reporter_emits_detections() {
+        use crate::output::Detection;
+        use std::path::PathBuf;
+
+        let buffer = Arc::new(Mutex::new(Vec::new()));
+        let writer = TestWriter {
+            buffer: buffer.clone(),
+        };
+
+        let reporter = JsonProgressReporter::with_writer(OutputMode::Ndjson, writer);
+
+        let detections = vec![Detection {
+            file_path: PathBuf::from("test.wav"),
+            start_time: 0.0,
+            end_time: 3.0,
+            scientific_name: "Parus major".to_string(),
+            common_name: "Great Tit".to_string(),
+            confidence: 0.95,
+            metadata: Default::default(),
+        }];
+
+        reporter.detections(Path::new("test.wav"), &detections);
+
+        let output = buffer.lock().expect("lock");
+        let output_str = String::from_utf8_lossy(&output);
+        assert!(output_str.contains("\"event\":\"detections\""));
+        assert!(output_str.contains("\"Great Tit\""));
+        assert!(output_str.contains("\"confidence\":0.95"));
+    }
+
+    #[test]
+    fn test_reporter_handles_write_errors() {
+        use std::io;
+
+        struct FailingWriter;
+        impl Write for FailingWriter {
+            fn write(&mut self, _buf: &[u8]) -> io::Result<usize> {
+                Err(io::Error::new(io::ErrorKind::BrokenPipe, "pipe closed"))
+            }
+            fn flush(&mut self) -> io::Result<()> {
+                Ok(())
+            }
+        }
+
+        let reporter = JsonProgressReporter::with_writer(OutputMode::Ndjson, FailingWriter);
+
+        // Should not panic when write fails
+        reporter.pipeline_started(1, "test", 0.1);
+        // Test passes if no panic occurs
     }
 
     /// Test writer that captures output.

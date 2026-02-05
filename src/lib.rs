@@ -147,6 +147,7 @@ struct ProcessingParams<'a> {
     force: bool,
     fail_fast: bool,
     progress_enabled: bool,
+    stdout_mode: bool,
 }
 
 /// Statistics from processing all files.
@@ -184,7 +185,12 @@ pub fn run() -> Result<()> {
     let config = load_default_config()?;
 
     // Determine output mode (CLI flag takes precedence over config)
-    let output_mode = cli.output_mode.unwrap_or(config.output.default_format);
+    // Auto-enable NDJSON mode for stdout
+    let output_mode = if cli.analyze.stdout {
+        OutputMode::Ndjson
+    } else {
+        cli.output_mode.unwrap_or(config.output.default_format)
+    };
 
     // Create reporter based on output mode
     let reporter: Arc<dyn ProgressReporter> = Arc::from(create_reporter(output_mode));
@@ -434,6 +440,11 @@ fn process_all_files(
 
         // Process the file
         let file_start = std::time::Instant::now();
+        let reporter_ref = if params.stdout_mode {
+            Some(reporter.as_ref() as &dyn crate::output::ProgressReporter)
+        } else {
+            None
+        };
         match process_file(
             file,
             &file_output_dir,
@@ -447,6 +458,7 @@ fn process_all_files(
             params.csv_bom,
             params.model_name,
             params.range_filter_params,
+            reporter_ref,
         ) {
             Ok(result) => {
                 #[allow(clippy::cast_possible_truncation)]
@@ -485,6 +497,37 @@ fn analyze_files(
     use std::time::Instant;
 
     let total_start = Instant::now();
+
+    // Validate stdout mode constraints
+    if args.stdout {
+        // Must have exactly one input file
+        if inputs.len() != 1 {
+            return Err(Error::ConfigValidation {
+                message: "--stdout requires exactly one input file".to_string(),
+            });
+        }
+
+        // Cannot use with --output-dir
+        if args.output_dir.is_some() {
+            return Err(Error::ConfigValidation {
+                message: "--stdout cannot be used with --output-dir".to_string(),
+            });
+        }
+
+        // Cannot use with --combine
+        if args.combine {
+            return Err(Error::ConfigValidation {
+                message: "--stdout cannot be used with --combine".to_string(),
+            });
+        }
+
+        // Cannot use with --format
+        if args.format.is_some() {
+            return Err(Error::ConfigValidation {
+                message: "--stdout cannot be used with --format (detections are output in JSON format automatically)".to_string(),
+            });
+        }
+    }
 
     // Fail fast on configuration errors before scanning filesystem
     // Resolve model configuration using priority-based resolution
@@ -580,6 +623,7 @@ fn analyze_files(
         force,
         fail_fast,
         progress_enabled,
+        stdout_mode: args.stdout,
     };
 
     // Process all files - stats owned here so partial results available on fail-fast

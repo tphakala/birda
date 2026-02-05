@@ -16,12 +16,13 @@ pub use csv::CsvWriter;
 pub use json::JsonResultWriter;
 pub use json_envelope::{
     AvailableModelEntry, AvailableModelsPayload, BatchProgress, CancelReason, CancelledPayload,
-    ClipExtractionEntry, ClipExtractionPayload, ConfigPathPayload, ConfigPayload, DownloadProgress,
-    ErrorPayload, ErrorSeverity, EventType, FileCompletedPayload, FileErrorInfo, FileProgress,
-    FileStartedPayload, FileStatus, JsonEnvelope, ModelCheckEntry, ModelCheckPayload, ModelDetails,
-    ModelEntry, ModelInfoPayload, ModelListPayload, PipelineCompletedPayload,
-    PipelineStartedPayload, PipelineStatus, ProgressPayload, ProviderInfo, ProvidersPayload,
-    ResultType, SPEC_VERSION, SpeciesEntry, SpeciesListPayload, VersionPayload,
+    ClipExtractionEntry, ClipExtractionPayload, ConfigPathPayload, ConfigPayload, DetectionInfo,
+    DetectionsPayload, DownloadProgress, ErrorPayload, ErrorSeverity, EventType,
+    FileCompletedPayload, FileErrorInfo, FileProgress, FileStartedPayload, FileStatus,
+    JsonEnvelope, ModelCheckEntry, ModelCheckPayload, ModelDetails, ModelEntry, ModelInfoPayload,
+    ModelListPayload, PipelineCompletedPayload, PipelineStartedPayload, PipelineStatus,
+    ProgressPayload, ProviderInfo, ProvidersPayload, ResultType, SPEC_VERSION, SpeciesEntry,
+    SpeciesListPayload, VersionPayload,
 };
 pub use kaleidoscope::KaleidoscopeWriter;
 pub use raven::RavenWriter;

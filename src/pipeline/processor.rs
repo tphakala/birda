@@ -319,8 +319,14 @@ pub fn process_file(
 
     info!("Processing: {}", input_path.display());
 
-    // Acquire lock
-    let _lock = FileLock::acquire(input_path, output_dir)?;
+    // Acquire lock only if writing files (not stdout mode)
+    let _lock = if reporter.is_none() {
+        // File mode - need lock to prevent concurrent writes
+        Some(FileLock::acquire(input_path, output_dir)?)
+    } else {
+        // Stdout mode - no files written, no lock needed
+        None
+    };
 
     // Open decoder to get metadata
     let decoder = StreamingDecoder::open(input_path)?;

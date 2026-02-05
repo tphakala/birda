@@ -147,6 +147,7 @@ struct ProcessingParams<'a> {
     force: bool,
     fail_fast: bool,
     progress_enabled: bool,
+    stdout_mode: bool,
 }
 
 /// Statistics from processing all files.
@@ -439,6 +440,11 @@ fn process_all_files(
 
         // Process the file
         let file_start = std::time::Instant::now();
+        let reporter_ref = if params.stdout_mode {
+            Some(reporter.as_ref() as &dyn crate::output::ProgressReporter)
+        } else {
+            None
+        };
         match process_file(
             file,
             &file_output_dir,
@@ -452,7 +458,7 @@ fn process_all_files(
             params.csv_bom,
             params.model_name,
             params.range_filter_params,
-            None, // reporter will be wired up in Task 9
+            reporter_ref,
         ) {
             Ok(result) => {
                 #[allow(clippy::cast_possible_truncation)]
@@ -617,6 +623,7 @@ fn analyze_files(
         force,
         fail_fast,
         progress_enabled,
+        stdout_mode: args.stdout,
     };
 
     // Process all files - stats owned here so partial results available on fail-fast

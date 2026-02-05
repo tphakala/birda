@@ -27,9 +27,9 @@ use config::{
 use constants::DEFAULT_TOP_K;
 use inference::BirdClassifier;
 use output::{
-    ConfigPayload, FileStatus, ModelDetails, ModelEntry, ModelInfoPayload, ModelListPayload,
-    PipelineSummary, ProgressReporter, ProviderInfo, ProvidersPayload, ResultType, create_reporter,
-    emit_json_result,
+    ConfigPathPayload, ConfigPayload, FileStatus, ModelDetails, ModelEntry, ModelInfoPayload,
+    ModelListPayload, PipelineSummary, ProgressReporter, ProviderInfo, ProvidersPayload,
+    ResultType, create_reporter, emit_json_result,
 };
 use pipeline::{ProcessCheck, collect_input_files, output_dir_for, process_file, should_process};
 use std::collections::HashSet;
@@ -770,6 +770,19 @@ fn handle_config_command(action: cli::ConfigAction, output_mode: OutputMode) -> 
         }
         ConfigAction::Path => {
             let path = config_file_path()?;
+
+            // JSON/NDJSON output
+            if output_mode.is_structured() {
+                let payload = ConfigPathPayload {
+                    result_type: ResultType::ConfigPath,
+                    config_path: path.clone(),
+                    exists: path.exists(),
+                };
+                emit_json_result(&payload);
+                return Ok(());
+            }
+
+            // Human-readable output
             println!("{}", path.display());
             Ok(())
         }

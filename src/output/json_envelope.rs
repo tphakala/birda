@@ -381,6 +381,70 @@ pub struct ConfigPayload {
     pub config: serde_json::Value,
 }
 
+/// Payload for available models list result.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AvailableModelsPayload {
+    /// Result type discriminator.
+    pub result_type: ResultType,
+    /// List of available models from registry.
+    pub models: Vec<AvailableModelEntry>,
+}
+
+/// A single available model from the registry.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AvailableModelEntry {
+    /// Model identifier.
+    pub id: String,
+    /// Display name.
+    pub name: String,
+    /// Short description.
+    pub description: String,
+    /// Organization/author.
+    pub vendor: String,
+    /// Model version.
+    pub version: String,
+    /// Model type identifier.
+    pub model_type: String,
+    /// Whether this model is recommended.
+    pub recommended: bool,
+    /// License type (SPDX identifier).
+    pub license: String,
+    /// Whether commercial use is allowed.
+    pub commercial_use: bool,
+}
+
+/// Payload for model check result.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ModelCheckPayload {
+    /// Result type discriminator.
+    pub result_type: ResultType,
+    /// Check results per model.
+    pub models: Vec<ModelCheckEntry>,
+}
+
+/// Validation result for a single model.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ModelCheckEntry {
+    /// Model name/identifier.
+    pub id: String,
+    /// Whether validation passed.
+    pub valid: bool,
+    /// Error message if validation failed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+/// Payload for config path result.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConfigPathPayload {
+    /// Result type discriminator.
+    pub result_type: ResultType,
+    /// Path to the configuration file.
+    pub config_path: PathBuf,
+    /// Whether the configuration file exists.
+    pub exists: bool,
+}
+
 /// Payload for species list result.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SpeciesListPayload {

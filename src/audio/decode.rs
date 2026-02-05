@@ -401,6 +401,66 @@ fn append_samples(buffer: &AudioBufferRef, channels: usize, output: &mut Vec<f32
     }
 }
 
+/// Get audio duration from file metadata without decoding.
+///
+/// This is a lightweight operation that only reads the file metadata,
+/// not the actual audio samples. Useful for progress estimation.
+///
+/// # Errors
+/// Returns an error if the file cannot be opened or has no audio tracks.
+pub fn get_audio_duration(path: &Path) -> Result<Option<f64>> {
+    let file = File::open(path).map_err(|e| Error::AudioOpen {
+        path: path.to_path_buf(),
+        source: Box::new(e),
+    })?;
+
+    let mss = MediaSourceStream::new(Box::new(file), MediaSourceStreamOptions::default());
+
+    let mut hint = Hint::new();
+    if let Some(ext) = path.extension() {
+        hint.with_extension(&ext.to_string_lossy());
+    }
+
+    let probed = symphonia::default::get_probe()
+        .format(
+            &hint,
+            mss,
+            &FormatOptions::default(),
+            &MetadataOptions::default(),
+        )
+        .map_err(|e| Error::AudioOpen {
+            path: path.to_path_buf(),
+            source: Box::new(e),
+        })?;
+
+    let format = probed.format;
+
+    let track = format
+        .tracks()
+        .iter()
+        .find(|t| t.codec_params.codec != CODEC_TYPE_NULL)
+        .ok_or_else(|| Error::NoAudioTracks {
+            path: path.to_path_buf(),
+        })?;
+
+    let sample_rate = track
+        .codec_params
+        .sample_rate
+        .ok_or_else(|| Error::AudioDecode {
+            path: path.to_path_buf(),
+            source: "missing sample rate".into(),
+        })?;
+
+    // Get duration from metadata
+    #[allow(clippy::cast_precision_loss)]
+    let duration_secs = track
+        .codec_params
+        .n_frames
+        .map(|frames| frames as f64 / f64::from(sample_rate));
+
+    Ok(duration_secs)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

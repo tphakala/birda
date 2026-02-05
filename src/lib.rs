@@ -434,15 +434,18 @@ fn process_all_files(
             ProcessCheck::Process => {}
         }
 
+        // Get audio duration for progress estimation
+        let audio_duration = crate::audio::get_audio_duration(file).ok().flatten();
+
         // Estimate segments for reporter
         let segment_duration = classifier.segment_duration();
         #[allow(clippy::cast_possible_truncation)]
         let estimated_segments =
-            progress::estimate_segment_count(None, segment_duration, params.overlap).unwrap_or(0)
-                as usize;
+            progress::estimate_segment_count(audio_duration, segment_duration, params.overlap)
+                .unwrap_or(0) as usize;
 
         // Report file start
-        reporter.file_started(file, index, estimated_segments, None);
+        reporter.file_started(file, index, estimated_segments, audio_duration);
 
         // Process the file
         let file_start = std::time::Instant::now();

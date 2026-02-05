@@ -109,6 +109,7 @@ fn decode_and_stream(
 /// Run inference on chunks received from the decode channel.
 ///
 /// Returns detections and the total segment count processed.
+#[allow(clippy::too_many_arguments)]
 fn run_streaming_inference(
     rx: Receiver<ChunkResult>,
     classifier: &BirdClassifier,
@@ -117,10 +118,13 @@ fn run_streaming_inference(
     batch_size: usize,
     progress: Option<&indicatif::ProgressBar>,
     batch_context: &mut Option<BatchInferenceContext>,
+    reporter: Option<&dyn crate::output::ProgressReporter>,
+    estimated_segments: usize,
 ) -> Result<(Vec<Detection>, usize)> {
     let mut detections = Vec::new();
     let mut batch: Vec<AudioChunk> = Vec::with_capacity(batch_size);
     let mut segment_count = 0usize;
+    let mut segments_done = 0usize;
 
     for item in rx {
         let chunk = item?; // Propagate decode errors
@@ -137,6 +141,9 @@ fn run_streaming_inference(
                 progress,
                 batch_context,
                 batch_size,
+                reporter,
+                &mut segments_done,
+                estimated_segments,
             )?;
             batch.clear();
         }
@@ -153,6 +160,9 @@ fn run_streaming_inference(
             progress,
             batch_context,
             batch_size, // Target size for TensorRT alignment
+            reporter,
+            &mut segments_done,
+            estimated_segments,
         )?;
     }
 
@@ -208,6 +218,9 @@ fn process_batch(
     progress: Option<&indicatif::ProgressBar>,
     batch_context: &mut Option<BatchInferenceContext>,
     target_batch_size: usize,
+    reporter: Option<&dyn crate::output::ProgressReporter>,
+    segments_done: &mut usize,
+    estimated_segments: usize,
 ) -> Result<()> {
     use crate::gpu::start_inference_watchdog;
     use crate::output::progress::inc_progress;
@@ -273,6 +286,26 @@ fn process_batch(
             }
         }
         inc_progress(progress);
+
+        // Report progress via NDJSON reporter if available
+        if let Some(reporter) = reporter {
+            *segments_done += 1;
+            #[allow(clippy::cast_precision_loss)]
+            let percent = if estimated_segments > 0 {
+                (*segments_done as f32 / estimated_segments as f32 * 100.0).min(100.0)
+            } else {
+                0.0
+            };
+
+            let file_progress = crate::output::json_envelope::FileProgress {
+                path: file_path.to_path_buf(),
+                segments_done: *segments_done,
+                segments_total: estimated_segments,
+                percent,
+            };
+
+            reporter.progress(None, Some(&file_progress));
+        }
     }
 
     Ok(())
@@ -439,6 +472,8 @@ pub fn process_file(
     );
 
     // Run inference on main thread
+    #[allow(clippy::cast_possible_truncation)]
+    let estimated_segments_usize = estimated_segments.unwrap_or(0) as usize;
     let (detections, actual_segments) = run_streaming_inference(
         rx,
         classifier,
@@ -447,6 +482,8 @@ pub fn process_file(
         batch_size,
         progress_guard.get(),
         &mut batch_context,
+        reporter,
+        estimated_segments_usize,
     )?;
 
     // Wait for decode thread to finish

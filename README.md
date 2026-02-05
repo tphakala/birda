@@ -376,6 +376,22 @@ birda --output-mode json models list
 birda --output-mode ndjson recording.wav
 ```
 
+### Stdout Mode (GUI Integration)
+
+Output detection results as NDJSON stream for integration with GUI applications:
+
+```bash
+birda --stdout audio.wav
+```
+
+Output format: Each line is a JSON object with event type and payload. Progress updates and detection results are streamed in real-time.
+
+**Constraints:**
+
+- Only one input file allowed
+- Cannot combine with `--output-dir`, `--combine`, or `--format`
+- Progress bars automatically disabled (NDJSON mode)
+
 ### Example: Real-Time Progress
 
 ```bash

@@ -56,6 +56,8 @@ pub enum EventType {
     Error,
     /// Operation cancelled.
     Cancelled,
+    /// Detection results for a file.
+    Detections,
 }
 
 /// Result type discriminator for result payloads.
@@ -694,5 +696,13 @@ mod tests {
             "exists": true
         });
         assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn test_detections_event_serialization() {
+        assert_eq!(
+            serde_json::to_string(&EventType::Detections).expect("serialize"),
+            "\"detections\""
+        );
     }
 }

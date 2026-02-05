@@ -410,7 +410,13 @@ fn process_all_files(
         let file_output_dir = output_dir_for(file, params.output_dir);
 
         // Check if should process
-        match should_process(file, &file_output_dir, params.formats, params.force) {
+        match should_process(
+            file,
+            &file_output_dir,
+            params.formats,
+            params.force,
+            params.stdout_mode,
+        ) {
             ProcessCheck::SkipExists => {
                 info!("Skipping (output exists): {}", file.display());
                 reporter.file_skipped(file, FileStatus::Skipped);

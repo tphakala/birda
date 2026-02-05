@@ -75,10 +75,16 @@ pub fn should_process(
     output_dir: &Path,
     formats: &[OutputFormat],
     force: bool,
+    stdout_mode: bool,
 ) -> ProcessCheck {
     // Check if locked
     if FileLock::is_locked(input, output_dir) {
         return ProcessCheck::SkipLocked;
+    }
+
+    // Skip file existence check in stdout mode (no files written)
+    if stdout_mode {
+        return ProcessCheck::Process;
     }
 
     // Check if all outputs exist (unless force)

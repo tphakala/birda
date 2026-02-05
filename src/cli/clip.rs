@@ -13,7 +13,8 @@ use crate::constants::clipper::{
 #[derive(Debug, Args)]
 pub struct ClipArgs {
     /// Detection result files to process (CSV format).
-    #[arg(required = true)]
+    /// Mutually exclusive with --start/--end for direct extraction mode.
+    #[arg(conflicts_with_all = ["start", "end"])]
     pub files: Vec<PathBuf>,
 
     /// Output directory for extracted clips.
@@ -32,7 +33,8 @@ pub struct ClipArgs {
     #[arg(long, default_value_t = DEFAULT_POST_PADDING, value_parser = parse_padding)]
     pub post: f64,
 
-    /// Source audio file (auto-detected from detection file if omitted).
+    /// Source audio file (auto-detected from detection file if omitted in CSV mode,
+    /// required in direct extraction mode).
     #[arg(short, long)]
     pub audio: Option<PathBuf>,
 
@@ -40,6 +42,16 @@ pub struct ClipArgs {
     /// If not specified, paths are resolved relative to the detection file location.
     #[arg(long)]
     pub base_dir: Option<PathBuf>,
+
+    /// Start time in seconds for direct extraction mode.
+    /// Requires --end and --audio.
+    #[arg(long, requires = "end", requires = "audio", value_parser = parse_time)]
+    pub start: Option<f64>,
+
+    /// End time in seconds for direct extraction mode.
+    /// Requires --start and --audio.
+    #[arg(long, requires = "start", requires = "audio", value_parser = parse_time)]
+    pub end: Option<f64>,
 }
 
 fn parse_padding(s: &str) -> Result<f64, String> {
@@ -55,6 +67,18 @@ fn parse_padding(s: &str) -> Result<f64, String> {
         return Err(format!(
             "padding cannot exceed {MAX_PADDING} seconds, got {value}"
         ));
+    }
+
+    Ok(value)
+}
+
+fn parse_time(s: &str) -> Result<f64, String> {
+    let value: f64 = s
+        .parse()
+        .map_err(|_| format!("'{s}' is not a valid number"))?;
+
+    if value < 0.0 {
+        return Err(format!("time cannot be negative, got {value}"));
     }
 
     Ok(value)

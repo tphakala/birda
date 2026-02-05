@@ -11,7 +11,10 @@ use crate::config::OutputMode;
 use crate::constants::{clipper, output_extensions};
 use crate::output::{ClipExtractionEntry, ClipExtractionPayload, ResultType, emit_json_result};
 
-use super::{ClipExtractor, ParsedDetection, WavWriter, group_detections, parse_detection_file};
+use super::{
+    ClipExtractor, DetectionGroup, ParsedDetection, WavWriter, group_detections,
+    parse_detection_file,
+};
 
 /// Execute the clip command.
 ///
@@ -19,6 +22,17 @@ use super::{ClipExtractor, ParsedDetection, WavWriter, group_detections, parse_d
 ///
 /// Returns an error if clip extraction fails.
 pub fn execute(args: &ClipArgs, output_mode: OutputMode) -> Result<(), Error> {
+    // Detect mode based on presence of --start/--end
+    if let (Some(start), Some(end)) = (args.start, args.end) {
+        execute_direct_extraction(args, start, end, output_mode)
+    } else {
+        execute_csv_mode(args, output_mode)
+    }
+}
+
+/// Execute clip extraction from CSV detection files.
+#[allow(clippy::unnecessary_wraps)]
+fn execute_csv_mode(args: &ClipArgs, output_mode: OutputMode) -> Result<(), Error> {
     let extractor = ClipExtractor::new();
     let writer = WavWriter::new(args.output.clone());
     let is_json = output_mode.is_structured();
@@ -58,6 +72,84 @@ pub fn execute(args: &ClipArgs, output_mode: OutputMode) -> Result<(), Error> {
         "Extracted {total_clips} clips from {total_files} detection files to {}",
         args.output.display()
     );
+
+    Ok(())
+}
+
+/// Execute direct clip extraction from time range.
+fn execute_direct_extraction(
+    args: &ClipArgs,
+    start: f64,
+    end: f64,
+    output_mode: OutputMode,
+) -> Result<(), Error> {
+    // Validation
+    if end <= start {
+        return Err(Error::InvalidTimeRange { start, end });
+    }
+
+    // audio is guaranteed by clap constraints
+    let audio_path = args.audio.as_ref().ok_or_else(|| Error::Internal {
+        message: "audio path required in direct extraction mode".to_string(),
+    })?;
+
+    if !audio_path.exists() {
+        return Err(Error::SourceAudioNotFound {
+            detection_path: PathBuf::new(),
+            audio_path: audio_path.clone(),
+        });
+    }
+
+    // Apply padding
+    let padded_start = (start - args.pre).max(0.0);
+    let padded_end = end + args.post;
+
+    // Create synthetic DetectionGroup for extraction
+    let group = DetectionGroup {
+        scientific_name: format!("detection_{start:.0}-{end:.0}"),
+        common_name: String::new(), // Empty for generic clips
+        start: padded_start,
+        end: padded_end,
+        max_confidence: 1.0, // No confidence for direct extraction
+        detection_count: 1,
+    };
+
+    // Extract and write clip
+    let extractor = ClipExtractor::new();
+    let writer = WavWriter::new(args.output.clone());
+
+    let clip = extractor.extract_clip(audio_path, &group)?;
+    let output_path = writer.write_clip(
+        &clip.samples,
+        clip.sample_rate,
+        &group.scientific_name,
+        group.max_confidence,
+        padded_start,
+        padded_end,
+    )?;
+
+    // Output handling
+    if output_mode.is_structured() {
+        // JSON/NDJSON output
+        let payload = ClipExtractionPayload {
+            result_type: ResultType::ClipExtraction,
+            output_dir: args.output.clone(),
+            total_clips: 1,
+            total_files: 1,
+            clips: vec![ClipExtractionEntry {
+                source_audio: audio_path.clone(),
+                scientific_name: group.scientific_name,
+                confidence: group.max_confidence,
+                start_time: padded_start,
+                end_time: padded_end,
+                output_file: output_path,
+            }],
+        };
+        emit_json_result(&payload);
+    } else {
+        // Human-readable: print only the clip path to stdout
+        println!("{}", output_path.display());
+    }
 
     Ok(())
 }

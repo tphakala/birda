@@ -385,6 +385,15 @@ pub enum Error {
         /// The invalid value.
         value: String,
     },
+
+    /// Invalid time range for clip extraction.
+    #[error("invalid time range: end ({end}s) must be greater than start ({start}s)")]
+    InvalidTimeRange {
+        /// Start time in seconds.
+        start: f64,
+        /// End time in seconds.
+        end: f64,
+    },
 }
 
 #[cfg(test)]

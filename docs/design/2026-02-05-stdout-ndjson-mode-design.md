@@ -1,7 +1,7 @@
 # Stdout NDJSON Stream Mode Design
 
 **Date:** 2026-02-05
-**Status:** Approved
+**Status:** Implemented
 **Feature:** Add `--stdout` flag for GUI integration
 
 ## Overview

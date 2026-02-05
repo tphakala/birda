@@ -308,6 +308,8 @@ pub struct DetectionsPayload {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DetectionInfo {
     /// Full species label (e.g., `"Parus major_Great Tit"`).
+    /// Format: `"{scientific_name}_{common_name}"`.
+    /// Provided for convenience and `BirdNET` format compatibility.
     pub species: String,
     /// Common name.
     pub common_name: String,

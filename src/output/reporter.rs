@@ -195,7 +195,17 @@ impl JsonProgressReporter {
                 OutputMode::Ndjson => {
                     // Write directly to stdout
                     if let Ok(mut writer) = self.writer.lock() {
-                        let _ = writeln!(writer, "{json}");
+                        if let Err(e) = writeln!(writer, "{json}") {
+                            // Log first error only to avoid spam on broken pipe
+                            use std::sync::atomic::{AtomicBool, Ordering};
+                            static STDOUT_ERROR_LOGGED: AtomicBool = AtomicBool::new(false);
+                            if !STDOUT_ERROR_LOGGED.swap(true, Ordering::Relaxed) {
+                                eprintln!(
+                                    "birda: warning: failed to write to stdout: {e} (subsequent errors suppressed)"
+                                );
+                            }
+                        }
+                        // Flush errors are less critical - silent ignore is OK
                         let _ = writer.flush();
                     }
                 }
@@ -545,6 +555,27 @@ mod tests {
         assert!(output_str.contains("\"event\":\"detections\""));
         assert!(output_str.contains("\"Great Tit\""));
         assert!(output_str.contains("\"confidence\":0.95"));
+    }
+
+    #[test]
+    fn test_reporter_handles_write_errors() {
+        use std::io;
+
+        struct FailingWriter;
+        impl Write for FailingWriter {
+            fn write(&mut self, _buf: &[u8]) -> io::Result<usize> {
+                Err(io::Error::new(io::ErrorKind::BrokenPipe, "pipe closed"))
+            }
+            fn flush(&mut self) -> io::Result<()> {
+                Ok(())
+            }
+        }
+
+        let reporter = JsonProgressReporter::with_writer(OutputMode::Ndjson, FailingWriter);
+
+        // Should not panic when write fails
+        reporter.pipeline_started(1, "test", 0.1);
+        // Test passes if no panic occurs
     }
 
     /// Test writer that captures output.

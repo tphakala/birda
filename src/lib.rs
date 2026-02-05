@@ -775,8 +775,8 @@ fn handle_config_command(action: cli::ConfigAction, output_mode: OutputMode) -> 
             if output_mode.is_structured() {
                 let payload = ConfigPathPayload {
                     result_type: ResultType::ConfigPath,
-                    config_path: path.clone(),
                     exists: path.exists(),
+                    config_path: path,
                 };
                 emit_json_result(&payload);
                 return Ok(());

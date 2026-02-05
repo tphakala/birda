@@ -625,9 +625,22 @@ mod tests {
             }],
         };
         let json = serde_json::to_string(&payload).expect("serialize");
-        assert!(json.contains("\"result_type\":\"available_models\""));
-        assert!(json.contains("\"recommended\":true"));
-        assert!(json.contains("\"commercial_use\":false"));
+        let actual: serde_json::Value = serde_json::from_str(&json).expect("deserialize");
+        let expected = serde_json::json!({
+            "result_type": "available_models",
+            "models": [{
+                "id": "birdnet-v24",
+                "name": "BirdNET v2.4",
+                "description": "Bird sound recognition",
+                "vendor": "Cornell",
+                "version": "2.4",
+                "model_type": "birdnet-v24",
+                "recommended": true,
+                "license": "CC-BY-NC-SA-4.0",
+                "commercial_use": false
+            }]
+        });
+        assert_eq!(actual, expected);
     }
 
     #[test]
@@ -648,12 +661,22 @@ mod tests {
             ],
         };
         let json = serde_json::to_string(&payload).expect("serialize");
-        assert!(json.contains("\"result_type\":\"model_check\""));
-        assert!(json.contains("\"valid\":true"));
-        assert!(json.contains("\"valid\":false"));
-        assert!(json.contains("\"error\":\"model file not found\""));
-        // The valid entry should NOT have an "error" key
-        assert!(!json.contains("\"error\":null"));
+        let actual: serde_json::Value = serde_json::from_str(&json).expect("deserialize");
+        let expected = serde_json::json!({
+            "result_type": "model_check",
+            "models": [
+                {
+                    "id": "birdnet",
+                    "valid": true
+                },
+                {
+                    "id": "broken",
+                    "valid": false,
+                    "error": "model file not found"
+                }
+            ]
+        });
+        assert_eq!(actual, expected);
     }
 
     #[test]
@@ -664,8 +687,12 @@ mod tests {
             exists: true,
         };
         let json = serde_json::to_string(&payload).expect("serialize");
-        assert!(json.contains("\"result_type\":\"config_path\""));
-        assert!(json.contains("\"exists\":true"));
-        assert!(json.contains("config.toml"));
+        let actual: serde_json::Value = serde_json::from_str(&json).expect("deserialize");
+        let expected = serde_json::json!({
+            "result_type": "config_path",
+            "config_path": "/home/user/.config/birda/config.toml",
+            "exists": true
+        });
+        assert_eq!(actual, expected);
     }
 }

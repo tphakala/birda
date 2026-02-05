@@ -294,6 +294,7 @@ fn process_batch(
 /// * `csv_bom_enabled` - Whether to include UTF-8 BOM in CSV output for Excel compatibility
 /// * `model_name` - Model name for JSON output metadata
 /// * `range_filter_params` - Optional (lat, lon, week) for JSON output metadata
+/// * `reporter` - Optional reporter for stdout mode (emits detections instead of writing files)
 #[allow(clippy::too_many_arguments)]
 pub fn process_file(
     input_path: &Path,
@@ -308,6 +309,7 @@ pub fn process_file(
     csv_bom_enabled: bool,
     model_name: &str,
     range_filter_params: Option<(f64, f64, u8)>,
+    reporter: Option<&dyn crate::output::ProgressReporter>,
 ) -> Result<ProcessResult> {
     use crate::audio::StreamingDecoder;
     use crate::output::progress::{self, estimate_segment_count};
@@ -488,17 +490,23 @@ pub fn process_file(
         None
     };
 
-    // Write output files
-    for format in formats {
-        write_output(
-            input_path,
-            output_dir,
-            *format,
-            &detections,
-            csv_columns,
-            csv_bom_enabled,
-            json_config.as_ref(),
-        )?;
+    // Write output files or emit detections event
+    if let Some(reporter) = reporter {
+        // Stdout mode - emit detections event instead of writing files
+        reporter.detections(input_path, &detections);
+    } else {
+        // File mode - write output files
+        for format in formats {
+            write_output(
+                input_path,
+                output_dir,
+                *format,
+                &detections,
+                csv_columns,
+                csv_bom_enabled,
+                json_config.as_ref(),
+            )?;
+        }
     }
 
     let duration_secs = start_time.elapsed().as_secs_f64();

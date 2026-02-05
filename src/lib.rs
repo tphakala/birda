@@ -452,6 +452,7 @@ fn process_all_files(
             params.csv_bom,
             params.model_name,
             params.range_filter_params,
+            None, // reporter will be wired up in Task 9
         ) {
             Ok(result) => {
                 #[allow(clippy::cast_possible_truncation)]

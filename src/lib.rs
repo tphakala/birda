@@ -846,7 +846,7 @@ fn handle_models_command(
         }
         ModelsAction::ListAvailable => {
             let registry = registry::load_registry()?;
-            registry::list_available(&registry);
+            registry::list_available(&registry, output_mode);
             Ok(())
         }
         ModelsAction::Add {

@@ -18,7 +18,37 @@ pub use types::{
 use crate::error::{Error, Result};
 
 /// List all available models from the registry.
-pub fn list_available(registry: &Registry) {
+pub fn list_available(registry: &Registry, output_mode: crate::config::OutputMode) {
+    use crate::output::{
+        AvailableModelEntry, AvailableModelsPayload, ResultType, emit_json_result,
+    };
+
+    // JSON/NDJSON output
+    if output_mode.is_structured() {
+        let models: Vec<AvailableModelEntry> = registry
+            .models
+            .iter()
+            .map(|m| AvailableModelEntry {
+                id: m.id.clone(),
+                name: m.name.clone(),
+                description: m.description.clone(),
+                vendor: m.vendor.clone(),
+                version: m.version.clone(),
+                model_type: m.model_type.clone(),
+                recommended: m.recommended,
+                license: m.license.r#type.clone(),
+                commercial_use: m.license.commercial_use,
+            })
+            .collect();
+        let payload = AvailableModelsPayload {
+            result_type: ResultType::AvailableModels,
+            models,
+        };
+        emit_json_result(&payload);
+        return;
+    }
+
+    // Human-readable output
     println!("Available models:");
     println!();
 

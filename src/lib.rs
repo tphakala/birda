@@ -27,9 +27,9 @@ use config::{
 use constants::DEFAULT_TOP_K;
 use inference::BirdClassifier;
 use output::{
-    ConfigPathPayload, ConfigPayload, FileStatus, ModelDetails, ModelEntry, ModelInfoPayload,
-    ModelListPayload, PipelineSummary, ProgressReporter, ProviderInfo, ProvidersPayload,
-    ResultType, create_reporter, emit_json_result,
+    ConfigPathPayload, ConfigPayload, FileStatus, ModelCheckEntry, ModelCheckPayload, ModelDetails,
+    ModelEntry, ModelInfoPayload, ModelListPayload, PipelineSummary, ProgressReporter,
+    ProviderInfo, ProvidersPayload, ResultType, create_reporter, emit_json_result,
 };
 use pipeline::{ProcessCheck, collect_input_files, output_dir_for, process_file, should_process};
 use std::collections::HashSet;
@@ -857,6 +857,29 @@ fn handle_models_command(
             default,
         } => handle_models_add(name, path, labels, r#type, default),
         ModelsAction::Check => {
+            // JSON/NDJSON output — collect all results then emit
+            if output_mode.is_structured() {
+                let models: Vec<ModelCheckEntry> = config
+                    .models
+                    .iter()
+                    .map(|(name, model)| {
+                        let result = config::validate_model_config(name, model);
+                        ModelCheckEntry {
+                            id: name.clone(),
+                            valid: result.is_ok(),
+                            error: result.err().map(|e| e.to_string()),
+                        }
+                    })
+                    .collect();
+                let payload = ModelCheckPayload {
+                    result_type: ResultType::ModelCheck,
+                    models,
+                };
+                emit_json_result(&payload);
+                return Ok(());
+            }
+
+            // Human-readable output (fail on first invalid model)
             for (name, model) in &config.models {
                 config::validate_model_config(name, model)?;
                 println!("  {name}: OK");

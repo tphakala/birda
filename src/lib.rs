@@ -486,6 +486,37 @@ fn analyze_files(
 
     let total_start = Instant::now();
 
+    // Validate stdout mode constraints
+    if args.stdout {
+        // Must have exactly one input file
+        if inputs.len() != 1 {
+            return Err(Error::ConfigValidation {
+                message: "--stdout requires exactly one input file".to_string(),
+            });
+        }
+
+        // Cannot use with --output-dir
+        if args.output_dir.is_some() {
+            return Err(Error::ConfigValidation {
+                message: "--stdout cannot be used with --output-dir".to_string(),
+            });
+        }
+
+        // Cannot use with --combine
+        if args.combine {
+            return Err(Error::ConfigValidation {
+                message: "--stdout cannot be used with --combine".to_string(),
+            });
+        }
+
+        // Cannot use with --format
+        if args.format.is_some() {
+            return Err(Error::ConfigValidation {
+                message: "--stdout cannot be used with --format (detections are output in JSON format automatically)".to_string(),
+            });
+        }
+    }
+
     // Fail fast on configuration errors before scanning filesystem
     // Resolve model configuration using priority-based resolution
     let (model_config, model_name) = resolve_model_config(args, config)?;

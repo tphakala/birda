@@ -78,6 +78,12 @@ pub enum ResultType {
     Providers,
     /// Version information.
     Version,
+    /// Available models from registry.
+    AvailableModels,
+    /// Model validation check results.
+    ModelCheck,
+    /// Configuration file path.
+    ConfigPath,
 }
 
 /// Error severity level.

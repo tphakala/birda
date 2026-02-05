@@ -184,7 +184,12 @@ pub fn run() -> Result<()> {
     let config = load_default_config()?;
 
     // Determine output mode (CLI flag takes precedence over config)
-    let output_mode = cli.output_mode.unwrap_or(config.output.default_format);
+    // Auto-enable NDJSON mode for stdout
+    let output_mode = if cli.analyze.stdout {
+        OutputMode::Ndjson
+    } else {
+        cli.output_mode.unwrap_or(config.output.default_format)
+    };
 
     // Create reporter based on output mode
     let reporter: Arc<dyn ProgressReporter> = Arc::from(create_reporter(output_mode));

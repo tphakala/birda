@@ -591,4 +591,81 @@ mod tests {
         assert!(!json.contains("\"file\""));
         assert!(!json.contains("\"download\""));
     }
+
+    #[test]
+    fn test_new_result_type_serialization() {
+        assert_eq!(
+            serde_json::to_string(&ResultType::AvailableModels).expect("serialize"),
+            "\"available_models\""
+        );
+        assert_eq!(
+            serde_json::to_string(&ResultType::ModelCheck).expect("serialize"),
+            "\"model_check\""
+        );
+        assert_eq!(
+            serde_json::to_string(&ResultType::ConfigPath).expect("serialize"),
+            "\"config_path\""
+        );
+    }
+
+    #[test]
+    fn test_available_models_payload() {
+        let payload = AvailableModelsPayload {
+            result_type: ResultType::AvailableModels,
+            models: vec![AvailableModelEntry {
+                id: "birdnet-v24".to_string(),
+                name: "BirdNET v2.4".to_string(),
+                description: "Bird sound recognition".to_string(),
+                vendor: "Cornell".to_string(),
+                version: "2.4".to_string(),
+                model_type: "birdnet-v24".to_string(),
+                recommended: true,
+                license: "CC-BY-NC-SA-4.0".to_string(),
+                commercial_use: false,
+            }],
+        };
+        let json = serde_json::to_string(&payload).expect("serialize");
+        assert!(json.contains("\"result_type\":\"available_models\""));
+        assert!(json.contains("\"recommended\":true"));
+        assert!(json.contains("\"commercial_use\":false"));
+    }
+
+    #[test]
+    fn test_model_check_payload() {
+        let payload = ModelCheckPayload {
+            result_type: ResultType::ModelCheck,
+            models: vec![
+                ModelCheckEntry {
+                    id: "birdnet".to_string(),
+                    valid: true,
+                    error: None,
+                },
+                ModelCheckEntry {
+                    id: "broken".to_string(),
+                    valid: false,
+                    error: Some("model file not found".to_string()),
+                },
+            ],
+        };
+        let json = serde_json::to_string(&payload).expect("serialize");
+        assert!(json.contains("\"result_type\":\"model_check\""));
+        assert!(json.contains("\"valid\":true"));
+        assert!(json.contains("\"valid\":false"));
+        assert!(json.contains("\"error\":\"model file not found\""));
+        // The valid entry should NOT have an "error" key
+        assert!(!json.contains("\"error\":null"));
+    }
+
+    #[test]
+    fn test_config_path_payload() {
+        let payload = ConfigPathPayload {
+            result_type: ResultType::ConfigPath,
+            config_path: PathBuf::from("/home/user/.config/birda/config.toml"),
+            exists: true,
+        };
+        let json = serde_json::to_string(&payload).expect("serialize");
+        assert!(json.contains("\"result_type\":\"config_path\""));
+        assert!(json.contains("\"exists\":true"));
+        assert!(json.contains("config.toml"));
+    }
 }

@@ -292,6 +292,36 @@ pub enum CancelReason {
 }
 
 // ============================================================================
+// Detections Event Payload
+// ============================================================================
+
+/// Payload for `detections` event.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DetectionsPayload {
+    /// Path to source file.
+    pub file: PathBuf,
+    /// All detections found in the file.
+    pub detections: Vec<DetectionInfo>,
+}
+
+/// Information about a single detection.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DetectionInfo {
+    /// Full species label (e.g., `"Parus major_Great Tit"`).
+    pub species: String,
+    /// Common name.
+    pub common_name: String,
+    /// Scientific name.
+    pub scientific_name: String,
+    /// Confidence score (0.0-1.0).
+    pub confidence: f32,
+    /// Start time in seconds.
+    pub start_time: f32,
+    /// End time in seconds.
+    pub end_time: f32,
+}
+
+// ============================================================================
 // Result Payloads for Commands
 // ============================================================================
 
@@ -704,5 +734,47 @@ mod tests {
             serde_json::to_string(&EventType::Detections).expect("serialize"),
             "\"detections\""
         );
+    }
+
+    #[test]
+    fn test_detection_info_serialization() {
+        let info = DetectionInfo {
+            species: "Parus major_Great Tit".to_string(),
+            common_name: "Great Tit".to_string(),
+            scientific_name: "Parus major".to_string(),
+            confidence: 0.95,
+            start_time: 0.0,
+            end_time: 3.0,
+        };
+        let json = serde_json::to_string(&info).expect("serialize");
+        let actual: serde_json::Value = serde_json::from_str(&json).expect("deserialize");
+        let expected = serde_json::json!({
+            "species": "Parus major_Great Tit",
+            "common_name": "Great Tit",
+            "scientific_name": "Parus major",
+            "confidence": 0.95,
+            "start_time": 0.0,
+            "end_time": 3.0
+        });
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn test_detections_payload_serialization() {
+        let payload = DetectionsPayload {
+            file: PathBuf::from("audio.wav"),
+            detections: vec![DetectionInfo {
+                species: "Parus major_Great Tit".to_string(),
+                common_name: "Great Tit".to_string(),
+                scientific_name: "Parus major".to_string(),
+                confidence: 0.95,
+                start_time: 0.0,
+                end_time: 3.0,
+            }],
+        };
+        let json = serde_json::to_string(&payload).expect("serialize");
+        assert!(json.contains("\"file\":\"audio.wav\""));
+        assert!(json.contains("\"detections\""));
+        assert!(json.contains("\"Great Tit\""));
     }
 }

@@ -335,6 +335,10 @@ pub struct AnalyzeArgs {
     /// Remove locks older than this duration (e.g., 1h, 30m).
     #[arg(long)]
     pub stale_lock_timeout: Option<String>,
+
+    /// Write results to stdout as NDJSON stream (single file only).
+    #[arg(long)]
+    pub stdout: bool,
 }
 
 // Re-use shared validators
@@ -633,5 +637,19 @@ mod tests {
         assert_eq!(cli.analyze.lat, Some(60.17));
         assert_eq!(cli.analyze.lon, Some(24.94));
         assert_eq!(cli.analyze.week, Some(24));
+    }
+
+    #[test]
+    fn test_cli_parse_with_stdout() {
+        let cli = Cli::try_parse_from(["birda", "--stdout", "test.wav"]);
+        assert!(cli.is_ok());
+        let cli = cli.unwrap();
+        assert!(cli.analyze.stdout);
+    }
+
+    #[test]
+    fn test_cli_stdout_flag_exists() {
+        let cli = Cli::try_parse_from(["birda", "--stdout", "test.wav"]);
+        assert!(cli.is_ok());
     }
 }

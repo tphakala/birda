@@ -101,11 +101,27 @@ pub fn models_dir() -> Result<PathBuf> {
 
 /// Install model from registry entry.
 ///
-/// Downloads the model file, labels file for the specified language (or default),
+/// Downloads the model file, all available language label files,
 /// and meta model if available. Returns paths to all downloaded files.
+/// The `language` parameter determines which labels file is set as the default.
 pub async fn install_model(model: &ModelEntry, language: Option<&str>) -> Result<InstalledModel> {
     let models_dir = models_dir()?;
     std::fs::create_dir_all(&models_dir).map_err(Error::Io)?;
+
+    // Determine which language to use as default
+    let language_code = language.unwrap_or(&model.files.labels.default_language);
+
+    // Validate the requested language exists before downloading anything
+    let default_language_variant = model
+        .files
+        .labels
+        .languages
+        .iter()
+        .find(|l| l.code == language_code)
+        .ok_or_else(|| Error::LanguageNotFound {
+            code: language_code.to_string(),
+            model_id: model.id.clone(),
+        })?;
 
     // Create HTTP client with timeouts for all downloads
     let client = Client::builder()
@@ -120,22 +136,14 @@ pub async fn install_model(model: &ModelEntry, language: Option<&str>) -> Result
     let model_dest = models_dir.join(&model.files.model.filename);
     download_file(&client, &model.files.model.url, &model_dest).await?;
 
-    // Determine which language to download
-    let language_code = language.unwrap_or(&model.files.labels.default_language);
-    let language_variant = model
-        .files
-        .labels
-        .languages
-        .iter()
-        .find(|l| l.code == language_code)
-        .ok_or_else(|| Error::LanguageNotFound {
-            code: language_code.to_string(),
-            model_id: model.id.clone(),
-        })?;
+    // Download ALL language label files
+    for language_variant in &model.files.labels.languages {
+        let labels_dest = models_dir.join(&language_variant.filename);
+        download_file(&client, &language_variant.url, &labels_dest).await?;
+    }
 
-    // Download labels file
-    let labels_dest = models_dir.join(&language_variant.filename);
-    download_file(&client, &language_variant.url, &labels_dest).await?;
+    // Set the default labels path to the requested/default language
+    let labels_dest = models_dir.join(&default_language_variant.filename);
 
     // Download meta model if available
     let meta_model_path = if let Some(meta_info) = &model.files.meta_model {
@@ -165,5 +173,19 @@ mod tests {
         let path = result.unwrap();
         assert!(path.to_string_lossy().contains("birda"));
         assert!(path.to_string_lossy().ends_with("models"));
+    }
+
+    #[test]
+    fn test_installed_model_default_labels_path() {
+        let installed = InstalledModel {
+            model: PathBuf::from("/models/birdnet-v24.onnx"),
+            labels: PathBuf::from("/models/birdnet-v24-en.txt"),
+            meta_model: None,
+        };
+
+        assert_eq!(
+            installed.labels.to_string_lossy(),
+            "/models/birdnet-v24-en.txt"
+        );
     }
 }

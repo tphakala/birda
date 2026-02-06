@@ -108,6 +108,21 @@ pub async fn install_model(model: &ModelEntry, language: Option<&str>) -> Result
     let models_dir = models_dir()?;
     std::fs::create_dir_all(&models_dir).map_err(Error::Io)?;
 
+    // Determine which language to use as default
+    let language_code = language.unwrap_or(&model.files.labels.default_language);
+
+    // Validate the requested language exists before downloading anything
+    let default_language_variant = model
+        .files
+        .labels
+        .languages
+        .iter()
+        .find(|l| l.code == language_code)
+        .ok_or_else(|| Error::LanguageNotFound {
+            code: language_code.to_string(),
+            model_id: model.id.clone(),
+        })?;
+
     // Create HTTP client with timeouts for all downloads
     let client = Client::builder()
         .connect_timeout(std::time::Duration::from_secs(30))
@@ -120,21 +135,6 @@ pub async fn install_model(model: &ModelEntry, language: Option<&str>) -> Result
     // Download model file
     let model_dest = models_dir.join(&model.files.model.filename);
     download_file(&client, &model.files.model.url, &model_dest).await?;
-
-    // Determine which language to use as default
-    let language_code = language.unwrap_or(&model.files.labels.default_language);
-
-    // Validate the requested language exists
-    let default_language_variant = model
-        .files
-        .labels
-        .languages
-        .iter()
-        .find(|l| l.code == language_code)
-        .ok_or_else(|| Error::LanguageNotFound {
-            code: language_code.to_string(),
-            model_id: model.id.clone(),
-        })?;
 
     // Download ALL language label files
     for language_variant in &model.files.labels.languages {

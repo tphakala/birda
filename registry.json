@@ -85,12 +85,6 @@
               "filename": "birdnet-v24-es.txt"
             },
             {
-              "code": "et",
-              "name": "Estonian",
-              "url": "https://github.com/tphakala/birda/raw/main/data/labels/birdnet_v2.4/BirdNET_GLOBAL_6K_V2.4_Labels_et.txt",
-              "filename": "birdnet-v24-et.txt"
-            },
-            {
               "code": "fi",
               "name": "Finnish",
               "url": "https://github.com/tphakala/birda/raw/main/data/labels/birdnet_v2.4/BirdNET_GLOBAL_6K_V2.4_Labels_fi.txt",
@@ -109,12 +103,6 @@
               "filename": "birdnet-v24-he.txt"
             },
             {
-              "code": "hi",
-              "name": "Hindi",
-              "url": "https://github.com/tphakala/birda/raw/main/data/labels/birdnet_v2.4/BirdNET_GLOBAL_6K_V2.4_Labels_hi.txt",
-              "filename": "birdnet-v24-hi.txt"
-            },
-            {
               "code": "hr",
               "name": "Croatian",
               "url": "https://github.com/tphakala/birda/raw/main/data/labels/birdnet_v2.4/BirdNET_GLOBAL_6K_V2.4_Labels_hr.txt",
@@ -129,7 +117,7 @@
             {
               "code": "id",
               "name": "Indonesian",
-              "url": "https://github.com/tphakala/birda/raw/main/data/labels/birdnet_v2.4/BirdNET_GLOBAL_6K_V2.4_Labels_id.txt",
+              "url": "https://github.com/tphakala/birda/raw/main/data/labels/birdnet_v2.4/BirdNET_GLOBAL_6K_V2.4_Labels_in.txt",
               "filename": "birdnet-v24-id.txt"
             },
             {
@@ -163,16 +151,10 @@
               "filename": "birdnet-v24-lt.txt"
             },
             {
-              "code": "lv",
-              "name": "Latvian",
-              "url": "https://github.com/tphakala/birda/raw/main/data/labels/birdnet_v2.4/BirdNET_GLOBAL_6K_V2.4_Labels_lv.txt",
-              "filename": "birdnet-v24-lv.txt"
-            },
-            {
-              "code": "mk",
-              "name": "Macedonian",
-              "url": "https://github.com/tphakala/birda/raw/main/data/labels/birdnet_v2.4/BirdNET_GLOBAL_6K_V2.4_Labels_mk.txt",
-              "filename": "birdnet-v24-mk.txt"
+              "code": "ml",
+              "name": "Malayalam",
+              "url": "https://github.com/tphakala/birda/raw/main/data/labels/birdnet_v2.4/BirdNET_GLOBAL_6K_V2.4_Labels_ml.txt",
+              "filename": "birdnet-v24-ml.txt"
             },
             {
               "code": "nl",
@@ -193,10 +175,16 @@
               "filename": "birdnet-v24-pl.txt"
             },
             {
-              "code": "pt",
-              "name": "Portuguese",
-              "url": "https://github.com/tphakala/birda/raw/main/data/labels/birdnet_v2.4/BirdNET_GLOBAL_6K_V2.4_Labels_pt.txt",
-              "filename": "birdnet-v24-pt.txt"
+              "code": "pt-BR",
+              "name": "Portuguese (Brazil)",
+              "url": "https://github.com/tphakala/birda/raw/main/data/labels/birdnet_v2.4/BirdNET_GLOBAL_6K_V2.4_Labels_pt_BR.txt",
+              "filename": "birdnet-v24-pt-BR.txt"
+            },
+            {
+              "code": "pt-PT",
+              "name": "Portuguese (Portugal)",
+              "url": "https://github.com/tphakala/birda/raw/main/data/labels/birdnet_v2.4/BirdNET_GLOBAL_6K_V2.4_Labels_pt_PT.txt",
+              "filename": "birdnet-v24-pt-PT.txt"
             },
             {
               "code": "ro",
@@ -223,6 +211,12 @@
               "filename": "birdnet-v24-sl.txt"
             },
             {
+              "code": "sr",
+              "name": "Serbian",
+              "url": "https://github.com/tphakala/birda/raw/main/data/labels/birdnet_v2.4/BirdNET_GLOBAL_6K_V2.4_Labels_sr.txt",
+              "filename": "birdnet-v24-sr.txt"
+            },
+            {
               "code": "sv",
               "name": "Swedish",
               "url": "https://github.com/tphakala/birda/raw/main/data/labels/birdnet_v2.4/BirdNET_GLOBAL_6K_V2.4_Labels_sv.txt",
@@ -233,6 +227,12 @@
               "name": "Thai",
               "url": "https://github.com/tphakala/birda/raw/main/data/labels/birdnet_v2.4/BirdNET_GLOBAL_6K_V2.4_Labels_th.txt",
               "filename": "birdnet-v24-th.txt"
+            },
+            {
+              "code": "tr",
+              "name": "Turkish",
+              "url": "https://github.com/tphakala/birda/raw/main/data/labels/birdnet_v2.4/BirdNET_GLOBAL_6K_V2.4_Labels_tr.txt",
+              "filename": "birdnet-v24-tr.txt"
             },
             {
               "code": "uk",

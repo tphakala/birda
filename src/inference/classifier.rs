@@ -4,21 +4,33 @@ use crate::config::{InferenceDevice, ModelConfig as BirdaModelConfig, tensorrt_c
 use crate::error::{Error, Result};
 use birdnet_onnx::{
     BatchInferenceContext, Classifier, ClassifierBuilder, ExecutionProviderInfo, InferenceOptions,
-    PredictionResult, TensorRTConfig, available_execution_providers, ort_execution_providers,
+    LocationScore, PredictionResult, TensorRTConfig, available_execution_providers,
+    ort_execution_providers,
 };
 use std::collections::HashSet;
 use std::path::PathBuf;
 use tracing::{debug, info, warn};
 
+/// Range filtering data that is always kept together.
+///
+/// Invariant: All three fields are present together. This struct encapsulates
+/// the range filter, its configuration, and pre-computed location scores.
+struct RangeFilterData {
+    /// The range filter instance.
+    filter: crate::inference::range_filter::RangeFilter,
+    /// Range filter configuration parameters.
+    config: crate::inference::RangeFilterConfig,
+    /// Pre-computed location scores (computed once at initialization).
+    /// Avoids recomputing scores on every batch (significant performance optimization).
+    scores: Vec<LocationScore>,
+}
+
 /// Wrapper around birdnet-onnx Classifier with birda configuration.
 pub struct BirdClassifier {
     inner: Classifier,
-    range_filter: Option<crate::inference::range_filter::RangeFilter>,
-    range_filter_config: Option<crate::inference::RangeFilterConfig>,
-    /// Cached location scores for range filtering.
-    /// Computed once during initialization when range filtering is enabled.
-    /// This avoids recomputing scores on every batch (significant performance optimization).
-    cached_location_scores: Option<Vec<birdnet_onnx::LocationScore>>,
+    /// Range filtering data (filter, config, and cached scores).
+    /// All three components are present together or None.
+    range_filter_data: Option<RangeFilterData>,
     /// Optional species list for filtering (from file).
     /// None if no species list file provided or if using dynamic range filtering.
     species_list: Option<HashSet<String>>,
@@ -195,9 +207,7 @@ impl BirdClassifier {
         );
 
         // Build optional range filter and compute location scores
-        let (range_filter, cached_location_scores) = if let Some(ref rf_config) =
-            range_filter_config
-        {
+        let range_filter_data = if let Some(rf_config) = range_filter_config {
             use crate::inference::range_filter::RangeFilter;
 
             let filter = RangeFilter::from_config(
@@ -224,9 +234,13 @@ impl BirdClassifier {
                 rf_config.day
             );
 
-            (Some(filter), Some(scores))
+            Some(RangeFilterData {
+                filter,
+                config: rf_config,
+                scores,
+            })
         } else {
-            (None, None)
+            None
         };
 
         // Check if TensorRT is being used (for warmup messaging)
@@ -234,9 +248,7 @@ impl BirdClassifier {
 
         Ok(Self {
             inner,
-            range_filter,
-            range_filter_config,
-            cached_location_scores,
+            range_filter_data,
             species_list,
             uses_tensorrt,
         })
@@ -365,7 +377,7 @@ impl BirdClassifier {
 
     /// Get the optional range filter.
     pub fn range_filter(&self) -> Option<&crate::inference::range_filter::RangeFilter> {
-        self.range_filter.as_ref()
+        self.range_filter_data.as_ref().map(|data| &data.filter)
     }
 
     /// Apply range filtering to predictions if configured.
@@ -375,11 +387,7 @@ impl BirdClassifier {
         &self,
         mut predictions: Vec<PredictionResult>,
     ) -> Result<Vec<PredictionResult>> {
-        if let (Some(range_filter), Some(rf_config), Some(location_scores)) = (
-            self.range_filter.as_ref(),
-            self.range_filter_config.as_ref(),
-            self.cached_location_scores.as_ref(),
-        ) {
+        if let Some(rf_data) = &self.range_filter_data {
             use tracing::debug;
 
             debug!(
@@ -391,10 +399,10 @@ impl BirdClassifier {
             for result in &mut predictions {
                 let before_count = result.predictions.len();
 
-                result.predictions = range_filter.filter_predictions(
+                result.predictions = rf_data.filter.filter_predictions(
                     &result.predictions,
-                    location_scores,
-                    rf_config.rerank,
+                    &rf_data.scores,
+                    rf_data.config.rerank,
                 );
 
                 let after_count = result.predictions.len();

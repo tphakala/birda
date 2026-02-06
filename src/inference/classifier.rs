@@ -15,6 +15,10 @@ pub struct BirdClassifier {
     inner: Classifier,
     range_filter: Option<crate::inference::range_filter::RangeFilter>,
     range_filter_config: Option<crate::inference::RangeFilterConfig>,
+    /// Cached location scores for range filtering.
+    /// Computed once during initialization when range filtering is enabled.
+    /// This avoids recomputing scores on every batch (significant performance optimization).
+    cached_location_scores: Option<Vec<birdnet_onnx::LocationScore>>,
     /// Optional species list for filtering (from file).
     /// None if no species list file provided or if using dynamic range filtering.
     species_list: Option<HashSet<String>>,
@@ -190,16 +194,39 @@ impl BirdClassifier {
             actual_device_msg
         );
 
-        // Build optional range filter
-        let range_filter = if let Some(ref rf_config) = range_filter_config {
+        // Build optional range filter and compute location scores
+        let (range_filter, cached_location_scores) = if let Some(ref rf_config) =
+            range_filter_config
+        {
             use crate::inference::range_filter::RangeFilter;
-            Some(RangeFilter::from_config(
+
+            let filter = RangeFilter::from_config(
                 &rf_config.meta_model_path,
                 inner.labels(),
                 rf_config.threshold,
-            )?)
+            )?;
+
+            // Compute location scores once during initialization
+            // If this fails, we want to fail classifier construction (not silently disable)
+            let scores = filter.predict(
+                rf_config.latitude,
+                rf_config.longitude,
+                rf_config.month,
+                rf_config.day,
+            )?;
+
+            debug!(
+                "Range filter: computed {} location scores for lat={:.4}, lon={:.4}, month={}, day={}",
+                scores.len(),
+                rf_config.latitude,
+                rf_config.longitude,
+                rf_config.month,
+                rf_config.day
+            );
+
+            (Some(filter), Some(scores))
         } else {
-            None
+            (None, None)
         };
 
         // Check if TensorRT is being used (for warmup messaging)
@@ -209,6 +236,7 @@ impl BirdClassifier {
             inner,
             range_filter,
             range_filter_config,
+            cached_location_scores,
             species_list,
             uses_tensorrt,
         })
@@ -347,19 +375,12 @@ impl BirdClassifier {
         &self,
         mut predictions: Vec<PredictionResult>,
     ) -> Result<Vec<PredictionResult>> {
-        if let (Some(range_filter), Some(rf_config)) = (
+        if let (Some(range_filter), Some(rf_config), Some(location_scores)) = (
             self.range_filter.as_ref(),
             self.range_filter_config.as_ref(),
+            self.cached_location_scores.as_ref(),
         ) {
             use tracing::debug;
-
-            // Get location scores once for all predictions
-            let location_scores = range_filter.predict(
-                rf_config.latitude,
-                rf_config.longitude,
-                rf_config.month,
-                rf_config.day,
-            )?;
 
             debug!(
                 "Range filter: applying to {} prediction results",
@@ -372,7 +393,7 @@ impl BirdClassifier {
 
                 result.predictions = range_filter.filter_predictions(
                     &result.predictions,
-                    &location_scores,
+                    location_scores,
                     rf_config.rerank,
                 );
 

@@ -9,7 +9,7 @@ A fast, cross-platform CLI tool for bird species detection using [BirdNET](https
 
 ## Features
 
-- **Multiple AI Models**: Support for BirdNET v2.4, BirdNET v3.0, and Google Perch v2 models
+- **Multiple AI Models**: Support for BirdNET v2.4, BirdNET v3.0, Google Perch v2, and BSG Finnish Birds models
 - **GPU Acceleration**: Optional CUDA support for faster inference on NVIDIA GPUs
 - **Species Filtering**: Dynamic range filtering by location/date or static species list files
 - **Multiple Output Formats**: CSV, JSON, Raven selection tables, Audacity labels, Kaleidoscope CSV
@@ -529,7 +529,26 @@ birda models install birdnet-v24
 - **Sample rate**: 48kHz
 - **Segment duration**: 3 seconds
 - **Species**: ~6,000 bird species globally
+- **Range filtering**: Supported with meta model
 - **Source**: [BirdNET-onnx on Hugging Face](https://huggingface.co/justinchuby/BirdNET-onnx) (optimized ONNX conversion by Justin Chu)
+
+### BSG Finnish Birds v4.4
+
+```bash
+birda models install bsg-fi-v44
+```
+
+- **License**: BSG-NC-1.0 (non-commercial use only, no app stores)
+- **Vendor**: University of Jyväskylä
+- **Sample rate**: 48kHz
+- **Segment duration**: 3 seconds
+- **Species**: 263 Finnish bird species (breeders, migrants, vagrants)
+- **Architecture**: Fine-tuned BirdNET model with custom classification head
+- **Range filtering**: Not supported (regional specialization)
+- **Source**: [BSG on Hugging Face](https://huggingface.co/tphakala/BSG)
+- **Citation**: Nokelainen et al. (2024) [doi:10.5334/cstp.710](https://doi.org/10.5334/cstp.710)
+
+The BSG model is optimized for bird sound identification in Finland. It uses a BirdNET-based feature extractor combined with a custom classification head trained on Finnish soundscapes, expert-annotated clips from Xeno-canto, and targeted field recordings. Predictions are calibrated per species and filtered by seasonal/geographic plausibility.
 
 ### Google Perch v2
 
@@ -565,6 +584,7 @@ MIT License - see [LICENSE](LICENSE) for details.
 ## Acknowledgments
 
 - [BirdNET](https://github.com/birdnet-team/BirdNET-Analyzer) by the K. Lisa Yang Center for Conservation Bioacoustics
+- [BSG](https://github.com/luomus/BSG) by the University of Jyväskylä for Finnish bird sound classification
 - [Justin Chu](https://github.com/justinchuby) for converting BirdNET TFLite model to optimized ONNX format
 - [birdnet-onnx-converter](https://github.com/tphakala/birdnet-onnx-converter) for custom model conversion and optimization
 - [Perch](https://github.com/google-research/perch) by Google Research for bioacoustic analysis

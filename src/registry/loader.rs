@@ -5,13 +5,46 @@ use crate::error::{Error, Result};
 use std::path::PathBuf;
 
 /// Load registry from user config or bundled default.
+///
+/// If a user registry exists but the bundled registry has a higher version,
+/// the user registry is replaced with the bundled version.
 pub fn load_registry() -> Result<Registry> {
     let registry_path = registry_file_path()?;
 
-    if registry_path.exists() {
-        load_from_file(&registry_path)
+    // Load bundled registry
+    let bundled_registry = load_bundled_registry()?;
+
+    // If user registry doesn't exist, bootstrap and return
+    if !registry_path.exists() {
+        return bootstrap_registry(&registry_path, &bundled_registry);
+    }
+
+    // Load user registry, falling back to bundled on error
+    let user_registry = match load_from_file(&registry_path) {
+        Ok(registry) => registry,
+        Err(e) => {
+            tracing::warn!(
+                "Failed to load user registry at {}: {}. Using bundled registry.",
+                registry_path.display(),
+                e
+            );
+            // Overwrite corrupted file with bundled registry
+            write_registry_file(&registry_path, &bundled_registry)?;
+            return Ok(bundled_registry);
+        }
+    };
+
+    // Compare versions - if bundled is newer, replace user's registry
+    if bundled_registry.registry_version > user_registry.registry_version {
+        tracing::info!(
+            "Updating registry from version {} to {}",
+            user_registry.registry_version,
+            bundled_registry.registry_version
+        );
+        write_registry_file(&registry_path, &bundled_registry)?;
+        Ok(bundled_registry)
     } else {
-        bootstrap_registry(&registry_path)
+        Ok(user_registry)
     }
 }
 
@@ -33,32 +66,39 @@ fn load_from_file(path: &std::path::Path) -> Result<Registry> {
     })
 }
 
-/// Bootstrap registry from bundled default.
-fn bootstrap_registry(dest: &std::path::Path) -> Result<Registry> {
+/// Load bundled registry from binary.
+fn load_bundled_registry() -> Result<Registry> {
     const BUNDLED_REGISTRY: &str = include_str!("../../registry.json");
 
-    // Parse bundled registry
-    let registry: Registry =
-        serde_json::from_str(BUNDLED_REGISTRY).map_err(|e| Error::RegistryParse {
-            path: PathBuf::from("bundled://registry.json"),
-            source: e,
-        })?;
+    serde_json::from_str(BUNDLED_REGISTRY).map_err(|e| Error::RegistryParse {
+        path: PathBuf::from("bundled://registry.json"),
+        source: e,
+    })
+}
 
+/// Write registry to file.
+fn write_registry_file(path: &std::path::Path, registry: &Registry) -> Result<()> {
     // Ensure config directory exists
-    if let Some(parent) = dest.parent() {
+    if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(Error::Io)?;
     }
 
-    // Write to user config
-    let content = serde_json::to_string_pretty(&registry)
+    // Serialize and write to disk
+    let content = serde_json::to_string_pretty(registry)
         .map_err(|e| Error::RegistrySerialize { source: e })?;
 
-    std::fs::write(dest, content).map_err(|e| Error::RegistryWrite {
-        path: dest.to_path_buf(),
+    std::fs::write(path, content).map_err(|e| Error::RegistryWrite {
+        path: path.to_path_buf(),
         source: e,
     })?;
 
-    Ok(registry)
+    Ok(())
+}
+
+/// Bootstrap registry from bundled default.
+fn bootstrap_registry(dest: &std::path::Path, registry: &Registry) -> Result<Registry> {
+    write_registry_file(dest, registry)?;
+    Ok(registry.clone())
 }
 
 /// Find model entry by ID.
@@ -75,6 +115,7 @@ mod tests {
     fn test_find_model_by_id() {
         let registry = Registry {
             schema_version: "1.0".into(),
+            registry_version: 0,
             models: vec![
                 ModelEntry {
                     id: "test-1".into(),
@@ -179,5 +220,6 @@ mod tests {
         // Verify we have expected models
         assert!(find_model(&registry, "birdnet-v24").is_some());
         assert!(find_model(&registry, "perch-v2").is_some());
+        assert!(find_model(&registry, "bsg-fi-v44").is_some());
     }
 }

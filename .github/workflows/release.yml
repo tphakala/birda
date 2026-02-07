@@ -88,6 +88,11 @@ jobs:
             artifact: birda-windows-x64
             ext: ".exe"
 
+          - target: aarch64-apple-darwin
+            os: macos-latest
+            artifact: birda-macos-arm64
+            ext: ""
+
     steps:
       - uses: actions/checkout@v6
 
@@ -112,7 +117,7 @@ jobs:
         run: cargo build --release --no-default-features --target ${{ matrix.target }}
 
       - name: Download ONNX Runtime (Linux)
-        if: runner.os != 'Windows'
+        if: matrix.target == 'x86_64-unknown-linux-gnu'
         run: |
           mkdir -p lib-staging
 
@@ -121,6 +126,17 @@ jobs:
             -o onnxruntime.tgz
           tar xzf onnxruntime.tgz
           cp onnxruntime-linux-x64-${{ env.ONNXRUNTIME_VERSION }}/lib/libonnxruntime.so* lib-staging/
+
+      - name: Download ONNX Runtime (macOS ARM64)
+        if: matrix.target == 'aarch64-apple-darwin'
+        run: |
+          mkdir -p lib-staging
+
+          # Download ONNX Runtime CPU package
+          curl -L "https://github.com/microsoft/onnxruntime/releases/download/v${{ env.ONNXRUNTIME_VERSION }}/onnxruntime-osx-arm64-${{ env.ONNXRUNTIME_VERSION }}.tgz" \
+            -o onnxruntime.tgz
+          tar xzf onnxruntime.tgz
+          cp onnxruntime-osx-arm64-${{ env.ONNXRUNTIME_VERSION }}/lib/libonnxruntime*.dylib lib-staging/
 
       - name: Download ONNX Runtime (Windows)
         if: runner.os == 'Windows'
@@ -140,8 +156,14 @@ jobs:
           mkdir -p dist
           cp target/${{ matrix.target }}/release/birda dist/
 
-          # Copy ONNX Runtime next to binary (versioned .so only - runtime finds via ORT_DYLIB_PATH)
-          cp lib-staging/libonnxruntime.so.${{ env.ONNXRUNTIME_VERSION }} dist/libonnxruntime.so
+          # Copy ONNX Runtime next to binary
+          if [ "${{ matrix.target }}" = "x86_64-unknown-linux-gnu" ]; then
+            # Linux: versioned .so only - runtime finds via ORT_DYLIB_PATH
+            cp lib-staging/libonnxruntime.so.${{ env.ONNXRUNTIME_VERSION }} dist/libonnxruntime.so
+          elif [ "${{ matrix.target }}" = "aarch64-apple-darwin" ]; then
+            # macOS: copy .dylib files
+            cp lib-staging/libonnxruntime*.dylib dist/
+          fi
 
           cp README.md dist/
           cp LICENSE dist/ 2>/dev/null || true
@@ -719,6 +741,13 @@ jobs:
             cd ../..
           fi
 
+          # Create tar.gz for macOS ARM64 CPU (include version in filename)
+          if [ -d "artifacts/birda-macos-arm64" ]; then
+            cd artifacts/birda-macos-arm64
+            tar -czvf ../birda-macos-arm64-${VERSION}.tar.gz *
+            cd ../..
+          fi
+
           echo "=== Created archives ==="
           ls -la artifacts/*.tar.gz artifacts/*.zip 2>/dev/null || true
 
@@ -733,6 +762,7 @@ jobs:
             |---------|-------------|
             | `birda-linux-x64-${{ github.ref_name }}.tar.gz` | Linux CPU-only |
             | `birda-windows-x64-${{ github.ref_name }}.zip` | Windows CPU-only |
+            | `birda-macos-arm64-${{ github.ref_name }}.tar.gz` | macOS Apple Silicon CPU-only |
             | `birda-linux-x64-cuda-${{ github.ref_name }}.tar.gz` | Linux with GPU support (bundled CUDA) |
             | `birda-windows-x64-cuda-${{ github.ref_name }}.zip` | Windows with GPU support (bundled CUDA) |
             | `birda-windows-x64-cuda-${{ github.ref_name }}-setup.exe` | Windows GPU installer (adds to PATH) |

@@ -19,8 +19,20 @@ pub fn load_registry() -> Result<Registry> {
         return bootstrap_registry(&registry_path, &bundled_registry);
     }
 
-    // Load user registry
-    let user_registry = load_from_file(&registry_path)?;
+    // Load user registry, falling back to bundled on error
+    let user_registry = match load_from_file(&registry_path) {
+        Ok(registry) => registry,
+        Err(e) => {
+            tracing::warn!(
+                "Failed to load user registry at {}: {}. Using bundled registry.",
+                registry_path.display(),
+                e
+            );
+            // Overwrite corrupted file with bundled registry
+            write_registry_file(&registry_path, &bundled_registry)?;
+            return Ok(bundled_registry);
+        }
+    };
 
     // Compare versions - if bundled is newer, replace user's registry
     if bundled_registry.registry_version > user_registry.registry_version {
@@ -208,5 +220,6 @@ mod tests {
         // Verify we have expected models
         assert!(find_model(&registry, "birdnet-v24").is_some());
         assert!(find_model(&registry, "perch-v2").is_some());
+        assert!(find_model(&registry, "bsg-fi-v44").is_some());
     }
 }

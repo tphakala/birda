@@ -1,6 +1,6 @@
 {
   "schema_version": "1.0",
-  "registry_version": 1,
+  "registry_version": 2,
   "models": [
     {
       "id": "birdnet-v24",
@@ -307,7 +307,7 @@
       },
       "files": {
         "model": {
-          "url": "https://huggingface.co/tphakala/BSG/resolve/main/BSG_birds_Finland_v4_4_fp32.onnx",
+          "url": "https://huggingface.co/tphakala/BSG/resolve/main/BSG_birds_Finland_v4_4_fused_fp32.onnx",
           "filename": "bsg-fi-v44.onnx",
           "sha256": null
         },

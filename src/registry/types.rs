@@ -7,6 +7,9 @@ use serde::{Deserialize, Serialize};
 pub struct Registry {
     /// Schema version string (e.g., "1.0").
     pub schema_version: String,
+    /// Registry content version (increments when models are added/updated).
+    #[serde(default)]
+    pub registry_version: u32,
     /// List of available models.
     pub models: Vec<ModelEntry>,
 }
@@ -103,9 +106,10 @@ mod tests {
 
     #[test]
     fn test_deserialize_empty_registry() {
-        let json = r#"{"schema_version":"1.0","models":[]}"#;
+        let json = r#"{"schema_version":"1.0","registry_version":0,"models":[]}"#;
         let registry: Registry = serde_json::from_str(json).unwrap();
         assert_eq!(registry.schema_version, "1.0");
+        assert_eq!(registry.registry_version, 0);
         assert!(registry.models.is_empty());
     }
 
@@ -151,6 +155,16 @@ mod tests {
         assert_eq!(entry.name, "Test Model");
         assert_eq!(entry.license.r#type, "MIT");
         assert!(entry.recommended);
+    }
+
+    #[test]
+    fn test_deserialize_registry_without_version() {
+        // Test backward compatibility - old registries without registry_version
+        let json = r#"{"schema_version":"1.0","models":[]}"#;
+        let registry: Registry = serde_json::from_str(json).unwrap();
+        assert_eq!(registry.schema_version, "1.0");
+        assert_eq!(registry.registry_version, 0); // Should default to 0
+        assert!(registry.models.is_empty());
     }
 
     #[test]

@@ -585,6 +585,7 @@ MIT License - see [LICENSE](LICENSE) for details.
 
 - [BirdNET](https://github.com/birdnet-team/BirdNET-Analyzer) by the K. Lisa Yang Center for Conservation Bioacoustics
 - [BSG](https://github.com/luomus/BSG) by the University of Jyväskylä for Finnish bird sound classification
+- [birdnet-bsg-fuser](https://github.com/tphakala/birdnet-bsg-fuser) for fusing BirdNET feature extractor with BSG classifier
 - [Justin Chu](https://github.com/justinchuby) for converting BirdNET TFLite model to optimized ONNX format
 - [birdnet-onnx-converter](https://github.com/tphakala/birdnet-onnx-converter) for custom model conversion and optimization
 - [Perch](https://github.com/google-research/perch) by Google Research for bioacoustic analysis

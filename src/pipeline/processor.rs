@@ -594,19 +594,33 @@ pub fn process_file(
     if let Some(reporter) = reporter {
         // Stdout mode - emit detections event instead of writing files
 
-        // Construct BSG metadata if BSG processing was applied
-        let bsg_metadata = bsg_params.map(|(lat, lon, day_of_year)| {
+        // Construct BSG metadata if BSG model is used
+        let bsg_metadata = if classifier.has_bsg_processor() {
             use crate::output::BsgMetadata;
 
-            #[allow(clippy::cast_possible_truncation)]
-            BsgMetadata {
-                calibration_applied: true,
-                sdm_applied: true, // BSG params present means SDM was attempted
-                latitude: Some(lat as f32),
-                longitude: Some(lon as f32),
-                day_of_year,
+            if let Some((lat, lon, day_of_year)) = bsg_params {
+                // SDM mode - calibration + geographic/seasonal filtering
+                #[allow(clippy::cast_possible_truncation)]
+                Some(BsgMetadata {
+                    calibration_applied: true,
+                    sdm_applied: true,
+                    latitude: Some(lat as f32),
+                    longitude: Some(lon as f32),
+                    day_of_year,
+                })
+            } else {
+                // Calibration-only mode - no SDM parameters provided
+                Some(BsgMetadata {
+                    calibration_applied: true,
+                    sdm_applied: false,
+                    latitude: None,
+                    longitude: None,
+                    day_of_year: None,
+                })
             }
-        });
+        } else {
+            None
+        };
 
         reporter.detections(input_path, &detections, bsg_metadata.as_ref());
     } else {

@@ -307,7 +307,7 @@ pub struct DetectionsPayload {
     pub bsg: Option<BsgMetadata>,
 }
 
-/// BSG (Bird Survey Group) Finland post-processing metadata.
+/// BSG (Bird Sounds Global) Finland post-processing metadata.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BsgMetadata {
     /// Whether calibration was applied (always true for BSG models).

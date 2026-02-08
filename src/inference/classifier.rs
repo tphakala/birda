@@ -1,11 +1,13 @@
 //! Inference classifier wrapper around birdnet-onnx.
 
-use crate::config::{InferenceDevice, ModelConfig as BirdaModelConfig, tensorrt_cache_dir};
+use crate::config::{
+    InferenceDevice, ModelConfig as BirdaModelConfig, ModelType, tensorrt_cache_dir,
+};
 use crate::error::{Error, Result};
 use birdnet_onnx::{
-    BatchInferenceContext, Classifier, ClassifierBuilder, ExecutionProviderInfo, InferenceOptions,
-    LocationScore, PredictionResult, TensorRTConfig, available_execution_providers,
-    ort_execution_providers,
+    BatchInferenceContext, BsgPostProcessor, Classifier, ClassifierBuilder, ExecutionProviderInfo,
+    InferenceOptions, LocationScore, PredictionResult, TensorRTConfig,
+    available_execution_providers, ort_execution_providers,
 };
 use std::collections::HashSet;
 use std::path::PathBuf;
@@ -36,6 +38,8 @@ pub struct BirdClassifier {
     species_list: Option<HashSet<String>>,
     /// Whether `TensorRT` is being used (for warmup messaging).
     uses_tensorrt: bool,
+    /// BSG post-processor (for BSG models only).
+    bsg_processor: Option<BsgPostProcessor>,
 }
 
 impl BirdClassifier {
@@ -207,7 +211,11 @@ impl BirdClassifier {
         );
 
         // Build optional range filter and compute location scores
-        let range_filter_data = if let Some(rf_config) = range_filter_config {
+        // Note: Range filter is not compatible with BSG models (different species set)
+        let range_filter_data = if model_config.model_type == ModelType::BsgFinland {
+            // BSG models use SDM for geographic/seasonal filtering, skip range filter
+            None
+        } else if let Some(rf_config) = range_filter_config {
             use crate::inference::range_filter::RangeFilter;
 
             let filter = RangeFilter::from_config(
@@ -246,11 +254,46 @@ impl BirdClassifier {
         // Check if TensorRT is being used (for warmup messaging)
         let uses_tensorrt = requested_provider == birdnet_onnx::ExecutionProviderInfo::TensorRt;
 
+        // Build BSG post-processor if this is a BSG model
+        let bsg_processor = if model_config.model_type == ModelType::BsgFinland {
+            // Calibration is required for BSG models
+            let calibration =
+                model_config
+                    .bsg_calibration
+                    .as_ref()
+                    .ok_or_else(|| Error::BsgConfig {
+                        message: "BSG model requires calibration file".to_string(),
+                    })?;
+
+            let mut builder = BsgPostProcessor::builder()
+                .labels_path(model_config.labels.to_string_lossy().to_string())
+                .calibration_path(calibration.to_string_lossy().to_string());
+
+            // Add optional SDM files
+            if let Some(migration) = &model_config.bsg_migration {
+                builder = builder.migration_path(migration.to_string_lossy().to_string());
+            }
+            if let Some(maps) = &model_config.bsg_distribution_maps {
+                builder = builder.distribution_maps_path(maps.to_string_lossy().to_string());
+            }
+
+            Some(builder.build().map_err(|e| match e {
+                birdnet_onnx::Error::BsgCalibrationLoad(msg) => Error::BsgCalibration(msg),
+                birdnet_onnx::Error::BsgMapsLoad(msg) => Error::BsgDistributionMaps(msg),
+                other => Error::BsgConfig {
+                    message: other.to_string(),
+                },
+            })?)
+        } else {
+            None
+        };
+
         Ok(Self {
             inner,
             range_filter_data,
             species_list,
             uses_tensorrt,
+            bsg_processor,
         })
     }
 
@@ -336,6 +379,49 @@ impl BirdClassifier {
             .map_err(|e| Error::Inference {
                 reason: e.to_string(),
             })
+    }
+
+    /// Apply BSG post-processing to a prediction result.
+    ///
+    /// For BSG models, applies per-species calibration (always) and optionally
+    /// Species Distribution Model (SDM) adjustment if location and date are provided.
+    ///
+    /// For non-BSG models, returns the result unchanged.
+    ///
+    /// # Arguments
+    ///
+    /// * `result` - Prediction result from classifier
+    /// * `lat` - Optional latitude for SDM adjustment
+    /// * `lon` - Optional longitude for SDM adjustment
+    /// * `day_of_year` - Optional day of year (1-366) for SDM adjustment
+    pub fn apply_bsg_postprocessing(
+        &self,
+        result: PredictionResult,
+        lat: Option<f32>,
+        lon: Option<f32>,
+        day_of_year: Option<u32>,
+    ) -> Result<PredictionResult> {
+        let Some(bsg) = &self.bsg_processor else {
+            return Ok(result); // Not a BSG model
+        };
+
+        if let (Some(lat), Some(lon), Some(day)) = (lat, lon, day_of_year) {
+            // Apply calibration + SDM
+            bsg.process(&result, lat, lon, day).map_err(|e| match e {
+                birdnet_onnx::Error::BsgProcessing(msg) => Error::BsgConfig { message: msg },
+                birdnet_onnx::Error::InvalidDayOfYear { day_of_year } => Error::BsgConfig {
+                    message: format!("invalid day of year: {day_of_year} (must be 1-366)"),
+                },
+                other => Error::Inference {
+                    reason: other.to_string(),
+                },
+            })
+        } else {
+            // Apply calibration only
+            bsg.calibrate(&result).map_err(|e| Error::Inference {
+                reason: e.to_string(),
+            })
+        }
     }
 
     /// Create a batch inference context for efficient repeated batch inference.

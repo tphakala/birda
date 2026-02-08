@@ -204,7 +204,7 @@ impl BirdClassifier {
 
         info!(
             "Loaded model: {:?}, sample_rate: {}, segment_duration: {}s, device: {}",
-            inner.config().model_type,
+            model_config.model_type,
             inner.config().sample_rate,
             inner.config().segment_duration,
             actual_device_msg

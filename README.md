@@ -542,13 +542,44 @@ birda models install bsg-fi-v44
 - **Vendor**: University of Jyväskylä
 - **Sample rate**: 48kHz
 - **Segment duration**: 3 seconds
-- **Species**: 263 Finnish bird species (breeders, migrants, vagrants)
+- **Species**: 265 Finnish bird species (breeders, migrants, vagrants)
 - **Architecture**: Fine-tuned BirdNET model with custom classification head
-- **Range filtering**: Not supported (regional specialization)
+- **Post-processing**: Automatic calibration + optional Species Distribution Model (SDM)
+- **Range filtering**: Not supported (uses BSG SDM instead)
 - **Source**: [BSG on Hugging Face](https://huggingface.co/tphakala/BSG)
 - **Citation**: Nokelainen et al. (2024) [doi:10.5334/cstp.710](https://doi.org/10.5334/cstp.710)
 
-The BSG model is optimized for bird sound identification in Finland. It uses a BirdNET-based feature extractor combined with a custom classification head trained on Finnish soundscapes, expert-annotated clips from Xeno-canto, and targeted field recordings. Predictions are calibrated per species and filtered by seasonal/geographic plausibility.
+The BSG model is optimized for bird sound identification in Finland. It uses a BirdNET-based feature extractor combined with a custom classification head trained on Finnish soundscapes, expert-annotated clips from Xeno-canto, and targeted field recordings.
+
+**Post-processing:**
+
+1. **Calibration (always applied)**: Per-species logistic regression (Platt scaling) to improve probability estimates
+2. **Species Distribution Model (optional)**: Filters predictions by seasonal and geographic plausibility using migration curves and distribution maps
+
+**Usage with SDM (recommended for field recordings in Finland):**
+
+```bash
+# With location and explicit date
+birda recording.wav -m bsg-fi-v44 --lat 60.17 --lon 24.94 --day-of-year 150
+
+# With location only (date auto-detected from file timestamp)
+birda recording.wav -m bsg-fi-v44 --lat 60.17 --lon 24.94
+
+# Calibration only (no geographic/seasonal filtering)
+birda recording.wav -m bsg-fi-v44
+```
+
+**CLI options for BSG:**
+
+- `--lat` - Latitude for SDM filtering
+- `--lon` - Longitude for SDM filtering
+- `--day-of-year` - Day of year (1-366), auto-detected from file modification time if not provided
+
+**Notes:**
+
+- BirdNET range filtering (`--slist`, `--week`, `--month`) is **not compatible** with BSG models due to different species sets
+- SDM filtering improves precision by reducing false positives from non-occurring species
+- Day-of-year auto-detection uses file modification timestamp when `--day-of-year` is omitted
 
 ### Google Perch v2
 

@@ -120,6 +120,7 @@ fn run_streaming_inference(
     batch_context: &mut Option<BatchInferenceContext>,
     reporter: Option<&dyn crate::output::ProgressReporter>,
     estimated_segments: usize,
+    bsg_params: Option<(f64, f64, Option<u32>)>,
 ) -> Result<(Vec<Detection>, usize)> {
     let mut detections = Vec::new();
     let mut batch: Vec<AudioChunk> = Vec::with_capacity(batch_size);
@@ -144,6 +145,7 @@ fn run_streaming_inference(
                 reporter,
                 &mut segments_done,
                 estimated_segments,
+                bsg_params,
             )?;
             batch.clear();
         }
@@ -163,6 +165,7 @@ fn run_streaming_inference(
             reporter,
             &mut segments_done,
             estimated_segments,
+            bsg_params,
         )?;
     }
 
@@ -208,6 +211,7 @@ fn inference_watchdog_timeout() -> u64 {
 /// # Arguments
 ///
 /// * `target_batch_size` - Target batch size for `TensorRT` alignment (pads with silence if needed)
+/// * `bsg_params` - Optional (lat, lon, `day_of_year`) for BSG SDM, `day_of_year=None` for auto-detect
 #[allow(clippy::too_many_arguments)]
 fn process_batch(
     batch: &[AudioChunk],
@@ -221,6 +225,7 @@ fn process_batch(
     reporter: Option<&dyn crate::output::ProgressReporter>,
     segments_done: &mut usize,
     estimated_segments: usize,
+    bsg_params: Option<(f64, f64, Option<u32>)>,
 ) -> Result<()> {
     use crate::gpu::start_inference_watchdog;
     use crate::output::progress::inc_progress;
@@ -256,7 +261,7 @@ fn process_batch(
     );
 
     let options = InferenceOptions::default();
-    let results = if batch_size == 1 {
+    let mut results = if batch_size == 1 {
         vec![classifier.predict(segments[0], &options)?]
     } else if let Some(ctx) = batch_context.as_mut() {
         // Use pre-allocated context for memory-efficient batch inference
@@ -268,7 +273,42 @@ fn process_batch(
 
     // Watchdog is automatically cancelled when _watchdog drops here
 
-    // Apply range filtering if configured
+    // Apply BSG post-processing (calibration always, SDM optional)
+    // For BSG models, calibration is always applied even without location/date
+    // Day-of-year auto-detection happens once per file in process_file()
+    if classifier.has_bsg_processor() {
+        if let Some((lat, lon, day_of_year)) = bsg_params {
+            // Apply BSG post-processing (calibration + SDM if day available)
+            #[allow(clippy::cast_possible_truncation)]
+            {
+                results = results
+                    .into_iter()
+                    .map(|r| {
+                        if let Some(day) = day_of_year {
+                            // Apply calibration + SDM
+                            classifier.apply_bsg_postprocessing(
+                                r,
+                                Some(lat as f32),
+                                Some(lon as f32),
+                                Some(day),
+                            )
+                        } else {
+                            // Apply calibration only (SDM disabled due to missing day-of-year)
+                            classifier.apply_bsg_postprocessing(r, None, None, None)
+                        }
+                    })
+                    .collect::<Result<Vec<_>>>()?;
+            }
+        } else {
+            // No SDM parameters - apply calibration only
+            results = results
+                .into_iter()
+                .map(|r| classifier.apply_bsg_postprocessing(r, None, None, None))
+                .collect::<Result<Vec<_>>>()?;
+        }
+    }
+
+    // Apply range filtering if configured (skipped for BSG models)
     let results = classifier.apply_range_filter(results)?;
 
     // Only process results from valid segments (excludes padding)
@@ -327,6 +367,7 @@ fn process_batch(
 /// * `csv_bom_enabled` - Whether to include UTF-8 BOM in CSV output for Excel compatibility
 /// * `model_name` - Model name for JSON output metadata
 /// * `range_filter_params` - Optional (lat, lon, week) for JSON output metadata
+/// * `bsg_params` - Optional (lat, lon, `day_of_year`) for BSG SDM, `day_of_year=None` for auto-detect
 /// * `reporter` - Optional reporter for stdout mode (emits detections instead of writing files)
 #[allow(clippy::too_many_arguments)]
 pub fn process_file(
@@ -342,6 +383,7 @@ pub fn process_file(
     csv_bom_enabled: bool,
     model_name: &str,
     range_filter_params: Option<(f64, f64, u8)>,
+    bsg_params: Option<(f64, f64, Option<u32>)>,
     reporter: Option<&dyn crate::output::ProgressReporter>,
 ) -> Result<ProcessResult> {
     use crate::audio::StreamingDecoder;
@@ -367,6 +409,30 @@ pub fn process_file(
     let duration_hint = decoder.duration_hint();
     let target_rate = classifier.sample_rate();
     let segment_duration = classifier.segment_duration();
+
+    // Resolve BSG parameters with day-of-year auto-detection (once per file, not per batch)
+    let resolved_bsg_params = if let Some((lat, lon, day_of_year)) = bsg_params {
+        // Auto-detect day-of-year if not provided
+        let resolved_day = day_of_year.map_or_else(
+            || {
+                use crate::utils::date::auto_detect_day_of_year;
+                match auto_detect_day_of_year(input_path) {
+                    Ok(d) => {
+                        debug!("Auto-detected day-of-year: {}", d);
+                        Some(d)
+                    }
+                    Err(e) => {
+                        tracing::warn!("{}, SDM will not be applied", e);
+                        None
+                    }
+                }
+            },
+            Some,
+        );
+        Some((lat, lon, resolved_day))
+    } else {
+        None
+    };
 
     // Create batch context for GPU memory efficiency (if batch_size > 1)
     // Context is created once and reused for all batches in this file
@@ -484,6 +550,7 @@ pub fn process_file(
         &mut batch_context,
         reporter,
         estimated_segments_usize,
+        resolved_bsg_params,
     )?;
 
     // Wait for decode thread to finish
@@ -536,7 +603,36 @@ pub fn process_file(
     // Write output files or emit detections event
     if let Some(reporter) = reporter {
         // Stdout mode - emit detections event instead of writing files
-        reporter.detections(input_path, &detections);
+
+        // Construct BSG metadata if BSG model is used
+        let bsg_metadata = if classifier.has_bsg_processor() {
+            use crate::output::BsgMetadata;
+
+            if let Some((lat, lon, day_of_year)) = resolved_bsg_params {
+                // SDM parameters provided (lat/lon), day may be auto-detected or missing
+                #[allow(clippy::cast_possible_truncation)]
+                Some(BsgMetadata {
+                    calibration_applied: true,
+                    sdm_applied: day_of_year.is_some(), // SDM only applied if day available
+                    latitude: Some(lat as f32),
+                    longitude: Some(lon as f32),
+                    day_of_year,
+                })
+            } else {
+                // Calibration-only mode - no SDM parameters provided
+                Some(BsgMetadata {
+                    calibration_applied: true,
+                    sdm_applied: false,
+                    latitude: None,
+                    longitude: None,
+                    day_of_year: None,
+                })
+            }
+        } else {
+            None
+        };
+
+        reporter.detections(input_path, &detections, bsg_metadata.as_ref());
     } else {
         // File mode - write output files
         for format in formats {

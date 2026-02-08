@@ -318,6 +318,11 @@ pub struct AnalyzeArgs {
           requires = "month", conflicts_with = "week")]
     pub day: Option<u32>,
 
+    /// Day of year for BSG SDM adjustment (1-366).
+    /// If not provided and BSG model is used, auto-detected from file timestamp.
+    #[arg(long, value_parser = clap::value_parser!(u32).range(1..=366), env = "BIRDA_DAY_OF_YEAR")]
+    pub day_of_year: Option<u32>,
+
     /// Range filter threshold (0.0-1.0).
     #[arg(long, value_parser = parse_confidence, env = "BIRDA_RANGE_THRESHOLD")]
     pub range_threshold: Option<f32>,

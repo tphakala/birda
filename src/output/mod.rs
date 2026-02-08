@@ -15,9 +15,9 @@ pub use audacity::AudacityWriter;
 pub use csv::CsvWriter;
 pub use json::JsonResultWriter;
 pub use json_envelope::{
-    AvailableModelEntry, AvailableModelsPayload, BatchProgress, CancelReason, CancelledPayload,
-    ClipExtractionEntry, ClipExtractionPayload, ConfigPathPayload, ConfigPayload, DetectionInfo,
-    DetectionsPayload, DownloadProgress, ErrorPayload, ErrorSeverity, EventType,
+    AvailableModelEntry, AvailableModelsPayload, BatchProgress, BsgMetadata, CancelReason,
+    CancelledPayload, ClipExtractionEntry, ClipExtractionPayload, ConfigPathPayload, ConfigPayload,
+    DetectionInfo, DetectionsPayload, DownloadProgress, ErrorPayload, ErrorSeverity, EventType,
     FileCompletedPayload, FileErrorInfo, FileProgress, FileStartedPayload, FileStatus,
     JsonEnvelope, ModelCheckEntry, ModelCheckPayload, ModelDetails, ModelEntry, ModelInfoPayload,
     ModelListPayload, PipelineCompletedPayload, PipelineStartedPayload, PipelineStatus,

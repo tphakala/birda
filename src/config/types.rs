@@ -35,13 +35,25 @@ pub struct ModelConfig {
     /// Path to the labels file.
     pub labels: PathBuf,
 
-    /// Model type (birdnet-v24, birdnet-v30, perch-v2).
+    /// Model type (birdnet-v24, birdnet-v30, perch-v2, bsg-finland).
     #[serde(rename = "type")]
     pub model_type: ModelType,
 
     /// Optional meta model for range filtering.
     #[serde(default)]
     pub meta_model: Option<PathBuf>,
+
+    /// BSG calibration CSV file (required for BSG models).
+    #[serde(default)]
+    pub bsg_calibration: Option<PathBuf>,
+
+    /// BSG migration CSV file (required for BSG models).
+    #[serde(default)]
+    pub bsg_migration: Option<PathBuf>,
+
+    /// BSG distribution maps binary file (required for BSG models).
+    #[serde(default)]
+    pub bsg_distribution_maps: Option<PathBuf>,
 }
 
 /// Default analysis settings.
@@ -82,6 +94,11 @@ pub struct DefaultsConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub species_list_file: Option<PathBuf>,
 
+    /// Day of year for BSG SDM adjustment (1-366).
+    /// If not set, auto-detected from file timestamp when BSG model is used.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub day_of_year: Option<u32>,
+
     /// CSV column configuration.
     #[serde(default)]
     pub csv_columns: CsvColumnsConfig,
@@ -105,6 +122,7 @@ impl Default for DefaultsConfig {
             range_threshold: default_range_threshold(),
             meta_model: None,
             species_list_file: None,
+            day_of_year: None,
             csv_columns: CsvColumnsConfig::default(),
         }
     }
@@ -281,6 +299,9 @@ pub enum ModelType {
     /// Google Perch v2 model.
     #[value(name = "perch-v2")]
     PerchV2,
+    /// BSG Finland model (`BirdNET` v2.4 backbone + Finnish classification head).
+    #[value(name = "bsg-finland")]
+    BsgFinland,
 }
 
 impl std::fmt::Display for ModelType {
@@ -289,6 +310,7 @@ impl std::fmt::Display for ModelType {
             Self::BirdnetV24 => write!(f, "birdnet-v24"),
             Self::BirdnetV30 => write!(f, "birdnet-v30"),
             Self::PerchV2 => write!(f, "perch-v2"),
+            Self::BsgFinland => write!(f, "bsg-finland"),
         }
     }
 }
@@ -301,6 +323,7 @@ impl std::str::FromStr for ModelType {
             "birdnet-v24" => Ok(Self::BirdnetV24),
             "birdnet-v30" => Ok(Self::BirdnetV30),
             "perch-v2" => Ok(Self::PerchV2),
+            "bsg-finland" => Ok(Self::BsgFinland),
             other => Err(crate::error::Error::InvalidModelType {
                 value: other.to_string(),
             }),

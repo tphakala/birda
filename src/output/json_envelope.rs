@@ -302,6 +302,27 @@ pub struct DetectionsPayload {
     pub file: PathBuf,
     /// All detections found in the file.
     pub detections: Vec<DetectionInfo>,
+    /// BSG post-processing metadata (if BSG model used).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub bsg: Option<BsgMetadata>,
+}
+
+/// BSG (Bird Sounds Global) Finland post-processing metadata.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BsgMetadata {
+    /// Whether calibration was applied (always true for BSG models).
+    pub calibration_applied: bool,
+    /// Whether SDM (Species Distribution Model) was applied.
+    pub sdm_applied: bool,
+    /// Latitude used for SDM (if SDM applied).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub latitude: Option<f32>,
+    /// Longitude used for SDM (if SDM applied).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub longitude: Option<f32>,
+    /// Day of year used for SDM (if SDM applied).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub day_of_year: Option<u32>,
 }
 
 /// Information about a single detection.
@@ -773,10 +794,41 @@ mod tests {
                 start_time: 0.0,
                 end_time: 3.0,
             }],
+            bsg: None,
         };
         let json = serde_json::to_string(&payload).expect("serialize");
         assert!(json.contains("\"file\":\"audio.wav\""));
         assert!(json.contains("\"detections\""));
         assert!(json.contains("\"Great Tit\""));
+    }
+
+    #[test]
+    fn test_detections_payload_with_bsg_metadata() {
+        let payload = DetectionsPayload {
+            file: PathBuf::from("audio.wav"),
+            detections: vec![DetectionInfo {
+                species: "Parus major_Great Tit".to_string(),
+                common_name: "Great Tit".to_string(),
+                scientific_name: "Parus major".to_string(),
+                confidence: 0.95,
+                start_time: 0.0,
+                end_time: 3.0,
+            }],
+            bsg: Some(BsgMetadata {
+                calibration_applied: true,
+                sdm_applied: true,
+                latitude: Some(60.1699),
+                longitude: Some(24.9384),
+                day_of_year: Some(150),
+            }),
+        };
+        let json = serde_json::to_string(&payload).expect("serialize");
+        let actual: serde_json::Value = serde_json::from_str(&json).expect("deserialize");
+
+        assert!(actual["bsg"]["calibration_applied"].as_bool().unwrap());
+        assert!(actual["bsg"]["sdm_applied"].as_bool().unwrap());
+        assert_eq!(actual["bsg"]["latitude"].as_f64().unwrap(), 60.1699);
+        assert_eq!(actual["bsg"]["longitude"].as_f64().unwrap(), 24.9384);
+        assert_eq!(actual["bsg"]["day_of_year"].as_u64().unwrap(), 150);
     }
 }

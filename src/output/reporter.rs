@@ -5,8 +5,8 @@
 
 use crate::config::OutputMode;
 use crate::output::json_envelope::{
-    BatchProgress, CancelReason, CancelledPayload, ErrorPayload, ErrorSeverity, EventType,
-    FileCompletedPayload, FileErrorInfo, FileProgress, FileStartedPayload, FileStatus,
+    BatchProgress, BsgMetadata, CancelReason, CancelledPayload, ErrorPayload, ErrorSeverity,
+    EventType, FileCompletedPayload, FileErrorInfo, FileProgress, FileStartedPayload, FileStatus,
     JsonEnvelope, PipelineCompletedPayload, PipelineStartedPayload, PipelineStatus,
     ProgressPayload,
 };
@@ -54,7 +54,12 @@ pub trait ProgressReporter: Send + Sync {
     fn cancelled(&self, reason: CancelReason, files_completed: usize, files_total: usize);
 
     /// Report detection results.
-    fn detections(&self, file: &Path, detections: &[crate::output::Detection]);
+    fn detections(
+        &self,
+        file: &Path,
+        detections: &[crate::output::Detection],
+        bsg_metadata: Option<&BsgMetadata>,
+    );
 }
 
 /// Summary of pipeline execution.
@@ -385,7 +390,12 @@ impl ProgressReporter for JsonProgressReporter {
         self.flush();
     }
 
-    fn detections(&self, file: &Path, detections: &[crate::output::Detection]) {
+    fn detections(
+        &self,
+        file: &Path,
+        detections: &[crate::output::Detection],
+        bsg_metadata: Option<&BsgMetadata>,
+    ) {
         use crate::output::{DetectionInfo, DetectionsPayload};
 
         let detection_infos: Vec<DetectionInfo> = detections
@@ -405,6 +415,7 @@ impl ProgressReporter for JsonProgressReporter {
             DetectionsPayload {
                 file: file.to_path_buf(),
                 detections: detection_infos,
+                bsg: bsg_metadata.cloned(),
             },
         );
     }
@@ -440,7 +451,13 @@ impl ProgressReporter for NullReporter {
     ) {
     }
     fn cancelled(&self, _reason: CancelReason, _files_completed: usize, _files_total: usize) {}
-    fn detections(&self, _file: &Path, _detections: &[crate::output::Detection]) {}
+    fn detections(
+        &self,
+        _file: &Path,
+        _detections: &[crate::output::Detection],
+        _bsg_metadata: Option<&BsgMetadata>,
+    ) {
+    }
 }
 
 /// Create a reporter based on output mode.
@@ -548,7 +565,7 @@ mod tests {
             metadata: Default::default(),
         }];
 
-        reporter.detections(Path::new("test.wav"), &detections);
+        reporter.detections(Path::new("test.wav"), &detections, None);
 
         let output = buffer.lock().expect("lock");
         let output_str = String::from_utf8_lossy(&output);

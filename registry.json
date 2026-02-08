@@ -1,6 +1,6 @@
 {
   "schema_version": "1.0",
-  "registry_version": 2,
+  "registry_version": 3,
   "models": [
     {
       "id": "birdnet-v24",
@@ -294,10 +294,10 @@
     {
       "id": "bsg-fi-v44",
       "name": "BSG Finnish Birds v4.4",
-      "description": "Fine-tuned BirdNET model for 263 Finnish bird species (breeders, migrants, vagrants)",
+      "description": "Fine-tuned BirdNET model for 265 Finnish bird species with calibration and SDM",
       "vendor": "University of Jyväskylä",
       "version": "4.4",
-      "model_type": "birdnet-v24",
+      "model_type": "bsg-finland",
       "license": {
         "type": "BSG-NC-1.0",
         "url": "https://huggingface.co/tphakala/BSG/raw/main/LICENSE",
@@ -321,6 +321,21 @@
               "filename": "bsg-fi-v44-fi.txt"
             }
           ]
+        },
+        "bsg_calibration": {
+          "url": "https://huggingface.co/tphakala/BSG/resolve/main/BSG_birds_Finland_v4_4_calibration.csv",
+          "filename": "bsg-fi-v44-calibration.csv",
+          "sha256": null
+        },
+        "bsg_migration": {
+          "url": "https://huggingface.co/tphakala/BSG/resolve/main/BSG_birds_Finland_v4_4_migration.csv",
+          "filename": "bsg-fi-v44-migration.csv",
+          "sha256": null
+        },
+        "bsg_distribution_maps": {
+          "url": "https://huggingface.co/tphakala/BSG/resolve/main/BSG_birds_Finland_v4_4_distribution.bin",
+          "filename": "bsg-fi-v44-distribution.bin",
+          "sha256": null
         }
       },
       "recommended": false

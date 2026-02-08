@@ -84,6 +84,9 @@ fn resolve_model_config(args: &AnalyzeArgs, config: &Config) -> Result<(ModelCon
             labels,
             model_type,
             meta_model: args.meta_model_path.clone(),
+            bsg_calibration: None,
+            bsg_migration: None,
+            bsg_distribution_maps: None,
         };
 
         return Ok((model_config, ADHOC_MODEL_NAME.to_string()));
@@ -148,6 +151,9 @@ struct ProcessingParams<'a> {
     fail_fast: bool,
     progress_enabled: bool,
     stdout_mode: bool,
+    /// BSG SDM parameters: (latitude, longitude, `day_of_year`)
+    /// `day_of_year` is None for auto-detection from file timestamp
+    bsg_params: Option<(f64, f64, Option<u32>)>,
 }
 
 /// Statistics from processing all files.
@@ -467,6 +473,7 @@ fn process_all_files(
             params.csv_bom,
             params.model_name,
             params.range_filter_params,
+            params.bsg_params,
             reporter_ref,
         ) {
             Ok(result) => {
@@ -594,12 +601,30 @@ fn analyze_files(
     // Resolve species list filter
     let species_list = resolve_species_filter(args, config, range_filter_config.is_some())?;
 
-    // Extract range filter params before moving range_filter_config
+    // Extract range filter params and BSG params before moving range_filter_config
     #[allow(clippy::cast_possible_truncation)]
     let range_filter_params = range_filter_config.as_ref().map(|rf| {
         let week = crate::utils::date::date_to_week(rf.month, rf.day) as u8;
         (rf.latitude, rf.longitude, week)
     });
+
+    // Build BSG SDM parameters (latitude, longitude, day_of_year)
+    // day_of_year is None for auto-detection from file timestamp
+    // Use same latitude/longitude as range filter if available
+    let bsg_params = range_filter_config.as_ref().map_or_else(
+        || {
+            if let (Some(lat), Some(lon)) = (args.lat, args.lon) {
+                let day_of_year = args.day_of_year.or(config.defaults.day_of_year);
+                Some((lat, lon, day_of_year))
+            } else {
+                None
+            }
+        },
+        |rf| {
+            let day_of_year = args.day_of_year.or(config.defaults.day_of_year);
+            Some((rf.latitude, rf.longitude, day_of_year))
+        },
+    );
 
     // Build classifier
     info!("Loading model: {}", model_name);
@@ -633,6 +658,7 @@ fn analyze_files(
         fail_fast,
         progress_enabled,
         stdout_mode: args.stdout,
+        bsg_params,
     };
 
     // Process all files - stats owned here so partial results available on fail-fast
@@ -1036,6 +1062,9 @@ fn handle_models_add(
             labels: labels.clone(),
             model_type,
             meta_model: None,
+            bsg_calibration: None,
+            bsg_migration: None,
+            bsg_distribution_maps: None,
         },
     );
 
@@ -1088,6 +1117,15 @@ fn handle_models_install(id: &str, language: Option<&str>, set_default: bool) ->
     if let Some(meta_path) = &installed.meta_model {
         println!("  {}", meta_path.display());
     }
+    if let Some(cal_path) = &installed.bsg_calibration {
+        println!("  {}", cal_path.display());
+    }
+    if let Some(mig_path) = &installed.bsg_migration {
+        println!("  {}", mig_path.display());
+    }
+    if let Some(maps_path) = &installed.bsg_distribution_maps {
+        println!("  {}", maps_path.display());
+    }
     println!();
 
     // Prompt to set as default
@@ -1119,6 +1157,9 @@ fn handle_models_install(id: &str, language: Option<&str>, set_default: bool) ->
             labels: installed.labels,
             model_type,
             meta_model: installed.meta_model,
+            bsg_calibration: installed.bsg_calibration,
+            bsg_migration: installed.bsg_migration,
+            bsg_distribution_maps: installed.bsg_distribution_maps,
         },
     );
 
@@ -1156,6 +1197,9 @@ mod tests {
                 labels: PathBuf::from("/path/to/labels.txt"),
                 model_type: ModelType::BirdnetV24,
                 meta_model: None,
+                bsg_calibration: None,
+                bsg_migration: None,
+                bsg_distribution_maps: None,
             },
         );
         Config {
@@ -1386,6 +1430,9 @@ mod tests {
             labels: labels_path,
             model_type: ModelType::BirdnetV24,
             meta_model: None,
+            bsg_calibration: None,
+            bsg_migration: None,
+            bsg_distribution_maps: None,
         };
 
         assert!(validate_model_files(&config).is_ok());
@@ -1403,6 +1450,9 @@ mod tests {
             labels: labels_path,
             model_type: ModelType::BirdnetV24,
             meta_model: None,
+            bsg_calibration: None,
+            bsg_migration: None,
+            bsg_distribution_maps: None,
         };
 
         let err = validate_model_files(&config).unwrap_err();
@@ -1421,6 +1471,9 @@ mod tests {
             labels: labels_path,
             model_type: ModelType::BirdnetV24,
             meta_model: None,
+            bsg_calibration: None,
+            bsg_migration: None,
+            bsg_distribution_maps: None,
         };
 
         let err = validate_model_files(&config).unwrap_err();
@@ -1441,6 +1494,9 @@ mod tests {
             labels: labels_path,
             model_type: ModelType::BirdnetV24,
             meta_model: Some(meta_path),
+            bsg_calibration: None,
+            bsg_migration: None,
+            bsg_distribution_maps: None,
         };
 
         let err = validate_model_files(&config).unwrap_err();
@@ -1462,6 +1518,9 @@ mod tests {
             labels: labels_path,
             model_type: ModelType::BirdnetV24,
             meta_model: Some(meta_path),
+            bsg_calibration: None,
+            bsg_migration: None,
+            bsg_distribution_maps: None,
         };
 
         assert!(validate_model_files(&config).is_ok());

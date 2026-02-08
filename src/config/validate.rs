@@ -55,7 +55,7 @@ fn validate_defaults(config: &Config) -> Result<()> {
 
 /// Validate a model configuration and check files exist.
 #[allow(clippy::needless_pass_by_value)]
-pub fn validate_model_config(_name: &str, model: &ModelConfig) -> Result<()> {
+pub fn validate_model_config(name: &str, model: &ModelConfig) -> Result<()> {
     if !model.path.exists() {
         return Err(Error::ModelFileNotFound {
             path: model.path.clone(),
@@ -69,6 +69,31 @@ pub fn validate_model_config(_name: &str, model: &ModelConfig) -> Result<()> {
     }
 
     // Model type validation is handled by the ModelType enum
+
+    // BSG models require additional post-processing files
+    if model.model_type == crate::config::types::ModelType::BsgFinland {
+        if model.bsg_calibration.is_none() {
+            return Err(Error::BsgConfig {
+                message: format!(
+                    "BSG model '{name}' requires calibration file. Run 'birda models install {name}' to download required files"
+                ),
+            });
+        }
+        if model.bsg_migration.is_none() {
+            return Err(Error::BsgConfig {
+                message: format!(
+                    "BSG model '{name}' requires migration file. Run 'birda models install {name}' to download required files"
+                ),
+            });
+        }
+        if model.bsg_distribution_maps.is_none() {
+            return Err(Error::BsgConfig {
+                message: format!(
+                    "BSG model '{name}' requires distribution maps file. Run 'birda models install {name}' to download required files"
+                ),
+            });
+        }
+    }
 
     Ok(())
 }

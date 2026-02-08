@@ -108,6 +108,9 @@ mod tests {
                     }],
                 },
                 meta_model: None,
+                bsg_calibration: None,
+                bsg_migration: None,
+                bsg_distribution_maps: None,
             },
             recommended: false,
         }

@@ -1,7 +1,10 @@
-//! Date conversion utilities for range filtering.
+//! Date conversion utilities for range filtering and BSG SDM.
 
 use crate::constants::calendar::DAYS_IN_MONTH;
 use crate::constants::range_filter::{DAYS_PER_WEEK, WEEKS_PER_YEAR, YEAR_START_DAY};
+use crate::error::{Error, Result};
+use chrono::Datelike;
+use std::path::Path;
 
 /// Convert month/day to week number (1-48).
 ///
@@ -57,6 +60,46 @@ pub fn day_of_year_to_date(day_of_year: u32) -> (u32, u32) {
 )]
 pub fn week_to_start_day(week: u32) -> u32 {
     ((week - 1) as f32).mul_add(DAYS_PER_WEEK, YEAR_START_DAY) as u32
+}
+
+/// Auto-detect day of year (1-366) from file modification timestamp.
+///
+/// Used for BSG SDM when user doesn't explicitly provide `--day-of-year`.
+/// Each audio file in a batch can have a different day-of-year based on its
+/// modification time.
+///
+/// # Arguments
+///
+/// * `file_path` - Path to the audio file
+///
+/// # Returns
+///
+/// Day of year (1-366), or error if file has no modification time or
+/// metadata cannot be read.
+///
+/// # Errors
+///
+/// Returns [`Error::DayOfYearAutoDetect`] if:
+/// - File metadata cannot be read
+/// - File has no modification time
+/// - System time conversion fails
+pub fn auto_detect_day_of_year(file_path: &Path) -> Result<u32> {
+    let metadata = std::fs::metadata(file_path).map_err(|e| Error::DayOfYearAutoDetect {
+        path: file_path.to_path_buf(),
+        reason: format!("failed to read file metadata: {e}"),
+    })?;
+
+    let modified = metadata
+        .modified()
+        .map_err(|e| Error::DayOfYearAutoDetect {
+            path: file_path.to_path_buf(),
+            reason: format!("file has no modification time: {e}"),
+        })?;
+
+    let datetime: chrono::DateTime<chrono::Local> = modified.into();
+    let day_of_year = datetime.ordinal();
+
+    Ok(day_of_year)
 }
 
 #[cfg(test)]
@@ -125,5 +168,29 @@ mod tests {
     fn test_day_of_year_to_date_overflow() {
         // Day 400 should return Dec 31 (overflow protection)
         assert_eq!(day_of_year_to_date(400), (12, 31));
+    }
+
+    #[test]
+    fn test_auto_detect_day_of_year_nonexistent_file() {
+        let result = auto_detect_day_of_year(Path::new("/nonexistent/file.wav"));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_auto_detect_day_of_year_valid_file() {
+        // Create a temporary file
+        let temp_dir = std::env::temp_dir();
+        let temp_file = temp_dir.join("test_audio.wav");
+        std::fs::write(&temp_file, b"test data").unwrap();
+
+        let result = auto_detect_day_of_year(&temp_file);
+        assert!(result.is_ok());
+
+        let day = result.unwrap();
+        // Day of year should be between 1 and 366
+        assert!((1..=366).contains(&day));
+
+        // Clean up
+        std::fs::remove_file(&temp_file).ok();
     }
 }

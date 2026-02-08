@@ -1174,6 +1174,9 @@ mod tests {
                 labels: PathBuf::from("/path/to/labels.txt"),
                 model_type: ModelType::BirdnetV24,
                 meta_model: None,
+                bsg_calibration: None,
+                bsg_migration: None,
+                bsg_distribution_maps: None,
             },
         );
         Config {
@@ -1404,6 +1407,9 @@ mod tests {
             labels: labels_path,
             model_type: ModelType::BirdnetV24,
             meta_model: None,
+            bsg_calibration: None,
+            bsg_migration: None,
+            bsg_distribution_maps: None,
         };
 
         assert!(validate_model_files(&config).is_ok());
@@ -1421,6 +1427,9 @@ mod tests {
             labels: labels_path,
             model_type: ModelType::BirdnetV24,
             meta_model: None,
+            bsg_calibration: None,
+            bsg_migration: None,
+            bsg_distribution_maps: None,
         };
 
         let err = validate_model_files(&config).unwrap_err();
@@ -1439,6 +1448,9 @@ mod tests {
             labels: labels_path,
             model_type: ModelType::BirdnetV24,
             meta_model: None,
+            bsg_calibration: None,
+            bsg_migration: None,
+            bsg_distribution_maps: None,
         };
 
         let err = validate_model_files(&config).unwrap_err();
@@ -1459,6 +1471,9 @@ mod tests {
             labels: labels_path,
             model_type: ModelType::BirdnetV24,
             meta_model: Some(meta_path),
+            bsg_calibration: None,
+            bsg_migration: None,
+            bsg_distribution_maps: None,
         };
 
         let err = validate_model_files(&config).unwrap_err();
@@ -1480,6 +1495,9 @@ mod tests {
             labels: labels_path,
             model_type: ModelType::BirdnetV24,
             meta_model: Some(meta_path),
+            bsg_calibration: None,
+            bsg_migration: None,
+            bsg_distribution_maps: None,
         };
 
         assert!(validate_model_files(&config).is_ok());

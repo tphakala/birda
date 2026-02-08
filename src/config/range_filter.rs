@@ -88,6 +88,9 @@ mod tests {
             labels: PathBuf::from("test.txt"),
             model_type: ModelType::BirdnetV24,
             meta_model: Some(PathBuf::from("meta.onnx")),
+            bsg_calibration: None,
+            bsg_migration: None,
+            bsg_distribution_maps: None,
         };
 
         let result = build_range_filter_config(&args, &config, &model_config, "test-model");
@@ -120,6 +123,9 @@ mod tests {
             labels: PathBuf::from("test.txt"),
             model_type: ModelType::BirdnetV24,
             meta_model: Some(PathBuf::from("meta.onnx")),
+            bsg_calibration: None,
+            bsg_migration: None,
+            bsg_distribution_maps: None,
         };
 
         let result = build_range_filter_config(&args, &config, &model_config, "test-model");
@@ -150,6 +156,9 @@ mod tests {
             labels: PathBuf::from("test.txt"),
             model_type: ModelType::BirdnetV24,
             meta_model: Some(PathBuf::from("meta.onnx")),
+            bsg_calibration: None,
+            bsg_migration: None,
+            bsg_distribution_maps: None,
         };
 
         let result = build_range_filter_config(&args, &config, &model_config, "test-model");
@@ -176,6 +185,9 @@ mod tests {
             labels: PathBuf::from("test.txt"),
             model_type: ModelType::BirdnetV24,
             meta_model: Some(PathBuf::from("meta.onnx")),
+            bsg_calibration: None,
+            bsg_migration: None,
+            bsg_distribution_maps: None,
         };
 
         let result = build_range_filter_config(&args, &config, &model_config, "test-model");
@@ -200,6 +212,9 @@ mod tests {
             labels: PathBuf::from("test.txt"),
             model_type: ModelType::BirdnetV24,
             meta_model: Some(PathBuf::from("meta.onnx")),
+            bsg_calibration: None,
+            bsg_migration: None,
+            bsg_distribution_maps: None,
         };
 
         let result = build_range_filter_config(&args, &config, &model_config, "test-model");
@@ -225,6 +240,9 @@ mod tests {
             labels: PathBuf::from("test.txt"),
             model_type: ModelType::BirdnetV24,
             meta_model: None, // No meta model
+            bsg_calibration: None,
+            bsg_migration: None,
+            bsg_distribution_maps: None,
         };
 
         let result = build_range_filter_config(&args, &config, &model_config, "test-model");

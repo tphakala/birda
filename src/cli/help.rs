@@ -80,6 +80,9 @@ mod tests {
                 labels: PathBuf::from("/tmp/labels.txt"),
                 model_type: ModelType::BirdnetV24,
                 meta_model: None,
+                bsg_calibration: None,
+                bsg_migration: None,
+                bsg_distribution_maps: None,
             },
         );
 

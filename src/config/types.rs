@@ -388,7 +388,7 @@ mod tests {
         let defaults = DefaultsConfig::default();
         assert_eq!(defaults.min_confidence, 0.1);
         assert_eq!(defaults.overlap, 0.0);
-        assert_eq!(defaults.batch_size, 1);
+        assert_eq!(defaults.batch_size, 8);
     }
 
     #[test]

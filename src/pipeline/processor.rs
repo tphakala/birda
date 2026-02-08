@@ -275,30 +275,16 @@ fn process_batch(
 
     // Apply BSG post-processing (calibration always, SDM optional)
     // For BSG models, calibration is always applied even without location/date
+    // Day-of-year auto-detection happens once per file in process_file()
     if classifier.has_bsg_processor() {
         if let Some((lat, lon, day_of_year)) = bsg_params {
-            // SDM parameters provided - auto-detect day if needed
-            let day_opt = day_of_year.map_or_else(
-                || {
-                    use crate::utils::date::auto_detect_day_of_year;
-                    match auto_detect_day_of_year(file_path) {
-                        Ok(d) => Some(d),
-                        Err(e) => {
-                            tracing::warn!("{}, using calibration only", e);
-                            None
-                        }
-                    }
-                },
-                Some,
-            );
-
             // Apply BSG post-processing (calibration + SDM if day available)
             #[allow(clippy::cast_possible_truncation)]
             {
                 results = results
                     .into_iter()
                     .map(|r| {
-                        if let Some(day) = day_opt {
+                        if let Some(day) = day_of_year {
                             // Apply calibration + SDM
                             classifier.apply_bsg_postprocessing(
                                 r,
@@ -307,7 +293,7 @@ fn process_batch(
                                 Some(day),
                             )
                         } else {
-                            // Apply calibration only (no SDM)
+                            // Apply calibration only (SDM disabled due to missing day-of-year)
                             classifier.apply_bsg_postprocessing(r, None, None, None)
                         }
                     })
@@ -423,6 +409,30 @@ pub fn process_file(
     let duration_hint = decoder.duration_hint();
     let target_rate = classifier.sample_rate();
     let segment_duration = classifier.segment_duration();
+
+    // Resolve BSG parameters with day-of-year auto-detection (once per file, not per batch)
+    let resolved_bsg_params = if let Some((lat, lon, day_of_year)) = bsg_params {
+        // Auto-detect day-of-year if not provided
+        let resolved_day = day_of_year.map_or_else(
+            || {
+                use crate::utils::date::auto_detect_day_of_year;
+                match auto_detect_day_of_year(input_path) {
+                    Ok(d) => {
+                        debug!("Auto-detected day-of-year: {}", d);
+                        Some(d)
+                    }
+                    Err(e) => {
+                        tracing::warn!("{}, SDM will not be applied", e);
+                        None
+                    }
+                }
+            },
+            Some,
+        );
+        Some((lat, lon, resolved_day))
+    } else {
+        None
+    };
 
     // Create batch context for GPU memory efficiency (if batch_size > 1)
     // Context is created once and reused for all batches in this file
@@ -540,7 +550,7 @@ pub fn process_file(
         &mut batch_context,
         reporter,
         estimated_segments_usize,
-        bsg_params,
+        resolved_bsg_params,
     )?;
 
     // Wait for decode thread to finish
@@ -598,12 +608,12 @@ pub fn process_file(
         let bsg_metadata = if classifier.has_bsg_processor() {
             use crate::output::BsgMetadata;
 
-            if let Some((lat, lon, day_of_year)) = bsg_params {
-                // SDM mode - calibration + geographic/seasonal filtering
+            if let Some((lat, lon, day_of_year)) = resolved_bsg_params {
+                // SDM parameters provided (lat/lon), day may be auto-detected or missing
                 #[allow(clippy::cast_possible_truncation)]
                 Some(BsgMetadata {
                     calibration_applied: true,
-                    sdm_applied: true,
+                    sdm_applied: day_of_year.is_some(), // SDM only applied if day available
                     latitude: Some(lat as f32),
                     longitude: Some(lon as f32),
                     day_of_year,

@@ -12,8 +12,8 @@ pub const DEFAULT_MIN_CONFIDENCE: f32 = 0.1;
 /// Default segment overlap in seconds.
 pub const DEFAULT_OVERLAP: f32 = 0.0;
 
-/// Default batch size (1 = no batching).
-pub const DEFAULT_BATCH_SIZE: usize = 1;
+/// Default batch size for inference.
+pub const DEFAULT_BATCH_SIZE: usize = 8;
 
 /// Default number of top predictions to return per segment.
 pub const DEFAULT_TOP_K: usize = 5;

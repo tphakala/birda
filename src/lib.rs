@@ -84,6 +84,9 @@ fn resolve_model_config(args: &AnalyzeArgs, config: &Config) -> Result<(ModelCon
             labels,
             model_type,
             meta_model: args.meta_model_path.clone(),
+            bsg_calibration: None,
+            bsg_migration: None,
+            bsg_distribution_maps: None,
         };
 
         return Ok((model_config, ADHOC_MODEL_NAME.to_string()));
@@ -1036,6 +1039,9 @@ fn handle_models_add(
             labels: labels.clone(),
             model_type,
             meta_model: None,
+            bsg_calibration: None,
+            bsg_migration: None,
+            bsg_distribution_maps: None,
         },
     );
 
@@ -1088,6 +1094,15 @@ fn handle_models_install(id: &str, language: Option<&str>, set_default: bool) ->
     if let Some(meta_path) = &installed.meta_model {
         println!("  {}", meta_path.display());
     }
+    if let Some(cal_path) = &installed.bsg_calibration {
+        println!("  {}", cal_path.display());
+    }
+    if let Some(mig_path) = &installed.bsg_migration {
+        println!("  {}", mig_path.display());
+    }
+    if let Some(maps_path) = &installed.bsg_distribution_maps {
+        println!("  {}", maps_path.display());
+    }
     println!();
 
     // Prompt to set as default
@@ -1119,6 +1134,9 @@ fn handle_models_install(id: &str, language: Option<&str>, set_default: bool) ->
             labels: installed.labels,
             model_type,
             meta_model: installed.meta_model,
+            bsg_calibration: installed.bsg_calibration,
+            bsg_migration: installed.bsg_migration,
+            bsg_distribution_maps: installed.bsg_distribution_maps,
         },
     );
 

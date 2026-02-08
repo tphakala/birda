@@ -394,6 +394,34 @@ pub enum Error {
         /// End time in seconds.
         end: f64,
     },
+
+    /// BSG model configuration error.
+    #[error("BSG configuration error: {message}")]
+    BsgConfig {
+        /// Error message.
+        message: String,
+    },
+
+    /// BSG calibration file missing or invalid.
+    #[error("BSG calibration file error: {0}")]
+    BsgCalibration(String),
+
+    /// BSG migration file missing or invalid.
+    #[error("BSG migration file error: {0}")]
+    BsgMigration(String),
+
+    /// BSG distribution maps file missing or invalid.
+    #[error("BSG distribution maps file error: {0}")]
+    BsgDistributionMaps(String),
+
+    /// Day of year auto-detection failed.
+    #[error("could not auto-detect day of year from file {path}: {reason}")]
+    DayOfYearAutoDetect {
+        /// Path to the file.
+        path: std::path::PathBuf,
+        /// Reason for failure.
+        reason: String,
+    },
 }
 
 #[cfg(test)]

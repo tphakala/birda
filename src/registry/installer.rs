@@ -18,6 +18,12 @@ pub struct InstalledModel {
     pub labels: PathBuf,
     /// Path to downloaded meta model file (if available).
     pub meta_model: Option<PathBuf>,
+    /// Path to downloaded BSG calibration file (if available).
+    pub bsg_calibration: Option<PathBuf>,
+    /// Path to downloaded BSG migration file (if available).
+    pub bsg_migration: Option<PathBuf>,
+    /// Path to downloaded BSG distribution maps file (if available).
+    pub bsg_distribution_maps: Option<PathBuf>,
 }
 
 /// Download a file with progress bar.
@@ -154,10 +160,40 @@ pub async fn install_model(model: &ModelEntry, language: Option<&str>) -> Result
         None
     };
 
+    // Download BSG calibration file if available
+    let bsg_calibration_path = if let Some(cal_info) = &model.files.bsg_calibration {
+        let cal_dest = models_dir.join(&cal_info.filename);
+        download_file(&client, &cal_info.url, &cal_dest).await?;
+        Some(cal_dest)
+    } else {
+        None
+    };
+
+    // Download BSG migration file if available
+    let bsg_migration_path = if let Some(mig_info) = &model.files.bsg_migration {
+        let mig_dest = models_dir.join(&mig_info.filename);
+        download_file(&client, &mig_info.url, &mig_dest).await?;
+        Some(mig_dest)
+    } else {
+        None
+    };
+
+    // Download BSG distribution maps file if available
+    let bsg_maps_path = if let Some(maps_info) = &model.files.bsg_distribution_maps {
+        let maps_dest = models_dir.join(&maps_info.filename);
+        download_file(&client, &maps_info.url, &maps_dest).await?;
+        Some(maps_dest)
+    } else {
+        None
+    };
+
     Ok(InstalledModel {
         model: model_dest,
         labels: labels_dest,
         meta_model: meta_model_path,
+        bsg_calibration: bsg_calibration_path,
+        bsg_migration: bsg_migration_path,
+        bsg_distribution_maps: bsg_maps_path,
     })
 }
 
@@ -181,6 +217,9 @@ mod tests {
             model: PathBuf::from("/models/birdnet-v24.onnx"),
             labels: PathBuf::from("/models/birdnet-v24-en.txt"),
             meta_model: None,
+            bsg_calibration: None,
+            bsg_migration: None,
+            bsg_distribution_maps: None,
         };
 
         assert_eq!(

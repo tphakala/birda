@@ -64,6 +64,15 @@ pub struct ModelFiles {
     /// Optional meta model for range filtering.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub meta_model: Option<FileInfo>,
+    /// BSG calibration CSV file.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub bsg_calibration: Option<FileInfo>,
+    /// BSG migration CSV file.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub bsg_migration: Option<FileInfo>,
+    /// BSG distribution maps binary file.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub bsg_distribution_maps: Option<FileInfo>,
 }
 
 /// Single file download information.

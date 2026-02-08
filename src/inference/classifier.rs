@@ -381,6 +381,11 @@ impl BirdClassifier {
             })
     }
 
+    /// Check if this classifier has BSG post-processing enabled.
+    pub fn has_bsg_processor(&self) -> bool {
+        self.bsg_processor.is_some()
+    }
+
     /// Apply BSG post-processing to a prediction result.
     ///
     /// For BSG models, applies per-species calibration (always) and optionally

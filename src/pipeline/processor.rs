@@ -273,42 +273,51 @@ fn process_batch(
 
     // Watchdog is automatically cancelled when _watchdog drops here
 
-    // Apply BSG post-processing (calibration + optional SDM) if configured
-    if let Some((lat, lon, day_of_year)) = bsg_params {
-        // Auto-detect day-of-year from file timestamp if not provided
-        let day_opt = day_of_year.map_or_else(
-            || {
-                use crate::utils::date::auto_detect_day_of_year;
-                match auto_detect_day_of_year(file_path) {
-                    Ok(d) => Some(d),
-                    Err(e) => {
-                        tracing::warn!("{}, using calibration only", e);
-                        None
+    // Apply BSG post-processing (calibration always, SDM optional)
+    // For BSG models, calibration is always applied even without location/date
+    if classifier.has_bsg_processor() {
+        if let Some((lat, lon, day_of_year)) = bsg_params {
+            // SDM parameters provided - auto-detect day if needed
+            let day_opt = day_of_year.map_or_else(
+                || {
+                    use crate::utils::date::auto_detect_day_of_year;
+                    match auto_detect_day_of_year(file_path) {
+                        Ok(d) => Some(d),
+                        Err(e) => {
+                            tracing::warn!("{}, using calibration only", e);
+                            None
+                        }
                     }
-                }
-            },
-            Some,
-        );
+                },
+                Some,
+            );
 
-        // Apply BSG post-processing (calibration + SDM if day available)
-        #[allow(clippy::cast_possible_truncation)]
-        {
+            // Apply BSG post-processing (calibration + SDM if day available)
+            #[allow(clippy::cast_possible_truncation)]
+            {
+                results = results
+                    .into_iter()
+                    .map(|r| {
+                        if let Some(day) = day_opt {
+                            // Apply calibration + SDM
+                            classifier.apply_bsg_postprocessing(
+                                r,
+                                Some(lat as f32),
+                                Some(lon as f32),
+                                Some(day),
+                            )
+                        } else {
+                            // Apply calibration only (no SDM)
+                            classifier.apply_bsg_postprocessing(r, None, None, None)
+                        }
+                    })
+                    .collect::<Result<Vec<_>>>()?;
+            }
+        } else {
+            // No SDM parameters - apply calibration only
             results = results
                 .into_iter()
-                .map(|r| {
-                    if let Some(day) = day_opt {
-                        // Apply calibration + SDM
-                        classifier.apply_bsg_postprocessing(
-                            r,
-                            Some(lat as f32),
-                            Some(lon as f32),
-                            Some(day),
-                        )
-                    } else {
-                        // Apply calibration only (no SDM)
-                        classifier.apply_bsg_postprocessing(r, None, None, None)
-                    }
-                })
+                .map(|r| classifier.apply_bsg_postprocessing(r, None, None, None))
                 .collect::<Result<Vec<_>>>()?;
         }
     }

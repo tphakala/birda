@@ -89,16 +89,13 @@ Name: "{group}\Uninstall {#MyAppName}"; Filename: "{uninstallexe}"
 Root: HKLM; Subkey: "SYSTEM\CurrentControlSet\Control\Session Manager\Environment"; ValueType: expandsz; ValueName: "Path"; ValueData: "{olddata};{app}"; Tasks: addtopath; Check: NeedsAddPath('{app}')
 
 [Code]
-const
-  HWND_BROADCAST = $ffff;
-  WM_SETTINGCHANGE = $001A;
-
 // Broadcast environment variable change to all windows
+// Using literal values: HWND_BROADCAST = $ffff, WM_SETTINGCHANGE = $001A
 procedure BroadcastEnvironmentChange();
 var
   ReturnValue: Integer;
 begin
-  SendNotifyMessage(HWND_BROADCAST, WM_SETTINGCHANGE, 0, CastStringToInteger('Environment'));
+  SendNotifyMessage($ffff, $001A, 0, CastStringToInteger('Environment'));
 end;
 
 function NeedsAddPath(Param: string): boolean;

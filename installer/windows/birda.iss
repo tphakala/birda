@@ -89,13 +89,25 @@ Name: "{group}\Uninstall {#MyAppName}"; Filename: "{uninstallexe}"
 Root: HKLM; Subkey: "SYSTEM\CurrentControlSet\Control\Session Manager\Environment"; ValueType: expandsz; ValueName: "Path"; ValueData: "{olddata};{app}"; Tasks: addtopath; Check: NeedsAddPath('{app}')
 
 [Code]
+const
+  SMTO_ABORTIFHUNG = 2;
+
+// External declaration for SendMessageTimeout with string parameter
+function SendMessageTimeout(hWnd: HWND; Msg: UINT; wParam: WPARAM;
+  lParam: PAnsiChar; fuFlags: UINT; uTimeout: UINT;
+  out lpdwResult: DWORD): LRESULT;
+  external 'SendMessageTimeoutA@user32.dll stdcall';
+
 // Broadcast environment variable change to all windows
-// Using literal values: HWND_BROADCAST = $ffff, WM_SETTINGCHANGE = $001A
+// Note: HWND_BROADCAST and WM_SETTINGCHANGE are built-in constants
 procedure BroadcastEnvironmentChange();
 var
-  ReturnValue: Integer;
+  EnvStr: AnsiString;
+  MsgResult: DWORD;
 begin
-  SendNotifyMessage($ffff, $001A, 0, CastStringToInteger('Environment'));
+  EnvStr := 'Environment';
+  SendMessageTimeout(HWND_BROADCAST, WM_SETTINGCHANGE, 0,
+    PAnsiChar(EnvStr), SMTO_ABORTIFHUNG, 5000, MsgResult);
 end;
 
 function NeedsAddPath(Param: string): boolean;

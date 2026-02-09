@@ -14,6 +14,7 @@ A fast, cross-platform CLI tool for bird species detection using [BirdNET](https
 - **Species Filtering**: Dynamic range filtering by location/date or static species list files
 - **Multiple Output Formats**: CSV, JSON, Raven selection tables, Audacity labels, Kaleidoscope CSV
 - **JSON Output Mode**: Structured JSON/NDJSON output for GUI integration and automation
+- **Graphical User Interface**: Optional cross-platform GUI available separately
 - **Batch Processing**: Process entire directories of audio files
 - **Flexible Configuration**: TOML-based config with CLI overrides
 - **Cross-Platform**: Works on Linux, Windows, and macOS
@@ -91,6 +92,26 @@ WARN birda::inference::classifier: CUDA not available at compile-time, but GPU w
 WARN birda::inference::classifier: Build will proceed, but may fall back to CPU at runtime
 INFO birda::inference::classifier: Loaded model: BirdNetV24, sample_rate: 48000, segment_duration: 3s, device: GPU (CUDA requested, may fallback to CPU)
 ```
+
+## Graphical User Interface
+
+For users who prefer a graphical interface, [Birda GUI](https://github.com/tphakala/birda-gui) provides a cross-platform desktop application built with Tauri and SvelteKit.
+
+**Features:**
+
+- Visual file selection and drag-and-drop support
+- Real-time progress monitoring
+- Interactive detection results with spectrograms
+- Model management through GUI
+- Runs inference using the Birda CLI tool
+
+**Requirements:**
+
+The GUI requires Birda CLI to be installed and accessible in your system PATH.
+
+**Installation:**
+
+Visit the [Birda GUI releases](https://github.com/tphakala/birda-gui/releases) page for platform-specific installers (Windows, macOS, Linux).
 
 ## Quick Start
 
@@ -611,6 +632,10 @@ For converting custom BirdNET classifiers or optimizing models for specific hard
 ## License
 
 MIT License - see [LICENSE](LICENSE) for details.
+
+## Related Projects
+
+- [Birda GUI](https://github.com/tphakala/birda-gui) - Cross-platform graphical interface for Birda
 
 ## Acknowledgments
 

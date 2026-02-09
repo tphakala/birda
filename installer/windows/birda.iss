@@ -28,9 +28,8 @@ OutputBaseFilename=birda-windows-x64-cuda-setup
 ; Compression (using fast for quicker builds, files are already compressed)
 Compression=lzma2/fast
 SolidCompression=yes
-; Require admin for Program Files installation
+; Require admin for Program Files installation and VC++ Redistributable
 PrivilegesRequired=admin
-PrivilegesRequiredOverridesAllowed=dialog
 ; Modern installer look
 WizardStyle=modern
 ; License (combined license with third-party notices)
@@ -72,11 +71,14 @@ Source: "..\..\dist\LICENSE"; DestDir: "{app}\docs"; Flags: ignoreversion skipif
 Source: "..\..\dist\THIRD_PARTY_LICENSES.txt"; DestDir: "{app}\docs"; Flags: ignoreversion
 
 ; Visual C++ Redistributable (required by onnxruntime.dll)
-Source: "..\..\dist\vc_redist.x64.exe"; DestDir: "{tmp}"; Flags: deleteafterinstall; Check: VCRedistNeedsInstall
+; Note: Always include in installer, check at runtime whether to install
+Source: "..\..\dist\vc_redist.x64.exe"; DestDir: "{tmp}"; Flags: deleteafterinstall
 
 [Run]
-; Install VC++ Redistributable silently if needed (runs before icons are created)
-Filename: "{tmp}\vc_redist.x64.exe"; Parameters: "/quiet /norestart"; StatusMsg: "Installing Visual C++ Runtime..."; Flags: waituntilterminated; Check: VCRedistNeedsInstall
+; Install VC++ Redistributable (installer will skip if up-to-date version exists)
+Filename: "{tmp}\vc_redist.x64.exe"; Parameters: "/quiet /norestart"; StatusMsg: "Installing Visual C++ Runtime..."; Flags: waituntilterminated
+; Post-install option to download Birda GUI
+Filename: "https://github.com/tphakala/birda-gui/releases/latest"; Description: "Download Birda GUI (optional graphical interface)"; Flags: postinstall shellexec skipifsilent unchecked
 
 [Icons]
 Name: "{group}\{#MyAppName} Command Prompt"; Filename: "{cmd}"; Parameters: "/k ""{app}\{#MyAppExeName}"" --help"; WorkingDir: "{app}"
@@ -87,22 +89,16 @@ Name: "{group}\Uninstall {#MyAppName}"; Filename: "{uninstallexe}"
 Root: HKLM; Subkey: "SYSTEM\CurrentControlSet\Control\Session Manager\Environment"; ValueType: expandsz; ValueName: "Path"; ValueData: "{olddata};{app}"; Tasks: addtopath; Check: NeedsAddPath('{app}')
 
 [Code]
-// Check if Visual C++ Redistributable 14.x (2015-2022) is installed
-function VCRedistNeedsInstall: Boolean;
+const
+  HWND_BROADCAST = $ffff;
+  WM_SETTINGCHANGE = $001A;
+
+// Broadcast environment variable change to all windows
+procedure BroadcastEnvironmentChange();
 var
-  Version: String;
+  ReturnValue: Integer;
 begin
-  // Check for VC++ 14.x (Visual Studio 2015-2022 share this version range)
-  // Registry key exists if any version of the redistributable is installed
-  if RegQueryStringValue(HKEY_LOCAL_MACHINE,
-    'SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\x64',
-    'Version', Version) then
-  begin
-    // Version string is like "v14.38.33130" - any v14.x is sufficient
-    Result := False;  // Already installed
-  end
-  else
-    Result := True;  // Need to install
+  SendNotifyMessage(HWND_BROADCAST, WM_SETTINGCHANGE, 0, CastStringToInteger('Environment'));
 end;
 
 function NeedsAddPath(Param: string): boolean;
@@ -118,6 +114,16 @@ begin
   end;
   { look for the path with leading and trailing semicolon }
   Result := Pos(';' + Param + ';', ';' + OrigPath + ';') = 0;
+end;
+
+// Called after installation step completes
+procedure CurStepChanged(CurStep: TSetupStep);
+begin
+  if CurStep = ssPostInstall then
+  begin
+    // Broadcast environment change so PATH updates without reboot
+    BroadcastEnvironmentChange();
+  end;
 end;
 
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
@@ -142,6 +148,9 @@ begin
       RegWriteStringValue(HKEY_LOCAL_MACHINE,
         'SYSTEM\CurrentControlSet\Control\Session Manager\Environment',
         'Path', Path);
+
+      // Broadcast environment change
+      BroadcastEnvironmentChange();
     end;
   end;
 end;

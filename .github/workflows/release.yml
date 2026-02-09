@@ -150,6 +150,15 @@ jobs:
           Expand-Archive -Path "onnxruntime.zip" -DestinationPath "."
           Copy-Item "onnxruntime-win-x64-${{ env.ONNXRUNTIME_VERSION }}/lib/onnxruntime.dll" -Destination "lib-staging/"
 
+      - name: Download Visual C++ Redistributable (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          # Download VC++ Redistributable for bundling
+          # This is required by onnxruntime.dll
+          Invoke-WebRequest -Uri "https://aka.ms/vs/17/release/vc_redist.x64.exe" -OutFile "vc_redist.x64.exe"
+          Write-Host "Downloaded VC++ Redistributable"
+
       - name: Prepare artifact (Unix)
         if: runner.os != 'Windows'
         run: |
@@ -208,6 +217,9 @@ jobs:
 
           # Copy ONNX Runtime next to binary
           Copy-Item "lib-staging/onnxruntime.dll" -Destination "dist/"
+
+          # Copy VC++ Redistributable installer
+          Copy-Item "vc_redist.x64.exe" -Destination "dist/"
 
           Copy-Item "README.md" -Destination "dist/"
           Copy-Item "LICENSE" -Destination "dist/" -ErrorAction SilentlyContinue

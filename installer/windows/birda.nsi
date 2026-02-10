@@ -1,6 +1,10 @@
 ; Birda Windows Installer Script for NSIS
 ; https://nsis.sourceforge.io/
 
+; Add script directory to include path for /NOCD builds
+!addincludedir "${NSISDIR}\Include"
+!addincludedir "installer\windows"
+
 !define PRODUCT_NAME "Birda"
 !ifndef PRODUCT_VERSION
   !define PRODUCT_VERSION "1.0.0" ; Default if not passed via makensis /D flag

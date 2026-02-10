@@ -59,13 +59,30 @@ Function EnvVarUpdate
 
   ${ElseIf} $1 == "R" ; Remove from PATH
     ; Remove all occurrences
-    StrCpy $6 ""
-    ${StrRep} $6 $3 "$2;" ""
-    ${StrRep} $6 $6 ";$2" ""
-    ${StrRep} $6 $6 "$2" ""
+    Push $3
+    Push "$2;"
+    Push ""
+    Call StrRep
+    Pop $6
+
+    Push $6
+    Push ";$2"
+    Push ""
+    Call StrRep
+    Pop $6
+
+    Push $6
+    Push "$2"
+    Push ""
+    Call StrRep
+    Pop $6
 
     ; Clean up multiple semicolons
-    ${StrRep} $6 $6 ";;" ";"
+    Push $6
+    Push ";;"
+    Push ";"
+    Call StrRep
+    Pop $6
 
     ; Write updated PATH
     WriteRegExpandStr HKLM "SYSTEM\CurrentControlSet\Control\Session Manager\Environment" $0 $6
@@ -211,11 +228,29 @@ Function un.EnvVarUpdate
   ReadRegStr $3 HKLM "SYSTEM\CurrentControlSet\Control\Session Manager\Environment" $0
 
   ${If} $1 == "R"
-    StrCpy $6 ""
-    ${StrRep} $6 $3 "$2;" ""
-    ${StrRep} $6 $6 ";$2" ""
-    ${StrRep} $6 $6 "$2" ""
-    ${StrRep} $6 $6 ";;" ";"
+    Push $3
+    Push "$2;"
+    Push ""
+    Call un.StrRep
+    Pop $6
+
+    Push $6
+    Push ";$2"
+    Push ""
+    Call un.StrRep
+    Pop $6
+
+    Push $6
+    Push "$2"
+    Push ""
+    Call un.StrRep
+    Pop $6
+
+    Push $6
+    Push ";;"
+    Push ";"
+    Call un.StrRep
+    Pop $6
 
     WriteRegExpandStr HKLM "SYSTEM\CurrentControlSet\Control\Session Manager\Environment" $0 $6
     StrCpy $0 "1"
@@ -232,6 +267,60 @@ Function un.EnvVarUpdate
   Pop $2
   Pop $1
   Exch $0
+FunctionEnd
+
+; Uninstaller string replacement function
+Function un.StrRep
+  Exch $R0 ; Replace
+  Exch
+  Exch $R1 ; Find
+  Exch 2
+  Exch $R2 ; Input
+  Push $R3
+  Push $R4
+  Push $R5
+  Push $R6
+  Push $R7
+  Push $R8
+
+  StrCpy $R3 ""
+  StrCpy $R4 0
+  StrLen $R5 $R1
+
+  ${If} $R5 == 0
+    StrCpy $R0 $R2
+    Goto un_StrRep_Done
+  ${EndIf}
+
+  un_StrRep_Loop:
+    StrCpy $R6 $R2 $R5 $R4
+    ${If} $R6 == $R1
+      StrCpy $R8 $R2 $R4
+      StrCpy $R3 "$R3$R8$R0"
+      IntOp $R4 $R4 + $R5
+    ${Else}
+      StrCpy $R8 $R2 1 $R4
+      StrCpy $R3 "$R3$R8"
+      IntOp $R4 $R4 + 1
+    ${EndIf}
+
+    StrLen $R7 $R2
+    ${If} $R4 >= $R7
+      StrCpy $R0 $R3
+      Goto un_StrRep_Done
+    ${EndIf}
+    Goto un_StrRep_Loop
+
+  un_StrRep_Done:
+  Pop $R8
+  Pop $R7
+  Pop $R6
+  Pop $R5
+  Pop $R4
+  Pop $R3
+  Pop $R2
+  Pop $R1
+  Exch $R0
 FunctionEnd
 
 !endif ; _EnvVarUpdate_nsh

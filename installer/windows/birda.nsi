@@ -2,7 +2,9 @@
 ; https://nsis.sourceforge.io/
 
 !define PRODUCT_NAME "Birda"
-!define PRODUCT_VERSION "1.0.0" ; Will be overridden by makensis /D flag
+!ifndef PRODUCT_VERSION
+  !define PRODUCT_VERSION "1.0.0" ; Default if not passed via makensis /D flag
+!endif
 !define PRODUCT_PUBLISHER "Tomi P. Hakala"
 !define PRODUCT_WEB_SITE "https://github.com/tphakala/birda"
 !define PRODUCT_DIR_REGKEY "Software\Microsoft\Windows\CurrentVersion\App Paths\birda.exe"

@@ -66,19 +66,25 @@ jobs:
 
           Write-Host "Building NSIS installer for version: $versionNumber"
 
-          # Build with version override
-          & "C:\Program Files (x86)\NSIS\makensis.exe" `
-            /DPRODUCT_VERSION="$versionNumber" `
-            /NOCD `
-            "installer\windows\birda.nsi"
-          if ($LASTEXITCODE -ne 0) {
-            throw "makensis failed with exit code $LASTEXITCODE"
-          }
+          # Change to installer directory for correct relative paths
+          Push-Location installer\windows
 
-          # Rename output file to include version
-          Move-Item "birda-windows-x64-cuda-nsis-setup.exe" `
-            "birda-windows-x64-cuda-nsis-$version-setup.exe" `
-            -ErrorAction Stop
+          try {
+            # Build with version override
+            & "C:\Program Files (x86)\NSIS\makensis.exe" `
+              /DPRODUCT_VERSION="$versionNumber" `
+              "birda.nsi"
+            if ($LASTEXITCODE -ne 0) {
+              throw "makensis failed with exit code $LASTEXITCODE"
+            }
+
+            # Move output to repo root and rename
+            Move-Item "birda-windows-x64-cuda-nsis-setup.exe" `
+              "..\..\birda-windows-x64-cuda-nsis-$version-setup.exe" `
+              -ErrorAction Stop
+          } finally {
+            Pop-Location
+          }
 
           Write-Host "Installer created successfully"
 

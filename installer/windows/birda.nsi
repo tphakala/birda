@@ -1,10 +1,6 @@
 ; Birda Windows Installer Script for NSIS
 ; https://nsis.sourceforge.io/
 
-; Add script directory to include path for /NOCD builds
-!addincludedir "${NSISDIR}\Include"
-!addincludedir "installer\windows"
-
 !define PRODUCT_NAME "Birda"
 !ifndef PRODUCT_VERSION
   !define PRODUCT_VERSION "1.0.0" ; Default if not passed via makensis /D flag
@@ -48,7 +44,7 @@ SetCompressor /SOLID lzma
 !insertmacro MUI_PAGE_WELCOME
 
 ; License page
-!insertmacro MUI_PAGE_LICENSE "installer\windows\INSTALLER_LICENSE.txt"
+!insertmacro MUI_PAGE_LICENSE "INSTALLER_LICENSE.txt"
 
 ; Directory page
 !insertmacro MUI_PAGE_DIRECTORY
@@ -80,19 +76,19 @@ Section "Birda (required)" SEC01
   SetOverwrite ifnewer
 
   ; Copy executable
-  File "dist\birda.exe"
+  File "..\..\dist\birda.exe"
 
   ; Copy all DLLs
-  File "dist\*.dll"
+  File "..\..\dist\*.dll"
 
   ; Create docs subdirectory
   CreateDirectory "$INSTDIR\docs"
   SetOutPath "$INSTDIR\docs"
 
   ; Copy documentation
-  File "dist\README.md"
-  File /nonfatal "dist\LICENSE"
-  File "dist\THIRD_PARTY_LICENSES.txt"
+  File "..\..\dist\README.md"
+  File /nonfatal "..\..\dist\LICENSE"
+  File "..\..\dist\THIRD_PARTY_LICENSES.txt"
 
   ; Copy info files for installer
   File "..\..\installer\windows\TENSORRT_INFO.txt"
@@ -108,7 +104,7 @@ Section "Visual C++ Runtime" SEC02
   SectionIn RO ; Always install
 
   SetOutPath "$TEMP"
-  File "dist\vc_redist.x64.exe"
+  File "..\..\dist\vc_redist.x64.exe"
 
   DetailPrint "Installing Visual C++ Redistributable..."
   ExecWait '"$TEMP\vc_redist.x64.exe" /quiet /norestart' $0

@@ -48,7 +48,7 @@ SetCompressor /SOLID lzma
 !insertmacro MUI_PAGE_WELCOME
 
 ; License page
-!insertmacro MUI_PAGE_LICENSE "..\..\installer\windows\INSTALLER_LICENSE.txt"
+!insertmacro MUI_PAGE_LICENSE "installer\windows\INSTALLER_LICENSE.txt"
 
 ; Directory page
 !insertmacro MUI_PAGE_DIRECTORY

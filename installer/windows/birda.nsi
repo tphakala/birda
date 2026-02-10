@@ -78,7 +78,10 @@ Section "Birda (required)" SEC01
   ; Copy executable
   File "..\..\dist\birda.exe"
 
-  ; Copy DLLs (listed explicitly to avoid NSIS memory limits with wildcards on large files)
+  ; Disable compression for large DLLs to avoid NSIS 32-bit memory limits
+  SetCompress off
+
+  ; Copy DLLs (listed explicitly, uncompressed due to size)
   File "..\..\dist\cublas64_12.dll"
   File "..\..\dist\cublasLt64_12.dll"
   File "..\..\dist\cudart64_12.dll"
@@ -101,6 +104,9 @@ Section "Birda (required)" SEC01
   File "..\..\dist\onnxruntime_providers_shared.dll"
   File "..\..\dist\onnxruntime_providers_tensorrt.dll"
   File "..\..\dist\onnxruntime.dll"
+
+  ; Re-enable compression for remaining files
+  SetCompress auto
 
   ; Create docs subdirectory
   CreateDirectory "$INSTDIR\docs"

@@ -39,6 +39,8 @@ InfoAfterFile=TENSORRT_INFO.txt
 ; Uninstaller
 UninstallDisplayIcon={app}\{#MyAppExeName}
 UninstallDisplayName={#MyAppName}
+; Broadcast environment variable changes (for PATH)
+ChangesEnvironment=yes
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
@@ -89,32 +91,6 @@ Name: "{group}\Uninstall {#MyAppName}"; Filename: "{uninstallexe}"
 Root: HKLM; Subkey: "SYSTEM\CurrentControlSet\Control\Session Manager\Environment"; ValueType: expandsz; ValueName: "Path"; ValueData: "{olddata};{app}"; Tasks: addtopath; Check: NeedsAddPath('{app}')
 
 [Code]
-type
-  WPARAM = UINT_PTR;
-  LPARAM = INT_PTR;
-  LRESULT = INT_PTR;
-
-const
-  SMTO_ABORTIFHUNG = 2;
-
-// External declaration for SendMessageTimeout with string parameter
-function SendMessageTimeout(hWnd: HWND; Msg: UINT; wParam: WPARAM;
-  lParam: PAnsiChar; fuFlags: UINT; uTimeout: UINT;
-  var lpdwResult: DWORD): LRESULT;
-  external 'SendMessageTimeoutA@user32.dll stdcall';
-
-// Broadcast environment variable change to all windows
-// Note: HWND_BROADCAST and WM_SETTINGCHANGE are built-in constants
-procedure BroadcastEnvironmentChange();
-var
-  EnvStr: AnsiString;
-  MsgResult: DWORD;
-begin
-  EnvStr := 'Environment';
-  SendMessageTimeout(HWND_BROADCAST, WM_SETTINGCHANGE, 0,
-    PAnsiChar(EnvStr), SMTO_ABORTIFHUNG, 5000, MsgResult);
-end;
-
 function NeedsAddPath(Param: string): boolean;
 var
   OrigPath: string;

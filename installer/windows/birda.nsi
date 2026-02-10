@@ -108,6 +108,15 @@ Section "Visual C++ Runtime" SEC02
   ExecWait '"$TEMP\vc_redist.x64.exe" /quiet /norestart' $0
   DetailPrint "VC++ Redistributable installer returned: $0"
 
+  ; Check exit code: 0=success, 1638=already installed, 3010=reboot required
+  ${If} $0 != 0
+  ${AndIf} $0 != 1638
+  ${AndIf} $0 != 3010
+    DetailPrint "WARNING: VC++ Redistributable installation failed with code $0"
+    MessageBox MB_OK|MB_ICONEXCLAMATION "Visual C++ Redistributable installation failed (exit code: $0).$\r$\n$\r$\nBirda may not run correctly without it.$\r$\n$\r$\nPlease install it manually from:$\r$\nhttps://aka.ms/vs/17/release/vc_redist.x64.exe"
+  ${EndIf}
+
+  ; Always clean up temp file
   Delete "$TEMP\vc_redist.x64.exe"
 SectionEnd
 
@@ -178,6 +187,12 @@ Function .onInit
     MessageBox MB_OK|MB_ICONSTOP "This installer requires 64-bit Windows."
     Abort
   ${EndIf}
+FunctionEnd
+
+; Cleanup on installation failure
+Function .onInstFailed
+  ; Clean up VC++ temp file if it exists
+  Delete "$TEMP\vc_redist.x64.exe"
 FunctionEnd
 
 ; Uninstaller initialization

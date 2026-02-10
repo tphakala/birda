@@ -95,7 +95,7 @@ const
 // External declaration for SendMessageTimeout with string parameter
 function SendMessageTimeout(hWnd: HWND; Msg: UINT; wParam: WPARAM;
   lParam: PAnsiChar; fuFlags: UINT; uTimeout: UINT;
-  out lpdwResult: DWORD): LRESULT;
+  var lpdwResult: DWORD): LRESULT;
   external 'SendMessageTimeoutA@user32.dll stdcall';
 
 // Broadcast environment variable change to all windows

@@ -78,7 +78,8 @@ Source: "..\..\dist\vc_redist.x64.exe"; DestDir: "{tmp}"; Flags: deleteafterinst
 
 [Run]
 ; Install VC++ Redistributable (installer will skip if up-to-date version exists)
-Filename: "{tmp}\vc_redist.x64.exe"; Parameters: "/quiet /norestart"; StatusMsg: "Installing Visual C++ Runtime..."; Flags: waituntilterminated
+; Using /passive to show progress bar instead of /quiet for better user feedback
+Filename: "{tmp}\vc_redist.x64.exe"; Parameters: "/passive /norestart"; StatusMsg: "Installing Visual C++ Runtime..."; Flags: waituntilterminated
 ; Post-install option to download Birda GUI
 Filename: "https://github.com/tphakala/birda-gui/releases/latest"; Description: "Download Birda GUI (optional graphical interface)"; Flags: postinstall shellexec skipifsilent unchecked
 

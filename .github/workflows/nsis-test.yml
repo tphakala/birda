@@ -23,11 +23,15 @@ jobs:
       - name: Download release artifacts
         shell: pwsh
         run: |
+          $ErrorActionPreference = 'Stop'
           $version = "${{ github.event.inputs.version }}"
           Write-Host "Downloading artifacts for version: $version"
 
           # Download GPU Windows build
           gh release download $version --pattern "birda-windows-x64-cuda-$version.zip"
+          if ($LASTEXITCODE -ne 0) {
+            throw "gh release download failed with exit code $LASTEXITCODE"
+          }
 
           # Extract to dist directory
           New-Item -ItemType Directory -Force -Path dist
@@ -41,6 +45,7 @@ jobs:
       - name: Install NSIS
         shell: pwsh
         run: |
+          $ErrorActionPreference = 'Stop'
           # NSIS is pre-installed on Windows runners
           # Verify installation
           $nsisPath = "C:\Program Files (x86)\NSIS\makensis.exe"
@@ -55,6 +60,7 @@ jobs:
       - name: Build NSIS installer
         shell: pwsh
         run: |
+          $ErrorActionPreference = 'Stop'
           $version = "${{ github.event.inputs.version }}"
           $versionNumber = $version -replace '^v', ''
 
@@ -65,10 +71,14 @@ jobs:
             /DPRODUCT_VERSION="$versionNumber" `
             /NOCD `
             "installer\windows\birda.nsi"
+          if ($LASTEXITCODE -ne 0) {
+            throw "makensis failed with exit code $LASTEXITCODE"
+          }
 
           # Rename output file to include version
           Move-Item "birda-windows-x64-cuda-nsis-setup.exe" `
-            "birda-windows-x64-cuda-nsis-$version-setup.exe"
+            "birda-windows-x64-cuda-nsis-$version-setup.exe" `
+            -ErrorAction Stop
 
           Write-Host "Installer created successfully"
 
@@ -83,14 +93,18 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          $ErrorActionPreference = 'Stop'
           $version = "${{ github.event.inputs.version }}"
           $installerPath = "birda-windows-x64-cuda-nsis-$version-setup.exe"
-          $installerSize = (Get-Item $installerPath).Length / 1MB
+          $installerSize = (Get-Item $installerPath -ErrorAction Stop).Length / 1MB
           $installerSizeMB = [math]::Round($installerSize, 2)
 
           # Get Inno Setup installer size for comparison
           gh release download $version --pattern "birda-windows-x64-cuda-$version-setup.exe"
-          $innoSize = (Get-Item "birda-windows-x64-cuda-$version-setup.exe").Length / 1MB
+          if ($LASTEXITCODE -ne 0) {
+            throw "gh release download failed with exit code $LASTEXITCODE"
+          }
+          $innoSize = (Get-Item "birda-windows-x64-cuda-$version-setup.exe" -ErrorAction Stop).Length / 1MB
           $innoSizeMB = [math]::Round($innoSize, 2)
 
           $body = @"

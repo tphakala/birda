@@ -78,8 +78,29 @@ Section "Birda (required)" SEC01
   ; Copy executable
   File "..\..\dist\birda.exe"
 
-  ; Copy all DLLs
-  File "..\..\dist\*.dll"
+  ; Copy DLLs (listed explicitly to avoid NSIS memory limits with wildcards on large files)
+  File "..\..\dist\cublas64_12.dll"
+  File "..\..\dist\cublasLt64_12.dll"
+  File "..\..\dist\cudart64_12.dll"
+  File "..\..\dist\cudnn_adv64_9.dll"
+  File "..\..\dist\cudnn_cnn64_9.dll"
+  File "..\..\dist\cudnn_engines_precompiled64_9.dll"
+  File "..\..\dist\cudnn_engines_runtime_compiled64_9.dll"
+  File "..\..\dist\cudnn_graph64_9.dll"
+  File "..\..\dist\cudnn_heuristic64_9.dll"
+  File "..\..\dist\cudnn_ops64_9.dll"
+  File "..\..\dist\cudnn64_9.dll"
+  File "..\..\dist\cufft64_11.dll"
+  File "..\..\dist\cufftw64_11.dll"
+  File "..\..\dist\nvblas64_12.dll"
+  File "..\..\dist\nvJitLink_120_0.dll"
+  File "..\..\dist\nvrtc-builtins64_129.dll"
+  File "..\..\dist\nvrtc64_120_0.alt.dll"
+  File "..\..\dist\nvrtc64_120_0.dll"
+  File "..\..\dist\onnxruntime_providers_cuda.dll"
+  File "..\..\dist\onnxruntime_providers_shared.dll"
+  File "..\..\dist\onnxruntime_providers_tensorrt.dll"
+  File "..\..\dist\onnxruntime.dll"
 
   ; Create docs subdirectory
   CreateDirectory "$INSTDIR\docs"

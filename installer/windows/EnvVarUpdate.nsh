@@ -1,73 +1,81 @@
-; EnvVarUpdate.nsh
-; Environment variable update macro
-; From: https://nsis.sourceforge.io/Environmental_Variables:_append,_prepend,_and_remove_entries
+; EnvVarUpdate.nsh - Simplified PATH manipulation for NSIS
+; Based on: https://nsis.sourceforge.io/Environmental_Variables:_append,_prepend,_and_remove_entries
+; Simplified to only support HKLM (all users) for reliability
 
 !ifndef _EnvVarUpdate_nsh
 !define _EnvVarUpdate_nsh
 
 !include "LogicLib.nsh"
+!include "WinMessages.nsh"
 
+; Installer version
 !define EnvVarUpdate "!insertmacro EnvVarUpdate"
 
-!macro EnvVarUpdate ResultVar EnvVarName Action Regloc PathComponent
-  Push "${EnvVarName}"
-  Push "${Action}"
-  Push "${RegLoc}"
+!macro EnvVarUpdate ResultVar EnvVarName Action PathComponent
   Push "${PathComponent}"
+  Push "${Action}"
+  Push "${EnvVarName}"
   Call EnvVarUpdate
   Pop "${ResultVar}"
 !macroend
 
 Function EnvVarUpdate
-  Exch $0 ; PathComponent
+  Exch $0 ; EnvVarName (e.g., "PATH")
   Exch
-  Exch $1 ; RegLoc
+  Exch $1 ; Action (A=Add, R=Remove)
   Exch 2
-  Exch $2 ; Action
+  Exch $2 ; PathComponent to add/remove
   Exch 2
-  Exch $3 ; EnvVarName
-  Exch 3
 
-  Push $4
-  Push $5
-  Push $6
+  Push $3 ; Current PATH value
+  Push $4 ; Search result
+  Push $5 ; Temp for string manipulation
+  Push $6 ; New PATH value
 
-  ; Read current PATH
-  ReadRegStr $4 $1 "SYSTEM\CurrentControlSet\Control\Session Manager\Environment" $3
+  ; Read current PATH from HKLM (all users)
+  ReadRegStr $3 HKLM "SYSTEM\CurrentControlSet\Control\Session Manager\Environment" $0
 
-  ; Check if path component already exists
-  StrCpy $6 "$4;"
-  Push $6
-  Push "$0;"
-  Call StrStr
-  Pop $5
+  ${If} $1 == "A" ; Add to PATH
+    ; Check if already exists
+    Push "$3;"
+    Push "$2;"
+    Call StrStr
+    Pop $4
 
-  ${If} $2 == "A" ; Add
-    ${If} $5 == ""
-      ${If} $4 == ""
-        StrCpy $4 "$0"
+    ${If} $4 == ""
+      ; Not found, add it
+      ${If} $3 == ""
+        StrCpy $6 "$2"
       ${Else}
-        StrCpy $4 "$4;$0"
+        StrCpy $6 "$3;$2"
       ${EndIf}
-      WriteRegExpandStr $1 "SYSTEM\CurrentControlSet\Control\Session Manager\Environment" $3 $4
+
+      ; Write updated PATH
+      WriteRegExpandStr HKLM "SYSTEM\CurrentControlSet\Control\Session Manager\Environment" $0 $6
+      StrCpy $0 "1" ; Success
+    ${Else}
+      StrCpy $0 "0" ; Already exists
     ${EndIf}
-  ${ElseIf} $2 == "R" ; Remove
-    ${If} $5 != ""
-      Push $4
-      Push "$0;"
-      Push ""
-      Call StrReplace
-      Pop $4
-      Push $4
-      Push ";$0"
-      Push ""
-      Call StrReplace
-      Pop $4
-      WriteRegExpandStr $1 "SYSTEM\CurrentControlSet\Control\Session Manager\Environment" $3 $4
-    ${EndIf}
+
+  ${ElseIf} $1 == "R" ; Remove from PATH
+    ; Remove all occurrences
+    StrCpy $6 ""
+    ${StrRep} $6 $3 "$2;" ""
+    ${StrRep} $6 $6 ";$2" ""
+    ${StrRep} $6 $6 "$2" ""
+
+    ; Clean up multiple semicolons
+    ${StrRep} $6 $6 ";;" ";"
+
+    ; Write updated PATH
+    WriteRegExpandStr HKLM "SYSTEM\CurrentControlSet\Control\Session Manager\Environment" $0 $6
+    StrCpy $0 "1" ; Success
+  ${Else}
+    StrCpy $0 "0" ; Unknown action
   ${EndIf}
 
-  StrCpy $0 $4
+  ; Broadcast environment change
+  SendMessage ${HWND_BROADCAST} ${WM_WININICHANGE} 0 "STR:Environment" /TIMEOUT=5000
 
   Pop $6
   Pop $5
@@ -75,204 +83,149 @@ Function EnvVarUpdate
   Pop $3
   Pop $2
   Pop $1
-  Exch $0
+  Exch $0 ; Return value
+FunctionEnd
+
+; String replacement function
+!macro StrRep Output Input Find Replace
+  Push "${Input}"
+  Push "${Find}"
+  Push "${Replace}"
+  Call StrRep
+  Pop "${Output}"
+!macroend
+
+Function StrRep
+  Exch $R0 ; Replace
+  Exch
+  Exch $R1 ; Find
+  Exch 2
+  Exch $R2 ; Input
+  Push $R3
+  Push $R4
+  Push $R5
+  Push $R6
+  Push $R7
+  Push $R8
+
+  StrCpy $R3 ""
+  StrCpy $R4 0
+  StrLen $R5 $R1
+
+  ${If} $R5 == 0
+    StrCpy $R0 $R2
+    Goto StrRep_Done
+  ${EndIf}
+
+  StrRep_Loop:
+    StrCpy $R6 $R2 $R5 $R4
+    ${If} $R6 == $R1
+      StrCpy $R8 $R2 $R4
+      StrCpy $R3 "$R3$R8$R0"
+      IntOp $R4 $R4 + $R5
+    ${Else}
+      StrCpy $R8 $R2 1 $R4
+      StrCpy $R3 "$R3$R8"
+      IntOp $R4 $R4 + 1
+    ${EndIf}
+
+    StrLen $R7 $R2
+    ${If} $R4 >= $R7
+      StrCpy $R0 $R3
+      Goto StrRep_Done
+    ${EndIf}
+    Goto StrRep_Loop
+
+  StrRep_Done:
+  Pop $R8
+  Pop $R7
+  Pop $R6
+  Pop $R5
+  Pop $R4
+  Pop $R3
+  Pop $R2
+  Pop $R1
+  Exch $R0
 FunctionEnd
 
 ; String search function
 Function StrStr
-  Exch $1 ; Search string
+  Exch $R0 ; Needle
   Exch
-  Exch $0 ; String
-  Push $2
-  Push $3
+  Exch $R1 ; Haystack
+  Push $R2
+  Push $R3
+  Push $R4
+  Push $R5
 
-  StrCpy $2 0
-  StrLen $3 $1
+  StrLen $R2 $R0
+  StrCpy $R3 0
 
-  loop:
-    StrCpy $4 $0 $3 $2
-    StrCmp $4 "" notfound
-    StrCmp $4 $1 found
-    IntOp $2 $2 + 1
-    Goto loop
+  StrStr_Loop:
+    StrCpy $R4 $R1 $R2 $R3
+    ${If} $R4 == ""
+      StrCpy $R0 ""
+      Goto StrStr_Done
+    ${EndIf}
+    ${If} $R4 == $R0
+      StrCpy $R0 $R4
+      Goto StrStr_Done
+    ${EndIf}
+    IntOp $R3 $R3 + 1
+    Goto StrStr_Loop
 
-  found:
-    StrCpy $0 $0 $2
-    Goto end
-
-  notfound:
-    StrCpy $0 ""
-
-  end:
-  Pop $4
-  Pop $3
-  Pop $2
-  Pop $1
-  Exch $0
+  StrStr_Done:
+  Pop $R5
+  Pop $R4
+  Pop $R3
+  Pop $R2
+  Pop $R1
+  Exch $R0
 FunctionEnd
 
-; String replace function
-Function StrReplace
-  Exch $2 ; Replacement
-  Exch
-  Exch $1 ; Search string
-  Exch 2
-  Exch $0 ; String
-  Push $3
-  Push $4
-  Push $5
-
-  StrCpy $3 0
-  StrLen $4 $1
-
-  loop:
-    StrCpy $5 $0 $4 $3
-    StrCmp $5 "" done
-    StrCmp $5 $1 replace
-    IntOp $3 $3 + 1
-    Goto loop
-
-  replace:
-    StrCpy $5 $0 $3
-    IntOp $3 $3 + $4
-    StrCpy $0 $0 "" $3
-    StrCpy $0 "$5$2$0"
-    StrLen $3 $5
-    IntOp $3 $3 + $2
-    Goto loop
-
-  done:
-  Pop $5
-  Pop $4
-  Pop $3
-  Pop $2
-  Pop $1
-  Exch $0
-FunctionEnd
-
-; Uninstaller versions
+; Uninstaller version
 !define un.EnvVarUpdate "!insertmacro un.EnvVarUpdate"
 
-!macro un.EnvVarUpdate ResultVar EnvVarName Action Regloc PathComponent
-  Push "${EnvVarName}"
-  Push "${Action}"
-  Push "${RegLoc}"
+!macro un.EnvVarUpdate ResultVar EnvVarName Action PathComponent
   Push "${PathComponent}"
+  Push "${Action}"
+  Push "${EnvVarName}"
   Call un.EnvVarUpdate
   Pop "${ResultVar}"
 !macroend
 
 Function un.EnvVarUpdate
+  ; Same implementation as installer version
   Exch $0
   Exch
   Exch $1
   Exch 2
   Exch $2
   Exch 2
-  Exch $3
-  Exch 3
 
+  Push $3
   Push $4
   Push $5
   Push $6
 
-  ReadRegStr $4 $1 "SYSTEM\CurrentControlSet\Control\Session Manager\Environment" $3
+  ReadRegStr $3 HKLM "SYSTEM\CurrentControlSet\Control\Session Manager\Environment" $0
 
-  StrCpy $6 "$4;"
-  Push $6
-  Push "$0;"
-  Call un.StrStr
-  Pop $5
+  ${If} $1 == "R"
+    StrCpy $6 ""
+    ${StrRep} $6 $3 "$2;" ""
+    ${StrRep} $6 $6 ";$2" ""
+    ${StrRep} $6 $6 "$2" ""
+    ${StrRep} $6 $6 ";;" ";"
 
-  ${If} $2 == "R"
-    ${If} $5 != ""
-      Push $4
-      Push "$0;"
-      Push ""
-      Call un.StrReplace
-      Pop $4
-      Push $4
-      Push ";$0"
-      Push ""
-      Call un.StrReplace
-      Pop $4
-      WriteRegExpandStr $1 "SYSTEM\CurrentControlSet\Control\Session Manager\Environment" $3 $4
-    ${EndIf}
+    WriteRegExpandStr HKLM "SYSTEM\CurrentControlSet\Control\Session Manager\Environment" $0 $6
+    StrCpy $0 "1"
+  ${Else}
+    StrCpy $0 "0"
   ${EndIf}
 
-  StrCpy $0 $4
+  SendMessage ${HWND_BROADCAST} ${WM_WININICHANGE} 0 "STR:Environment" /TIMEOUT=5000
 
   Pop $6
-  Pop $5
-  Pop $4
-  Pop $3
-  Pop $2
-  Pop $1
-  Exch $0
-FunctionEnd
-
-Function un.StrStr
-  Exch $1
-  Exch
-  Exch $0
-  Push $2
-  Push $3
-
-  StrCpy $2 0
-  StrLen $3 $1
-
-  loop:
-    StrCpy $4 $0 $3 $2
-    StrCmp $4 "" notfound
-    StrCmp $4 $1 found
-    IntOp $2 $2 + 1
-    Goto loop
-
-  found:
-    StrCpy $0 $0 $2
-    Goto end
-
-  notfound:
-    StrCpy $0 ""
-
-  end:
-  Pop $4
-  Pop $3
-  Pop $2
-  Pop $1
-  Exch $0
-FunctionEnd
-
-Function un.StrReplace
-  Exch $2
-  Exch
-  Exch $1
-  Exch 2
-  Exch $0
-  Push $3
-  Push $4
-  Push $5
-
-  StrCpy $3 0
-  StrLen $4 $1
-
-  loop:
-    StrCpy $5 $0 $4 $3
-    StrCmp $5 "" done
-    StrCmp $5 $1 replace
-    IntOp $3 $3 + 1
-    Goto loop
-
-  replace:
-    StrCpy $5 $0 $3
-    IntOp $3 $3 + $4
-    StrCpy $0 $0 "" $3
-    StrCpy $0 "$5$2$0"
-    StrLen $3 $5
-    IntOp $3 $3 + $2
-    Goto loop
-
-  done:
   Pop $5
   Pop $4
   Pop $3

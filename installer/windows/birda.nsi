@@ -129,7 +129,7 @@ SectionEnd
 ; Optional PATH configuration
 Section "Add to PATH" SEC03
   ; Add installation directory to system PATH
-  ${EnvVarUpdate} $0 "PATH" "A" "HKLM" "$INSTDIR"
+  ${EnvVarUpdate} $0 "PATH" "A" "$INSTDIR"
 
   ; Broadcast environment change
   DetailPrint "Broadcasting environment change..."
@@ -158,7 +158,7 @@ SectionEnd
 ; Uninstaller
 Section Uninstall
   ; Remove from PATH if it was added
-  ${un.EnvVarUpdate} $0 "PATH" "R" "HKLM" "$INSTDIR"
+  ${un.EnvVarUpdate} $0 "PATH" "R" "$INSTDIR"
 
   ; Broadcast environment change
   System::Call 'user32::SendMessageTimeout(i 0xFFFF, i 0x1A, i 0, t "Environment", i 2, i 5000, *i .r0)'

@@ -128,9 +128,6 @@ begin
       RegWriteStringValue(HKEY_LOCAL_MACHINE,
         'SYSTEM\CurrentControlSet\Control\Session Manager\Environment',
         'Path', Path);
-
-      // Broadcast environment change
-      BroadcastEnvironmentChange();
     end;
   end;
 end;

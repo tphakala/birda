@@ -89,6 +89,11 @@ Name: "{group}\Uninstall {#MyAppName}"; Filename: "{uninstallexe}"
 Root: HKLM; Subkey: "SYSTEM\CurrentControlSet\Control\Session Manager\Environment"; ValueType: expandsz; ValueName: "Path"; ValueData: "{olddata};{app}"; Tasks: addtopath; Check: NeedsAddPath('{app}')
 
 [Code]
+type
+  WPARAM = UINT_PTR;
+  LPARAM = INT_PTR;
+  LRESULT = INT_PTR;
+
 const
   SMTO_ABORTIFHUNG = 2;
 

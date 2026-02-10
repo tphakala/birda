@@ -159,6 +159,52 @@ If NSIS proves superior:
 3. Deprecate Inno Setup after successful NSIS adoption
 4. Update documentation
 
+## Testing Instructions
+
+### Trigger the Workflow
+
+1. Go to GitHub Actions → NSIS Test Build
+2. Click "Run workflow"
+3. Enter version tag (e.g., `v1.4.2`)
+4. Click "Run workflow"
+
+### Verify Build
+
+1. Wait for workflow to complete (~5 minutes)
+2. Check workflow logs for errors
+3. Download draft release from Releases page
+4. Verify installer file exists
+
+### Manual Testing
+
+1. **Installation Test**
+   - Run installer as administrator
+   - Accept license
+   - Choose directory (or use default)
+   - Check "Add to PATH" option
+   - Complete installation
+   - Verify: `birda --version` works in new terminal
+
+2. **PATH Test**
+   - Open new PowerShell/CMD window
+   - Run: `birda --help`
+   - Should work without specifying full path
+
+3. **Uninstaller Test**
+   - Run uninstaller from Start Menu or Control Panel
+   - Verify all files removed from `C:\Program Files\Birda`
+   - Verify Start Menu shortcuts removed
+   - Open new terminal and verify `birda` no longer in PATH
+
+### Comparison Notes
+
+Document findings in the draft release:
+
+- Installer stability during build
+- Installation experience
+- Any errors encountered
+- Performance differences
+
 ## References
 
 - [NSIS Documentation](https://nsis.sourceforge.io/Docs/)

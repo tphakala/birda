@@ -1,13 +1,12 @@
 //! Integration tests for CLI output enhancements.
 
-use assert_cmd::cargo::cargo_bin;
 use assert_cmd::prelude::*;
 use predicates::prelude::*;
 use std::process::Command;
 
 #[test]
 fn test_timing_metrics_in_output() {
-    let mut cmd = Command::new(cargo_bin("birda"));
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("birda"));
 
     // This test requires a small test audio file
     // We'll skip it if the file doesn't exist
@@ -28,7 +27,7 @@ fn test_timing_metrics_in_output() {
 
 #[test]
 fn test_no_progress_flag() {
-    let mut cmd = Command::new(cargo_bin("birda"));
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("birda"));
 
     if !std::path::Path::new("tests/fixtures/test.wav").exists() {
         eprintln!("Skipping test: test audio file not found");
@@ -50,7 +49,7 @@ fn test_no_progress_flag() {
 
 #[test]
 fn test_device_selection_logging_cpu() {
-    let mut cmd = Command::new(cargo_bin("birda"));
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("birda"));
 
     if !std::path::Path::new("tests/fixtures/test.wav").exists() {
         eprintln!("Skipping test: test audio file not found");
@@ -69,7 +68,7 @@ fn test_device_selection_logging_cpu() {
 
 #[test]
 fn test_device_selection_logging_auto() {
-    let mut cmd = Command::new(cargo_bin("birda"));
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("birda"));
 
     if !std::path::Path::new("tests/fixtures/test.wav").exists() {
         eprintln!("Skipping test: test audio file not found");

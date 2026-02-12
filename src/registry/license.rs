@@ -81,40 +81,6 @@ fn display_license_summary(license: &LicenseInfo, vendor: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::registry::types::{FileInfo, LabelsInfo, LanguageVariant, ModelFiles};
-
-    fn create_test_model(license: LicenseInfo) -> ModelEntry {
-        ModelEntry {
-            id: "test".into(),
-            name: "Test Model".into(),
-            description: "A test model".into(),
-            vendor: "Test Vendor".into(),
-            version: "1.0".into(),
-            model_type: "birdnet-v24".into(),
-            license,
-            files: ModelFiles {
-                model: FileInfo {
-                    url: "https://example.com/model.onnx".into(),
-                    filename: "model.onnx".into(),
-                    sha256: None,
-                },
-                labels: LabelsInfo {
-                    default_language: "en".into(),
-                    languages: vec![LanguageVariant {
-                        code: "en".into(),
-                        name: "English".into(),
-                        url: "https://example.com/labels.txt".into(),
-                        filename: "labels.txt".into(),
-                    }],
-                },
-                meta_model: None,
-                bsg_calibration: None,
-                bsg_migration: None,
-                bsg_distribution_maps: None,
-            },
-            recommended: false,
-        }
-    }
 
     #[test]
     fn test_display_license_summary_noncommercial() {

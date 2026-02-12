@@ -1382,7 +1382,7 @@ ISC License
 
 ISC License
 
-Copyright (c) 2019-2025, Frank Denis.
+Copyright (c) 2019-2026, Frank Denis.
 
 Permission to use, copy, modify, and/or distribute this software for any
 purpose with or without fee is hereby granted, provided that the above
@@ -2674,7 +2674,7 @@ DEALINGS IN THE SOFTWARE.
 MIT License
 --------------------------------------------------------------------------------
 
-Copyright (c) 2018-2025 The rust-random Project Developers
+Copyright (c) 2018-2026 The rust-random Project Developers
 Copyright (c) 2014 The Rust Project Developers
 
 Permission is hereby granted, free of charge, to any

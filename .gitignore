@@ -16,3 +16,6 @@ CLAUDE.md
 
 # Git worktrees
 /.worktrees/
+
+# LEANN index
+/.leann/

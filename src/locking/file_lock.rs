@@ -34,6 +34,12 @@ impl FileLock {
     pub fn acquire(input_path: &Path, output_dir: &Path) -> Result<Self> {
         let lock_path = Self::lock_path_for(input_path, output_dir);
 
+        // Ensure output directory exists before creating lock file
+        fs::create_dir_all(output_dir).map_err(|e| Error::OutputDirCreateFailed {
+            path: output_dir.to_path_buf(),
+            source: e,
+        })?;
+
         // Register for cleanup BEFORE file creation to avoid race condition
         // if Ctrl+C occurs between creation and registration
         register_lock(&lock_path);

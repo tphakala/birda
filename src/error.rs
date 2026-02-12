@@ -95,6 +95,15 @@ pub enum Error {
     #[error("no valid audio files found in the provided paths")]
     NoValidAudioFiles,
 
+    /// Output path escapes the intended output directory (path traversal attempt).
+    #[error("output path '{output_path}' escapes output directory '{output_dir}'")]
+    PathTraversal {
+        /// The generated output path.
+        output_path: std::path::PathBuf,
+        /// The intended output directory.
+        output_dir: std::path::PathBuf,
+    },
+
     /// Failed to open audio file.
     #[error("failed to open audio file '{path}'")]
     AudioOpen {

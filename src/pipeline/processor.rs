@@ -601,10 +601,11 @@ pub fn process_file(
         None
     };
 
-    // Write output files or emit detections event
-    if dual_output_mode {
-        // Dual output mode: write files, don't emit detection events
-        // (Progress events already sent via reporter)
+    // Determine if we should write files (dual output or pure file mode)
+    let should_write_files = dual_output_mode || reporter.is_none();
+
+    // Write output files if needed
+    if should_write_files {
         for format in formats {
             write_output(
                 input_path,
@@ -616,9 +617,10 @@ pub fn process_file(
                 json_config.as_ref(),
             )?;
         }
-    } else if let Some(reporter) = reporter {
-        // Pure stdout mode - emit detections event instead of writing files
+    }
 
+    // Emit detections to stdout only in pure stdout mode (not dual output mode)
+    if !dual_output_mode && let Some(reporter) = reporter {
         // Construct BSG metadata if BSG model is used
         let bsg_metadata = if classifier.has_bsg_processor() {
             use crate::output::BsgMetadata;
@@ -648,19 +650,6 @@ pub fn process_file(
         };
 
         reporter.detections(input_path, &detections, bsg_metadata.as_ref());
-    } else {
-        // Pure file mode - write output files
-        for format in formats {
-            write_output(
-                input_path,
-                output_dir,
-                *format,
-                &detections,
-                csv_columns,
-                csv_bom_enabled,
-                json_config.as_ref(),
-            )?;
-        }
     }
 
     let duration_secs = start_time.elapsed().as_secs_f64();
@@ -720,7 +709,7 @@ fn write_output(
     csv_bom_enabled: bool,
     json_config: Option<&JsonOutputConfig>,
 ) -> Result<()> {
-    let output_path = output_path_for(input_path, output_dir, format);
+    let output_path = output_path_for(input_path, output_dir, format)?;
     debug!("Writing {} output: {}", format, output_path.display());
 
     let mut writer: Box<dyn OutputWriter> = match format {

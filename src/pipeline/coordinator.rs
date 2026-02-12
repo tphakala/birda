@@ -2,7 +2,7 @@
 
 use crate::config::OutputFormat;
 use crate::constants::output_extensions;
-use crate::error::Result;
+use crate::error::{Error, Result};
 use crate::locking::FileLock;
 use std::path::{Path, PathBuf};
 use tracing::warn;
@@ -59,7 +59,8 @@ fn sanitize_filename(filename: &str) -> String {
 /// Get output file path for a given format.
 ///
 /// The filename is sanitized to prevent path traversal attacks.
-pub fn output_path_for(input: &Path, output_dir: &Path, format: OutputFormat) -> PathBuf {
+/// Returns an error if the output path would escape the output directory.
+pub fn output_path_for(input: &Path, output_dir: &Path, format: OutputFormat) -> Result<PathBuf> {
     // Use to_string_lossy() to handle non-UTF-8 filenames gracefully
     // Invalid UTF-8 sequences will be replaced with the Unicode replacement character
     let stem = input.file_stem().map_or_else(
@@ -80,14 +81,15 @@ pub fn output_path_for(input: &Path, output_dir: &Path, format: OutputFormat) ->
 
     let output_path = output_dir.join(format!("{safe_stem}{extension}"));
 
-    // Verify the output path is within the output directory (defense in depth)
-    debug_assert!(
-        output_path.starts_with(output_dir),
-        "Output path escapes output directory: {}",
-        output_path.display()
-    );
+    // Runtime verification: output path must stay within output directory
+    if !output_path.starts_with(output_dir) {
+        return Err(Error::PathTraversal {
+            output_path,
+            output_dir: output_dir.to_path_buf(),
+        });
+    }
 
-    output_path
+    Ok(output_path)
 }
 
 /// Check if a file should be processed.
@@ -110,9 +112,15 @@ pub fn should_process(
 
     // Check if all outputs exist (unless force)
     if !force {
-        let all_exist = formats
-            .iter()
-            .all(|fmt| output_path_for(input, output_dir, *fmt).exists());
+        let all_exist = formats.iter().all(|fmt| {
+            output_path_for(input, output_dir, *fmt).map_or_else(
+                |e| {
+                    warn!("Failed to generate output path: {}", e);
+                    false
+                },
+                |p| p.exists(),
+            )
+        });
         if all_exist {
             return ProcessCheck::SkipExists;
         }
@@ -193,7 +201,8 @@ mod tests {
             Path::new("test.wav"),
             Path::new("/output"),
             OutputFormat::Csv,
-        );
+        )
+        .unwrap();
         assert!(path.to_string_lossy().ends_with(".BirdNET.results.csv"));
     }
 
@@ -221,7 +230,8 @@ mod tests {
             Path::new("ääni_tiedostö.wav"),
             Path::new("/output"),
             OutputFormat::Csv,
-        );
+        )
+        .unwrap();
         assert!(path.to_string_lossy().contains("ääni_tiedostö"));
     }
 
@@ -254,21 +264,23 @@ mod tests {
 
     #[test]
     fn test_output_path_for_prevents_traversal() {
-        // Even with malicious input, output should stay in output_dir
+        // Sanitization prevents traversal - output stays in output_dir
         let output_dir = Path::new("/safe/output");
 
         let path1 = output_path_for(
             Path::new("../etc/passwd.wav"),
             output_dir,
             OutputFormat::Json,
-        );
+        )
+        .unwrap();
         assert!(path1.starts_with(output_dir));
 
         let path2 = output_path_for(
             Path::new("../../root/.ssh/id_rsa.wav"),
             output_dir,
             OutputFormat::Csv,
-        );
+        )
+        .unwrap();
         assert!(path2.starts_with(output_dir));
 
         // Path should not contain actual path separators after sanitization

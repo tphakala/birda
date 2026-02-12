@@ -151,6 +151,9 @@ struct ProcessingParams<'a> {
     fail_fast: bool,
     progress_enabled: bool,
     stdout_mode: bool,
+    /// Dual output mode: progress events to stdout, detections to files.
+    /// When true, reporter receives progress events but not detection events.
+    dual_output_mode: bool,
     /// BSG SDM parameters: (latitude, longitude, `day_of_year`)
     /// `day_of_year` is None for auto-detection from file timestamp
     bsg_params: Option<(f64, f64, Option<u32>)>,
@@ -455,7 +458,8 @@ fn process_all_files(
 
         // Process the file
         let file_start = std::time::Instant::now();
-        let reporter_ref = if params.stdout_mode {
+        // Pass reporter in both stdout mode and dual output mode
+        let reporter_ref = if params.stdout_mode || params.dual_output_mode {
             Some(reporter.as_ref() as &dyn crate::output::ProgressReporter)
         } else {
             None
@@ -475,6 +479,7 @@ fn process_all_files(
             params.range_filter_params,
             params.bsg_params,
             reporter_ref,
+            params.dual_output_mode,
         ) {
             Ok(result) => {
                 #[allow(clippy::cast_possible_truncation)]
@@ -644,6 +649,11 @@ fn analyze_files(
     let is_json_output = matches!(output_mode, OutputMode::Json | OutputMode::Ndjson);
     let progress_enabled = !args.quiet && !args.no_progress && !is_json_output;
 
+    // Dual output mode: progress events to stdout + detections to files
+    // Enabled when output_dir is set AND output_mode is NDJSON
+    let dual_output_mode =
+        output_dir.is_some() && matches!(output_mode, OutputMode::Ndjson) && !args.stdout;
+
     let params = ProcessingParams {
         formats: &formats,
         output_dir: output_dir.as_deref(),
@@ -658,6 +668,7 @@ fn analyze_files(
         fail_fast,
         progress_enabled,
         stdout_mode: args.stdout,
+        dual_output_mode,
         bsg_params,
     };
 

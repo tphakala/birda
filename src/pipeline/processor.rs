@@ -385,6 +385,7 @@ pub fn process_file(
     range_filter_params: Option<(f64, f64, u8)>,
     bsg_params: Option<(f64, f64, Option<u32>)>,
     reporter: Option<&dyn crate::output::ProgressReporter>,
+    dual_output_mode: bool,
 ) -> Result<ProcessResult> {
     use crate::audio::StreamingDecoder;
     use crate::output::progress::{self, estimate_segment_count};
@@ -394,12 +395,12 @@ pub fn process_file(
 
     info!("Processing: {}", input_path.display());
 
-    // Acquire lock only if writing files (not stdout mode)
-    let _lock = if reporter.is_none() {
-        // File mode - need lock to prevent concurrent writes
+    // Acquire lock when writing files (file mode or dual output mode)
+    let _lock = if reporter.is_none() || dual_output_mode {
+        // File mode or dual output mode - need lock to prevent concurrent writes
         Some(FileLock::acquire(input_path, output_dir)?)
     } else {
-        // Stdout mode - no files written, no lock needed
+        // Pure stdout mode - no files written, no lock needed
         None
     };
 
@@ -601,8 +602,22 @@ pub fn process_file(
     };
 
     // Write output files or emit detections event
-    if let Some(reporter) = reporter {
-        // Stdout mode - emit detections event instead of writing files
+    if dual_output_mode {
+        // Dual output mode: write files, don't emit detection events
+        // (Progress events already sent via reporter)
+        for format in formats {
+            write_output(
+                input_path,
+                output_dir,
+                *format,
+                &detections,
+                csv_columns,
+                csv_bom_enabled,
+                json_config.as_ref(),
+            )?;
+        }
+    } else if let Some(reporter) = reporter {
+        // Pure stdout mode - emit detections event instead of writing files
 
         // Construct BSG metadata if BSG model is used
         let bsg_metadata = if classifier.has_bsg_processor() {
@@ -634,7 +649,7 @@ pub fn process_file(
 
         reporter.detections(input_path, &detections, bsg_metadata.as_ref());
     } else {
-        // File mode - write output files
+        // Pure file mode - write output files
         for format in formats {
             write_output(
                 input_path,

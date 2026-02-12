@@ -49,7 +49,16 @@ pub fn output_dir_for(input: &Path, explicit_output_dir: Option<&Path>) -> PathB
     )
 }
 
+/// Sanitize a filename to prevent path traversal attacks.
+///
+/// Replaces path separators with underscores.
+fn sanitize_filename(filename: &str) -> String {
+    filename.replace(['/', '\\'], "_")
+}
+
 /// Get output file path for a given format.
+///
+/// The filename is sanitized to prevent path traversal attacks.
 pub fn output_path_for(input: &Path, output_dir: &Path, format: OutputFormat) -> PathBuf {
     // Use to_string_lossy() to handle non-UTF-8 filenames gracefully
     // Invalid UTF-8 sequences will be replaced with the Unicode replacement character
@@ -57,6 +66,9 @@ pub fn output_path_for(input: &Path, output_dir: &Path, format: OutputFormat) ->
         || std::borrow::Cow::Borrowed("output"),
         |s| s.to_string_lossy(),
     );
+
+    // Sanitize filename to prevent path traversal
+    let safe_stem = sanitize_filename(&stem);
 
     let extension = match format {
         OutputFormat::Csv => output_extensions::CSV,
@@ -66,7 +78,16 @@ pub fn output_path_for(input: &Path, output_dir: &Path, format: OutputFormat) ->
         OutputFormat::Json => output_extensions::JSON,
     };
 
-    output_dir.join(format!("{stem}{extension}"))
+    let output_path = output_dir.join(format!("{safe_stem}{extension}"));
+
+    // Verify the output path is within the output directory (defense in depth)
+    debug_assert!(
+        output_path.starts_with(output_dir),
+        "Output path escapes output directory: {}",
+        output_path.display()
+    );
+
+    output_path
 }
 
 /// Check if a file should be processed.
@@ -202,5 +223,56 @@ mod tests {
             OutputFormat::Csv,
         );
         assert!(path.to_string_lossy().contains("ääni_tiedostö"));
+    }
+
+    #[test]
+    fn test_sanitize_filename_normal() {
+        // Normal filenames should pass through unchanged
+        assert_eq!(sanitize_filename("audio_file"), "audio_file");
+        assert_eq!(sanitize_filename("recording-2024"), "recording-2024");
+        assert_eq!(sanitize_filename("test123"), "test123");
+    }
+
+    #[test]
+    fn test_sanitize_filename_path_separators() {
+        // Path separators should be replaced with underscores
+        assert_eq!(sanitize_filename("../etc/passwd"), ".._etc_passwd");
+        assert_eq!(sanitize_filename("subdir/file"), "subdir_file");
+        assert_eq!(
+            sanitize_filename("..\\windows\\system32"),
+            ".._windows_system32"
+        );
+    }
+
+    #[test]
+    fn test_sanitize_filename_parent_directory() {
+        // Path separators in parent directory references are sanitized
+        assert_eq!(sanitize_filename(".."), ".."); // No slashes to replace
+        assert_eq!(sanitize_filename("../audio"), ".._audio");
+        assert_eq!(sanitize_filename("../../file"), ".._.._file");
+    }
+
+    #[test]
+    fn test_output_path_for_prevents_traversal() {
+        // Even with malicious input, output should stay in output_dir
+        let output_dir = Path::new("/safe/output");
+
+        let path1 = output_path_for(
+            Path::new("../etc/passwd.wav"),
+            output_dir,
+            OutputFormat::Json,
+        );
+        assert!(path1.starts_with(output_dir));
+
+        let path2 = output_path_for(
+            Path::new("../../root/.ssh/id_rsa.wav"),
+            output_dir,
+            OutputFormat::Csv,
+        );
+        assert!(path2.starts_with(output_dir));
+
+        // Path should not contain actual path separators after sanitization
+        let path_str = path1.to_string_lossy();
+        assert!(!path_str.contains("../"));
     }
 }

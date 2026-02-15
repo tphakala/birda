@@ -323,15 +323,33 @@ jobs:
           echo "=== Signing ONNX Runtime library ==="
           for dylib in unsigned/*.dylib; do
             if [ -f "$dylib" ]; then
-              echo "Signing: $dylib"
-              codesign --sign "$CERT_IDENTITY" \
-                --timestamp \
-                --options runtime \
-                --verbose \
-                "$dylib"
-              codesign --verify --verbose "$dylib"
+              echo "Processing: $dylib"
+
+              # Check if already signed
+              if codesign --verify "$dylib" 2>/dev/null; then
+                echo "Already signed by: $(codesign --display --verbose "$dylib" 2>&1 | grep 'Authority=')"
+                echo "Re-signing with our certificate..."
+                # Use --force to replace existing signature
+                codesign --force --sign "$CERT_IDENTITY" \
+                  --timestamp \
+                  --options runtime \
+                  --verbose \
+                  "$dylib"
+              else
+                echo "Not signed, signing now..."
+                codesign --sign "$CERT_IDENTITY" \
+                  --timestamp \
+                  --options runtime \
+                  --verbose \
+                  "$dylib"
+              fi
+
+              echo "Verifying signature..."
+              codesign --verify --deep --strict --verbose=2 "$dylib"
+              echo "✓ Successfully signed: $dylib"
             fi
           done
+          echo "=== All libraries signed ==="
 
       - name: Create ZIP for notarization
         run: |

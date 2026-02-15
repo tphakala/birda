@@ -96,14 +96,15 @@ impl ParquetWriter {
 
         let batch = build_record_batch(&self.detections, &self.schema)?;
 
-        let writer = self.writer.as_mut().ok_or_else(|| {
-            crate::error::Error::ParquetWrite {
+        let writer = self
+            .writer
+            .as_mut()
+            .ok_or_else(|| crate::error::Error::ParquetWrite {
                 context: "Writer already closed".to_string(),
                 source: parquet::errors::ParquetError::General(
                     "Attempted to write to closed writer".to_string(),
                 ),
-            }
-        })?;
+            })?;
 
         writer
             .write(&batch)
@@ -351,12 +352,11 @@ pub fn combine_parquet_files(input_files: &[std::path::PathBuf], output_path: &P
     }
 
     // Open first file to get schema
-    let first_file = File::open(&input_files[0]).map_err(|e| {
-        crate::error::Error::ParquetFileCreate {
+    let first_file =
+        File::open(&input_files[0]).map_err(|e| crate::error::Error::ParquetFileCreate {
             path: input_files[0].clone(),
             source: e,
-        }
-    })?;
+        })?;
 
     let builder = ParquetRecordBatchReaderBuilder::try_new(first_file).map_err(|e| {
         crate::error::Error::ParquetWrite {
@@ -379,12 +379,13 @@ pub fn combine_parquet_files(input_files: &[std::path::PathBuf], output_path: &P
         .set_writer_version(parquet::file::properties::WriterVersion::PARQUET_2_0)
         .build();
 
-    let mut writer = ArrowWriter::try_new(output_file, schema.clone(), Some(props)).map_err(
-        |e| crate::error::Error::ParquetWrite {
-            context: "Failed to create combined Parquet writer".to_string(),
-            source: e,
-        },
-    )?;
+    let mut writer =
+        ArrowWriter::try_new(output_file, schema.clone(), Some(props)).map_err(|e| {
+            crate::error::Error::ParquetWrite {
+                context: "Failed to create combined Parquet writer".to_string(),
+                source: e,
+            }
+        })?;
 
     // Stream data from each input file directly to output
     for file_path in input_files {
@@ -407,9 +408,7 @@ pub fn combine_parquet_files(input_files: &[std::path::PathBuf], output_path: &P
                     "Schema mismatch in file: {}. All files must have the same schema.",
                     file_path.display()
                 ),
-                source: parquet::errors::ParquetError::General(
-                    "Incompatible schema".to_string(),
-                ),
+                source: parquet::errors::ParquetError::General("Incompatible schema".to_string()),
             });
         }
 

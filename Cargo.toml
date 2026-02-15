@@ -1,6 +1,6 @@
 [package]
 name = "birda"
-version = "1.6.0"
+version = "1.6.1"
 edition = "2024"
 rust-version = "1.92"
 description = "CLI tool for bird species detection using BirdNET and Perch models"

@@ -179,6 +179,16 @@ pub struct ExecutionProviderInfo {
     pub fallback_reason: Option<String>,
 }
 
+impl From<crate::inference::ExecutionProviderStatus> for ExecutionProviderInfo {
+    fn from(status: crate::inference::ExecutionProviderStatus) -> Self {
+        Self {
+            requested: status.requested,
+            actual: status.actual,
+            fallback_reason: status.fallback_reason,
+        }
+    }
+}
+
 /// Payload for `file_started` event.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FileStartedPayload {

@@ -11,7 +11,7 @@ use birdnet_onnx::{
 };
 use std::collections::HashSet;
 use std::path::PathBuf;
-use tracing::{debug, info, warn};
+use tracing::{debug, error, info, warn};
 
 use super::get_tensorrt_library_name;
 
@@ -781,20 +781,22 @@ fn setup_tensorrt_cache() -> Option<PathBuf> {
 
     // Validate path is valid UTF-8 (required by TensorRT C++ backend)
     if cache_dir.to_str().is_none() {
-        warn!(
+        error!(
             "TensorRT cache path contains non-UTF-8 characters: {}, using default",
             cache_dir.display()
         );
+        error!("TensorRT engines will be rebuilt on every run (significant performance impact)");
         return None;
     }
 
     // Create directory if it doesn't exist
     if let Err(e) = std::fs::create_dir_all(&cache_dir) {
-        warn!(
+        error!(
             "Failed to create TensorRT cache directory {}: {}, using default",
             cache_dir.display(),
             e
         );
+        error!("TensorRT engines will be rebuilt on every run (minutes vs seconds)");
         return None;
     }
 

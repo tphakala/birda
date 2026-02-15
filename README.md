@@ -95,7 +95,7 @@ INFO birda::inference::classifier: Loaded model: BirdNetV24, sample_rate: 48000,
 
 ## Graphical User Interface
 
-For users who prefer a graphical interface, [Birda GUI](https://github.com/tphakala/birda-gui) provides a cross-platform desktop application built with Tauri and SvelteKit.
+For users who prefer a graphical interface, [Birda GUI](https://github.com/tphakala/birda-gui) provides a cross-platform desktop application built with Electron.
 
 **Features:**
 

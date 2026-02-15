@@ -255,6 +255,8 @@ pub enum OutputFormat {
     Kaleidoscope,
     /// JSON format with metadata and summary.
     Json,
+    /// Apache Parquet columnar format.
+    Parquet,
 }
 
 impl std::fmt::Display for OutputFormat {
@@ -265,6 +267,7 @@ impl std::fmt::Display for OutputFormat {
             Self::Audacity => write!(f, "audacity"),
             Self::Kaleidoscope => write!(f, "kaleidoscope"),
             Self::Json => write!(f, "json"),
+            Self::Parquet => write!(f, "parquet"),
         }
     }
 }
@@ -279,6 +282,7 @@ impl std::str::FromStr for OutputFormat {
             "audacity" => Ok(Self::Audacity),
             "kaleidoscope" => Ok(Self::Kaleidoscope),
             "json" => Ok(Self::Json),
+            "parquet" => Ok(Self::Parquet),
             other => Err(crate::error::Error::InvalidOutputFormat {
                 value: other.to_string(),
             }),

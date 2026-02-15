@@ -153,27 +153,31 @@ fn determine_default_batch_size(
     ep_status: &inference::ExecutionProviderStatus,
 ) -> usize {
     use ModelType::{BirdnetV24, BirdnetV30, BsgFinland, PerchV2};
+    use constants::batch_size;
 
     // Match on model type and actual provider (not requested)
     match (model_type, ep_status.actual.as_str()) {
-        // CPU - all models use batch size 8
-        (_, "CPU" | "Auto (CPU)" | "GPU (fallback to CPU)") => 8,
+        // CPU - all models (explicit CPU, auto fallback, or GPU fallback)
+        (_, "CPU") => batch_size::CPU,
 
-        // CUDA with BirdNET 2.4 or BSG
-        (BirdnetV24 | BsgFinland, "CUDA") => 64,
+        // CUDA with BirdNET 2.4 or BSG Finland
+        (BirdnetV24 | BsgFinland, "CUDA") => batch_size::CUDA_BIRDNET_V24,
 
-        // CUDA with BirdNET 3.0 or Perch, or TensorRT with any model
-        (BirdnetV30 | PerchV2, "CUDA" | "TensorRT") | (BirdnetV24 | BsgFinland, "TensorRT") => 32,
+        // CUDA with BirdNET 3.0 or Perch v2
+        (BirdnetV30 | PerchV2, "CUDA") => batch_size::CUDA_BIRDNET_V30,
+
+        // TensorRT with any model
+        (_, "TensorRT") => batch_size::TENSORRT,
 
         // Other GPU providers (DirectML, ROCm, OpenVINO, CoreML, etc.)
-        // Use conservative default
         _ => {
             tracing::debug!(
-                "Using conservative batch size 16 for model {:?} with provider {}",
+                "Using conservative batch size {} for model {:?} with provider {}",
+                batch_size::OTHER_GPU,
                 model_type,
                 ep_status.actual
             );
-            16
+            batch_size::OTHER_GPU
         }
     }
 }
@@ -701,13 +705,6 @@ fn analyze_files(
         );
         default
     });
-
-    // Validate batch size (catch CLI -b 0 case)
-    if batch_size == 0 {
-        return Err(Error::ConfigValidation {
-            message: "batch_size must be at least 1".to_string(),
-        });
-    }
 
     // Warm up the classifier (handles TensorRT spinner internally)
     warmup_classifier(&classifier, batch_size)?;

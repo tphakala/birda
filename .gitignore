@@ -9,7 +9,6 @@
 
 # Claude Code
 .claude/
-CLAUDE.md
 
 # Design documents (not tracked in git)
 /docs/plans/

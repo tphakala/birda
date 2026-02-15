@@ -86,3 +86,16 @@ fn test_providers_json_all_fields_present() {
         );
     }
 }
+
+#[test]
+fn test_providers_command_shows_usage_help() {
+    let mut cmd = cargo_bin_cmd!("birda");
+    cmd.arg("providers");
+
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("Usage:"))
+        .stdout(predicate::str::contains("--cpu"))
+        .stdout(predicate::str::contains("--gpu"))
+        .stdout(predicate::str::contains("Explicit providers"));
+}

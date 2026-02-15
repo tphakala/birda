@@ -13,6 +13,8 @@ use std::collections::HashSet;
 use std::path::PathBuf;
 use tracing::{debug, info, warn};
 
+use super::get_tensorrt_library_name;
+
 /// Tracks execution provider selection and fallback status.
 #[derive(Debug, Clone)]
 pub struct ExecutionProviderStatus {
@@ -197,12 +199,7 @@ impl BirdClassifier {
                 {
                     info!("--gpu: Selected {} provider", name);
                     let builder = add_execution_provider(builder, provider_info);
-                    let fallback = if tensorrt_fallback.is_some() {
-                        warn!("Falling back to {}", name);
-                        tensorrt_fallback
-                    } else {
-                        None
-                    };
+                    let fallback = tensorrt_fallback.inspect(|_| warn!("Falling back to {}", name));
                     (
                         builder,
                         name,
@@ -745,7 +742,6 @@ fn configure_explicit_provider(
         );
         warn!("TensorRT requires NVIDIA TensorRT 10.x runtime libraries");
         warn!("Install from: https://developer.nvidia.com/tensorrt");
-        warn!("Falling back to next available provider");
 
         return Err(Error::ClassifierBuild {
             reason: format!(
@@ -864,22 +860,6 @@ fn add_execution_provider(
             );
             builder
         }
-    }
-}
-
-/// Get `TensorRT` library name for current platform (for error messages).
-fn get_tensorrt_library_name() -> &'static str {
-    #[cfg(target_os = "windows")]
-    {
-        "nvinfer_10.dll"
-    }
-    #[cfg(target_os = "linux")]
-    {
-        "libnvinfer.so.10"
-    }
-    #[cfg(target_os = "macos")]
-    {
-        "libnvinfer.10.dylib"
     }
 }
 

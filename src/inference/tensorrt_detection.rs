@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use tracing::debug;
 
 /// Get the expected `TensorRT` library filename for current platform.
-fn get_tensorrt_library_name() -> &'static str {
+pub fn get_tensorrt_library_name() -> &'static str {
     #[cfg(target_os = "windows")]
     {
         "nvinfer_10.dll"
@@ -246,7 +246,9 @@ mod tests {
     #[test]
     fn test_is_tensorrt_available_when_not_found() {
         // Save original environment
-        let original = std::env::var("LD_LIBRARY_PATH").ok();
+        let original_path = std::env::var("PATH").ok();
+        let original_ld = std::env::var("LD_LIBRARY_PATH").ok();
+        let original_dyld = std::env::var("DYLD_LIBRARY_PATH").ok();
 
         // Clear environment to ensure no paths
         unsafe {
@@ -256,18 +258,21 @@ mod tests {
         }
 
         // Should return false when library not in standard paths
-        // (This assumes standard paths don't have TensorRT in test environment)
         let result = is_tensorrt_available();
 
         // Restore original environment
         unsafe {
-            if let Some(orig) = original {
+            if let Some(orig) = original_path {
+                std::env::set_var("PATH", orig);
+            }
+            if let Some(orig) = original_ld {
                 std::env::set_var("LD_LIBRARY_PATH", orig);
+            }
+            if let Some(orig) = original_dyld {
+                std::env::set_var("DYLD_LIBRARY_PATH", orig);
             }
         }
 
-        // On most test systems, TensorRT won't be installed
-        // Just verify the function returns a boolean without panicking
         let _ = result;
     }
 }

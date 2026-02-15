@@ -26,7 +26,7 @@ pub use json_envelope::{
     SpeciesEntry, SpeciesListPayload, VersionPayload,
 };
 pub use kaleidoscope::KaleidoscopeWriter;
-pub use parquet::ParquetWriter;
+pub use parquet::{ParquetWriter, combine_parquet_files};
 pub use raven::RavenWriter;
 pub use reporter::{
     JsonProgressReporter, NullReporter, PipelineSummary, ProgressReporter, ProgressThrottler,

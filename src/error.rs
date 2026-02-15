@@ -458,6 +458,10 @@ pub enum Error {
         /// The invalid column name.
         name: String,
     },
+
+    /// No input files provided for combining operation.
+    #[error("no input files were provided to combine")]
+    NoInputFilesToCombine,
 }
 
 #[cfg(test)]

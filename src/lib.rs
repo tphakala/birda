@@ -568,8 +568,6 @@ fn analyze_files(
         .min_confidence
         .unwrap_or(config.defaults.min_confidence);
 
-    // Report pipeline start
-    reporter.pipeline_started(files.len(), &model_name, min_confidence);
     let overlap = args.overlap.unwrap_or(config.defaults.overlap);
     let batch_size = args.batch_size.unwrap_or(config.defaults.batch_size);
     let formats = args
@@ -644,6 +642,17 @@ fn analyze_files(
 
     // Warm up the classifier (handles TensorRT spinner internally)
     warmup_classifier(&classifier, batch_size)?;
+
+    // Report pipeline start with execution provider info
+    let ep_info = {
+        let status = classifier.execution_provider_status();
+        crate::output::ExecutionProviderInfo {
+            requested: status.requested.clone(),
+            actual: status.actual.clone(),
+            fallback_reason: status.fallback_reason.clone(),
+        }
+    };
+    reporter.pipeline_started(files.len(), &model_name, min_confidence, &ep_info);
 
     // Build processing parameters
     let is_json_output = matches!(output_mode, OutputMode::Json | OutputMode::Ndjson);

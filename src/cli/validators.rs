@@ -49,6 +49,19 @@ pub fn parse_longitude(s: &str) -> Result<f64, String> {
     parse_bounded_float(s, -180.0, 180.0, "longitude")
 }
 
+/// Parse and validate batch size (must be at least 1).
+pub fn parse_batch_size(s: &str) -> Result<usize, String> {
+    let value: usize = s
+        .parse()
+        .map_err(|_| format!("'{s}' is not a valid number"))?;
+
+    if value < 1 {
+        return Err(format!("batch_size must be at least 1, got {value}"));
+    }
+
+    Ok(value)
+}
+
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::float_cmp)]
 mod tests {
@@ -96,5 +109,19 @@ mod tests {
         let err = parse_bounded_float("abc", -100.0, 100.0, "test");
         assert!(err.is_err());
         assert!(err.unwrap_err().contains("not a valid number"));
+    }
+
+    #[test]
+    fn test_parse_batch_size_valid() {
+        assert_eq!(parse_batch_size("1").ok(), Some(1));
+        assert_eq!(parse_batch_size("8").ok(), Some(8));
+        assert_eq!(parse_batch_size("128").ok(), Some(128));
+    }
+
+    #[test]
+    fn test_parse_batch_size_invalid() {
+        assert!(parse_batch_size("0").is_err());
+        assert!(parse_batch_size("-1").is_err());
+        assert!(parse_batch_size("abc").is_err());
     }
 }

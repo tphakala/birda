@@ -13,7 +13,30 @@ pub const DEFAULT_MIN_CONFIDENCE: f32 = 0.1;
 pub const DEFAULT_OVERLAP: f32 = 0.0;
 
 /// Default batch size for inference.
+///
+/// This is the baseline batch size used for CPU inference across all models.
+/// GPU-specific defaults are defined in the `batch_size` module.
+///
+/// See `determine_default_batch_size()` in `lib.rs` for dynamic batch size selection.
 pub const DEFAULT_BATCH_SIZE: usize = 8;
+
+/// Batch size defaults by execution provider and model type.
+pub mod batch_size {
+    /// CPU batch size for all models.
+    pub const CPU: usize = super::DEFAULT_BATCH_SIZE;
+
+    /// CUDA batch size for `BirdNET` v2.4 and BSG Finland models.
+    pub const CUDA_BIRDNET_V24: usize = 64;
+
+    /// CUDA batch size for `BirdNET` v3.0 and Perch v2 models.
+    pub const CUDA_BIRDNET_V30: usize = 32;
+
+    /// `TensorRT` batch size for all models.
+    pub const TENSORRT: usize = 32;
+
+    /// Conservative default for unknown/other GPU providers.
+    pub const OTHER_GPU: usize = 16;
+}
 
 /// Default number of top predictions to return per segment.
 pub const DEFAULT_TOP_K: usize = 5;

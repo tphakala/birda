@@ -210,8 +210,8 @@ pub struct AnalyzeArgs {
     #[arg(long, env = "BIRDA_OVERLAP")]
     pub overlap: Option<f32>,
 
-    /// Inference batch size.
-    #[arg(short, long, env = "BIRDA_BATCH_SIZE")]
+    /// Inference batch size (must be at least 1).
+    #[arg(short, long, value_parser = parse_batch_size, env = "BIRDA_BATCH_SIZE")]
     pub batch_size: Option<usize>,
 
     /// Generate combined results file.
@@ -348,7 +348,7 @@ pub struct AnalyzeArgs {
 }
 
 // Re-use shared validators
-use super::validators::{parse_confidence, parse_latitude, parse_longitude};
+use super::validators::{parse_batch_size, parse_confidence, parse_latitude, parse_longitude};
 
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::float_cmp)]

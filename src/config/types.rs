@@ -1,6 +1,6 @@
 //! Configuration type definitions.
 
-use crate::constants::{DEFAULT_BATCH_SIZE, DEFAULT_MIN_CONFIDENCE, DEFAULT_OVERLAP};
+use crate::constants::{DEFAULT_MIN_CONFIDENCE, DEFAULT_OVERLAP};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -72,8 +72,9 @@ pub struct DefaultsConfig {
     /// Output formats.
     pub formats: Vec<OutputFormat>,
 
-    /// Batch size for inference.
-    pub batch_size: usize,
+    /// Batch size for inference. If None, a smart default based on model type
+    /// and execution provider will be used.
+    pub batch_size: Option<usize>,
 
     /// Latitude for range filtering.
     pub latitude: Option<f64>,
@@ -116,7 +117,7 @@ impl Default for DefaultsConfig {
             min_confidence: DEFAULT_MIN_CONFIDENCE,
             overlap: DEFAULT_OVERLAP,
             formats: vec![OutputFormat::Csv],
-            batch_size: DEFAULT_BATCH_SIZE,
+            batch_size: None, // Use smart defaults based on model/EP
             latitude: None,
             longitude: None,
             range_threshold: default_range_threshold(),
@@ -392,7 +393,7 @@ mod tests {
         let defaults = DefaultsConfig::default();
         assert_eq!(defaults.min_confidence, 0.1);
         assert_eq!(defaults.overlap, 0.0);
-        assert_eq!(defaults.batch_size, 8);
+        assert_eq!(defaults.batch_size, None);
     }
 
     #[test]

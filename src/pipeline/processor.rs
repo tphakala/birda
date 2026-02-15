@@ -457,7 +457,10 @@ pub fn process_file(
     #[allow(clippy::cast_possible_truncation)]
     let effective_batch_size = estimated_segments.map_or(batch_size, |est_segments| {
         let est_segments_usize = est_segments as usize;
-        if batch_size > est_segments_usize {
+        // Handle empty or corrupt files - never set batch size to 0
+        if est_segments_usize == 0 {
+            batch_size
+        } else if batch_size > est_segments_usize {
             debug!(
                 "Batch size {} exceeds segment count ({} segments), using {} for this file",
                 batch_size, est_segments_usize, est_segments_usize

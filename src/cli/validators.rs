@@ -54,6 +54,7 @@ pub fn parse_longitude(s: &str) -> Result<f64, String> {
 /// Parse and validate batch size (must be between 1 and `MAX_BATCH_SIZE`).
 pub fn parse_batch_size(s: &str) -> Result<usize, String> {
     let value: usize = s
+        .trim()
         .parse()
         .map_err(|_| format!("'{s}' is not a valid number"))?;
 
@@ -156,5 +157,14 @@ mod tests {
         let err = result.unwrap_err();
         assert!(err.contains("batch_size must be between 1 and 512"));
         assert!(err.contains("GPU memory exhaustion"));
+    }
+
+    #[test]
+    fn test_parse_batch_size_with_whitespace() {
+        // Test leading/trailing whitespace (common in config files)
+        assert_eq!(parse_batch_size(" 32").ok(), Some(32));
+        assert_eq!(parse_batch_size("32 ").ok(), Some(32));
+        assert_eq!(parse_batch_size(" 32 ").ok(), Some(32));
+        assert_eq!(parse_batch_size("  64  ").ok(), Some(64));
     }
 }

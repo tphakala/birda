@@ -644,14 +644,7 @@ fn analyze_files(
     warmup_classifier(&classifier, batch_size)?;
 
     // Report pipeline start with execution provider info
-    let ep_info = {
-        let status = classifier.execution_provider_status();
-        crate::output::ExecutionProviderInfo {
-            requested: status.requested.clone(),
-            actual: status.actual.clone(),
-            fallback_reason: status.fallback_reason.clone(),
-        }
-    };
+    let ep_info = classifier.execution_provider_status().clone().into();
     reporter.pipeline_started(files.len(), &model_name, min_confidence, &ep_info);
 
     // Build processing parameters

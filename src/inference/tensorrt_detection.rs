@@ -1,9 +1,32 @@
 //! `TensorRT` library detection for graceful fallback.
+//!
+//! This module provides runtime detection of NVIDIA `TensorRT` 10.x libraries
+//! to enable graceful fallback when `TensorRT` is unavailable or version-incompatible.
+//!
+//! # Version Requirements
+//!
+//! Only `TensorRT` 10.x is supported due to ABI compatibility requirements with
+//! the `birdnet-onnx` crate bindings. Earlier versions will not be detected.
+//!
+//! # Platform-Specific Search Paths
+//!
+//! - **Windows**: Searches `PATH` environment variable
+//! - **Linux**: Searches `LD_LIBRARY_PATH` + standard paths (`/usr/lib`, `/usr/local/lib`, `/usr/lib/x86_64-linux-gnu`, `/usr/lib64`)
+//! - **macOS**: Searches `DYLD_LIBRARY_PATH` + standard paths (`/usr/lib`, `/usr/local/lib`)
 
 use std::path::PathBuf;
 use tracing::debug;
 
 /// Get the expected `TensorRT` library filename for current platform.
+///
+/// # `TensorRT` Version Requirement
+///
+/// This function explicitly checks for `TensorRT` 10.x to match the `birdnet-onnx`
+/// crate's compiled bindings. Earlier `TensorRT` versions (8.x, 9.x) will NOT be
+/// detected even if installed, as they are ABI-incompatible with the bindings.
+///
+/// If you have an older `TensorRT` version installed, the detection will return
+/// `false` and execution will fall back to CPU or other available providers.
 pub fn get_tensorrt_library_name() -> &'static str {
     #[cfg(target_os = "windows")]
     {
@@ -26,12 +49,20 @@ fn get_library_search_paths() -> Vec<PathBuf> {
     #[cfg(target_os = "windows")]
     {
         // Windows: Parse PATH environment variable
-        if let Ok(path_env) = std::env::var("PATH") {
-            for path_str in path_env.split(';') {
-                let path_str = path_str.trim();
-                if !path_str.is_empty() {
-                    paths.push(PathBuf::from(path_str));
+        match std::env::var("PATH") {
+            Ok(path_env) => {
+                for path_str in path_env.split(';') {
+                    let path_str = path_str.trim();
+                    if !path_str.is_empty() {
+                        paths.push(PathBuf::from(path_str));
+                    }
                 }
+            }
+            Err(std::env::VarError::NotUnicode(_)) => {
+                debug!("PATH environment variable contains invalid Unicode, ignoring");
+            }
+            Err(std::env::VarError::NotPresent) => {
+                debug!("PATH environment variable not set");
             }
         }
     }
@@ -39,12 +70,20 @@ fn get_library_search_paths() -> Vec<PathBuf> {
     #[cfg(target_os = "linux")]
     {
         // Linux: Parse LD_LIBRARY_PATH + standard paths
-        if let Ok(ld_path) = std::env::var("LD_LIBRARY_PATH") {
-            for path_str in ld_path.split(':') {
-                let path_str = path_str.trim();
-                if !path_str.is_empty() {
-                    paths.push(PathBuf::from(path_str));
+        match std::env::var("LD_LIBRARY_PATH") {
+            Ok(ld_path) => {
+                for path_str in ld_path.split(':') {
+                    let path_str = path_str.trim();
+                    if !path_str.is_empty() {
+                        paths.push(PathBuf::from(path_str));
+                    }
                 }
+            }
+            Err(std::env::VarError::NotUnicode(_)) => {
+                debug!("LD_LIBRARY_PATH environment variable contains invalid Unicode, ignoring");
+            }
+            Err(std::env::VarError::NotPresent) => {
+                debug!("LD_LIBRARY_PATH environment variable not set");
             }
         }
 
@@ -52,17 +91,26 @@ fn get_library_search_paths() -> Vec<PathBuf> {
         paths.push(PathBuf::from("/usr/lib"));
         paths.push(PathBuf::from("/usr/local/lib"));
         paths.push(PathBuf::from("/usr/lib/x86_64-linux-gnu"));
+        paths.push(PathBuf::from("/usr/lib64")); // RedHat/Fedora/CentOS 64-bit libs
     }
 
     #[cfg(target_os = "macos")]
     {
         // macOS: Parse DYLD_LIBRARY_PATH + standard paths
-        if let Ok(dyld_path) = std::env::var("DYLD_LIBRARY_PATH") {
-            for path_str in dyld_path.split(':') {
-                let path_str = path_str.trim();
-                if !path_str.is_empty() {
-                    paths.push(PathBuf::from(path_str));
+        match std::env::var("DYLD_LIBRARY_PATH") {
+            Ok(dyld_path) => {
+                for path_str in dyld_path.split(':') {
+                    let path_str = path_str.trim();
+                    if !path_str.is_empty() {
+                        paths.push(PathBuf::from(path_str));
+                    }
                 }
+            }
+            Err(std::env::VarError::NotUnicode(_)) => {
+                debug!("DYLD_LIBRARY_PATH environment variable contains invalid Unicode, ignoring");
+            }
+            Err(std::env::VarError::NotPresent) => {
+                debug!("DYLD_LIBRARY_PATH environment variable not set");
             }
         }
 
@@ -77,6 +125,18 @@ fn get_library_search_paths() -> Vec<PathBuf> {
 /// Check if a specific library file exists in any search path.
 fn check_library_exists(paths: &[PathBuf], lib_name: &str) -> bool {
     for path in paths {
+        // Skip invalid paths (non-existent directories from env vars)
+        if !path.exists() {
+            debug!("Skipping non-existent search path: {}", path.display());
+            continue;
+        }
+
+        // Validate path is a directory
+        if !path.is_dir() {
+            debug!("Skipping non-directory search path: {}", path.display());
+            continue;
+        }
+
         let lib_path = path.join(lib_name);
         if lib_path.exists() && lib_path.is_file() {
             debug!("Found TensorRT library: {}", lib_path.display());

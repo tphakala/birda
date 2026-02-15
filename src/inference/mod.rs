@@ -6,7 +6,7 @@ pub mod range_filter;
 mod tensorrt_detection;
 
 pub use birdnet_onnx::{BatchInferenceContext, InferenceOptions};
-pub use classifier::BirdClassifier;
+pub use classifier::{BirdClassifier, ExecutionProviderStatus};
 pub use provider::{ProviderMetadata, provider_metadata};
 pub use tensorrt_detection::{get_tensorrt_library_name, is_tensorrt_available};
 

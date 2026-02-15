@@ -138,7 +138,7 @@ mod tests {
 
     #[test]
     fn test_parse_batch_size_at_maximum() {
-        assert_eq!(parse_batch_size("512").ok(), Some(512));
+        assert_eq!(parse_batch_size("512").ok(), Some(MAX_BATCH_SIZE));
     }
 
     #[test]
@@ -146,7 +146,9 @@ mod tests {
         let result = parse_batch_size("513");
         assert!(result.is_err());
         let err = result.unwrap_err();
-        assert!(err.contains("batch_size must be between 1 and 512"));
+        assert!(err.contains(&format!(
+            "batch_size must be between 1 and {MAX_BATCH_SIZE}"
+        )));
         assert!(err.contains("GPU memory exhaustion"));
     }
 
@@ -155,7 +157,9 @@ mod tests {
         let result = parse_batch_size("2560");
         assert!(result.is_err());
         let err = result.unwrap_err();
-        assert!(err.contains("batch_size must be between 1 and 512"));
+        assert!(err.contains(&format!(
+            "batch_size must be between 1 and {MAX_BATCH_SIZE}"
+        )));
         assert!(err.contains("GPU memory exhaustion"));
     }
 

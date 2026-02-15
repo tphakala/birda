@@ -454,6 +454,7 @@ pub fn process_file(
 
     // Adjust batch size if it exceeds the estimated segment count
     // This prevents unnecessary memory allocation and padding for short files
+    // Cast is safe in practice: would need ~408 years of audio to overflow on 32-bit
     #[allow(clippy::cast_possible_truncation)]
     let effective_batch_size = estimated_segments.map_or(batch_size, |est_segments| {
         let est_segments_usize = est_segments as usize;
@@ -542,7 +543,8 @@ pub fn process_file(
     let progress_guard = progress::ProgressGuard::new(segment_progress, "Inference complete");
 
     // Create channel with capacity for 2 batches (backpressure)
-    let channel_capacity = batch_size.saturating_mul(2).max(4);
+    // Use effective_batch_size to match adjusted memory allocation
+    let channel_capacity = effective_batch_size.saturating_mul(2).max(4);
     let (tx, rx) = sync_channel::<ChunkResult>(channel_capacity);
 
     // Spawn decode thread

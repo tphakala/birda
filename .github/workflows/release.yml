@@ -381,81 +381,11 @@ jobs:
           echo "Created signed tar.gz:"
           ls -lh birda-macos-arm64-${VERSION}-signed.tar.gz
 
-      - name: Install create-dmg
-        run: |
-          brew install create-dmg
-
-      - name: Create DMG
-        run: |
-          VERSION="${{ github.ref_name }}"
-          mkdir -p dmg-staging
-          cp unsigned/birda dmg-staging/
-          cp unsigned/*.dylib dmg-staging/ 2>/dev/null || true
-          cp unsigned/README.md dmg-staging/
-          cp unsigned/LICENSE dmg-staging/ 2>/dev/null || true
-          cp unsigned/THIRD_PARTY_LICENSES.txt dmg-staging/
-
-          # Create DMG with create-dmg
-          create-dmg \
-            --volname "Birda ${VERSION}" \
-            --volicon "dmg-staging/birda" \
-            --window-pos 200 120 \
-            --window-size 800 400 \
-            --icon-size 100 \
-            --icon "birda" 200 150 \
-            --hide-extension "birda" \
-            --app-drop-link 600 150 \
-            "birda-macos-arm64-${VERSION}.dmg" \
-            "dmg-staging/" || {
-            # Fallback to hdiutil if create-dmg fails
-            echo "create-dmg failed, using hdiutil"
-            hdiutil create -volname "Birda ${VERSION}" -srcfolder dmg-staging -ov -format UDZO "birda-macos-arm64-${VERSION}.dmg"
-          }
-
-          echo "Created DMG:"
-          ls -lh birda-macos-arm64-${VERSION}.dmg
-
-      - name: Sign DMG
-        run: |
-          VERSION="${{ github.ref_name }}"
-          echo "=== Signing DMG ==="
-          codesign --sign "$CERT_IDENTITY" \
-            --timestamp \
-            --verbose \
-            "birda-macos-arm64-${VERSION}.dmg"
-
-          echo "=== Verifying DMG signature ==="
-          codesign --verify --verbose "birda-macos-arm64-${VERSION}.dmg"
-
-      - name: Notarize DMG
-        run: |
-          VERSION="${{ github.ref_name }}"
-          echo "=== Submitting DMG for notarization ==="
-          xcrun notarytool submit "birda-macos-arm64-${VERSION}.dmg" \
-            --apple-id "${{ secrets.APPLE_ID }}" \
-            --password "${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}" \
-            --team-id "${{ secrets.APPLE_TEAM_ID }}" \
-            --wait \
-            --timeout 30m \
-            --verbose
-
-          echo "=== Stapling notarization to DMG ==="
-          xcrun stapler staple "birda-macos-arm64-${VERSION}.dmg"
-
-          echo "=== Verifying DMG staple ==="
-          xcrun stapler validate "birda-macos-arm64-${VERSION}.dmg"
-
       - name: Upload signed tar.gz
         uses: actions/upload-artifact@v6
         with:
           name: birda-macos-arm64-signed
           path: birda-macos-arm64-${{ github.ref_name }}-signed.tar.gz
-
-      - name: Upload signed DMG
-        uses: actions/upload-artifact@v6
-        with:
-          name: birda-macos-arm64-dmg
-          path: birda-macos-arm64-${{ github.ref_name }}.dmg
 
   # ==========================================================================
   # GPU builds with bundled ONNX Runtime + CUDA libraries
@@ -966,19 +896,14 @@ jobs:
             |---------|-------------|
             | `birda-linux-x64-${{ github.ref_name }}.tar.gz` | Linux CPU-only |
             | `birda-windows-x64-${{ github.ref_name }}.zip` | Windows CPU-only |
-            | `birda-macos-arm64-${{ github.ref_name }}.dmg` | **macOS Apple Silicon (Signed & Notarized DMG)** |
-            | `birda-macos-arm64-${{ github.ref_name }}-signed.tar.gz` | macOS Apple Silicon (Signed & Notarized tar.gz) |
+            | `birda-macos-arm64-${{ github.ref_name }}-signed.tar.gz` | macOS Apple Silicon (Signed & Notarized) |
             | `birda-linux-x64-cuda-${{ github.ref_name }}.tar.gz` | Linux with GPU support (bundled CUDA) |
             | `birda-windows-x64-cuda-${{ github.ref_name }}.zip` | Windows with GPU support (bundled CUDA) |
             | `birda-windows-x64-cuda-${{ github.ref_name }}-setup.exe` | Windows GPU installer (adds to PATH) |
 
             ### macOS Installation
 
-            **DMG (Recommended):** Download the `.dmg` file and drag to Applications folder. The app is signed and notarized by Apple - no Gatekeeper warnings.
-
-            **tar.gz:** For command-line users and package managers (Homebrew). Also signed and notarized.
-
-            Both formats include the same signed and notarized binary with hardened runtime enabled for maximum security.
+            Extract the tar.gz and copy `birda` to your PATH. The binary is signed and notarized by Apple with hardened runtime enabled - no Gatekeeper warnings.
 
             ### GPU Builds
 
@@ -1001,7 +926,6 @@ jobs:
           files: |
             artifacts/**/*.tar.gz
             artifacts/**/*.zip
-            artifacts/**/*.dmg
             artifacts/**/*-setup.exe
 
       - name: Scan release assets with VirusTotal

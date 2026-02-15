@@ -50,3 +50,39 @@ fn test_providers_command_json_output() {
     assert_eq!(cpu_provider["description"], "CPU (always available)");
     assert!(cpu_provider["id"].is_string());
 }
+
+#[test]
+fn test_providers_json_all_fields_present() {
+    let mut cmd = cargo_bin_cmd!("birda");
+    cmd.arg("providers").arg("--output-mode").arg("json");
+
+    let output = cmd.assert().success();
+    let stdout = String::from_utf8(output.get_output().stdout.clone()).unwrap();
+    let json: Value = serde_json::from_str(&stdout).unwrap();
+
+    let providers = json["payload"]["providers"].as_array().unwrap();
+
+    for provider in providers {
+        // Verify all required fields are present
+        assert!(provider["id"].is_string(), "id field must be string");
+        assert!(provider["name"].is_string(), "name field must be string");
+        assert!(
+            provider["description"].is_string(),
+            "description field must be string"
+        );
+
+        // Verify fields are non-empty
+        assert!(
+            !provider["id"].as_str().unwrap().is_empty(),
+            "id must not be empty"
+        );
+        assert!(
+            !provider["name"].as_str().unwrap().is_empty(),
+            "name must not be empty"
+        );
+        assert!(
+            !provider["description"].as_str().unwrap().is_empty(),
+            "description must not be empty"
+        );
+    }
+}

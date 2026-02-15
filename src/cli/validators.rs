@@ -2,6 +2,8 @@
 //!
 //! Shared validation functions for CLI argument parsing.
 
+use crate::constants::MAX_BATCH_SIZE;
+
 /// Parse and validate confidence value (0.0-1.0).
 pub fn parse_confidence(s: &str) -> Result<f32, String> {
     let value: f32 = s
@@ -49,14 +51,23 @@ pub fn parse_longitude(s: &str) -> Result<f64, String> {
     parse_bounded_float(s, -180.0, 180.0, "longitude")
 }
 
-/// Parse and validate batch size (must be at least 1).
+/// Parse and validate batch size (must be between 1 and `MAX_BATCH_SIZE`).
 pub fn parse_batch_size(s: &str) -> Result<usize, String> {
     let value: usize = s
+        .trim()
         .parse()
         .map_err(|_| format!("'{s}' is not a valid number"))?;
 
     if value < 1 {
         return Err(format!("batch_size must be at least 1, got {value}"));
+    }
+
+    if value > MAX_BATCH_SIZE {
+        return Err(format!(
+            "batch_size must be between 1 and {MAX_BATCH_SIZE}, got {value}\n\n\
+             This limit prevents GPU memory exhaustion.\n\
+             If processing fails with batch_size={MAX_BATCH_SIZE}, try reducing it further or use --cpu."
+        ));
     }
 
     Ok(value)
@@ -123,5 +134,41 @@ mod tests {
         assert!(parse_batch_size("0").is_err());
         assert!(parse_batch_size("-1").is_err());
         assert!(parse_batch_size("abc").is_err());
+    }
+
+    #[test]
+    fn test_parse_batch_size_at_maximum() {
+        assert_eq!(parse_batch_size("512").ok(), Some(MAX_BATCH_SIZE));
+    }
+
+    #[test]
+    fn test_parse_batch_size_above_maximum() {
+        let result = parse_batch_size("513");
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.contains(&format!(
+            "batch_size must be between 1 and {MAX_BATCH_SIZE}"
+        )));
+        assert!(err.contains("GPU memory exhaustion"));
+    }
+
+    #[test]
+    fn test_parse_batch_size_way_above_maximum() {
+        let result = parse_batch_size("2560");
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.contains(&format!(
+            "batch_size must be between 1 and {MAX_BATCH_SIZE}"
+        )));
+        assert!(err.contains("GPU memory exhaustion"));
+    }
+
+    #[test]
+    fn test_parse_batch_size_with_whitespace() {
+        // Test leading/trailing whitespace (common in config files)
+        assert_eq!(parse_batch_size(" 32").ok(), Some(32));
+        assert_eq!(parse_batch_size("32 ").ok(), Some(32));
+        assert_eq!(parse_batch_size(" 32 ").ok(), Some(32));
+        assert_eq!(parse_batch_size("  64  ").ok(), Some(64));
     }
 }

@@ -435,14 +435,63 @@ pub fn process_file(
         None
     };
 
-    // Create batch context for GPU memory efficiency (if batch_size > 1)
+    // Calculate segment parameters (needed for batch size adjustment and progress bar)
+    #[allow(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        clippy::cast_precision_loss
+    )]
+    let segment_samples = (segment_duration * target_rate as f32) as usize;
+    #[allow(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        clippy::cast_precision_loss
+    )]
+    let overlap_samples = (overlap * target_rate as f32) as usize;
+
+    // Estimate segment count for batch size adjustment and progress bar
+    let estimated_segments = estimate_segment_count(duration_hint, segment_duration, overlap);
+
+    // Adjust batch size if it exceeds the estimated segment count
+    // This prevents unnecessary memory allocation and padding for short files
+    // Cast is safe in practice: would need ~408 years of audio to overflow on 32-bit
+    #[allow(clippy::cast_possible_truncation)]
+    let effective_batch_size = estimated_segments.map_or(batch_size, |est_segments| {
+        let est_segments_usize = est_segments as usize;
+        // Handle empty or corrupt files - never set batch size to 0
+        if est_segments_usize == 0 {
+            batch_size
+        } else if batch_size > est_segments_usize {
+            debug!(
+                "Batch size {} exceeds segment count ({} segments), using {} for this file",
+                batch_size, est_segments_usize, est_segments_usize
+            );
+            est_segments_usize
+        } else {
+            batch_size
+        }
+    });
+
+    // Log audio info
+    if let Some(duration) = duration_hint {
+        info!(
+            "Processing ~{} of audio ({:.1}s)",
+            progress::format_duration(duration),
+            duration
+        );
+    } else {
+        info!("Processing audio (duration unknown)");
+    }
+
+    // Create batch context for GPU memory efficiency (if effective_batch_size > 1)
     // Context is created once and reused for all batches in this file
-    let mut batch_context = if batch_size > 1 {
-        match classifier.create_batch_context(batch_size) {
+    // IMPORTANT: This uses effective_batch_size to avoid over-allocating memory
+    let mut batch_context = if effective_batch_size > 1 {
+        match classifier.create_batch_context(effective_batch_size) {
             Ok(ctx) => {
                 debug!(
                     "Created BatchInferenceContext for up to {} segments ({} bytes input buffer)",
-                    batch_size,
+                    effective_batch_size,
                     ctx.input_buffer_bytes()
                 );
                 Some(ctx)
@@ -459,34 +508,6 @@ pub fn process_file(
     } else {
         None
     };
-
-    // Log audio info
-    if let Some(duration) = duration_hint {
-        info!(
-            "Processing ~{} of audio ({:.1}s)",
-            progress::format_duration(duration),
-            duration
-        );
-    } else {
-        info!("Processing audio (duration unknown)");
-    }
-
-    // Calculate segment parameters
-    #[allow(
-        clippy::cast_possible_truncation,
-        clippy::cast_sign_loss,
-        clippy::cast_precision_loss
-    )]
-    let segment_samples = (segment_duration * target_rate as f32) as usize;
-    #[allow(
-        clippy::cast_possible_truncation,
-        clippy::cast_sign_loss,
-        clippy::cast_precision_loss
-    )]
-    let overlap_samples = (overlap * target_rate as f32) as usize;
-
-    // Estimate segment count for progress bar
-    let estimated_segments = estimate_segment_count(duration_hint, segment_duration, overlap);
 
     // Create progress bar
     let file_name = input_path
@@ -522,7 +543,8 @@ pub fn process_file(
     let progress_guard = progress::ProgressGuard::new(segment_progress, "Inference complete");
 
     // Create channel with capacity for 2 batches (backpressure)
-    let channel_capacity = batch_size.saturating_mul(2).max(4);
+    // Use effective_batch_size to match adjusted memory allocation
+    let channel_capacity = effective_batch_size.saturating_mul(2).max(4);
     let (tx, rx) = sync_channel::<ChunkResult>(channel_capacity);
 
     // Spawn decode thread
@@ -546,7 +568,7 @@ pub fn process_file(
         classifier,
         input_path,
         min_confidence,
-        batch_size,
+        effective_batch_size,
         progress_guard.get(),
         &mut batch_context,
         reporter,

@@ -25,11 +25,11 @@ fn run_providers_command(args: &[&str]) -> Option<Vec<u8>> {
 }
 
 /// Helper function to run providers command and parse JSON output.
-/// Returns None if ONNX Runtime isn't available or JSON parsing fails.
+/// Returns None if ONNX Runtime isn't available.
 fn get_providers_json() -> Option<Value> {
     let stdout = run_providers_command(&["--output-mode", "json"])?;
     let output_str = String::from_utf8(stdout).expect("stdout should be valid UTF-8");
-    serde_json::from_str(&output_str).ok()
+    Some(serde_json::from_str(&output_str).expect("stdout should be valid JSON"))
 }
 
 #[test]
@@ -57,7 +57,10 @@ fn test_providers_command_json_output() {
         "spec_version should be present"
     );
     assert!(
-        !json["spec_version"].as_str().unwrap().is_empty(),
+        !json["spec_version"]
+            .as_str()
+            .expect("spec_version should be a string")
+            .is_empty(),
         "spec_version should not be empty"
     );
 
@@ -84,7 +87,7 @@ fn test_providers_command_json_output() {
     assert!(
         cpu_provider["description"]
             .as_str()
-            .unwrap()
+            .expect("description should be a string")
             .contains("CPU"),
         "CPU description should contain 'CPU'"
     );

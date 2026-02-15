@@ -20,6 +20,17 @@ pub const DEFAULT_OVERLAP: f32 = 0.0;
 /// See `determine_default_batch_size()` in `lib.rs` for dynamic batch size selection.
 pub const DEFAULT_BATCH_SIZE: usize = 8;
 
+/// Maximum allowed batch size to prevent GPU memory exhaustion.
+///
+/// This hard limit prevents users from specifying absurdly large batch sizes
+/// that would cause GPU memory exhaustion and system hangs. The limit is
+/// conservative enough to work on most consumer GPUs while still allowing
+/// efficient processing of large files.
+///
+/// Batch sizes larger than the number of segments in a file are automatically
+/// adjusted down at runtime to avoid unnecessary memory allocation and padding.
+pub const MAX_BATCH_SIZE: usize = 512;
+
 /// Batch size defaults by execution provider and model type.
 pub mod batch_size {
     /// CPU batch size for all models.

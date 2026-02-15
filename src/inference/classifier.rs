@@ -92,8 +92,9 @@ impl BirdClassifier {
 
         // Include CoreML in auto-selection only on non-macOS platforms
         // (macOS users can still use --coreml explicitly if needed)
+        // Insert at position 3 to preserve original priority order (between DirectML and ROCm)
         #[cfg(not(target_os = "macos"))]
-        gpu_priority.push((ExecutionProviderInfo::CoreMl, "CoreML"));
+        gpu_priority.insert(3, (ExecutionProviderInfo::CoreMl, "CoreML"));
 
         let (builder, actual_device_msg) = match device {
             InferenceDevice::Cpu => {

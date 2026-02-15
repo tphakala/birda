@@ -163,6 +163,20 @@ pub struct PipelineStartedPayload {
     pub model: String,
     /// Minimum confidence threshold.
     pub min_confidence: f32,
+    /// Execution provider information.
+    pub execution_provider: ExecutionProviderInfo,
+}
+
+/// Execution provider information for GUI display.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExecutionProviderInfo {
+    /// What the user requested ("auto", "gpu", "tensorrt", etc).
+    pub requested: String,
+    /// What execution provider is actually being used ("`TensorRT`", "CUDA", "CPU", etc).
+    pub actual: String,
+    /// Reason for fallback if we didn't use requested provider.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fallback_reason: Option<String>,
 }
 
 /// Payload for `file_started` event.
@@ -584,6 +598,11 @@ mod tests {
             total_files: 10,
             model: "birdnet-v24".to_string(),
             min_confidence: 0.1,
+            execution_provider: ExecutionProviderInfo {
+                requested: "auto".to_string(),
+                actual: "CPU".to_string(),
+                fallback_reason: None,
+            },
         };
         let envelope = JsonEnvelope::new(EventType::PipelineStarted, payload);
 
@@ -591,6 +610,68 @@ mod tests {
         assert!(json.contains("\"spec_version\":\"1.0\""));
         assert!(json.contains("\"event\":\"pipeline_started\""));
         assert!(json.contains("\"total_files\":10"));
+    }
+
+    #[test]
+    fn test_execution_provider_info_serialization() {
+        let info = ExecutionProviderInfo {
+            requested: "auto".to_string(),
+            actual: "CUDA".to_string(),
+            fallback_reason: Some("TensorRT libraries not found".to_string()),
+        };
+
+        let json = serde_json::to_string(&info).expect("serialize");
+        let actual: serde_json::Value = serde_json::from_str(&json).expect("deserialize");
+
+        let expected = serde_json::json!({
+            "requested": "auto",
+            "actual": "CUDA",
+            "fallback_reason": "TensorRT libraries not found"
+        });
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn test_execution_provider_info_without_fallback() {
+        let info = ExecutionProviderInfo {
+            requested: "cuda".to_string(),
+            actual: "CUDA".to_string(),
+            fallback_reason: None,
+        };
+
+        let json = serde_json::to_string(&info).expect("serialize");
+        let actual: serde_json::Value = serde_json::from_str(&json).expect("deserialize");
+
+        let expected = serde_json::json!({
+            "requested": "cuda",
+            "actual": "CUDA"
+        });
+
+        // Should not have fallback_reason key
+        assert_eq!(actual, expected);
+        assert!(actual.get("fallback_reason").is_none());
+    }
+
+    #[test]
+    fn test_pipeline_started_with_execution_provider() {
+        let payload = PipelineStartedPayload {
+            total_files: 10,
+            model: "birdnet-v24".to_string(),
+            min_confidence: 0.1,
+            execution_provider: ExecutionProviderInfo {
+                requested: "auto".to_string(),
+                actual: "TensorRT".to_string(),
+                fallback_reason: None,
+            },
+        };
+
+        let envelope = JsonEnvelope::new(EventType::PipelineStarted, payload);
+        let json = serde_json::to_string(&envelope).expect("serialize");
+
+        assert!(json.contains("\"execution_provider\""));
+        assert!(json.contains("\"requested\":\"auto\""));
+        assert!(json.contains("\"actual\":\"TensorRT\""));
     }
 
     #[test]

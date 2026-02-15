@@ -21,7 +21,13 @@ use std::time::Instant;
 /// Implementations can output to different formats (human, JSON, NDJSON).
 pub trait ProgressReporter: Send + Sync {
     /// Report pipeline start.
-    fn pipeline_started(&self, total_files: usize, model: &str, min_confidence: f32);
+    fn pipeline_started(
+        &self,
+        total_files: usize,
+        model: &str,
+        min_confidence: f32,
+        execution_provider: &crate::output::ExecutionProviderInfo,
+    );
 
     /// Report file processing start.
     fn file_started(
@@ -249,13 +255,20 @@ impl JsonProgressReporter {
 }
 
 impl ProgressReporter for JsonProgressReporter {
-    fn pipeline_started(&self, total_files: usize, model: &str, min_confidence: f32) {
+    fn pipeline_started(
+        &self,
+        total_files: usize,
+        model: &str,
+        min_confidence: f32,
+        execution_provider: &crate::output::ExecutionProviderInfo,
+    ) {
         self.emit(
             EventType::PipelineStarted,
             PipelineStartedPayload {
                 total_files,
                 model: model.to_string(),
                 min_confidence,
+                execution_provider: execution_provider.clone(),
             },
         );
     }
@@ -428,7 +441,14 @@ impl ProgressReporter for JsonProgressReporter {
 pub struct NullReporter;
 
 impl ProgressReporter for NullReporter {
-    fn pipeline_started(&self, _total_files: usize, _model: &str, _min_confidence: f32) {}
+    fn pipeline_started(
+        &self,
+        _total_files: usize,
+        _model: &str,
+        _min_confidence: f32,
+        _execution_provider: &crate::output::ExecutionProviderInfo,
+    ) {
+    }
     fn file_started(
         &self,
         _file: &Path,
@@ -526,7 +546,12 @@ mod tests {
         };
 
         let reporter = JsonProgressReporter::with_writer(OutputMode::Ndjson, writer);
-        reporter.pipeline_started(5, "test-model", 0.1);
+        let dummy_ep = crate::output::ExecutionProviderInfo {
+            requested: "cpu".to_string(),
+            actual: "CPU".to_string(),
+            fallback_reason: None,
+        };
+        reporter.pipeline_started(5, "test-model", 0.1, &dummy_ep);
 
         let output = buffer.lock().expect("lock");
         let output_str = String::from_utf8_lossy(&output);
@@ -537,7 +562,12 @@ mod tests {
     #[test]
     fn test_null_reporter_does_nothing() {
         let reporter = NullReporter;
-        reporter.pipeline_started(10, "model", 0.1);
+        let dummy_ep = crate::output::ExecutionProviderInfo {
+            requested: "cpu".to_string(),
+            actual: "CPU".to_string(),
+            fallback_reason: None,
+        };
+        reporter.pipeline_started(10, "model", 0.1, &dummy_ep);
         reporter.file_started(Path::new("test.wav"), 0, 100, Some(60.0));
         reporter.file_completed_success(Path::new("test.wav"), 5, 1000);
         // No assertions - just verifying it doesn't panic
@@ -591,7 +621,12 @@ mod tests {
         let reporter = JsonProgressReporter::with_writer(OutputMode::Ndjson, FailingWriter);
 
         // Should not panic when write fails
-        reporter.pipeline_started(1, "test", 0.1);
+        let dummy_ep = crate::output::ExecutionProviderInfo {
+            requested: "cpu".to_string(),
+            actual: "CPU".to_string(),
+            fallback_reason: None,
+        };
+        reporter.pipeline_started(1, "test", 0.1, &dummy_ep);
         // Test passes if no panic occurs
     }
 

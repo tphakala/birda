@@ -242,7 +242,8 @@ pub struct AnalyzeArgs {
     #[arg(long)]
     pub no_csv_bom: bool,
 
-    /// Auto-select best available GPU provider (`TensorRT` → `CUDA` → `DirectML` → `CoreML` → `ROCm` → `OpenVINO`).
+    /// Auto-select best available GPU provider (`TensorRT` → `CUDA` → `DirectML` → `ROCm` → `OpenVINO`).
+    /// Note: `CoreML` excluded from auto-selection on macOS (use `--coreml` to force).
     /// Warns and falls back to CPU if no GPU providers available.
     #[arg(long, group = "provider")]
     pub gpu: bool,

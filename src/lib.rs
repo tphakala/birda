@@ -790,7 +790,14 @@ fn handle_providers_command(output_mode: OutputMode) {
     println!("Usage:");
     println!("  (default)      Auto-select (GPU if available, silent CPU fallback)");
     println!("  --cpu          Force CPU only");
-    println!("  --gpu          Auto-select best GPU (TensorRT → CUDA → DirectML → ...)");
+    #[cfg(target_os = "macos")]
+    println!(
+        "  --gpu          Auto-select best GPU (TensorRT → CUDA → DirectML → ROCm → OpenVINO)"
+    );
+    #[cfg(not(target_os = "macos"))]
+    println!(
+        "  --gpu          Auto-select best GPU (TensorRT → CUDA → DirectML → CoreML → ROCm → OpenVINO)"
+    );
     println!();
     println!("Explicit providers (fail if unavailable):");
     let explicit_providers = [

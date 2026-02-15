@@ -76,6 +76,37 @@ birda providers
 
 This shows which backends (CPU, CUDA, TensorRT, etc.) are available at compile-time.
 
+**For programmatic use (GUI integration, scripts):**
+
+```bash
+birda providers --output-mode json
+```
+
+Returns structured JSON output:
+
+```json
+{
+  "spec_version": "1.0",
+  "timestamp": "2026-02-15T12:34:56Z",
+  "event": "result",
+  "payload": {
+    "result_type": "providers",
+    "providers": [
+      {
+        "id": "cpu",
+        "name": "CPU",
+        "description": "CPU (always available)"
+      },
+      {
+        "id": "cuda",
+        "name": "CUDA",
+        "description": "CUDA (NVIDIA GPU acceleration)"
+      }
+    ]
+  }
+}
+```
+
 **Important Notes:**
 
 - **Compile-time vs Runtime**: The `providers` command shows what was available when the binary was built. Actual runtime availability may differ based on drivers and hardware.

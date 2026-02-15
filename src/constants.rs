@@ -33,6 +33,8 @@ pub mod output_extensions {
     pub const KALEIDOSCOPE: &str = ".BirdNET.results.kaleidoscope.csv";
     /// JSON output extension.
     pub const JSON: &str = ".BirdNET.json";
+    /// Parquet output extension.
+    pub const PARQUET: &str = ".BirdNET.results.parquet";
 }
 
 /// Combined output file names.
@@ -43,6 +45,8 @@ pub mod combined_filenames {
     pub const RAVEN: &str = "BirdNET_SelectionTable.txt";
     /// Combined Kaleidoscope filename.
     pub const KALEIDOSCOPE: &str = "BirdNET_Kaleidoscope.csv";
+    /// Combined Parquet filename.
+    pub const PARQUET: &str = "BirdNET_CombinedTable.parquet";
 }
 
 /// Confidence value bounds.

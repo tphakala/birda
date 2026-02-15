@@ -313,6 +313,7 @@ fn find_source_audio(
         output_extensions::AUDACITY,
         output_extensions::KALEIDOSCOPE,
         output_extensions::JSON,
+        output_extensions::PARQUET,
     ];
 
     // Determine search directory: --base-dir if provided, otherwise detection file's parent

@@ -7,7 +7,7 @@ use crate::inference::{BatchInferenceContext, BirdClassifier, InferenceOptions};
 use crate::locking::FileLock;
 use crate::output::{
     AudacityWriter, CsvWriter, Detection, JsonResultWriter, KaleidoscopeWriter, OutputWriter,
-    RavenWriter,
+    ParquetWriter, RavenWriter,
 };
 use crate::pipeline::output_path_for;
 use std::path::Path;
@@ -744,6 +744,7 @@ fn write_output(
                 config.week,
             )?)
         }
+        OutputFormat::Parquet => Box::new(ParquetWriter::new(&output_path, csv_columns)?),
     };
 
     writer.write_header()?;

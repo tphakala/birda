@@ -5,6 +5,7 @@ mod csv;
 mod json;
 pub mod json_envelope;
 mod kaleidoscope;
+mod parquet;
 pub mod progress;
 mod raven;
 mod reporter;
@@ -25,6 +26,7 @@ pub use json_envelope::{
     SpeciesEntry, SpeciesListPayload, VersionPayload,
 };
 pub use kaleidoscope::KaleidoscopeWriter;
+pub use parquet::ParquetWriter;
 pub use raven::RavenWriter;
 pub use reporter::{
     JsonProgressReporter, NullReporter, PipelineSummary, ProgressReporter, ProgressThrottler,

@@ -431,6 +431,33 @@ pub enum Error {
         /// Reason for failure.
         reason: String,
     },
+
+    /// Failed to create Parquet file.
+    #[error("failed to create Parquet file '{path}'")]
+    ParquetFileCreate {
+        /// Path to the Parquet file.
+        path: std::path::PathBuf,
+        /// Underlying I/O error.
+        #[source]
+        source: std::io::Error,
+    },
+
+    /// Failed to write Parquet data.
+    #[error("Parquet write error: {context}")]
+    ParquetWrite {
+        /// Context of the write operation.
+        context: String,
+        /// Underlying Parquet error.
+        #[source]
+        source: parquet::errors::ParquetError,
+    },
+
+    /// Invalid column name in Parquet schema.
+    #[error("invalid Parquet column name: {name}")]
+    InvalidColumnName {
+        /// The invalid column name.
+        name: String,
+    },
 }
 
 #[cfg(test)]

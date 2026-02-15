@@ -3,6 +3,7 @@
 mod classifier;
 mod provider;
 pub mod range_filter;
+mod tensorrt_detection;
 
 pub use birdnet_onnx::{BatchInferenceContext, InferenceOptions};
 pub use classifier::BirdClassifier;

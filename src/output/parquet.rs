@@ -40,7 +40,7 @@ impl ParquetWriter {
     ///
     /// Returns error if file creation fails or Parquet writer initialization fails.
     pub fn new(output_path: &Path, include_additional_columns: &[String]) -> Result<Self> {
-        let schema = build_schema(include_additional_columns)?;
+        let schema = build_schema(include_additional_columns);
         let props = WriterProperties::builder()
             .set_compression(Compression::SNAPPY)
             .set_writer_version(parquet::file::properties::WriterVersion::PARQUET_2_0)
@@ -116,28 +116,6 @@ impl ParquetWriter {
 
         Ok(())
     }
-
-    /// Finalize and close the writer.
-    ///
-    /// Flushes any remaining buffered detections and closes the file.
-    ///
-    /// # Errors
-    ///
-    /// Returns error if final flush or file close fails.
-    pub fn close(mut self) -> Result<()> {
-        self.flush_batch()?;
-
-        if let Some(writer) = self.writer.take() {
-            writer
-                .close()
-                .map_err(|e| crate::error::Error::ParquetWrite {
-                    context: "Failed to close Parquet writer".to_string(),
-                    source: e,
-                })?;
-        }
-
-        Ok(())
-    }
 }
 
 impl OutputWriter for ParquetWriter {
@@ -175,11 +153,7 @@ impl OutputWriter for ParquetWriter {
 /// # Arguments
 ///
 /// * `include_additional_columns` - Names of additional metadata columns to include
-///
-/// # Errors
-///
-/// Currently infallible, but returns Result for future extensibility.
-fn build_schema(include_additional_columns: &[String]) -> Result<Arc<Schema>> {
+fn build_schema(include_additional_columns: &[String]) -> Arc<Schema> {
     let mut fields = vec![
         Field::new("start_s", DataType::Float32, false),
         Field::new("end_s", DataType::Float32, false),
@@ -205,10 +179,10 @@ fn build_schema(include_additional_columns: &[String]) -> Result<Arc<Schema>> {
         fields.push(field);
     }
 
-    Ok(Arc::new(Schema::new(fields)))
+    Arc::new(Schema::new(fields))
 }
 
-/// Build Arrow RecordBatch from detections.
+/// Build Arrow `RecordBatch` from detections.
 ///
 /// Converts a slice of detections into a columnar format suitable for Parquet.
 ///
@@ -221,29 +195,32 @@ fn build_schema(include_additional_columns: &[String]) -> Result<Arc<Schema>> {
 ///
 /// Returns error if record batch creation fails.
 fn build_record_batch(detections: &[Detection], schema: &Arc<Schema>) -> Result<RecordBatch> {
-    let n = detections.len();
-
     // Build core columns
     let start_times: Float32Array = detections.iter().map(|d| d.start_time).collect();
     let end_times: Float32Array = detections.iter().map(|d| d.end_time).collect();
     let scientific_names: StringArray = detections
         .iter()
-        .map(|d| d.scientific_name.as_str())
+        .map(|d| Some(d.scientific_name.as_str()))
         .collect();
-    let common_names: StringArray = detections.iter().map(|d| d.common_name.as_str()).collect();
+    let common_names: StringArray = detections
+        .iter()
+        .map(|d| Some(d.common_name.as_str()))
+        .collect();
     let confidences: Float32Array = detections.iter().map(|d| d.confidence).collect();
 
     // Extract filenames from file_path
     let files: StringArray = detections
         .iter()
         .map(|d| {
-            d.file_path
-                .file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or_else(|| {
-                    // Fallback to full path string if filename extraction fails
-                    d.file_path.to_str().unwrap_or("<invalid-path>")
-                })
+            Some(
+                d.file_path
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or_else(|| {
+                        // Fallback to full path string if filename extraction fails
+                        d.file_path.to_str().unwrap_or("<invalid-path>")
+                    }),
+            )
         })
         .collect();
 
@@ -263,8 +240,8 @@ fn build_record_batch(detections: &[Detection], schema: &Arc<Schema>) -> Result<
     }
 
     RecordBatch::try_new(schema.clone(), columns).map_err(|e| crate::error::Error::ParquetWrite {
-        context: format!("Failed to build record batch: {e}"),
-        source: parquet::errors::ParquetError::General(e.to_string()),
+        context: "Failed to build record batch".to_string(),
+        source: e.into(),
     })
 }
 
@@ -348,7 +325,7 @@ pub fn combine_parquet_files(input_files: &[std::path::PathBuf], output_path: &P
     use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
 
     if input_files.is_empty() {
-        return Err(crate::error::Error::NoValidAudioFiles);
+        return Err(crate::error::Error::NoInputFilesToCombine);
     }
 
     // Open first file to get schema
@@ -402,7 +379,7 @@ pub fn combine_parquet_files(input_files: &[std::path::PathBuf], output_path: &P
         })?;
 
         // Validate schema compatibility
-        if builder.schema() != schema {
+        if *builder.schema() != schema {
             return Err(crate::error::Error::ParquetWrite {
                 context: format!(
                     "Schema mismatch in file: {}. All files must have the same schema.",
@@ -412,7 +389,7 @@ pub fn combine_parquet_files(input_files: &[std::path::PathBuf], output_path: &P
             });
         }
 
-        let mut reader = builder
+        let reader = builder
             .build()
             .map_err(|e| crate::error::Error::ParquetWrite {
                 context: format!("Failed to create Parquet reader: {}", file_path.display()),
@@ -420,10 +397,10 @@ pub fn combine_parquet_files(input_files: &[std::path::PathBuf], output_path: &P
             })?;
 
         // Stream batches directly to output (no buffering in memory)
-        while let Some(batch_result) = reader.next() {
+        for batch_result in reader {
             let batch = batch_result.map_err(|e| crate::error::Error::ParquetWrite {
                 context: format!("Failed to read record batch from: {}", file_path.display()),
-                source: e,
+                source: e.into(),
             })?;
 
             writer
@@ -456,7 +433,7 @@ mod tests {
 
     #[test]
     fn test_schema_basic() {
-        let schema = build_schema(&[]).ok().unwrap();
+        let schema = build_schema(&[]);
         assert_eq!(schema.fields().len(), 6);
         assert_eq!(schema.field(0).name(), "start_s");
         assert_eq!(schema.field(1).name(), "end_s");
@@ -468,9 +445,7 @@ mod tests {
 
     #[test]
     fn test_schema_with_metadata() {
-        let schema = build_schema(&["lat".to_string(), "lon".to_string()])
-            .ok()
-            .unwrap();
+        let schema = build_schema(&["lat".to_string(), "lon".to_string()]);
         assert_eq!(schema.fields().len(), 8);
         assert!(schema.field_with_name("lat").is_ok());
         assert!(schema.field_with_name("lon").is_ok());
@@ -488,7 +463,7 @@ mod tests {
             metadata: Default::default(),
         }];
 
-        let schema = build_schema(&[]).ok().unwrap();
+        let schema = build_schema(&[]);
         let batch = build_record_batch(&detections, &schema).ok().unwrap();
 
         assert_eq!(batch.num_rows(), 1);
@@ -497,7 +472,7 @@ mod tests {
 
     #[test]
     fn test_empty_detections() {
-        let schema = build_schema(&[]).ok().unwrap();
+        let schema = build_schema(&[]);
         let batch = build_record_batch(&[], &schema).ok().unwrap();
         assert_eq!(batch.num_rows(), 0);
         assert_eq!(batch.num_columns(), 6);

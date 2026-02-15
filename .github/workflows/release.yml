@@ -920,6 +920,7 @@ jobs:
           ls -la artifacts/*.tar.gz artifacts/*.zip 2>/dev/null || true
 
       - name: Create Release
+        id: create_release
         uses: softprops/action-gh-release@v2
         with:
           generate_release_notes: true
@@ -967,6 +968,13 @@ jobs:
             artifacts/**/*.zip
             artifacts/**/*.dmg
             artifacts/**/*-setup.exe
+
+      - name: Scan release assets with VirusTotal
+        continue-on-error: true
+        uses: cssnr/virustotal-action@v1
+        with:
+          vt_api_key: ${{ secrets.VT_API_KEY }}
+          release_id: ${{ steps.create_release.outputs.id }}
 
       - name: Update major version tag
         run: |

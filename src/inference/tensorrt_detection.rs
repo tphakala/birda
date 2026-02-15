@@ -1,6 +1,7 @@
 //! `TensorRT` library detection for graceful fallback.
 
 use std::path::PathBuf;
+use tracing::debug;
 
 /// Get the expected `TensorRT` library filename for current platform.
 #[allow(dead_code)]
@@ -73,6 +74,19 @@ fn get_library_search_paths() -> Vec<PathBuf> {
     }
 
     paths
+}
+
+/// Check if a specific library file exists in any search path.
+#[allow(dead_code)]
+fn check_library_exists(paths: &[PathBuf], lib_name: &str) -> bool {
+    for path in paths {
+        let lib_path = path.join(lib_name);
+        if lib_path.exists() && lib_path.is_file() {
+            debug!("Found TensorRT library: {}", lib_path.display());
+            return true;
+        }
+    }
+    false
 }
 
 #[cfg(test)]
@@ -166,5 +180,36 @@ mod tests {
             assert!(paths.contains(&PathBuf::from("/usr/lib")));
             assert!(paths.contains(&PathBuf::from("/usr/local/lib")));
         }
+    }
+
+    #[test]
+    fn test_check_library_exists_found() {
+        use std::fs::File;
+        use tempfile::tempdir;
+
+        let dir = tempdir().expect("create temp dir");
+
+        #[cfg(target_os = "windows")]
+        let lib_name = "nvinfer_10.dll";
+        #[cfg(target_os = "linux")]
+        let lib_name = "libnvinfer.so.10";
+        #[cfg(target_os = "macos")]
+        let lib_name = "libnvinfer.10.dylib";
+
+        // Create dummy library file
+        let lib_path = dir.path().join(lib_name);
+        File::create(&lib_path).expect("create file");
+
+        let paths = vec![dir.path().to_path_buf()];
+        assert!(check_library_exists(&paths, lib_name));
+    }
+
+    #[test]
+    fn test_check_library_exists_not_found() {
+        use tempfile::tempdir;
+
+        let dir = tempdir().expect("create temp dir");
+        let paths = vec![dir.path().to_path_buf()];
+        assert!(!check_library_exists(&paths, "nonexistent.dll"));
     }
 }

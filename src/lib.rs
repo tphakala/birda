@@ -135,6 +135,49 @@ fn apply_model_overrides(model_config: &mut ModelConfig, args: &AnalyzeArgs) {
     }
 }
 
+/// Determine optimal default batch size based on model type and execution provider.
+///
+/// Uses actual execution provider from classifier (not requested device) to handle
+/// Auto/Gpu fallback scenarios correctly.
+///
+/// # Arguments
+///
+/// * `model_type` - Type of model being used
+/// * `ep_status` - Execution provider status from classifier
+///
+/// # Returns
+///
+/// Recommended batch size optimized for the model and provider combination
+fn determine_default_batch_size(
+    model_type: ModelType,
+    ep_status: &inference::ExecutionProviderStatus,
+) -> usize {
+    use ModelType::{BirdnetV24, BirdnetV30, BsgFinland, PerchV2};
+
+    // Match on model type and actual provider (not requested)
+    match (model_type, ep_status.actual.as_str()) {
+        // CPU - all models use batch size 8
+        (_, "CPU" | "Auto (CPU)" | "GPU (fallback to CPU)") => 8,
+
+        // CUDA with BirdNET 2.4 or BSG
+        (BirdnetV24 | BsgFinland, "CUDA") => 64,
+
+        // CUDA with BirdNET 3.0 or Perch, or TensorRT with any model
+        (BirdnetV30 | PerchV2, "CUDA" | "TensorRT") | (BirdnetV24 | BsgFinland, "TensorRT") => 32,
+
+        // Other GPU providers (DirectML, ROCm, OpenVINO, CoreML, etc.)
+        // Use conservative default
+        _ => {
+            tracing::debug!(
+                "Using conservative batch size 16 for model {:?} with provider {}",
+                model_type,
+                ep_status.actual
+            );
+            16
+        }
+    }
+}
+
 /// Parameters for file processing.
 #[allow(clippy::struct_excessive_bools)]
 struct ProcessingParams<'a> {
@@ -569,7 +612,11 @@ fn analyze_files(
         .unwrap_or(config.defaults.min_confidence);
 
     let overlap = args.overlap.unwrap_or(config.defaults.overlap);
-    let batch_size = args.batch_size.unwrap_or(config.defaults.batch_size);
+
+    // Store user's explicit batch size choice (if any)
+    // CLI takes precedence, then config file, then smart default (calculated later)
+    let requested_batch_size = args.batch_size.or(config.defaults.batch_size);
+
     let formats = args
         .format
         .clone()
@@ -639,6 +686,28 @@ fn analyze_files(
         range_filter_config,
         species_list,
     )?;
+
+    // Determine final batch size: user choice > smart default based on actual EP
+    let batch_size = requested_batch_size.unwrap_or_else(|| {
+        let default = determine_default_batch_size(
+            model_config.model_type,
+            classifier.execution_provider_status(),
+        );
+        info!(
+            "Using default batch size {} for {} with {} provider",
+            default,
+            model_config.model_type,
+            classifier.execution_provider_status().actual
+        );
+        default
+    });
+
+    // Validate batch size (catch CLI -b 0 case)
+    if batch_size == 0 {
+        return Err(Error::ConfigValidation {
+            message: "batch_size must be at least 1".to_string(),
+        });
+    }
 
     // Warm up the classifier (handles TensorRT spinner internally)
     warmup_classifier(&classifier, batch_size)?;
@@ -1675,5 +1744,132 @@ mod tests {
         // Args should take precedence
         assert!(species.contains("Args Species"));
         assert!(!species.contains("Config Species"));
+    }
+
+    #[test]
+    fn test_batch_size_cpu() {
+        let ep_status = inference::ExecutionProviderStatus {
+            requested: "cpu".to_string(),
+            actual: "CPU".to_string(),
+            fallback_reason: None,
+        };
+
+        assert_eq!(
+            determine_default_batch_size(ModelType::BirdnetV24, &ep_status),
+            8
+        );
+        assert_eq!(
+            determine_default_batch_size(ModelType::BirdnetV30, &ep_status),
+            8
+        );
+        assert_eq!(
+            determine_default_batch_size(ModelType::PerchV2, &ep_status),
+            8
+        );
+        assert_eq!(
+            determine_default_batch_size(ModelType::BsgFinland, &ep_status),
+            8
+        );
+    }
+
+    #[test]
+    fn test_batch_size_cuda() {
+        let ep_status = inference::ExecutionProviderStatus {
+            requested: "cuda".to_string(),
+            actual: "CUDA".to_string(),
+            fallback_reason: None,
+        };
+
+        assert_eq!(
+            determine_default_batch_size(ModelType::BirdnetV24, &ep_status),
+            64
+        );
+        assert_eq!(
+            determine_default_batch_size(ModelType::BsgFinland, &ep_status),
+            64
+        );
+        assert_eq!(
+            determine_default_batch_size(ModelType::BirdnetV30, &ep_status),
+            32
+        );
+        assert_eq!(
+            determine_default_batch_size(ModelType::PerchV2, &ep_status),
+            32
+        );
+    }
+
+    #[test]
+    fn test_batch_size_tensorrt() {
+        let ep_status = inference::ExecutionProviderStatus {
+            requested: "tensorrt".to_string(),
+            actual: "TensorRT".to_string(),
+            fallback_reason: None,
+        };
+
+        assert_eq!(
+            determine_default_batch_size(ModelType::BirdnetV24, &ep_status),
+            32
+        );
+        assert_eq!(
+            determine_default_batch_size(ModelType::BsgFinland, &ep_status),
+            32
+        );
+        assert_eq!(
+            determine_default_batch_size(ModelType::BirdnetV30, &ep_status),
+            32
+        );
+        assert_eq!(
+            determine_default_batch_size(ModelType::PerchV2, &ep_status),
+            32
+        );
+    }
+
+    #[test]
+    fn test_batch_size_other_gpu() {
+        let ep_status = inference::ExecutionProviderStatus {
+            requested: "directml".to_string(),
+            actual: "DirectML".to_string(),
+            fallback_reason: None,
+        };
+
+        // Should return conservative default of 16
+        assert_eq!(
+            determine_default_batch_size(ModelType::BirdnetV24, &ep_status),
+            16
+        );
+    }
+
+    #[test]
+    fn test_batch_size_cpu_fallback() {
+        let ep_status = inference::ExecutionProviderStatus {
+            requested: "gpu".to_string(),
+            actual: "CPU".to_string(),
+            fallback_reason: Some("No GPU providers available".to_string()),
+        };
+
+        // Should use CPU batch size (8) when falling back to CPU
+        assert_eq!(
+            determine_default_batch_size(ModelType::BirdnetV24, &ep_status),
+            8
+        );
+    }
+
+    #[test]
+    fn test_batch_size_unknown_provider() {
+        let ep_status = inference::ExecutionProviderStatus {
+            requested: "future-provider".to_string(),
+            actual: "FutureGPU".to_string(),
+            fallback_reason: None,
+        };
+
+        // Should use conservative default of 16 for unknown providers
+        assert_eq!(
+            determine_default_batch_size(ModelType::BirdnetV24, &ep_status),
+            16
+        );
+        assert_eq!(
+            determine_default_batch_size(ModelType::BirdnetV30, &ep_status),
+            16
+        );
     }
 }

@@ -12,7 +12,10 @@ pub const DEFAULT_MIN_CONFIDENCE: f32 = 0.1;
 /// Default segment overlap in seconds.
 pub const DEFAULT_OVERLAP: f32 = 0.0;
 
-/// Default batch size for inference.
+/// Default batch size for inference (used as fallback and for comparison).
+///
+/// Actual defaults are determined dynamically based on model type and execution provider.
+/// See `determine_default_batch_size()` in `lib.rs` for smart defaults.
 pub const DEFAULT_BATCH_SIZE: usize = 8;
 
 /// Default number of top predictions to return per segment.

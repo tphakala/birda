@@ -34,8 +34,8 @@ fn validate_defaults(config: &Config) -> Result<()> {
         });
     }
 
-    // Validate batch_size is at least 1
-    if defaults.batch_size == 0 {
+    // Validate batch_size is at least 1 (if explicitly set)
+    if defaults.batch_size == Some(0) {
         return Err(Error::ConfigValidation {
             message: "batch_size must be at least 1".to_string(),
         });
@@ -168,7 +168,7 @@ mod tests {
     #[test]
     fn test_validate_zero_batch_size() {
         let mut config = Config::default();
-        config.defaults.batch_size = 0;
+        config.defaults.batch_size = Some(0);
         assert!(validate_config(&config).is_err());
     }
 

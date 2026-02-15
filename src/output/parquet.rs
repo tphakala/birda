@@ -22,7 +22,7 @@ use crate::output::types::Detection;
 /// Buffers detections and writes them in batches to a Parquet file for efficient
 /// columnar compression.
 pub struct ParquetWriter {
-    writer: ArrowWriter<File>,
+    writer: Option<ArrowWriter<File>>,
     schema: Arc<Schema>,
     detections: Vec<Detection>,
     batch_size: usize,
@@ -60,7 +60,7 @@ impl ParquetWriter {
         })?;
 
         Ok(Self {
-            writer,
+            writer: Some(writer),
             schema,
             detections: Vec::new(),
             batch_size: 1000,
@@ -95,7 +95,17 @@ impl ParquetWriter {
         }
 
         let batch = build_record_batch(&self.detections, &self.schema)?;
-        self.writer
+
+        let writer = self.writer.as_mut().ok_or_else(|| {
+            crate::error::Error::ParquetWrite {
+                context: "Writer already closed".to_string(),
+                source: parquet::errors::ParquetError::General(
+                    "Attempted to write to closed writer".to_string(),
+                ),
+            }
+        })?;
+
+        writer
             .write(&batch)
             .map_err(|e| crate::error::Error::ParquetWrite {
                 context: "Failed to write Parquet record batch".to_string(),
@@ -115,12 +125,16 @@ impl ParquetWriter {
     /// Returns error if final flush or file close fails.
     pub fn close(mut self) -> Result<()> {
         self.flush_batch()?;
-        self.writer
-            .close()
-            .map_err(|e| crate::error::Error::ParquetWrite {
-                context: "Failed to close Parquet writer".to_string(),
-                source: e,
-            })?;
+
+        if let Some(writer) = self.writer.take() {
+            writer
+                .close()
+                .map_err(|e| crate::error::Error::ParquetWrite {
+                    context: "Failed to close Parquet writer".to_string(),
+                    source: e,
+                })?;
+        }
+
         Ok(())
     }
 }
@@ -136,8 +150,20 @@ impl OutputWriter for ParquetWriter {
     }
 
     fn finalize(&mut self) -> Result<()> {
-        // Can't consume self in trait method, so we flush manually
-        self.flush_batch()
+        // Flush any remaining buffered detections
+        self.flush_batch()?;
+
+        // Take ownership of writer and close it to write the Parquet footer
+        if let Some(writer) = self.writer.take() {
+            writer
+                .close()
+                .map_err(|e| crate::error::Error::ParquetWrite {
+                    context: "Failed to close Parquet writer".to_string(),
+                    source: e,
+                })?;
+        }
+
+        Ok(())
     }
 }
 
@@ -213,7 +239,10 @@ fn build_record_batch(detections: &[Detection], schema: &Arc<Schema>) -> Result<
             d.file_path
                 .file_name()
                 .and_then(|n| n.to_str())
-                .unwrap_or("")
+                .unwrap_or_else(|| {
+                    // Fallback to full path string if filename extraction fails
+                    d.file_path.to_str().unwrap_or("<invalid-path>")
+                })
         })
         .collect();
 
@@ -316,16 +345,48 @@ fn build_metadata_column(field: &Field, detections: &[Detection]) -> Result<Arra
 /// - No input files are provided
 pub fn combine_parquet_files(input_files: &[std::path::PathBuf], output_path: &Path) -> Result<()> {
     use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
-    use parquet::file::reader::SerializedFileReader;
 
     if input_files.is_empty() {
         return Err(crate::error::Error::NoValidAudioFiles);
     }
 
-    let mut all_batches = Vec::new();
-    let mut schema = None;
+    // Open first file to get schema
+    let first_file = File::open(&input_files[0]).map_err(|e| {
+        crate::error::Error::ParquetFileCreate {
+            path: input_files[0].clone(),
+            source: e,
+        }
+    })?;
 
-    // Read all input files
+    let builder = ParquetRecordBatchReaderBuilder::try_new(first_file).map_err(|e| {
+        crate::error::Error::ParquetWrite {
+            context: format!("Failed to read Parquet file: {}", input_files[0].display()),
+            source: e,
+        }
+    })?;
+
+    let schema = builder.schema().clone();
+
+    // Create output writer
+    let output_file =
+        File::create(output_path).map_err(|e| crate::error::Error::ParquetFileCreate {
+            path: output_path.to_path_buf(),
+            source: e,
+        })?;
+
+    let props = WriterProperties::builder()
+        .set_compression(Compression::SNAPPY)
+        .set_writer_version(parquet::file::properties::WriterVersion::PARQUET_2_0)
+        .build();
+
+    let mut writer = ArrowWriter::try_new(output_file, schema.clone(), Some(props)).map_err(
+        |e| crate::error::Error::ParquetWrite {
+            context: "Failed to create combined Parquet writer".to_string(),
+            source: e,
+        },
+    )?;
+
+    // Stream data from each input file directly to output
     for file_path in input_files {
         let file = File::open(file_path).map_err(|e| crate::error::Error::ParquetFileCreate {
             path: file_path.clone(),
@@ -339,9 +400,17 @@ pub fn combine_parquet_files(input_files: &[std::path::PathBuf], output_path: &P
             }
         })?;
 
-        // Get schema from first file
-        if schema.is_none() {
-            schema = Some(builder.schema().clone());
+        // Validate schema compatibility
+        if builder.schema() != schema {
+            return Err(crate::error::Error::ParquetWrite {
+                context: format!(
+                    "Schema mismatch in file: {}. All files must have the same schema.",
+                    file_path.display()
+                ),
+                source: parquet::errors::ParquetError::General(
+                    "Incompatible schema".to_string(),
+                ),
+            });
         }
 
         let mut reader = builder
@@ -351,46 +420,26 @@ pub fn combine_parquet_files(input_files: &[std::path::PathBuf], output_path: &P
                 source: e,
             })?;
 
-        // Read all record batches
+        // Stream batches directly to output (no buffering in memory)
         while let Some(batch_result) = reader.next() {
             let batch = batch_result.map_err(|e| crate::error::Error::ParquetWrite {
                 context: format!("Failed to read record batch from: {}", file_path.display()),
                 source: e,
             })?;
-            all_batches.push(batch);
+
+            writer
+                .write(&batch)
+                .map_err(|e| crate::error::Error::ParquetWrite {
+                    context: format!(
+                        "Failed to write batch from {} to combined file",
+                        file_path.display()
+                    ),
+                    source: e,
+                })?;
         }
     }
 
-    let schema = schema.ok_or(crate::error::Error::NoValidAudioFiles)?;
-
-    // Write combined file
-    let output_file =
-        File::create(output_path).map_err(|e| crate::error::Error::ParquetFileCreate {
-            path: output_path.to_path_buf(),
-            source: e,
-        })?;
-
-    let props = WriterProperties::builder()
-        .set_compression(Compression::SNAPPY)
-        .set_writer_version(parquet::file::properties::WriterVersion::PARQUET_2_0)
-        .build();
-
-    let mut writer = ArrowWriter::try_new(output_file, schema, Some(props)).map_err(|e| {
-        crate::error::Error::ParquetWrite {
-            context: "Failed to create combined Parquet writer".to_string(),
-            source: e,
-        }
-    })?;
-
-    for batch in all_batches {
-        writer
-            .write(&batch)
-            .map_err(|e| crate::error::Error::ParquetWrite {
-                context: "Failed to write batch to combined file".to_string(),
-                source: e,
-            })?;
-    }
-
+    // Close writer to write the Parquet footer
     writer
         .close()
         .map_err(|e| crate::error::Error::ParquetWrite {

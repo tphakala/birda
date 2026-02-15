@@ -337,17 +337,6 @@ jobs:
 
           echo "=== Notarization successful ==="
 
-      - name: Staple notarization to binary
-        run: |
-          echo "=== Stapling notarization ticket ==="
-          xcrun stapler staple unsigned/birda
-
-          echo "=== Verifying staple ==="
-          xcrun stapler validate unsigned/birda
-
-          echo "=== Final Gatekeeper check ==="
-          spctl --assess --verbose=4 --type execute unsigned/birda
-
       - name: Create signed tar.gz
         run: |
           VERSION="${{ github.ref_name }}"

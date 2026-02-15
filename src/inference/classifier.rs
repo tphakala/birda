@@ -77,17 +77,24 @@ impl BirdClassifier {
         // - oneDNN: Intel CPU optimizer (not GPU acceleration)
         // - QNN: Qualcomm-specific hardware (mobile/edge devices only)
         // - ACL/ArmNN: ARM-specific devices only
+        // - CoreML: Excluded on macOS due to poor ONNX Runtime support (use --coreml to force)
         //
         // These specialized providers are available via explicit flags
-        // (--onednn, --qnn, --acl, --armnn) for users with specific hardware.
-        let gpu_priority = [
+        // (--onednn, --qnn, --acl, --armnn, --coreml) for users with specific hardware.
+        #[allow(unused_mut)]
+        let mut gpu_priority = vec![
             (ExecutionProviderInfo::TensorRt, "TensorRT"),
             (ExecutionProviderInfo::Cuda, "CUDA"),
             (ExecutionProviderInfo::DirectMl, "DirectML"),
-            (ExecutionProviderInfo::CoreMl, "CoreML"),
             (ExecutionProviderInfo::Rocm, "ROCm"),
             (ExecutionProviderInfo::OpenVino, "OpenVINO"),
         ];
+
+        // Include CoreML in auto-selection only on non-macOS platforms
+        // (macOS users can still use --coreml explicitly if needed)
+        // Insert at position 3 to preserve original priority order (between DirectML and ROCm)
+        #[cfg(not(target_os = "macos"))]
+        gpu_priority.insert(3, (ExecutionProviderInfo::CoreMl, "CoreML"));
 
         let (builder, actual_device_msg) = match device {
             InferenceDevice::Cpu => {

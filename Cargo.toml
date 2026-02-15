@@ -42,6 +42,7 @@ csv = "1.3"
 tempfile = "3"
 assert_cmd = "2"
 predicates = "3"
+serial_test = "3"
 
 [lints.rust]
 unsafe_code = "deny"

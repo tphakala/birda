@@ -396,6 +396,7 @@ Start (s),End (s),Scientific name,Common name,Confidence,File
 Apache Parquet columnar format for efficient data storage and analysis. Provides 50-80% file size reduction compared to CSV with native support in data science tools (Pandas, Polars, DuckDB).
 
 **Benefits:**
+
 - **Compact**: 50-80% smaller than CSV for large datasets
 - **Type-safe**: Native typed columns (Float32, String) eliminate parsing errors
 - **Fast queries**: Columnar format enables efficient filtering without loading entire dataset
@@ -414,6 +415,7 @@ birda analyze -f parquet --lat 45.0 --lon -73.0 --week 24 recording.wav
 ```
 
 **Column Schema:**
+
 - Core: `start_s`, `end_s`, `scientific_name`, `common_name`, `confidence`, `file`
 - Optional metadata: `lat`, `lon`, `week`, `model`, `overlap`, `sensitivity`, `min_conf`, `species_list`
 

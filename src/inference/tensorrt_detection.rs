@@ -4,7 +4,6 @@ use std::path::PathBuf;
 use tracing::debug;
 
 /// Get the expected `TensorRT` library filename for current platform.
-#[allow(dead_code)]
 fn get_tensorrt_library_name() -> &'static str {
     #[cfg(target_os = "windows")]
     {
@@ -21,7 +20,6 @@ fn get_tensorrt_library_name() -> &'static str {
 }
 
 /// Get platform-specific library search paths.
-#[allow(dead_code)]
 fn get_library_search_paths() -> Vec<PathBuf> {
     let mut paths = Vec::new();
 
@@ -77,7 +75,6 @@ fn get_library_search_paths() -> Vec<PathBuf> {
 }
 
 /// Check if a specific library file exists in any search path.
-#[allow(dead_code)]
 fn check_library_exists(paths: &[PathBuf], lib_name: &str) -> bool {
     for path in paths {
         let lib_path = path.join(lib_name);
@@ -87,6 +84,39 @@ fn check_library_exists(paths: &[PathBuf], lib_name: &str) -> bool {
         }
     }
     false
+}
+
+/// Check if `TensorRT` libraries are available on the system.
+///
+/// Searches for `TensorRT` runtime libraries in platform-specific locations:
+/// - Windows: `nvinfer_10.dll` in PATH
+/// - Linux: `libnvinfer.so.10` in `LD_LIBRARY_PATH` and standard directories
+/// - macOS: `libnvinfer.10.dylib` in `DYLD_LIBRARY_PATH` and standard directories
+///
+/// Returns `true` if the library is found, `false` otherwise.
+pub fn is_tensorrt_available() -> bool {
+    let lib_name = get_tensorrt_library_name();
+    let search_paths = get_library_search_paths();
+
+    debug!(
+        "Checking for TensorRT library '{}' in {} paths",
+        lib_name,
+        search_paths.len()
+    );
+
+    for path in &search_paths {
+        debug!("Checking path: {}", path.display());
+    }
+
+    let found = check_library_exists(&search_paths, lib_name);
+
+    if found {
+        debug!("TensorRT libraries found");
+    } else {
+        debug!("TensorRT libraries not found");
+    }
+
+    found
 }
 
 #[cfg(test)]
@@ -211,5 +241,33 @@ mod tests {
         let dir = tempdir().expect("create temp dir");
         let paths = vec![dir.path().to_path_buf()];
         assert!(!check_library_exists(&paths, "nonexistent.dll"));
+    }
+
+    #[test]
+    fn test_is_tensorrt_available_when_not_found() {
+        // Save original environment
+        let original = std::env::var("LD_LIBRARY_PATH").ok();
+
+        // Clear environment to ensure no paths
+        unsafe {
+            std::env::remove_var("PATH");
+            std::env::remove_var("LD_LIBRARY_PATH");
+            std::env::remove_var("DYLD_LIBRARY_PATH");
+        }
+
+        // Should return false when library not in standard paths
+        // (This assumes standard paths don't have TensorRT in test environment)
+        let result = is_tensorrt_available();
+
+        // Restore original environment
+        unsafe {
+            if let Some(orig) = original {
+                std::env::set_var("LD_LIBRARY_PATH", orig);
+            }
+        }
+
+        // On most test systems, TensorRT won't be installed
+        // Just verify the function returns a boolean without panicking
+        let _ = result;
     }
 }

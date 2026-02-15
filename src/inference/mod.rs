@@ -8,6 +8,7 @@ mod tensorrt_detection;
 pub use birdnet_onnx::{BatchInferenceContext, InferenceOptions};
 pub use classifier::BirdClassifier;
 pub use provider::{ProviderMetadata, provider_metadata};
+pub use tensorrt_detection::is_tensorrt_available;
 
 use std::path::PathBuf;
 

@@ -212,15 +212,13 @@ fn build_record_batch(detections: &[Detection], schema: &Arc<Schema>) -> Result<
     let files: StringArray = detections
         .iter()
         .map(|d| {
-            Some(
-                d.file_path
-                    .file_name()
-                    .and_then(|n| n.to_str())
-                    .unwrap_or_else(|| {
-                        // Fallback to full path string if filename extraction fails
-                        d.file_path.to_str().unwrap_or("<invalid-path>")
-                    }),
-            )
+            Some(d.file_path.file_name().map_or_else(
+                || {
+                    // Fallback to full path string if filename extraction fails
+                    d.file_path.to_string_lossy().to_string()
+                },
+                |n| n.to_string_lossy().to_string(),
+            ))
         })
         .collect();
 
@@ -328,21 +326,21 @@ pub fn combine_parquet_files(input_files: &[std::path::PathBuf], output_path: &P
         return Err(crate::error::Error::NoInputFilesToCombine);
     }
 
-    // Open first file to get schema
+    // Open first file to get schema and process it
     let first_file =
-        File::open(&input_files[0]).map_err(|e| crate::error::Error::ParquetFileCreate {
+        File::open(&input_files[0]).map_err(|e| crate::error::Error::ParquetFileOpen {
             path: input_files[0].clone(),
             source: e,
         })?;
 
-    let builder = ParquetRecordBatchReaderBuilder::try_new(first_file).map_err(|e| {
+    let first_builder = ParquetRecordBatchReaderBuilder::try_new(first_file).map_err(|e| {
         crate::error::Error::ParquetWrite {
             context: format!("Failed to read Parquet file: {}", input_files[0].display()),
             source: e,
         }
     })?;
 
-    let schema = builder.schema().clone();
+    let schema = first_builder.schema().clone();
 
     // Create output writer
     let output_file =
@@ -364,9 +362,40 @@ pub fn combine_parquet_files(input_files: &[std::path::PathBuf], output_path: &P
             }
         })?;
 
-    // Stream data from each input file directly to output
-    for file_path in input_files {
-        let file = File::open(file_path).map_err(|e| crate::error::Error::ParquetFileCreate {
+    // Process first file (schema was already extracted from it)
+    let first_reader = first_builder
+        .build()
+        .map_err(|e| crate::error::Error::ParquetWrite {
+            context: format!(
+                "Failed to create Parquet reader: {}",
+                input_files[0].display()
+            ),
+            source: e,
+        })?;
+
+    for batch_result in first_reader {
+        let batch = batch_result.map_err(|e| crate::error::Error::ParquetWrite {
+            context: format!(
+                "Failed to read record batch from: {}",
+                input_files[0].display()
+            ),
+            source: e.into(),
+        })?;
+
+        writer
+            .write(&batch)
+            .map_err(|e| crate::error::Error::ParquetWrite {
+                context: format!(
+                    "Failed to write batch from {} to combined file",
+                    input_files[0].display()
+                ),
+                source: e,
+            })?;
+    }
+
+    // Stream data from remaining input files directly to output
+    for file_path in &input_files[1..] {
+        let file = File::open(file_path).map_err(|e| crate::error::Error::ParquetFileOpen {
             path: file_path.clone(),
             source: e,
         })?;

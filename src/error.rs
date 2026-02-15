@@ -442,6 +442,16 @@ pub enum Error {
         source: std::io::Error,
     },
 
+    /// Failed to open Parquet file for reading.
+    #[error("failed to open Parquet file '{path}'")]
+    ParquetFileOpen {
+        /// Path to the Parquet file.
+        path: std::path::PathBuf,
+        /// Underlying I/O error.
+        #[source]
+        source: std::io::Error,
+    },
+
     /// Failed to write Parquet data.
     #[error("Parquet write error: {context}")]
     ParquetWrite {

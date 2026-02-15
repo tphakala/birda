@@ -1,12 +1,15 @@
 //! Inference module for bird species detection.
 
 mod classifier;
+mod cuda_detection;
+mod library_detection;
 mod provider;
 pub mod range_filter;
 mod tensorrt_detection;
 
 pub use birdnet_onnx::{BatchInferenceContext, InferenceOptions};
 pub use classifier::{BirdClassifier, ExecutionProviderStatus};
+pub use cuda_detection::{get_cuda_library_patterns, is_cuda_available};
 pub use provider::{ProviderMetadata, provider_metadata};
 pub use tensorrt_detection::{get_tensorrt_library_name, is_tensorrt_available};
 

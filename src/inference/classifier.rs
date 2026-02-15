@@ -140,6 +140,16 @@ impl BirdClassifier {
                     available_gpu_priority.remove(pos);
                 }
 
+                // Filter CUDA if libraries not available
+                if let Some(pos) = available_gpu_priority
+                    .iter()
+                    .position(|(p, _)| *p == ExecutionProviderInfo::Cuda)
+                    && !crate::inference::is_cuda_available()
+                {
+                    debug!("Auto mode: CUDA in priority list but libraries not found, skipping");
+                    available_gpu_priority.remove(pos);
+                }
+
                 if let Some(&(provider_info, name)) = available_gpu_priority
                     .iter()
                     .find(|(p, _)| available_providers.contains(p))
@@ -174,6 +184,7 @@ impl BirdClassifier {
                 // Filter TensorRT if libraries not available
                 let mut available_gpu_priority = gpu_priority.clone();
                 let mut tensorrt_fallback = None;
+                let mut cuda_fallback = None;
 
                 if let Some(pos) = available_gpu_priority
                     .iter()
@@ -193,13 +204,47 @@ impl BirdClassifier {
                     available_gpu_priority.remove(pos);
                 }
 
+                // Filter CUDA if libraries not available
+                if let Some(pos) = available_gpu_priority
+                    .iter()
+                    .position(|(p, _)| *p == ExecutionProviderInfo::Cuda)
+                    && !crate::inference::is_cuda_available()
+                {
+                    warn!("CUDA runtime libraries not found");
+                    warn!(
+                        "Looking for: {}",
+                        crate::inference::get_cuda_library_patterns().join(", ")
+                    );
+                    warn!("CUDA requires NVIDIA CUDA runtime libraries");
+                    warn!("Install from: https://developer.nvidia.com/cuda-downloads");
+                    cuda_fallback = Some("CUDA runtime libraries not found".to_string());
+                    available_gpu_priority.remove(pos);
+                }
+
                 if let Some(&(provider_info, name)) = available_gpu_priority
                     .iter()
                     .find(|(p, _)| available_providers.contains(p))
                 {
                     info!("--gpu: Selected {} provider", name);
                     let builder = add_execution_provider(builder, provider_info);
-                    let fallback = tensorrt_fallback.inspect(|_| warn!("Falling back to {}", name));
+
+                    // Combine fallback reasons
+                    let fallback = match (tensorrt_fallback, cuda_fallback) {
+                        (Some(tr), Some(cu)) => {
+                            warn!("Falling back to {}", name);
+                            Some(format!("{tr}; {cu}"))
+                        }
+                        (Some(tr), None) => {
+                            warn!("Falling back to {}", name);
+                            Some(tr)
+                        }
+                        (None, Some(cu)) => {
+                            warn!("Falling back to {}", name);
+                            Some(cu)
+                        }
+                        (None, None) => None,
+                    };
+
                     (
                         builder,
                         name,
@@ -748,6 +793,25 @@ fn configure_explicit_provider(
                 "TensorRT libraries not found ({} missing in library path). \
                  Install TensorRT 10.x runtime libraries from https://developer.nvidia.com/tensorrt",
                 get_tensorrt_library_name()
+            ),
+        });
+    }
+
+    // Check CUDA libraries if this is CUDA
+    if provider_info == ExecutionProviderInfo::Cuda && !crate::inference::is_cuda_available() {
+        warn!("CUDA runtime libraries not found");
+        warn!(
+            "Looking for: {}",
+            crate::inference::get_cuda_library_patterns().join(", ")
+        );
+        warn!("CUDA requires NVIDIA CUDA runtime libraries");
+        warn!("Install from: https://developer.nvidia.com/cuda-downloads");
+
+        return Err(Error::ClassifierBuild {
+            reason: format!(
+                "CUDA runtime libraries not found (looking for {} in library path). \
+                 Install NVIDIA CUDA runtime libraries from https://developer.nvidia.com/cuda-downloads",
+                crate::inference::get_cuda_library_patterns().join(", ")
             ),
         });
     }

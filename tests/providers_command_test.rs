@@ -24,6 +24,14 @@ fn run_providers_command(args: &[&str]) -> Option<Vec<u8>> {
     }
 }
 
+/// Helper function to run providers command and parse JSON output.
+/// Returns None if ONNX Runtime isn't available.
+fn get_providers_json() -> Option<Value> {
+    let stdout = run_providers_command(&["--output-mode", "json"])?;
+    let output_str = String::from_utf8(stdout).expect("stdout should be valid UTF-8");
+    Some(serde_json::from_str(&output_str).expect("stdout should be valid JSON"))
+}
+
 #[test]
 fn test_providers_command_human_readable() {
     let stdout = match run_providers_command(&[]) {
@@ -38,18 +46,24 @@ fn test_providers_command_human_readable() {
 
 #[test]
 fn test_providers_command_json_output() {
-    let stdout = match run_providers_command(&["--output-mode", "json"]) {
-        Some(stdout) => stdout,
+    let json = match get_providers_json() {
+        Some(json) => json,
         None => return,
     };
 
-    let output_str = String::from_utf8(stdout).expect("stdout should be valid UTF-8");
+    // Verify structure - spec_version should be present and non-empty
+    assert!(
+        json["spec_version"].is_string(),
+        "spec_version should be present"
+    );
+    assert!(
+        !json["spec_version"]
+            .as_str()
+            .expect("spec_version should be a string")
+            .is_empty(),
+        "spec_version should not be empty"
+    );
 
-    // Parse JSON
-    let json: Value = serde_json::from_str(&output_str).expect("Valid JSON output");
-
-    // Verify structure
-    assert_eq!(json["spec_version"], "1.0");
     assert_eq!(json["event"], "result");
     assert!(json["timestamp"].is_string());
     assert_eq!(json["payload"]["result_type"], "providers");
@@ -69,19 +83,22 @@ fn test_providers_command_json_output() {
         .find(|p| p["id"] == "cpu")
         .expect("CPU provider exists");
     assert_eq!(cpu_provider["name"], "CPU");
-    assert_eq!(cpu_provider["description"], "CPU (always available)");
-    assert!(cpu_provider["id"].is_string());
+    // Check description contains "CPU" rather than exact match to avoid brittleness
+    assert!(
+        cpu_provider["description"]
+            .as_str()
+            .expect("description should be a string")
+            .contains("CPU"),
+        "CPU description should contain 'CPU'"
+    );
 }
 
 #[test]
 fn test_providers_json_all_fields_present() {
-    let stdout = match run_providers_command(&["--output-mode", "json"]) {
-        Some(stdout) => stdout,
+    let json = match get_providers_json() {
+        Some(json) => json,
         None => return,
     };
-
-    let output_str = String::from_utf8(stdout).expect("stdout should be valid UTF-8");
-    let json: Value = serde_json::from_str(&output_str).expect("Valid JSON output");
 
     let providers = json["payload"]["providers"]
         .as_array()

@@ -13,6 +13,17 @@ use std::collections::HashSet;
 use std::path::PathBuf;
 use tracing::{debug, info, warn};
 
+/// Tracks execution provider selection and fallback status.
+#[derive(Debug, Clone)]
+pub struct ExecutionProviderStatus {
+    /// What the user requested ("auto", "gpu", "tensorrt", etc).
+    pub requested: String,
+    /// What execution provider is actually being used ("`TensorRT`", "CUDA", "CPU", etc).
+    pub actual: String,
+    /// Reason for fallback if we didn't use requested provider.
+    pub fallback_reason: Option<String>,
+}
+
 /// Range filtering data that is always kept together.
 ///
 /// Invariant: All three fields are present together. This struct encapsulates
@@ -40,6 +51,8 @@ pub struct BirdClassifier {
     uses_tensorrt: bool,
     /// BSG post-processor (for BSG models only).
     bsg_processor: Option<BsgPostProcessor>,
+    /// Execution provider status (requested, actual, fallback reason).
+    ep_status: ExecutionProviderStatus,
 }
 
 impl BirdClassifier {
@@ -96,37 +109,120 @@ impl BirdClassifier {
         #[cfg(not(target_os = "macos"))]
         gpu_priority.insert(3, (ExecutionProviderInfo::CoreMl, "CoreML"));
 
-        let (builder, actual_device_msg) = match device {
+        let (builder, actual_device_msg, ep_status) = match device {
             InferenceDevice::Cpu => {
                 info!("Requested device: CPU");
-                (builder, "CPU")
+                (
+                    builder,
+                    "CPU",
+                    ExecutionProviderStatus {
+                        requested: "cpu".to_string(),
+                        actual: "CPU".to_string(),
+                        fallback_reason: None,
+                    },
+                )
             }
             InferenceDevice::Auto => {
                 // Auto mode: try GPU providers in priority order, silent CPU fallback
-                if let Some(&(provider_info, name)) = gpu_priority
+
+                // Filter TensorRT if libraries not available
+                let mut available_gpu_priority = gpu_priority.clone();
+                if let Some(pos) = available_gpu_priority
+                    .iter()
+                    .position(|(p, _)| *p == ExecutionProviderInfo::TensorRt)
+                    && !crate::inference::is_tensorrt_available()
+                {
+                    debug!(
+                        "Auto mode: TensorRT in priority list but libraries not found, skipping"
+                    );
+                    available_gpu_priority.remove(pos);
+                }
+
+                if let Some(&(provider_info, name)) = available_gpu_priority
                     .iter()
                     .find(|(p, _)| available_providers.contains(p))
                 {
                     info!("Auto mode: {} available, attempting GPU", name);
                     let builder = add_execution_provider(builder, provider_info);
-                    (builder, name)
+                    (
+                        builder,
+                        name,
+                        ExecutionProviderStatus {
+                            requested: "auto".to_string(),
+                            actual: name.to_string(),
+                            fallback_reason: None,
+                        },
+                    )
                 } else {
                     info!("Auto mode: No GPU providers available, using CPU");
-                    (builder, "Auto (CPU)")
+                    (
+                        builder,
+                        "Auto (CPU)",
+                        ExecutionProviderStatus {
+                            requested: "auto".to_string(),
+                            actual: "CPU".to_string(),
+                            fallback_reason: Some("No GPU providers available".to_string()),
+                        },
+                    )
                 }
             }
             InferenceDevice::Gpu => {
                 // Best-effort GPU: try providers in priority order, warn if CPU fallback
-                if let Some(&(provider_info, name)) = gpu_priority
+
+                // Filter TensorRT if libraries not available
+                let mut available_gpu_priority = gpu_priority.clone();
+                let mut tensorrt_fallback = None;
+
+                if let Some(pos) = available_gpu_priority
+                    .iter()
+                    .position(|(p, _)| *p == ExecutionProviderInfo::TensorRt)
+                    && !crate::inference::is_tensorrt_available()
+                {
+                    warn!(
+                        "TensorRT libraries not found ({})",
+                        get_tensorrt_library_name()
+                    );
+                    warn!("TensorRT requires NVIDIA TensorRT 10.x runtime libraries");
+                    warn!("Install from: https://developer.nvidia.com/tensorrt");
+                    tensorrt_fallback = Some(format!(
+                        "TensorRT libraries not found ({} missing)",
+                        get_tensorrt_library_name()
+                    ));
+                    available_gpu_priority.remove(pos);
+                }
+
+                if let Some(&(provider_info, name)) = available_gpu_priority
                     .iter()
                     .find(|(p, _)| available_providers.contains(p))
                 {
                     info!("--gpu: Selected {} provider", name);
                     let builder = add_execution_provider(builder, provider_info);
-                    (builder, name)
+                    let fallback = if tensorrt_fallback.is_some() {
+                        warn!("Falling back to {}", name);
+                        tensorrt_fallback
+                    } else {
+                        None
+                    };
+                    (
+                        builder,
+                        name,
+                        ExecutionProviderStatus {
+                            requested: "gpu".to_string(),
+                            actual: name.to_string(),
+                            fallback_reason: fallback,
+                        },
+                    )
                 } else {
                     warn!("--gpu requested but no GPU providers available, using CPU");
-                    (builder, "GPU (fallback to CPU)")
+                    (
+                        builder,
+                        "GPU (fallback to CPU)",
+                        ExecutionProviderStatus {
+                            requested: "gpu".to_string(),
+                            actual: "CPU".to_string(),
+                            fallback_reason: Some("No GPU providers available".to_string()),
+                        },
+                    )
                 }
             }
             // Explicit providers use the helper function
@@ -301,6 +397,7 @@ impl BirdClassifier {
             species_list,
             uses_tensorrt,
             bsg_processor,
+            ep_status,
         })
     }
 
@@ -327,6 +424,11 @@ impl BirdClassifier {
     /// Check if `TensorRT` is being used.
     pub fn uses_tensorrt(&self) -> bool {
         self.uses_tensorrt
+    }
+
+    /// Get execution provider status (requested, actual, fallback reason).
+    pub fn execution_provider_status(&self) -> &ExecutionProviderStatus {
+        &self.ep_status
     }
 
     /// Perform a warm-up inference to initialize GPU resources.
@@ -591,6 +693,32 @@ mod tests {
         assert!(filtered.iter().any(|p| p.species.contains("Cyanistes")));
         assert!(!filtered.iter().any(|p| p.species.contains("Turdus")));
     }
+
+    #[test]
+    fn test_execution_provider_status_creation() {
+        let status = ExecutionProviderStatus {
+            requested: "auto".to_string(),
+            actual: "CUDA".to_string(),
+            fallback_reason: Some("TensorRT libraries not found".to_string()),
+        };
+
+        assert_eq!(status.requested, "auto");
+        assert_eq!(status.actual, "CUDA");
+        assert!(status.fallback_reason.is_some());
+    }
+
+    #[test]
+    fn test_execution_provider_status_no_fallback() {
+        let status = ExecutionProviderStatus {
+            requested: "cuda".to_string(),
+            actual: "CUDA".to_string(),
+            fallback_reason: None,
+        };
+
+        assert_eq!(status.requested, "cuda");
+        assert_eq!(status.actual, "CUDA");
+        assert!(status.fallback_reason.is_none());
+    }
 }
 
 /// Configure an explicit execution provider (fail if unavailable).
@@ -599,16 +727,43 @@ fn configure_explicit_provider(
     available_providers: &[ExecutionProviderInfo],
     provider_info: ExecutionProviderInfo,
     provider_name: &'static str,
-) -> Result<(ClassifierBuilder, &'static str)> {
+) -> Result<(ClassifierBuilder, &'static str, ExecutionProviderStatus)> {
     if !available_providers.contains(&provider_info) {
         return Err(provider_unavailable_error(
             provider_name,
             available_providers,
         ));
     }
+
+    // Check TensorRT libraries if this is TensorRT
+    if provider_info == ExecutionProviderInfo::TensorRt
+        && !crate::inference::is_tensorrt_available()
+    {
+        warn!(
+            "TensorRT libraries not found ({})",
+            get_tensorrt_library_name()
+        );
+        warn!("TensorRT requires NVIDIA TensorRT 10.x runtime libraries");
+        warn!("Install from: https://developer.nvidia.com/tensorrt");
+        warn!("Falling back to next available provider");
+
+        return Err(Error::ClassifierBuild {
+            reason: format!(
+                "TensorRT libraries not found ({} missing in library path). \
+                 Install TensorRT 10.x runtime libraries from https://developer.nvidia.com/tensorrt",
+                get_tensorrt_library_name()
+            ),
+        });
+    }
+
     info!("Requested device: {provider_name}");
     let builder = add_execution_provider(builder, provider_info);
-    Ok((builder, provider_name))
+    let ep_status = ExecutionProviderStatus {
+        requested: provider_name.to_lowercase(),
+        actual: provider_name.to_string(),
+        fallback_reason: None,
+    };
+    Ok((builder, provider_name, ep_status))
 }
 
 /// Setup `TensorRT` cache directory, returning the path if successful.
@@ -709,6 +864,22 @@ fn add_execution_provider(
             );
             builder
         }
+    }
+}
+
+/// Get `TensorRT` library name for current platform (for error messages).
+fn get_tensorrt_library_name() -> &'static str {
+    #[cfg(target_os = "windows")]
+    {
+        "nvinfer_10.dll"
+    }
+    #[cfg(target_os = "linux")]
+    {
+        "libnvinfer.so.10"
+    }
+    #[cfg(target_os = "macos")]
+    {
+        "libnvinfer.10.dylib"
     }
 }
 

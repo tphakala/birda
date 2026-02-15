@@ -12,7 +12,7 @@ A fast, cross-platform CLI tool for bird species detection using [BirdNET](https
 - **Multiple AI Models**: Support for BirdNET v2.4, BirdNET v3.0, Google Perch v2, and BSG Finnish Birds models
 - **GPU Acceleration**: Optional CUDA support for faster inference on NVIDIA GPUs
 - **Species Filtering**: Dynamic range filtering by location/date or static species list files
-- **Multiple Output Formats**: CSV, JSON, Raven selection tables, Audacity labels, Kaleidoscope CSV
+- **Multiple Output Formats**: CSV, Parquet, JSON, Raven selection tables, Audacity labels, Kaleidoscope CSV
 - **JSON Output Mode**: Structured JSON/NDJSON output for GUI integration and automation
 - **Graphical User Interface**: Optional cross-platform GUI available separately
 - **Batch Processing**: Process entire directories of audio files
@@ -389,6 +389,52 @@ CSV files include a UTF-8 BOM (Byte Order Mark) by default for proper encoding d
 Start (s),End (s),Scientific name,Common name,Confidence,File
 0.0,3.0,Glaucidium passerinum,Eurasian Pygmy Owl,0.9237,recording.wav
 3.0,6.0,Glaucidium passerinum,Eurasian Pygmy Owl,0.9849,recording.wav
+```
+
+### Parquet
+
+Apache Parquet columnar format for efficient data storage and analysis. Provides 50-80% file size reduction compared to CSV with native support in data science tools (Pandas, Polars, DuckDB).
+
+**Benefits:**
+- **Compact**: 50-80% smaller than CSV for large datasets
+- **Type-safe**: Native typed columns (Float32, String) eliminate parsing errors
+- **Fast queries**: Columnar format enables efficient filtering without loading entire dataset
+- **Ecosystem**: First-class support in Pandas, Polars, DuckDB, Arrow, Spark
+- **Self-documenting**: Schema and column types embedded in file format
+
+```bash
+# Single format
+birda analyze -f parquet recording.wav
+
+# Multiple formats
+birda analyze -f csv,parquet recording.wav
+
+# With metadata columns
+birda analyze -f parquet --lat 45.0 --lon -73.0 --week 24 recording.wav
+```
+
+**Column Schema:**
+- Core: `start_s`, `end_s`, `scientific_name`, `common_name`, `confidence`, `file`
+- Optional metadata: `lat`, `lon`, `week`, `model`, `overlap`, `sensitivity`, `min_conf`, `species_list`
+
+**Reading Parquet files:**
+
+```python
+import pandas as pd
+df = pd.read_parquet('recording.BirdNET.results.parquet')
+print(df.head())
+```
+
+```python
+import polars as pl
+df = pl.read_parquet('recording.BirdNET.results.parquet')
+print(df.describe())
+```
+
+```sql
+-- DuckDB
+SELECT species, COUNT(*) FROM 'recording.BirdNET.results.parquet'
+GROUP BY species ORDER BY COUNT(*) DESC;
 ```
 
 ### Raven Selection Table

@@ -283,11 +283,28 @@ jobs:
           p12-file-base64: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
           p12-password: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
 
+      - name: Find certificate identity
+        run: |
+          echo "=== Listing available signing identities ==="
+          security find-identity -v -p codesigning signing_temp.keychain
+
+          # Extract the full certificate name (between quotes)
+          IDENTITY=$(security find-identity -v -p codesigning signing_temp.keychain | grep "Developer ID Application" | head -1 | awk -F'"' '{print $2}')
+
+          if [ -z "$IDENTITY" ]; then
+            echo "ERROR: No Developer ID Application certificate found!"
+            exit 1
+          fi
+
+          echo "Found identity: $IDENTITY"
+          echo "CERT_IDENTITY=$IDENTITY" >> $GITHUB_ENV
+
       - name: Sign the binary
         run: |
           echo "=== Signing binary ==="
+          echo "Using identity: $CERT_IDENTITY"
           # Sign with hardened runtime and timestamp
-          codesign --sign "Developer ID Application: ${{ secrets.APPLE_TEAM_ID }}" \
+          codesign --sign "$CERT_IDENTITY" \
             --timestamp \
             --options runtime \
             --entitlements installer/macos/entitlements.plist \
@@ -307,7 +324,7 @@ jobs:
           for dylib in unsigned/*.dylib; do
             if [ -f "$dylib" ]; then
               echo "Signing: $dylib"
-              codesign --sign "Developer ID Application: ${{ secrets.APPLE_TEAM_ID }}" \
+              codesign --sign "$CERT_IDENTITY" \
                 --timestamp \
                 --options runtime \
                 --verbose \
@@ -384,7 +401,7 @@ jobs:
         run: |
           VERSION="${{ github.ref_name }}"
           echo "=== Signing DMG ==="
-          codesign --sign "Developer ID Application: ${{ secrets.APPLE_TEAM_ID }}" \
+          codesign --sign "$CERT_IDENTITY" \
             --timestamp \
             --verbose \
             "birda-macos-arm64-${VERSION}.dmg"

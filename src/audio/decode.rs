@@ -209,8 +209,7 @@ impl StreamingDecoder {
                 if e.kind() == std::io::ErrorKind::UnexpectedEof =>
             {
                 tracing::debug!(
-                    "EOF reached at sample position {}, total samples emitted: {}",
-                    self.samples_emitted,
+                    "EOF reached at sample position {} (actual end of file)",
                     self.samples_emitted
                 );
                 self.eof = true;

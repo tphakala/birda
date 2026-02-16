@@ -208,10 +208,20 @@ impl StreamingDecoder {
             Err(symphonia::core::errors::Error::IoError(e))
                 if e.kind() == std::io::ErrorKind::UnexpectedEof =>
             {
+                tracing::debug!(
+                    "EOF reached at sample position {}, total samples emitted: {}",
+                    self.samples_emitted,
+                    self.samples_emitted
+                );
                 self.eof = true;
                 return Ok(());
             }
             Err(e) => {
+                tracing::error!(
+                    "Decode error at sample position {}: {}",
+                    self.samples_emitted,
+                    e
+                );
                 return Err(Error::AudioDecode {
                     path: self.path.clone(),
                     source: Box::new(e),

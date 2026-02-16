@@ -61,7 +61,7 @@ Source: "..\..\dist\cudart64_*.dll"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\..\dist\cublas64_*.dll"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\..\dist\cublasLt64_*.dll"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\..\dist\cufft64_*.dll"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\..\dist\cudnn*.dll"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\..\dist\cudnn*.dll"; DestDir: "{app}"; Flags: ignoreversion; Excludes: "cudnn_adv64_9.dll"
 Source: "..\..\dist\nvrtc*.dll"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\..\dist\nvJitLink*.dll"; DestDir: "{app}"; Flags: ignoreversion
 ; Note: TensorRT libraries are NOT bundled due to size constraints

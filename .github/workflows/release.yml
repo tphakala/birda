@@ -802,7 +802,8 @@ jobs:
           Copy-Item "target/${{ env.TARGET }}/release/birda.exe" -Destination "dist/"
 
           # Copy GPU DLLs to same directory as executable (Windows searches exe directory)
-          Copy-Item "lib-staging/*.dll" -Destination "dist/"
+          # Exclude cudnn_adv64_9.dll as it's not used
+          Get-ChildItem "lib-staging/*.dll" -Exclude "cudnn_adv64_9.dll" | Copy-Item -Destination "dist/"
 
           # Copy VC++ Redistributable for installer
           Copy-Item "vc_redist.x64.exe" -Destination "dist/"

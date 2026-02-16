@@ -20,8 +20,8 @@ AppPublisherURL={#MyAppPublisherURL}
 AppSupportURL={#MyAppURL}/issues
 AppUpdatesURL={#MyAppURL}/releases
 DefaultDirName={autopf}\{#MyAppName}
-DefaultGroupName={#MyAppName}
-AllowNoIcons=yes
+; Skip Start Menu folder page (CLI tool doesn't need icons)
+DisableProgramGroupPage=yes
 ; Output settings (overridden by command line)
 OutputDir=.
 OutputBaseFilename=birda-windows-x64-cuda-setup
@@ -82,10 +82,6 @@ Source: "..\..\dist\vc_redist.x64.exe"; DestDir: "{tmp}"; Flags: deleteafterinst
 Filename: "{tmp}\vc_redist.x64.exe"; Parameters: "/passive /norestart"; StatusMsg: "Installing Visual C++ Runtime..."; Flags: waituntilterminated
 ; Post-install option to download Birda GUI
 Filename: "https://github.com/tphakala/birda-gui/releases/latest"; Description: "Download Birda GUI (optional graphical interface)"; Flags: postinstall shellexec skipifsilent unchecked
-
-[Icons]
-Name: "{group}\{#MyAppName} Command Prompt"; Filename: "{cmd}"; Parameters: "/k ""{app}\{#MyAppExeName}"" --help"; WorkingDir: "{app}"
-Name: "{group}\Uninstall {#MyAppName}"; Filename: "{uninstallexe}"
 
 [Registry]
 ; Add app directory to PATH if user selected that option

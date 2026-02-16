@@ -84,7 +84,7 @@ jobs:
             ext: ""
 
           - target: x86_64-pc-windows-msvc
-            os: windows-latest
+            os: windows-latest  # Windows Server 2025, Inno Setup 6.7.0
             artifact: birda-windows-x64
             ext: ".exe"
 
@@ -610,7 +610,7 @@ jobs:
   build-gpu-windows:
     name: Build GPU Windows x64
     needs: [verify]
-    runs-on: windows-latest
+    runs-on: windows-latest  # Windows Server 2025, Inno Setup 6.7.0
     env:
       TARGET: x86_64-pc-windows-msvc
       ARTIFACT: birda-windows-x64-cuda

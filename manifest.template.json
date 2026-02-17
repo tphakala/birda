@@ -14,7 +14,7 @@
   },
   "cuda": {
     "onnxruntime": "${ONNXRUNTIME_VERSION}",
-    "cuda_toolkit": "12.9",
+    "cuda_toolkit": "${CUDA_TOOLKIT_VERSION}",
     "cudnn": "${CUDNN_VERSION}"
   }
 }

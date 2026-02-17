@@ -10,6 +10,8 @@ env:
   # Library versions - update these when upgrading
   # ONNX Runtime 1.23+ requires CUDA 12.x and cuDNN 9.x
   ONNXRUNTIME_VERSION: "1.23.2"
+  # CUDA toolkit major.minor version (used in manifest for GUI compatibility checks)
+  CUDA_TOOLKIT_VERSION: "12.9"
   # CUDA redistributable versions (from https://developer.download.nvidia.com/compute/cuda/redist/redistrib_12.9.0.json)
   CUDA_CUDART_VERSION: "12.9.37"
   CUDA_CUBLAS_VERSION: "12.9.0.13"
@@ -970,6 +972,8 @@ jobs:
             mkdir -p embed-linux
             cp artifacts/birda-linux-x64/birda embed-linux/
             cp artifacts/birda-linux-x64/libonnxruntime*.so* embed-linux/
+            # Verify both binary and runtime lib are present
+            ls embed-linux/birda embed-linux/libonnxruntime* > /dev/null
             cd embed-linux
             tar -czvf ../artifacts/birda-linux-x64-embed-${VERSION}.tar.gz *
             cd ..
@@ -980,6 +984,8 @@ jobs:
             mkdir -p embed-windows
             cp artifacts/birda-windows-x64/birda.exe embed-windows/
             cp artifacts/birda-windows-x64/onnxruntime.dll embed-windows/
+            # Verify both binary and runtime lib are present
+            ls embed-windows/birda.exe embed-windows/onnxruntime.dll > /dev/null
             cd embed-windows
             zip -r ../artifacts/birda-windows-x64-embed-${VERSION}.zip *
             cd ..
@@ -996,6 +1002,7 @@ jobs:
               -e "s/\${TAG}/$VERSION/g" \
               -e "s/\${ONNXRUNTIME_VERSION}/${{ env.ONNXRUNTIME_VERSION }}/g" \
               -e "s/\${CUDNN_VERSION}/${{ env.CUDNN_VERSION }}/g" \
+              -e "s/\${CUDA_TOOLKIT_VERSION}/${{ env.CUDA_TOOLKIT_VERSION }}/g" \
               manifest.template.json > artifacts/manifest.json
 
           echo "=== Generated manifest.json ==="

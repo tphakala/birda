@@ -1,0 +1,20 @@
+{
+  "version": "${VERSION}",
+  "min_gui_version": "1.1.0",
+  "assets": {
+    "embed": {
+      "linux-x64": "birda-linux-x64-embed-${TAG}.tar.gz",
+      "windows-x64": "birda-windows-x64-embed-${TAG}.zip",
+      "macos-arm64": "birda-macos-arm64-embed-${TAG}.tar.gz"
+    },
+    "cuda_libs": {
+      "linux-x64": "birda-cuda-libs-linux-x64-${TAG}.tar.gz",
+      "windows-x64": "birda-cuda-libs-windows-x64-${TAG}.zip"
+    }
+  },
+  "cuda": {
+    "onnxruntime": "${ONNXRUNTIME_VERSION}",
+    "cuda_toolkit": "12.9",
+    "cudnn": "${CUDNN_VERSION}"
+  }
+}

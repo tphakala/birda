@@ -381,6 +381,22 @@ jobs:
           echo "Created signed tar.gz:"
           ls -lh birda-macos-arm64-${VERSION}-signed.tar.gz
 
+      - name: Create signed embeddable artifact
+        run: |
+          VERSION="${{ github.ref_name }}"
+          mkdir -p embed-dist
+          # Copy only binary and ONNX Runtime dylib (no README, LICENSE, etc.)
+          cp unsigned/birda embed-dist/
+          cp unsigned/libonnxruntime*.dylib embed-dist/
+          cd embed-dist
+          tar -czvf ../birda-macos-arm64-embed-${VERSION}.tar.gz *
+
+      - name: Upload signed embed artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: birda-macos-arm64-embed
+          path: birda-macos-arm64-embed-${{ github.ref_name }}.tar.gz
+
       - name: Upload signed tar.gz
         uses: actions/upload-artifact@v6
         with:
@@ -601,6 +617,36 @@ jobs:
           # Create archive with gzip compression (include version in filename)
           cd dist && tar -czvf ../${{ env.ARTIFACT }}-${{ github.ref_name }}.tar.gz *
 
+      - name: Create CUDA libraries archive
+        run: |
+          mkdir -p cuda-libs-dist
+          # Copy GPU provider libs (needed for CUDA execution)
+          cp -P lib-staging/libonnxruntime_providers_cuda.so* cuda-libs-dist/
+          cp -P lib-staging/libonnxruntime_providers_shared.so* cuda-libs-dist/
+          # Copy CUDA runtime libs
+          cp -P lib-staging/libcudart.so* cuda-libs-dist/
+          cp -P lib-staging/libcublas.so* cuda-libs-dist/
+          cp -P lib-staging/libcublasLt.so* cuda-libs-dist/
+          cp -P lib-staging/libcufft.so* cuda-libs-dist/
+          # Copy cuDNN libs
+          cp -P lib-staging/libcudnn*.so* cuda-libs-dist/
+          # Copy NVRTC and nvJitLink
+          cp -P lib-staging/libnvrtc*.so* cuda-libs-dist/
+          cp -P lib-staging/libnvJitLink*.so* cuda-libs-dist/
+
+          echo "=== CUDA libs archive contents ==="
+          ls -la cuda-libs-dist/
+          du -sh cuda-libs-dist/
+
+          cd cuda-libs-dist
+          tar -czvf ../birda-cuda-libs-linux-x64-${{ github.ref_name }}.tar.gz *
+
+      - name: Upload CUDA libraries artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: birda-cuda-libs-linux-x64
+          path: birda-cuda-libs-linux-x64-${{ github.ref_name }}.tar.gz
+
       - name: Upload artifact
         uses: actions/upload-artifact@v6
         with:
@@ -816,6 +862,36 @@ jobs:
           # Create archive (include version in filename, exclude vc_redist for ZIP - it's only for installer)
           Get-ChildItem "dist/*" -Exclude "vc_redist.x64.exe" | Compress-Archive -DestinationPath "${{ env.ARTIFACT }}-${{ github.ref_name }}.zip"
 
+      - name: Create CUDA libraries archive
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path cuda-libs-dist
+
+          # Copy GPU provider DLLs
+          Copy-Item "lib-staging/onnxruntime_providers_cuda.dll" -Destination "cuda-libs-dist/"
+          Copy-Item "lib-staging/onnxruntime_providers_shared.dll" -Destination "cuda-libs-dist/"
+          # Copy CUDA runtime DLLs
+          Copy-Item "lib-staging/cudart64_12.dll" -Destination "cuda-libs-dist/"
+          Copy-Item "lib-staging/cublas64_12.dll" -Destination "cuda-libs-dist/"
+          Copy-Item "lib-staging/cublasLt64_12.dll" -Destination "cuda-libs-dist/"
+          Copy-Item "lib-staging/cufft64_11.dll" -Destination "cuda-libs-dist/"
+          # Copy cuDNN DLLs (excluding cudnn_adv which is unused)
+          Get-ChildItem "lib-staging/cudnn*.dll" -Exclude "cudnn_adv64_9.dll" | Copy-Item -Destination "cuda-libs-dist/"
+          # Copy NVRTC and nvJitLink
+          Copy-Item "lib-staging/nvrtc64_120_0.dll" -Destination "cuda-libs-dist/"
+          Copy-Item "lib-staging/nvJitLink_120_0.dll" -Destination "cuda-libs-dist/"
+
+          Write-Host "=== CUDA libs archive contents ==="
+          Get-ChildItem cuda-libs-dist/
+
+          Compress-Archive -Path "cuda-libs-dist/*" -DestinationPath "birda-cuda-libs-windows-x64-${{ github.ref_name }}.zip"
+
+      - name: Upload CUDA libraries artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: birda-cuda-libs-windows-x64
+          path: birda-cuda-libs-windows-x64-${{ github.ref_name }}.zip
+
       - name: Build installer with Inno Setup
         shell: pwsh
         run: |
@@ -885,6 +961,50 @@ jobs:
           echo "=== Created archives ==="
           ls -la artifacts/*.tar.gz artifacts/*.zip 2>/dev/null || true
 
+      - name: Create embed archives
+        run: |
+          VERSION="${{ github.ref_name }}"
+
+          # Linux embed: binary + ONNX Runtime only
+          if [ -d "artifacts/birda-linux-x64" ]; then
+            mkdir -p embed-linux
+            cp artifacts/birda-linux-x64/birda embed-linux/
+            cp artifacts/birda-linux-x64/libonnxruntime*.so* embed-linux/
+            cd embed-linux
+            tar -czvf ../artifacts/birda-linux-x64-embed-${VERSION}.tar.gz *
+            cd ..
+          fi
+
+          # Windows embed: binary + ONNX Runtime only
+          if [ -d "artifacts/birda-windows-x64" ]; then
+            mkdir -p embed-windows
+            cp artifacts/birda-windows-x64/birda.exe embed-windows/
+            cp artifacts/birda-windows-x64/onnxruntime.dll embed-windows/
+            cd embed-windows
+            zip -r ../artifacts/birda-windows-x64-embed-${VERSION}.zip *
+            cd ..
+          fi
+
+          echo "=== Embed archives ==="
+          ls -la artifacts/*embed* 2>/dev/null || true
+
+      - name: Generate manifest.json
+        run: |
+          VERSION="${{ github.ref_name }}"
+          SEMVER="${VERSION#v}"
+          sed -e "s/\${VERSION}/$SEMVER/g" \
+              -e "s/\${TAG}/$VERSION/g" \
+              -e "s/\${ONNXRUNTIME_VERSION}/${{ env.ONNXRUNTIME_VERSION }}/g" \
+              -e "s/\${CUDNN_VERSION}/${{ env.CUDNN_VERSION }}/g" \
+              manifest.template.json > artifacts/manifest.json
+
+          echo "=== Generated manifest.json ==="
+          cat artifacts/manifest.json
+
+          # Validate JSON
+          python3 -c "import json; json.load(open('artifacts/manifest.json'))"
+          echo "JSON validation passed"
+
       - name: Create Release
         id: create_release
         uses: softprops/action-gh-release@v2
@@ -901,6 +1021,12 @@ jobs:
             | `birda-linux-x64-cuda-${{ github.ref_name }}.tar.gz` | Linux with GPU support (bundled CUDA) |
             | `birda-windows-x64-cuda-${{ github.ref_name }}.zip` | Windows with GPU support (bundled CUDA) |
             | `birda-windows-x64-cuda-${{ github.ref_name }}-setup.exe` | Windows GPU installer (adds to PATH) |
+            | `birda-linux-x64-embed-${{ github.ref_name }}.tar.gz` | Linux embeddable (CLI + ONNX Runtime CPU) |
+            | `birda-windows-x64-embed-${{ github.ref_name }}.zip` | Windows embeddable (CLI + ONNX Runtime CPU) |
+            | `birda-macos-arm64-embed-${{ github.ref_name }}.tar.gz` | macOS embeddable (Signed, CLI + ONNX Runtime CPU) |
+            | `birda-cuda-libs-linux-x64-${{ github.ref_name }}.tar.gz` | Linux CUDA libraries only |
+            | `birda-cuda-libs-windows-x64-${{ github.ref_name }}.zip` | Windows CUDA libraries only |
+            | `manifest.json` | Version manifest for GUI integration |
 
             ### macOS Installation
 
@@ -928,6 +1054,7 @@ jobs:
             artifacts/**/*.tar.gz
             artifacts/**/*.zip
             artifacts/**/*-setup.exe
+            artifacts/manifest.json
 
       - name: Scan release assets with VirusTotal
         continue-on-error: true

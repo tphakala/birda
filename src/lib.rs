@@ -1350,6 +1350,14 @@ fn handle_models_remove(name: &str, purge: bool, output_mode: OutputMode) -> Res
     // Save config before deleting files (safer — config is consistent even if delete fails)
     let config_path = save_default_config(&config)?;
 
+    // Build the structured-output payload once for reuse in both the error and success paths.
+    let structured_payload = ModelRemovedPayload {
+        result_type: ResultType::ModelRemoved,
+        id: name.to_string(),
+        purge_requested: purge,
+        new_default: promoted.clone(),
+    };
+
     // If purge, delete associated files not referenced by other models
     if purge {
         let still_referenced = referenced_model_paths(&config);
@@ -1397,26 +1405,14 @@ fn handle_models_remove(name: &str, purge: bool, output_mode: OutputMode) -> Res
             // Emit structured output before returning the error so the GUI
             // knows the config change succeeded even though file cleanup failed.
             if output_mode.is_structured() {
-                let payload = ModelRemovedPayload {
-                    result_type: ResultType::ModelRemoved,
-                    id: name.to_string(),
-                    purge_requested: purge,
-                    new_default: promoted,
-                };
-                emit_json_result(&payload);
+                emit_json_result(&structured_payload);
             }
             return Err(Error::FileDeletionFailed { path, source });
         }
     }
 
     if output_mode.is_structured() {
-        let payload = ModelRemovedPayload {
-            result_type: ResultType::ModelRemoved,
-            id: name.to_string(),
-            purge_requested: purge,
-            new_default: promoted,
-        };
-        emit_json_result(&payload);
+        emit_json_result(&structured_payload);
     } else {
         if let Some(ref new_name) = promoted {
             println!("Default model changed to '{new_name}'.");

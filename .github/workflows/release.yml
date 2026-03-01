@@ -1012,10 +1012,23 @@ jobs:
           python3 -c "import json; json.load(open('artifacts/manifest.json'))"
           echo "JSON validation passed"
 
+      - name: Detect pre-release tag
+        id: prerelease
+        run: |
+          TAG="${{ github.ref_name }}"
+          # Tags like v1.2.3 are stable releases; anything else (v1.2.3-rc.1, v1.2.3-embed.1, etc.) is a pre-release
+          if [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "is_prerelease=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "is_prerelease=true" >> "$GITHUB_OUTPUT"
+            echo "Tag '$TAG' detected as pre-release"
+          fi
+
       - name: Create Release
         id: create_release
         uses: softprops/action-gh-release@v2
         with:
+          prerelease: ${{ steps.prerelease.outputs.is_prerelease == 'true' }}
           generate_release_notes: true
           body: |
             ## Download Options

@@ -8,6 +8,9 @@ use std::io::{self, Write};
 
 /// Display license information and prompt for acceptance.
 ///
+/// When `interactive` is `false`, skips the user prompt and returns `Ok(true)`
+/// (auto-accept). This is used for non-TTY or structured output modes.
+///
 /// Returns `Ok(true)` if user accepts, `Ok(false)` if user declines.
 pub fn prompt_license_acceptance(model: &ModelEntry, interactive: bool) -> Result<bool> {
     println!("Model: {}", model.name);

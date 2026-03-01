@@ -969,16 +969,22 @@ fn handle_config_set(key: &str, value: &str, output_mode: OutputMode) -> Result<
             };
         }
         "defaults.min_confidence" => {
-            config.defaults.min_confidence =
+            config.defaults.min_confidence = if value.is_empty() {
+                config::DefaultsConfig::default().min_confidence
+            } else {
                 value.parse::<f32>().map_err(|_| Error::ConfigValidation {
                     message: format!("invalid float value for '{key}': {value}"),
-                })?;
+                })?
+            };
         }
         "defaults.overlap" => {
-            config.defaults.overlap =
+            config.defaults.overlap = if value.is_empty() {
+                config::DefaultsConfig::default().overlap
+            } else {
                 value.parse::<f32>().map_err(|_| Error::ConfigValidation {
                     message: format!("invalid float value for '{key}': {value}"),
-                })?;
+                })?
+            };
         }
         "defaults.latitude" => {
             config.defaults.latitude = if value.is_empty() {
@@ -1012,10 +1018,13 @@ fn handle_config_set(key: &str, value: &str, output_mode: OutputMode) -> Result<
             };
         }
         "defaults.range_threshold" => {
-            config.defaults.range_threshold =
+            config.defaults.range_threshold = if value.is_empty() {
+                config::DefaultsConfig::default().range_threshold
+            } else {
                 value.parse::<f32>().map_err(|_| Error::ConfigValidation {
                     message: format!("invalid float value for '{key}': {value}"),
-                })?;
+                })?
+            };
         }
         _ => {
             return Err(Error::InvalidConfigKey {

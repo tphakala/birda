@@ -28,8 +28,9 @@ use constants::DEFAULT_TOP_K;
 use inference::BirdClassifier;
 use output::{
     ConfigPathPayload, ConfigPayload, FileStatus, ModelCheckEntry, ModelCheckPayload, ModelDetails,
-    ModelEntry, ModelInfoPayload, ModelListPayload, PipelineSummary, ProgressReporter,
-    ProviderInfo, ProvidersPayload, ResultType, create_reporter, emit_json_result,
+    ModelEntry, ModelInfoPayload, ModelInstalledPayload, ModelListPayload, ModelRemovedPayload,
+    PipelineSummary, ProgressReporter, ProviderInfo, ProvidersPayload, ResultType, create_reporter,
+    emit_json_result,
 };
 use pipeline::{ProcessCheck, collect_input_files, output_dir_for, process_file, should_process};
 use std::collections::HashSet;
@@ -933,6 +934,7 @@ fn handle_config_command(action: cli::ConfigAction, output_mode: OutputMode) -> 
             println!("{config:#?}");
             Ok(())
         }
+        ConfigAction::Set { key, value } => handle_config_set(&key, &value, output_mode),
         ConfigAction::Path => {
             let path = config_file_path()?;
 
@@ -952,6 +954,104 @@ fn handle_config_command(action: cli::ConfigAction, output_mode: OutputMode) -> 
             Ok(())
         }
     }
+}
+
+fn handle_config_set(key: &str, value: &str, output_mode: OutputMode) -> Result<()> {
+    let mut config = load_default_config()?;
+    let config_path = config_file_path()?;
+
+    match key {
+        "defaults.model" => {
+            config.defaults.model = if value.is_empty() {
+                None
+            } else {
+                Some(value.to_string())
+            };
+        }
+        "defaults.min_confidence" => {
+            config.defaults.min_confidence = if value.is_empty() {
+                config::DefaultsConfig::default().min_confidence
+            } else {
+                value.parse::<f32>().map_err(|_| Error::ConfigValidation {
+                    message: format!("invalid float value for '{key}': {value}"),
+                })?
+            };
+        }
+        "defaults.overlap" => {
+            config.defaults.overlap = if value.is_empty() {
+                config::DefaultsConfig::default().overlap
+            } else {
+                value.parse::<f32>().map_err(|_| Error::ConfigValidation {
+                    message: format!("invalid float value for '{key}': {value}"),
+                })?
+            };
+        }
+        "defaults.latitude" => {
+            config.defaults.latitude = if value.is_empty() {
+                None
+            } else {
+                Some(value.parse::<f64>().map_err(|_| Error::ConfigValidation {
+                    message: format!("invalid float value for '{key}': {value}"),
+                })?)
+            };
+        }
+        "defaults.longitude" => {
+            config.defaults.longitude = if value.is_empty() {
+                None
+            } else {
+                Some(value.parse::<f64>().map_err(|_| Error::ConfigValidation {
+                    message: format!("invalid float value for '{key}': {value}"),
+                })?)
+            };
+        }
+        "defaults.batch_size" => {
+            config.defaults.batch_size = if value.is_empty() {
+                None
+            } else {
+                Some(
+                    value
+                        .parse::<usize>()
+                        .map_err(|_| Error::ConfigValidation {
+                            message: format!("invalid integer value for '{key}': {value}"),
+                        })?,
+                )
+            };
+        }
+        "defaults.range_threshold" => {
+            config.defaults.range_threshold = if value.is_empty() {
+                config::DefaultsConfig::default().range_threshold
+            } else {
+                value.parse::<f32>().map_err(|_| Error::ConfigValidation {
+                    message: format!("invalid float value for '{key}': {value}"),
+                })?
+            };
+        }
+        _ => {
+            return Err(Error::InvalidConfigKey {
+                key: key.to_string(),
+            });
+        }
+    }
+
+    config::validate_config(&config)?;
+    save_default_config(&config)?;
+
+    if output_mode.is_structured() {
+        let config_json = serde_json::to_value(&config).map_err(|e| Error::ConfigValidation {
+            message: format!("failed to serialize config to JSON: {e}"),
+        })?;
+        let payload = ConfigPayload {
+            result_type: ResultType::Config,
+            config_path,
+            config: config_json,
+        };
+        emit_json_result(&payload);
+    } else {
+        println!("Set '{key}' = '{value}'");
+        println!("Configuration saved to: {}", config_path.display());
+    }
+
+    Ok(())
 }
 
 fn handle_models_command(
@@ -1108,12 +1208,12 @@ fn handle_models_command(
             }
             Ok(())
         }
-        ModelsAction::Remove { name, purge } => handle_models_remove(&name, purge),
+        ModelsAction::Remove { name, purge } => handle_models_remove(&name, purge, output_mode),
         ModelsAction::Install {
             id,
             language,
             default,
-        } => handle_models_install(&id, language.as_deref(), default),
+        } => handle_models_install(&id, language.as_deref(), default, output_mode),
     }
 }
 
@@ -1226,14 +1326,14 @@ fn referenced_model_paths(config: &Config) -> std::collections::HashSet<PathBuf>
 }
 
 /// Handle the `models remove` command.
-fn handle_models_remove(name: &str, purge: bool) -> Result<()> {
+fn handle_models_remove(name: &str, purge: bool, output_mode: OutputMode) -> Result<()> {
     use std::io::Write;
 
     // Load config and verify model exists
     let mut config = load_default_config()?;
 
-    // If purge, confirm before deleting files
-    if purge {
+    // If purge, confirm before deleting files (skip in structured mode)
+    if purge && !output_mode.is_structured() {
         print!("This will delete model files for '{name}' from disk. Continue? [y/N]: ");
         std::io::stdout().flush()?;
         let mut input = String::new();
@@ -1247,16 +1347,16 @@ fn handle_models_remove(name: &str, purge: bool) -> Result<()> {
     // Remove from config and handle default promotion
     let (model, promoted) = remove_model_from_config(&mut config, name)?;
 
-    if let Some(ref new_name) = promoted {
-        println!("Default model changed to '{new_name}'.");
-    } else if config.defaults.model.is_none() && config.models.is_empty() {
-        println!("Warning: no models remaining. Set a new default with `birda models install`.");
-    }
-
     // Save config before deleting files (safer — config is consistent even if delete fails)
     let config_path = save_default_config(&config)?;
-    println!("Model '{name}' removed from configuration.");
-    println!("Configuration saved to: {}", config_path.display());
+
+    // Build the structured-output payload once for reuse in both the error and success paths.
+    let structured_payload = ModelRemovedPayload {
+        result_type: ResultType::ModelRemoved,
+        id: name.to_string(),
+        purge_requested: purge,
+        new_default: promoted.clone(),
+    };
 
     // If purge, delete associated files not referenced by other models
     if purge {
@@ -1275,16 +1375,26 @@ fn handle_models_remove(name: &str, purge: bool) -> Result<()> {
         .flatten()
         {
             if still_referenced.contains(&file) {
-                println!("  Skipped (used by another model): {}", file.display());
+                if !output_mode.is_structured() {
+                    println!("  Skipped (used by another model): {}", file.display());
+                }
                 continue;
             }
             match std::fs::remove_file(&file) {
-                Ok(()) => println!("  Deleted: {}", file.display()),
+                Ok(()) => {
+                    if !output_mode.is_structured() {
+                        println!("  Deleted: {}", file.display());
+                    }
+                }
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                    println!("  Skipped (not found): {}", file.display());
+                    if !output_mode.is_structured() {
+                        println!("  Skipped (not found): {}", file.display());
+                    }
                 }
                 Err(e) => {
-                    println!("  Failed to delete: {}", file.display());
+                    if !output_mode.is_structured() {
+                        println!("  Failed to delete: {}", file.display());
+                    }
                     if first_error.is_none() {
                         first_error = Some((file, e));
                     }
@@ -1292,16 +1402,42 @@ fn handle_models_remove(name: &str, purge: bool) -> Result<()> {
             }
         }
         if let Some((path, source)) = first_error {
+            // Emit structured output before returning the error so the GUI
+            // knows the config change succeeded even though file cleanup failed.
+            if output_mode.is_structured() {
+                emit_json_result(&structured_payload);
+            }
             return Err(Error::FileDeletionFailed { path, source });
         }
+    }
+
+    if output_mode.is_structured() {
+        emit_json_result(&structured_payload);
+    } else {
+        if let Some(ref new_name) = promoted {
+            println!("Default model changed to '{new_name}'.");
+        } else if config.defaults.model.is_none() && config.models.is_empty() {
+            println!(
+                "Warning: no models remaining. Set a new default with `birda models install`."
+            );
+        }
+        println!("Model '{name}' removed from configuration.");
+        println!("Configuration saved to: {}", config_path.display());
     }
 
     Ok(())
 }
 
 /// Handle the `models install` command.
-fn handle_models_install(id: &str, language: Option<&str>, set_default: bool) -> Result<()> {
-    use std::io::Write;
+fn handle_models_install(
+    id: &str,
+    language: Option<&str>,
+    set_default: bool,
+    output_mode: OutputMode,
+) -> Result<()> {
+    use std::io::{IsTerminal, Write};
+
+    let interactive = std::io::stdin().is_terminal() && !output_mode.is_structured();
 
     // Load registry
     let registry = registry::load_registry()?;
@@ -1309,8 +1445,10 @@ fn handle_models_install(id: &str, language: Option<&str>, set_default: bool) ->
         .ok_or_else(|| Error::ModelNotFoundInRegistry { id: id.to_string() })?;
 
     // Prompt for license acceptance
-    if !registry::prompt_license_acceptance(model)? {
-        println!("Installation cancelled.");
+    if !registry::prompt_license_acceptance(model, interactive)? {
+        if !output_mode.is_structured() {
+            println!("Installation cancelled.");
+        }
         return Ok(());
     }
 
@@ -1321,35 +1459,39 @@ fn handle_models_install(id: &str, language: Option<&str>, set_default: bool) ->
 
     let installed = runtime.block_on(async { registry::install_model(model, language).await })?;
 
-    println!();
-    println!("Installation complete!");
-    println!();
-    println!("Model files saved to:");
-    println!("  {}", installed.model.display());
-    println!("  {}", installed.labels.display());
-    if let Some(meta_path) = &installed.meta_model {
-        println!("  {}", meta_path.display());
+    if !output_mode.is_structured() {
+        println!();
+        println!("Installation complete!");
+        println!();
+        println!("Model files saved to:");
+        println!("  {}", installed.model.display());
+        println!("  {}", installed.labels.display());
+        if let Some(meta_path) = &installed.meta_model {
+            println!("  {}", meta_path.display());
+        }
+        if let Some(cal_path) = &installed.bsg_calibration {
+            println!("  {}", cal_path.display());
+        }
+        if let Some(mig_path) = &installed.bsg_migration {
+            println!("  {}", mig_path.display());
+        }
+        if let Some(maps_path) = &installed.bsg_distribution_maps {
+            println!("  {}", maps_path.display());
+        }
+        println!();
     }
-    if let Some(cal_path) = &installed.bsg_calibration {
-        println!("  {}", cal_path.display());
-    }
-    if let Some(mig_path) = &installed.bsg_migration {
-        println!("  {}", mig_path.display());
-    }
-    if let Some(maps_path) = &installed.bsg_distribution_maps {
-        println!("  {}", maps_path.display());
-    }
-    println!();
 
     // Prompt to set as default
     let should_set_default = if set_default {
         true
-    } else {
+    } else if interactive {
         print!("Set as default model? [Y/n]: ");
         std::io::stdout().flush()?;
         let mut input = String::new();
         std::io::stdin().read_line(&mut input)?;
         !input.trim().eq_ignore_ascii_case("n")
+    } else {
+        false
     };
 
     // Add to config
@@ -1362,6 +1504,9 @@ fn handle_models_install(id: &str, language: Option<&str>, set_default: bool) ->
         .map_err(|_| Error::InvalidModelType {
             value: model.model_type.clone(),
         })?;
+
+    let model_path = installed.model.clone();
+    let labels_path = installed.labels.clone();
 
     config.models.insert(
         id.to_string(),
@@ -1382,15 +1527,25 @@ fn handle_models_install(id: &str, language: Option<&str>, set_default: bool) ->
 
     save_default_config(&config)?;
 
-    if should_set_default {
-        println!("Model '{id}' added to configuration and set as default.");
+    if output_mode.is_structured() {
+        let payload = ModelInstalledPayload {
+            result_type: ResultType::ModelInstalled,
+            id: id.to_string(),
+            set_as_default: should_set_default,
+            model_path,
+            labels_path,
+        };
+        emit_json_result(&payload);
     } else {
-        println!("Model '{id}' added to configuration.");
+        if should_set_default {
+            println!("Model '{id}' added to configuration and set as default.");
+        } else {
+            println!("Model '{id}' added to configuration.");
+        }
+        println!();
+        println!("Ready to analyze:");
+        println!("  birda recording.wav");
     }
-
-    println!();
-    println!("Ready to analyze:");
-    println!("  birda recording.wav");
 
     Ok(())
 }

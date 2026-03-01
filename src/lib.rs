@@ -1108,6 +1108,7 @@ fn handle_models_command(
             }
             Ok(())
         }
+        ModelsAction::Remove { name, purge } => handle_models_remove(&name, purge),
         ModelsAction::Install {
             id,
             language,
@@ -1168,6 +1169,90 @@ fn handle_models_add(
     println!("  Labels: {}", labels.display());
     println!("  Default: {}", if set_default { "yes" } else { "no" });
     println!("\nConfiguration saved to: {}", config_path.display());
+
+    Ok(())
+}
+
+/// Handle the `models remove` command.
+fn handle_models_remove(name: &str, purge: bool) -> Result<()> {
+    use std::io::Write;
+
+    // Load config and verify model exists
+    let mut config = load_default_config()?;
+    let model = config
+        .models
+        .get(name)
+        .ok_or_else(|| Error::ModelNotFound {
+            name: name.to_string(),
+        })?
+        .clone();
+
+    // If purge, confirm before deleting files
+    if purge {
+        print!("This will delete model files from disk. Continue? [y/N]: ");
+        std::io::stdout().flush()?;
+        let mut input = String::new();
+        std::io::stdin().read_line(&mut input)?;
+        if !input.trim().eq_ignore_ascii_case("y") {
+            println!("Removal cancelled.");
+            return Ok(());
+        }
+    }
+
+    // Remove from config
+    config.models.remove(name);
+
+    // Handle default model promotion
+    let was_default = config.defaults.model.as_ref().is_some_and(|d| d == name);
+    if was_default {
+        // Auto-promote: pick the first remaining model alphabetically
+        let new_default = config.models.keys().min().cloned();
+        config.defaults.model.clone_from(&new_default);
+
+        if let Some(ref new_name) = new_default {
+            println!("Default model changed to '{new_name}'.");
+        } else {
+            println!(
+                "Warning: no models remaining. Set a new default with `birda models install`."
+            );
+        }
+    }
+
+    // Save config before deleting files (safer — config is consistent even if delete fails)
+    let config_path = save_default_config(&config)?;
+
+    // If purge, delete associated files
+    if purge {
+        let files_to_delete: Vec<PathBuf> = [
+            Some(model.path),
+            Some(model.labels),
+            model.meta_model,
+            model.bsg_calibration,
+            model.bsg_migration,
+            model.bsg_distribution_maps,
+        ]
+        .into_iter()
+        .flatten()
+        .collect();
+
+        for file in &files_to_delete {
+            match std::fs::remove_file(file) {
+                Ok(()) => println!("  Deleted: {}", file.display()),
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                    println!("  Skipped (not found): {}", file.display());
+                }
+                Err(e) => {
+                    return Err(Error::FileDeletionFailed {
+                        path: file.clone(),
+                        source: e,
+                    });
+                }
+            }
+        }
+    }
+
+    println!("Model '{name}' removed from configuration.");
+    println!("Configuration saved to: {}", config_path.display());
 
     Ok(())
 }

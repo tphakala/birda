@@ -152,6 +152,14 @@ pub enum ModelsAction {
         #[arg(long)]
         languages: bool,
     },
+    /// Remove a model from configuration.
+    Remove {
+        /// Name of the model to remove (as shown in `models list`).
+        name: String,
+        /// Also delete model files from disk.
+        #[arg(long)]
+        purge: bool,
+    },
     /// Install a model from the registry.
     Install {
         /// Model ID to install.

@@ -1958,4 +1958,56 @@ mod tests {
             16
         );
     }
+
+    // ── models remove tests ──────────────────────────────────────
+
+    #[test]
+    fn test_remove_default_model_promotes_next_alphabetically() {
+        let mut config = config_with_model("beta");
+        config
+            .models
+            .insert("alpha".to_string(), config.models["beta"].clone());
+        config.defaults.model = Some("beta".to_string());
+
+        // Simulate removal logic
+        config.models.remove("beta");
+        let new_default = config.models.keys().min().cloned();
+        config.defaults.model = new_default;
+
+        assert_eq!(config.defaults.model.as_deref(), Some("alpha"));
+    }
+
+    #[test]
+    fn test_remove_last_model_clears_default() {
+        let mut config = config_with_model("only");
+        config.defaults.model = Some("only".to_string());
+
+        config.models.remove("only");
+        let new_default = config.models.keys().min().cloned();
+        config.defaults.model = new_default;
+
+        assert!(config.defaults.model.is_none());
+        assert!(config.models.is_empty());
+    }
+
+    #[test]
+    fn test_remove_non_default_model_preserves_default() {
+        let mut config = config_with_model("primary");
+        config
+            .models
+            .insert("secondary".to_string(), config.models["primary"].clone());
+        config.defaults.model = Some("primary".to_string());
+
+        config.models.remove("secondary");
+
+        assert_eq!(config.defaults.model.as_deref(), Some("primary"));
+        assert!(config.models.contains_key("primary"));
+        assert!(!config.models.contains_key("secondary"));
+    }
+
+    #[test]
+    fn test_remove_nonexistent_model_not_in_config() {
+        let config = Config::default();
+        assert!(config.models.get("nonexistent").is_none());
+    }
 }

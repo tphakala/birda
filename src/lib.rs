@@ -28,8 +28,9 @@ use constants::DEFAULT_TOP_K;
 use inference::BirdClassifier;
 use output::{
     ConfigPathPayload, ConfigPayload, FileStatus, ModelCheckEntry, ModelCheckPayload, ModelDetails,
-    ModelEntry, ModelInfoPayload, ModelListPayload, PipelineSummary, ProgressReporter,
-    ProviderInfo, ProvidersPayload, ResultType, create_reporter, emit_json_result,
+    ModelEntry, ModelInfoPayload, ModelListPayload, ModelRemovedPayload, PipelineSummary,
+    ProgressReporter, ProviderInfo, ProvidersPayload, ResultType, create_reporter,
+    emit_json_result,
 };
 use pipeline::{ProcessCheck, collect_input_files, output_dir_for, process_file, should_process};
 use std::collections::HashSet;
@@ -1108,7 +1109,7 @@ fn handle_models_command(
             }
             Ok(())
         }
-        ModelsAction::Remove { name, purge } => handle_models_remove(&name, purge),
+        ModelsAction::Remove { name, purge } => handle_models_remove(&name, purge, output_mode),
         ModelsAction::Install {
             id,
             language,
@@ -1226,14 +1227,14 @@ fn referenced_model_paths(config: &Config) -> std::collections::HashSet<PathBuf>
 }
 
 /// Handle the `models remove` command.
-fn handle_models_remove(name: &str, purge: bool) -> Result<()> {
+fn handle_models_remove(name: &str, purge: bool, output_mode: OutputMode) -> Result<()> {
     use std::io::Write;
 
     // Load config and verify model exists
     let mut config = load_default_config()?;
 
-    // If purge, confirm before deleting files
-    if purge {
+    // If purge, confirm before deleting files (skip in structured mode)
+    if purge && !output_mode.is_structured() {
         print!("This will delete model files for '{name}' from disk. Continue? [y/N]: ");
         std::io::stdout().flush()?;
         let mut input = String::new();
@@ -1247,16 +1248,8 @@ fn handle_models_remove(name: &str, purge: bool) -> Result<()> {
     // Remove from config and handle default promotion
     let (model, promoted) = remove_model_from_config(&mut config, name)?;
 
-    if let Some(ref new_name) = promoted {
-        println!("Default model changed to '{new_name}'.");
-    } else if config.defaults.model.is_none() && config.models.is_empty() {
-        println!("Warning: no models remaining. Set a new default with `birda models install`.");
-    }
-
     // Save config before deleting files (safer — config is consistent even if delete fails)
     let config_path = save_default_config(&config)?;
-    println!("Model '{name}' removed from configuration.");
-    println!("Configuration saved to: {}", config_path.display());
 
     // If purge, delete associated files not referenced by other models
     if purge {
@@ -1275,16 +1268,26 @@ fn handle_models_remove(name: &str, purge: bool) -> Result<()> {
         .flatten()
         {
             if still_referenced.contains(&file) {
-                println!("  Skipped (used by another model): {}", file.display());
+                if !output_mode.is_structured() {
+                    println!("  Skipped (used by another model): {}", file.display());
+                }
                 continue;
             }
             match std::fs::remove_file(&file) {
-                Ok(()) => println!("  Deleted: {}", file.display()),
+                Ok(()) => {
+                    if !output_mode.is_structured() {
+                        println!("  Deleted: {}", file.display());
+                    }
+                }
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                    println!("  Skipped (not found): {}", file.display());
+                    if !output_mode.is_structured() {
+                        println!("  Skipped (not found): {}", file.display());
+                    }
                 }
                 Err(e) => {
-                    println!("  Failed to delete: {}", file.display());
+                    if !output_mode.is_structured() {
+                        println!("  Failed to delete: {}", file.display());
+                    }
                     if first_error.is_none() {
                         first_error = Some((file, e));
                     }
@@ -1294,6 +1297,26 @@ fn handle_models_remove(name: &str, purge: bool) -> Result<()> {
         if let Some((path, source)) = first_error {
             return Err(Error::FileDeletionFailed { path, source });
         }
+    }
+
+    if output_mode.is_structured() {
+        let payload = ModelRemovedPayload {
+            result_type: ResultType::ModelRemoved,
+            id: name.to_string(),
+            files_deleted: purge,
+            new_default: promoted,
+        };
+        emit_json_result(&payload);
+    } else {
+        if let Some(ref new_name) = promoted {
+            println!("Default model changed to '{new_name}'.");
+        } else if config.defaults.model.is_none() && config.models.is_empty() {
+            println!(
+                "Warning: no models remaining. Set a new default with `birda models install`."
+            );
+        }
+        println!("Model '{name}' removed from configuration.");
+        println!("Configuration saved to: {}", config_path.display());
     }
 
     Ok(())

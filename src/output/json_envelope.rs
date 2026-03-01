@@ -86,6 +86,8 @@ pub enum ResultType {
     ModelCheck,
     /// Configuration file path.
     ConfigPath,
+    /// Model removed from configuration.
+    ModelRemoved,
 }
 
 /// Error severity level.
@@ -522,6 +524,20 @@ pub struct ConfigPathPayload {
     pub config_path: PathBuf,
     /// Whether the configuration file exists.
     pub exists: bool,
+}
+
+/// Payload for model removed result.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ModelRemovedPayload {
+    /// Result type discriminator.
+    pub result_type: ResultType,
+    /// ID/name of the removed model.
+    pub id: String,
+    /// Whether model files were deleted from disk.
+    pub files_deleted: bool,
+    /// New default model (if promoted), or null.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub new_default: Option<String>,
 }
 
 /// Payload for species list result.

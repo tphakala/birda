@@ -1189,7 +1189,7 @@ fn handle_models_remove(name: &str, purge: bool) -> Result<()> {
 
     // If purge, confirm before deleting files
     if purge {
-        print!("This will delete model files from disk. Continue? [y/N]: ");
+        print!("This will delete model files for '{name}' from disk. Continue? [y/N]: ");
         std::io::stdout().flush()?;
         let mut input = String::new();
         std::io::stdin().read_line(&mut input)?;
@@ -1235,6 +1235,7 @@ fn handle_models_remove(name: &str, purge: bool) -> Result<()> {
         .flatten()
         .collect();
 
+        let mut first_error: Option<(PathBuf, std::io::Error)> = None;
         for file in &files_to_delete {
             match std::fs::remove_file(file) {
                 Ok(()) => println!("  Deleted: {}", file.display()),
@@ -1242,12 +1243,15 @@ fn handle_models_remove(name: &str, purge: bool) -> Result<()> {
                     println!("  Skipped (not found): {}", file.display());
                 }
                 Err(e) => {
-                    return Err(Error::FileDeletionFailed {
-                        path: file.clone(),
-                        source: e,
-                    });
+                    println!("  Failed to delete: {}", file.display());
+                    if first_error.is_none() {
+                        first_error = Some((file.clone(), e));
+                    }
                 }
             }
+        }
+        if let Some((path, source)) = first_error {
+            return Err(Error::FileDeletionFailed { path, source });
         }
     }
 

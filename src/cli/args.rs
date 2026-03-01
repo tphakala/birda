@@ -108,7 +108,7 @@ pub enum Command {
 }
 
 /// Config subcommand actions.
-#[derive(Debug, Clone, Copy, Subcommand)]
+#[derive(Debug, Clone, Subcommand)]
 pub enum ConfigAction {
     /// Create default configuration file.
     Init,
@@ -116,6 +116,13 @@ pub enum ConfigAction {
     Show,
     /// Print configuration file path.
     Path,
+    /// Set a configuration value.
+    Set {
+        /// Configuration key (dotted path, e.g., "defaults.model").
+        key: String,
+        /// Value to set.
+        value: String,
+    },
 }
 
 /// Models subcommand actions.

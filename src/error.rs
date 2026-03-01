@@ -45,6 +45,13 @@ pub enum Error {
         message: String,
     },
 
+    /// Invalid configuration key.
+    #[error("unknown configuration key: '{key}'")]
+    InvalidConfigKey {
+        /// The invalid key.
+        key: String,
+    },
+
     /// Model not found in configuration.
     #[error("model '{name}' not found in configuration")]
     ModelNotFound {

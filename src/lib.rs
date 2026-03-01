@@ -934,6 +934,7 @@ fn handle_config_command(action: cli::ConfigAction, output_mode: OutputMode) -> 
             println!("{config:#?}");
             Ok(())
         }
+        ConfigAction::Set { key, value } => handle_config_set(&key, &value, output_mode),
         ConfigAction::Path => {
             let path = config_file_path()?;
 
@@ -953,6 +954,94 @@ fn handle_config_command(action: cli::ConfigAction, output_mode: OutputMode) -> 
             Ok(())
         }
     }
+}
+
+fn handle_config_set(key: &str, value: &str, output_mode: OutputMode) -> Result<()> {
+    let mut config = load_default_config()?;
+    let config_path = config_file_path()?;
+
+    match key {
+        "defaults.model" => {
+            config.defaults.model = if value.is_empty() {
+                None
+            } else {
+                Some(value.to_string())
+            };
+        }
+        "defaults.min_confidence" => {
+            config.defaults.min_confidence =
+                value.parse::<f32>().map_err(|_| Error::ConfigValidation {
+                    message: format!("invalid float value for '{key}': {value}"),
+                })?;
+        }
+        "defaults.overlap" => {
+            config.defaults.overlap =
+                value.parse::<f32>().map_err(|_| Error::ConfigValidation {
+                    message: format!("invalid float value for '{key}': {value}"),
+                })?;
+        }
+        "defaults.latitude" => {
+            config.defaults.latitude = if value.is_empty() {
+                None
+            } else {
+                Some(value.parse::<f64>().map_err(|_| Error::ConfigValidation {
+                    message: format!("invalid float value for '{key}': {value}"),
+                })?)
+            };
+        }
+        "defaults.longitude" => {
+            config.defaults.longitude = if value.is_empty() {
+                None
+            } else {
+                Some(value.parse::<f64>().map_err(|_| Error::ConfigValidation {
+                    message: format!("invalid float value for '{key}': {value}"),
+                })?)
+            };
+        }
+        "defaults.batch_size" => {
+            config.defaults.batch_size = if value.is_empty() {
+                None
+            } else {
+                Some(
+                    value
+                        .parse::<usize>()
+                        .map_err(|_| Error::ConfigValidation {
+                            message: format!("invalid integer value for '{key}': {value}"),
+                        })?,
+                )
+            };
+        }
+        "defaults.range_threshold" => {
+            config.defaults.range_threshold =
+                value.parse::<f32>().map_err(|_| Error::ConfigValidation {
+                    message: format!("invalid float value for '{key}': {value}"),
+                })?;
+        }
+        _ => {
+            return Err(Error::InvalidConfigKey {
+                key: key.to_string(),
+            });
+        }
+    }
+
+    save_default_config(&config)?;
+
+    if output_mode.is_structured() {
+        let config_json = serde_json::to_value(&config).map_err(|e| Error::ConfigValidation {
+            message: format!("failed to serialize config to JSON: {e}"),
+        })?;
+        let payload = ConfigPayload {
+            result_type: ResultType::Config,
+            config_path,
+            config: config_json,
+        };
+        emit_json_result(&payload);
+    } else {
+        println!("Set '{key}' = '{value}'");
+        println!("Configuration saved to: {}", config_path.display());
+    }
+
+    Ok(())
 }
 
 fn handle_models_command(

@@ -1033,6 +1033,7 @@ fn handle_config_set(key: &str, value: &str, output_mode: OutputMode) -> Result<
         }
     }
 
+    config::validate_config(&config)?;
     save_default_config(&config)?;
 
     if output_mode.is_structured() {

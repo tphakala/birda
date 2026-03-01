@@ -1173,12 +1173,14 @@ fn handle_models_add(
     Ok(())
 }
 
-/// Handle the `models remove` command.
-fn handle_models_remove(name: &str, purge: bool) -> Result<()> {
-    use std::io::Write;
-
-    // Load config and verify model exists
-    let mut config = load_default_config()?;
+/// Remove a model from config and handle default promotion.
+///
+/// Returns the removed `ModelConfig` and the new default name (if promoted).
+/// This is the pure logic extracted for testability.
+fn remove_model_from_config(
+    config: &mut Config,
+    name: &str,
+) -> Result<(ModelConfig, Option<String>)> {
     let model = config
         .models
         .get(name)
@@ -1186,6 +1188,49 @@ fn handle_models_remove(name: &str, purge: bool) -> Result<()> {
             name: name.to_string(),
         })?
         .clone();
+
+    config.models.remove(name);
+
+    // Handle default model promotion
+    let was_default = config.defaults.model.as_ref().is_some_and(|d| d == name);
+    let promoted = if was_default {
+        config.defaults.model = config.models.keys().min().cloned();
+        config.defaults.model.clone()
+    } else {
+        None
+    };
+
+    Ok((model, promoted))
+}
+
+/// Collect all file paths referenced by the remaining models in config.
+fn referenced_model_paths(config: &Config) -> std::collections::HashSet<PathBuf> {
+    let mut paths = std::collections::HashSet::new();
+    for model in config.models.values() {
+        paths.insert(model.path.clone());
+        paths.insert(model.labels.clone());
+        if let Some(ref p) = model.meta_model {
+            paths.insert(p.clone());
+        }
+        if let Some(ref p) = model.bsg_calibration {
+            paths.insert(p.clone());
+        }
+        if let Some(ref p) = model.bsg_migration {
+            paths.insert(p.clone());
+        }
+        if let Some(ref p) = model.bsg_distribution_maps {
+            paths.insert(p.clone());
+        }
+    }
+    paths
+}
+
+/// Handle the `models remove` command.
+fn handle_models_remove(name: &str, purge: bool) -> Result<()> {
+    use std::io::Write;
+
+    // Load config and verify model exists
+    let mut config = load_default_config()?;
 
     // If purge, confirm before deleting files
     if purge {
@@ -1199,31 +1244,26 @@ fn handle_models_remove(name: &str, purge: bool) -> Result<()> {
         }
     }
 
-    // Remove from config
-    config.models.remove(name);
+    // Remove from config and handle default promotion
+    let (model, promoted) = remove_model_from_config(&mut config, name)?;
 
-    // Handle default model promotion
-    let was_default = config.defaults.model.as_ref().is_some_and(|d| d == name);
-    if was_default {
-        // Auto-promote: pick the first remaining model alphabetically
-        let new_default = config.models.keys().min().cloned();
-        config.defaults.model.clone_from(&new_default);
-
-        if let Some(ref new_name) = new_default {
-            println!("Default model changed to '{new_name}'.");
-        } else {
-            println!(
-                "Warning: no models remaining. Set a new default with `birda models install`."
-            );
-        }
+    if let Some(ref new_name) = promoted {
+        println!("Default model changed to '{new_name}'.");
+    } else if config.defaults.model.is_none() && config.models.is_empty() {
+        println!("Warning: no models remaining. Set a new default with `birda models install`.");
     }
 
     // Save config before deleting files (safer — config is consistent even if delete fails)
     let config_path = save_default_config(&config)?;
+    println!("Model '{name}' removed from configuration.");
+    println!("Configuration saved to: {}", config_path.display());
 
-    // If purge, delete associated files
+    // If purge, delete associated files not referenced by other models
     if purge {
-        let files_to_delete: Vec<PathBuf> = [
+        let still_referenced = referenced_model_paths(&config);
+
+        let mut first_error: Option<(PathBuf, std::io::Error)> = None;
+        for file in [
             Some(model.path),
             Some(model.labels),
             model.meta_model,
@@ -1233,11 +1273,12 @@ fn handle_models_remove(name: &str, purge: bool) -> Result<()> {
         ]
         .into_iter()
         .flatten()
-        .collect();
-
-        let mut first_error: Option<(PathBuf, std::io::Error)> = None;
-        for file in &files_to_delete {
-            match std::fs::remove_file(file) {
+        {
+            if still_referenced.contains(&file) {
+                println!("  Skipped (used by another model): {}", file.display());
+                continue;
+            }
+            match std::fs::remove_file(&file) {
                 Ok(()) => println!("  Deleted: {}", file.display()),
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
                     println!("  Skipped (not found): {}", file.display());
@@ -1245,7 +1286,7 @@ fn handle_models_remove(name: &str, purge: bool) -> Result<()> {
                 Err(e) => {
                     println!("  Failed to delete: {}", file.display());
                     if first_error.is_none() {
-                        first_error = Some((file.clone(), e));
+                        first_error = Some((file, e));
                     }
                 }
             }
@@ -1254,9 +1295,6 @@ fn handle_models_remove(name: &str, purge: bool) -> Result<()> {
             return Err(Error::FileDeletionFailed { path, source });
         }
     }
-
-    println!("Model '{name}' removed from configuration.");
-    println!("Configuration saved to: {}", config_path.display());
 
     Ok(())
 }
@@ -1969,12 +2007,11 @@ mod tests {
             .insert("alpha".to_string(), config.models["beta"].clone());
         config.defaults.model = Some("beta".to_string());
 
-        // Simulate removal logic
-        config.models.remove("beta");
-        let new_default = config.models.keys().min().cloned();
-        config.defaults.model = new_default;
+        let (_, promoted) = remove_model_from_config(&mut config, "beta").unwrap();
 
+        assert_eq!(promoted.as_deref(), Some("alpha"));
         assert_eq!(config.defaults.model.as_deref(), Some("alpha"));
+        assert!(!config.models.contains_key("beta"));
     }
 
     #[test]
@@ -1982,10 +2019,9 @@ mod tests {
         let mut config = config_with_model("only");
         config.defaults.model = Some("only".to_string());
 
-        config.models.remove("only");
-        let new_default = config.models.keys().min().cloned();
-        config.defaults.model = new_default;
+        let (_, promoted) = remove_model_from_config(&mut config, "only").unwrap();
 
+        assert!(promoted.is_none());
         assert!(config.defaults.model.is_none());
         assert!(config.models.is_empty());
     }
@@ -1998,16 +2034,31 @@ mod tests {
             .insert("secondary".to_string(), config.models["primary"].clone());
         config.defaults.model = Some("primary".to_string());
 
-        config.models.remove("secondary");
+        let (_, promoted) = remove_model_from_config(&mut config, "secondary").unwrap();
 
+        assert!(promoted.is_none());
         assert_eq!(config.defaults.model.as_deref(), Some("primary"));
         assert!(config.models.contains_key("primary"));
         assert!(!config.models.contains_key("secondary"));
     }
 
     #[test]
-    fn test_remove_nonexistent_model_not_in_config() {
-        let config = Config::default();
-        assert!(config.models.get("nonexistent").is_none());
+    fn test_remove_nonexistent_model_returns_error() {
+        let mut config = Config::default();
+        let result = remove_model_from_config(&mut config, "nonexistent");
+
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("nonexistent"));
+    }
+
+    #[test]
+    fn test_remove_returns_model_config() {
+        let mut config = config_with_model("birdnet");
+
+        let (model, _) = remove_model_from_config(&mut config, "birdnet").unwrap();
+
+        assert_eq!(model.path, PathBuf::from("/path/to/model.onnx"));
+        assert_eq!(model.labels, PathBuf::from("/path/to/labels.txt"));
+        assert_eq!(model.model_type, ModelType::BirdnetV24);
     }
 }

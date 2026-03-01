@@ -9,13 +9,17 @@ use std::io::{self, Write};
 /// Display license information and prompt for acceptance.
 ///
 /// Returns `Ok(true)` if user accepts, `Ok(false)` if user declines.
-pub fn prompt_license_acceptance(model: &ModelEntry) -> Result<bool> {
+pub fn prompt_license_acceptance(model: &ModelEntry, interactive: bool) -> Result<bool> {
     println!("Model: {}", model.name);
     println!("Vendor: {}", model.vendor);
     println!("Version: {}", model.version);
     println!();
 
     display_license_summary(&model.license, &model.vendor);
+
+    if !interactive {
+        return Ok(true);
+    }
 
     println!();
     print!("Type 'accept' to continue, or anything else to cancel: ");

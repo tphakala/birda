@@ -1113,7 +1113,7 @@ fn handle_models_command(
             id,
             language,
             default,
-        } => handle_models_install(&id, language.as_deref(), default),
+        } => handle_models_install(&id, language.as_deref(), default, output_mode),
     }
 }
 
@@ -1300,8 +1300,15 @@ fn handle_models_remove(name: &str, purge: bool) -> Result<()> {
 }
 
 /// Handle the `models install` command.
-fn handle_models_install(id: &str, language: Option<&str>, set_default: bool) -> Result<()> {
-    use std::io::Write;
+fn handle_models_install(
+    id: &str,
+    language: Option<&str>,
+    set_default: bool,
+    output_mode: OutputMode,
+) -> Result<()> {
+    use std::io::{IsTerminal, Write};
+
+    let interactive = std::io::stdin().is_terminal() && !output_mode.is_structured();
 
     // Load registry
     let registry = registry::load_registry()?;
@@ -1309,7 +1316,7 @@ fn handle_models_install(id: &str, language: Option<&str>, set_default: bool) ->
         .ok_or_else(|| Error::ModelNotFoundInRegistry { id: id.to_string() })?;
 
     // Prompt for license acceptance
-    if !registry::prompt_license_acceptance(model)? {
+    if !registry::prompt_license_acceptance(model, interactive)? {
         println!("Installation cancelled.");
         return Ok(());
     }
@@ -1344,12 +1351,14 @@ fn handle_models_install(id: &str, language: Option<&str>, set_default: bool) ->
     // Prompt to set as default
     let should_set_default = if set_default {
         true
-    } else {
+    } else if interactive {
         print!("Set as default model? [Y/n]: ");
         std::io::stdout().flush()?;
         let mut input = String::new();
         std::io::stdin().read_line(&mut input)?;
         !input.trim().eq_ignore_ascii_case("n")
+    } else {
+        false
     };
 
     // Add to config

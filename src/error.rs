@@ -423,6 +423,16 @@ pub enum Error {
     #[error("BSG distribution maps file error: {0}")]
     BsgDistributionMaps(String),
 
+    /// Failed to delete a model file from disk.
+    #[error("failed to delete file '{path}'")]
+    FileDeletionFailed {
+        /// Path to the file that couldn't be deleted.
+        path: std::path::PathBuf,
+        /// Underlying I/O error.
+        #[source]
+        source: std::io::Error,
+    },
+
     /// Day of year auto-detection failed.
     #[error("could not auto-detect day of year from file {path}: {reason}")]
     DayOfYearAutoDetect {

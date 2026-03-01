@@ -28,8 +28,8 @@ use constants::DEFAULT_TOP_K;
 use inference::BirdClassifier;
 use output::{
     ConfigPathPayload, ConfigPayload, FileStatus, ModelCheckEntry, ModelCheckPayload, ModelDetails,
-    ModelEntry, ModelInfoPayload, ModelListPayload, ModelRemovedPayload, PipelineSummary,
-    ProgressReporter, ProviderInfo, ProvidersPayload, ResultType, create_reporter,
+    ModelEntry, ModelInfoPayload, ModelInstalledPayload, ModelListPayload, ModelRemovedPayload,
+    PipelineSummary, ProgressReporter, ProviderInfo, ProvidersPayload, ResultType, create_reporter,
     emit_json_result,
 };
 use pipeline::{ProcessCheck, collect_input_files, output_dir_for, process_file, should_process};
@@ -1394,6 +1394,17 @@ fn handle_models_remove(name: &str, purge: bool, output_mode: OutputMode) -> Res
             }
         }
         if let Some((path, source)) = first_error {
+            // Emit structured output before returning the error so the GUI
+            // knows the config change succeeded even though file cleanup failed.
+            if output_mode.is_structured() {
+                let payload = ModelRemovedPayload {
+                    result_type: ResultType::ModelRemoved,
+                    id: name.to_string(),
+                    purge_requested: purge,
+                    new_default: promoted,
+                };
+                emit_json_result(&payload);
+            }
             return Err(Error::FileDeletionFailed { path, source });
         }
     }
@@ -1402,7 +1413,7 @@ fn handle_models_remove(name: &str, purge: bool, output_mode: OutputMode) -> Res
         let payload = ModelRemovedPayload {
             result_type: ResultType::ModelRemoved,
             id: name.to_string(),
-            files_deleted: purge,
+            purge_requested: purge,
             new_default: promoted,
         };
         emit_json_result(&payload);
@@ -1439,7 +1450,9 @@ fn handle_models_install(
 
     // Prompt for license acceptance
     if !registry::prompt_license_acceptance(model, interactive)? {
-        println!("Installation cancelled.");
+        if !output_mode.is_structured() {
+            println!("Installation cancelled.");
+        }
         return Ok(());
     }
 
@@ -1450,25 +1463,27 @@ fn handle_models_install(
 
     let installed = runtime.block_on(async { registry::install_model(model, language).await })?;
 
-    println!();
-    println!("Installation complete!");
-    println!();
-    println!("Model files saved to:");
-    println!("  {}", installed.model.display());
-    println!("  {}", installed.labels.display());
-    if let Some(meta_path) = &installed.meta_model {
-        println!("  {}", meta_path.display());
+    if !output_mode.is_structured() {
+        println!();
+        println!("Installation complete!");
+        println!();
+        println!("Model files saved to:");
+        println!("  {}", installed.model.display());
+        println!("  {}", installed.labels.display());
+        if let Some(meta_path) = &installed.meta_model {
+            println!("  {}", meta_path.display());
+        }
+        if let Some(cal_path) = &installed.bsg_calibration {
+            println!("  {}", cal_path.display());
+        }
+        if let Some(mig_path) = &installed.bsg_migration {
+            println!("  {}", mig_path.display());
+        }
+        if let Some(maps_path) = &installed.bsg_distribution_maps {
+            println!("  {}", maps_path.display());
+        }
+        println!();
     }
-    if let Some(cal_path) = &installed.bsg_calibration {
-        println!("  {}", cal_path.display());
-    }
-    if let Some(mig_path) = &installed.bsg_migration {
-        println!("  {}", mig_path.display());
-    }
-    if let Some(maps_path) = &installed.bsg_distribution_maps {
-        println!("  {}", maps_path.display());
-    }
-    println!();
 
     // Prompt to set as default
     let should_set_default = if set_default {
@@ -1494,6 +1509,9 @@ fn handle_models_install(
             value: model.model_type.clone(),
         })?;
 
+    let model_path = installed.model.clone();
+    let labels_path = installed.labels.clone();
+
     config.models.insert(
         id.to_string(),
         ModelConfig {
@@ -1513,15 +1531,25 @@ fn handle_models_install(
 
     save_default_config(&config)?;
 
-    if should_set_default {
-        println!("Model '{id}' added to configuration and set as default.");
+    if output_mode.is_structured() {
+        let payload = ModelInstalledPayload {
+            result_type: ResultType::ModelInstalled,
+            id: id.to_string(),
+            set_as_default: should_set_default,
+            model_path,
+            labels_path,
+        };
+        emit_json_result(&payload);
     } else {
-        println!("Model '{id}' added to configuration.");
+        if should_set_default {
+            println!("Model '{id}' added to configuration and set as default.");
+        } else {
+            println!("Model '{id}' added to configuration.");
+        }
+        println!();
+        println!("Ready to analyze:");
+        println!("  birda recording.wav");
     }
-
-    println!();
-    println!("Ready to analyze:");
-    println!("  birda recording.wav");
 
     Ok(())
 }

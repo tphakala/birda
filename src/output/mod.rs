@@ -21,9 +21,10 @@ pub use json_envelope::{
     DetectionInfo, DetectionsPayload, DownloadProgress, ErrorPayload, ErrorSeverity, EventType,
     ExecutionProviderInfo, FileCompletedPayload, FileErrorInfo, FileProgress, FileStartedPayload,
     FileStatus, JsonEnvelope, ModelCheckEntry, ModelCheckPayload, ModelDetails, ModelEntry,
-    ModelInfoPayload, ModelListPayload, ModelRemovedPayload, PipelineCompletedPayload,
-    PipelineStartedPayload, PipelineStatus, ProgressPayload, ProviderInfo, ProvidersPayload,
-    ResultType, SPEC_VERSION, SpeciesEntry, SpeciesListPayload, VersionPayload,
+    ModelInfoPayload, ModelInstalledPayload, ModelListPayload, ModelRemovedPayload,
+    PipelineCompletedPayload, PipelineStartedPayload, PipelineStatus, ProgressPayload,
+    ProviderInfo, ProvidersPayload, ResultType, SPEC_VERSION, SpeciesEntry, SpeciesListPayload,
+    VersionPayload,
 };
 pub use kaleidoscope::KaleidoscopeWriter;
 pub use parquet::{ParquetWriter, combine_parquet_files};

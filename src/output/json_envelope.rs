@@ -88,6 +88,8 @@ pub enum ResultType {
     ConfigPath,
     /// Model removed from configuration.
     ModelRemoved,
+    /// Model installed.
+    ModelInstalled,
 }
 
 /// Error severity level.
@@ -533,11 +535,25 @@ pub struct ModelRemovedPayload {
     pub result_type: ResultType,
     /// ID/name of the removed model.
     pub id: String,
-    /// Whether model files were deleted from disk.
-    pub files_deleted: bool,
-    /// New default model (if promoted), or null.
-    #[serde(skip_serializing_if = "Option::is_none")]
+    /// Whether a purge (file deletion) was requested.
+    pub purge_requested: bool,
+    /// New default model (if promoted), or absent if no promotion occurred.
     pub new_default: Option<String>,
+}
+
+/// Payload for model installed result.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ModelInstalledPayload {
+    /// Result type discriminator.
+    pub result_type: ResultType,
+    /// ID/name of the installed model.
+    pub id: String,
+    /// Whether the model was set as default.
+    pub set_as_default: bool,
+    /// Path to the installed model file.
+    pub model_path: PathBuf,
+    /// Path to the installed labels file.
+    pub labels_path: PathBuf,
 }
 
 /// Payload for species list result.
@@ -768,6 +784,14 @@ mod tests {
             serde_json::to_string(&ResultType::ConfigPath).expect("serialize"),
             "\"config_path\""
         );
+        assert_eq!(
+            serde_json::to_string(&ResultType::ModelRemoved).expect("serialize"),
+            "\"model_removed\""
+        );
+        assert_eq!(
+            serde_json::to_string(&ResultType::ModelInstalled).expect("serialize"),
+            "\"model_installed\""
+        );
     }
 
     #[test]
@@ -937,5 +961,60 @@ mod tests {
         assert_eq!(actual["bsg"]["latitude"].as_f64().unwrap(), 60.1699);
         assert_eq!(actual["bsg"]["longitude"].as_f64().unwrap(), 24.9384);
         assert_eq!(actual["bsg"]["day_of_year"].as_u64().unwrap(), 150);
+    }
+
+    #[test]
+    fn test_model_removed_payload_with_promotion() {
+        let payload = ModelRemovedPayload {
+            result_type: ResultType::ModelRemoved,
+            id: "birdnet-v24".to_string(),
+            purge_requested: true,
+            new_default: Some("perch-v1".to_string()),
+        };
+        let json = serde_json::to_string(&payload).expect("serialize");
+        let actual: serde_json::Value = serde_json::from_str(&json).expect("deserialize");
+        let expected = serde_json::json!({
+            "result_type": "model_removed",
+            "id": "birdnet-v24",
+            "purge_requested": true,
+            "new_default": "perch-v1"
+        });
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn test_model_removed_payload_null_new_default() {
+        let payload = ModelRemovedPayload {
+            result_type: ResultType::ModelRemoved,
+            id: "birdnet-v24".to_string(),
+            purge_requested: false,
+            new_default: None,
+        };
+        let json = serde_json::to_string(&payload).expect("serialize");
+        let actual: serde_json::Value = serde_json::from_str(&json).expect("deserialize");
+        // new_default must be present as null (not omitted)
+        assert!(actual.get("new_default").is_some());
+        assert!(actual["new_default"].is_null());
+    }
+
+    #[test]
+    fn test_model_installed_payload() {
+        let payload = ModelInstalledPayload {
+            result_type: ResultType::ModelInstalled,
+            id: "birdnet-v24".to_string(),
+            set_as_default: true,
+            model_path: PathBuf::from("/models/birdnet.onnx"),
+            labels_path: PathBuf::from("/models/labels.txt"),
+        };
+        let json = serde_json::to_string(&payload).expect("serialize");
+        let actual: serde_json::Value = serde_json::from_str(&json).expect("deserialize");
+        let expected = serde_json::json!({
+            "result_type": "model_installed",
+            "id": "birdnet-v24",
+            "set_as_default": true,
+            "model_path": "/models/birdnet.onnx",
+            "labels_path": "/models/labels.txt"
+        });
+        assert_eq!(actual, expected);
     }
 }

@@ -258,7 +258,7 @@ jobs:
           "@ | Set-Content "dist/THIRD_PARTY_LICENSES.txt"
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.artifact }}
           path: dist/*
@@ -394,13 +394,13 @@ jobs:
           tar -czvf ../birda-macos-arm64-embed-${VERSION}.tar.gz *
 
       - name: Upload signed embed artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: birda-macos-arm64-embed
           path: birda-macos-arm64-embed-${{ github.ref_name }}.tar.gz
 
       - name: Upload signed tar.gz
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: birda-macos-arm64-signed
           path: birda-macos-arm64-${{ github.ref_name }}-signed.tar.gz
@@ -644,13 +644,13 @@ jobs:
           tar -czvf ../birda-cuda-libs-linux-x64-${{ github.ref_name }}.tar.gz *
 
       - name: Upload CUDA libraries artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: birda-cuda-libs-linux-x64
           path: birda-cuda-libs-linux-x64-${{ github.ref_name }}.tar.gz
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ env.ARTIFACT }}
           path: ${{ env.ARTIFACT }}-${{ github.ref_name }}.tar.gz
@@ -889,7 +889,7 @@ jobs:
           Compress-Archive -Path "cuda-libs-dist/*" -DestinationPath "birda-cuda-libs-windows-x64-${{ github.ref_name }}.zip"
 
       - name: Upload CUDA libraries artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: birda-cuda-libs-windows-x64
           path: birda-cuda-libs-windows-x64-${{ github.ref_name }}.zip
@@ -909,13 +909,13 @@ jobs:
             "installer\windows\birda.iss"
 
       - name: Upload ZIP artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ env.ARTIFACT }}
           path: ${{ env.ARTIFACT }}-${{ github.ref_name }}.zip
 
       - name: Upload installer artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ env.ARTIFACT }}-setup
           path: ${{ env.ARTIFACT }}-${{ github.ref_name }}-setup.exe

@@ -873,6 +873,7 @@ fn add_execution_provider(
     builder: ClassifierBuilder,
     provider_info: ExecutionProviderInfo,
 ) -> ClassifierBuilder {
+    #[allow(deprecated)]
     use ort_execution_providers::{
         ACLExecutionProvider, ArmNNExecutionProvider, CoreMLExecutionProvider,
         DirectMLExecutionProvider, OneDNNExecutionProvider, OpenVINOExecutionProvider,
@@ -913,6 +914,7 @@ fn add_execution_provider(
         }
         ExecutionProviderInfo::Qnn => builder.execution_provider(QNNExecutionProvider::default()),
         ExecutionProviderInfo::Acl => builder.execution_provider(ACLExecutionProvider::default()),
+        #[allow(deprecated)]
         ExecutionProviderInfo::ArmNn => {
             builder.execution_provider(ArmNNExecutionProvider::default())
         }

@@ -3,14 +3,20 @@
 //! Note: These tests require ONNX Runtime to be available.
 //! They will be skipped if ONNX Runtime initialization fails (e.g., in CI).
 
+use std::time::Duration;
+
 use assert_cmd::cargo::cargo_bin_cmd;
 use serde_json::Value;
+
+/// Timeout for providers command execution.
+/// Prevents tests from hanging when ONNX Runtime tries to download binaries.
+const PROVIDERS_COMMAND_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// Helper function to check if ONNX Runtime is available by running providers command.
 /// Returns Some(stdout) if successful, None if ONNX Runtime isn't available.
 fn run_providers_command(args: &[&str]) -> Option<Vec<u8>> {
     let mut cmd = cargo_bin_cmd!("birda");
-    cmd.arg("providers");
+    cmd.arg("providers").timeout(PROVIDERS_COMMAND_TIMEOUT);
     for arg in args {
         cmd.arg(arg);
     }

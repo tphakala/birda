@@ -434,6 +434,7 @@ dependencies = [
  "hostname",
  "hound",
  "indicatif",
+ "ort",
  "parquet",
  "predicates",
  "reqwest",

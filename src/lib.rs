@@ -233,11 +233,6 @@ pub fn run() -> Result<()> {
         warn!("Failed to install Ctrl+C handler: {e}");
     }
 
-    // Initialize ONNX Runtime (for load-dynamic builds)
-    birdnet_onnx::init_runtime().map_err(|e| Error::RuntimeInitialization {
-        reason: e.to_string(),
-    })?;
-
     // Load configuration
     let config = load_default_config()?;
 
@@ -251,6 +246,14 @@ pub fn run() -> Result<()> {
 
     // Create reporter based on output mode
     let reporter: Arc<dyn ProgressReporter> = Arc::from(create_reporter(output_mode));
+
+    validate_analyze_args_preflight(&cli.inputs, &cli.analyze)?;
+
+    // Initialize ONNX Runtime only for commands that will touch it. This keeps
+    // non-inference commands like `clip` working without a runtime install.
+    if command_requires_runtime(cli.command.as_ref(), cli.inputs.is_empty()) {
+        inference::ensure_runtime_available()?;
+    }
 
     // Handle subcommands
     if let Some(command) = cli.command {
@@ -266,6 +269,48 @@ pub fn run() -> Result<()> {
 
     // Run analysis
     analyze_files(&cli.inputs, &cli.analyze, &config, output_mode, &reporter)
+}
+
+fn command_requires_runtime(command: Option<&Command>, has_no_inputs: bool) -> bool {
+    match command {
+        Some(Command::Config { .. } | Command::Models { .. } | Command::Clip(_)) => false,
+        Some(Command::Providers | Command::Species { .. }) => true,
+        None => !has_no_inputs,
+    }
+}
+
+fn validate_analyze_args_preflight(inputs: &[PathBuf], args: &AnalyzeArgs) -> Result<()> {
+    if args.stdout {
+        // Must have exactly one input file
+        if inputs.len() != 1 {
+            return Err(Error::ConfigValidation {
+                message: "--stdout requires exactly one input file".to_string(),
+            });
+        }
+
+        // Cannot use with --output-dir
+        if args.output_dir.is_some() {
+            return Err(Error::ConfigValidation {
+                message: "--stdout cannot be used with --output-dir".to_string(),
+            });
+        }
+
+        // Cannot use with --combine
+        if args.combine {
+            return Err(Error::ConfigValidation {
+                message: "--stdout cannot be used with --combine".to_string(),
+            });
+        }
+
+        // Cannot use with --format
+        if args.format.is_some() {
+            return Err(Error::ConfigValidation {
+                message: "--stdout cannot be used with --format (detections are output in JSON format automatically)".to_string(),
+            });
+        }
+    }
+
+    Ok(())
 }
 
 /// Resolve inference device from CLI flags or config default.
@@ -567,36 +612,7 @@ fn analyze_files(
 
     let total_start = Instant::now();
 
-    // Validate stdout mode constraints
-    if args.stdout {
-        // Must have exactly one input file
-        if inputs.len() != 1 {
-            return Err(Error::ConfigValidation {
-                message: "--stdout requires exactly one input file".to_string(),
-            });
-        }
-
-        // Cannot use with --output-dir
-        if args.output_dir.is_some() {
-            return Err(Error::ConfigValidation {
-                message: "--stdout cannot be used with --output-dir".to_string(),
-            });
-        }
-
-        // Cannot use with --combine
-        if args.combine {
-            return Err(Error::ConfigValidation {
-                message: "--stdout cannot be used with --combine".to_string(),
-            });
-        }
-
-        // Cannot use with --format
-        if args.format.is_some() {
-            return Err(Error::ConfigValidation {
-                message: "--stdout cannot be used with --format (detections are output in JSON format automatically)".to_string(),
-            });
-        }
-    }
+    validate_analyze_args_preflight(inputs, args)?;
 
     // Fail fast on configuration errors before scanning filesystem
     // Resolve model configuration using priority-based resolution

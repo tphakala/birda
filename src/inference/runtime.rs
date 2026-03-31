@@ -2,6 +2,7 @@
 
 use crate::constants::onnx_runtime;
 use crate::error::{Error, Result};
+use ort::init_from;
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 
@@ -10,20 +11,20 @@ use std::path::{Path, PathBuf};
 /// This prevents the downstream `ort` loader from blocking indefinitely when the
 /// dynamic library is missing at runtime.
 pub fn ensure_runtime_available() -> Result<()> {
-    if env_override_path()?
-        .or_else(birdnet_onnx::find_ort_library)
-        .is_some()
-    {
-        initialize_runtime()?;
-        return Ok(());
-    }
-
-    if let Some(path) = find_runtime_in_default_search_paths() {
-        probe_runtime(&path)?;
+    if let Some(path) = resolve_runtime_library_path()? {
+        initialize_runtime(&path)?;
         return Ok(());
     }
 
     Err(missing_runtime_error())
+}
+
+fn resolve_runtime_library_path() -> Result<Option<PathBuf>> {
+    if let Some(path) = env_override_path()? {
+        return Ok(Some(path));
+    }
+
+    Ok(birdnet_onnx::find_ort_library().or_else(find_runtime_in_default_search_paths))
 }
 
 fn env_override_path() -> Result<Option<PathBuf>> {
@@ -83,18 +84,12 @@ fn find_runtime_in_directory(directory: &Path) -> Option<PathBuf> {
     }
 }
 
-fn initialize_runtime() -> Result<()> {
-    birdnet_onnx::init_runtime().map_err(|e| Error::RuntimeInitialization {
-        reason: e.to_string(),
-    })
-}
-
-fn probe_runtime(path: &Path) -> Result<()> {
-    std::panic::catch_unwind(birdnet_onnx::available_execution_providers).map_err(|_| {
-        Error::RuntimeInitialization {
-            reason: format!("failed to load ONNX Runtime from '{}'", path.display()),
-        }
-    })?;
+fn initialize_runtime(path: &Path) -> Result<()> {
+    let _already_initialized = init_from(path)
+        .map_err(|e| Error::RuntimeInitialization {
+            reason: format!("failed to load ONNX Runtime from '{}': {e}", path.display()),
+        })?
+        .commit();
     Ok(())
 }
 

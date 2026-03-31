@@ -358,7 +358,7 @@ pub struct AnalyzeArgs {
     pub stale_lock_timeout: Option<String>,
 
     /// Write results to stdout as NDJSON stream (single file only).
-    #[arg(long)]
+    #[arg(long, conflicts_with_all = ["output_dir", "combine", "format"])]
     pub stdout: bool,
 }
 
@@ -672,5 +672,23 @@ mod tests {
     fn test_cli_stdout_flag_exists() {
         let cli = Cli::try_parse_from(["birda", "--stdout", "test.wav"]);
         assert!(cli.is_ok());
+    }
+
+    #[test]
+    fn test_cli_stdout_conflicts_with_output_dir() {
+        let cli = Cli::try_parse_from(["birda", "--stdout", "--output-dir", "/tmp", "test.wav"]);
+        assert!(cli.is_err());
+    }
+
+    #[test]
+    fn test_cli_stdout_conflicts_with_combine() {
+        let cli = Cli::try_parse_from(["birda", "--stdout", "--combine", "test.wav"]);
+        assert!(cli.is_err());
+    }
+
+    #[test]
+    fn test_cli_stdout_conflicts_with_format() {
+        let cli = Cli::try_parse_from(["birda", "--stdout", "--format", "csv", "test.wav"]);
+        assert!(cli.is_err());
     }
 }

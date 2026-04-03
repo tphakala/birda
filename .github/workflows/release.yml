@@ -8,8 +8,8 @@ on:
 env:
   CARGO_TERM_COLOR: always
   # Library versions - update these when upgrading
-  # ONNX Runtime 1.23+ requires CUDA 12.x and cuDNN 9.x
-  ONNXRUNTIME_VERSION: "1.23.2"
+  # ONNX Runtime 1.24+ requires CUDA 12.x and cuDNN 9.x
+  ONNXRUNTIME_VERSION: "1.24.2"
   # CUDA toolkit major.minor version (used in manifest for GUI compatibility checks)
   CUDA_TOOLKIT_VERSION: "12.9"
   # CUDA redistributable versions (from https://developer.download.nvidia.com/compute/cuda/redist/redistrib_12.9.0.json)

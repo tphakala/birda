@@ -69,11 +69,11 @@ pub enum Command {
         output: Option<PathBuf>,
 
         /// Latitude for range filtering (-90.0 to 90.0).
-        #[arg(long, value_parser = parse_latitude)]
+        #[arg(long, allow_hyphen_values = true, value_parser = parse_latitude)]
         lat: f64,
 
         /// Longitude for range filtering (-180.0 to 180.0).
-        #[arg(long, value_parser = parse_longitude)]
+        #[arg(long, allow_hyphen_values = true, value_parser = parse_longitude)]
         lon: f64,
 
         /// Week number (1-48).
@@ -312,11 +312,11 @@ pub struct AnalyzeArgs {
     pub xnnpack: bool,
 
     /// Latitude for range filtering (-90.0 to 90.0).
-    #[arg(long, value_parser = parse_latitude, env = "BIRDA_LATITUDE")]
+    #[arg(long, allow_hyphen_values = true, value_parser = parse_latitude, env = "BIRDA_LATITUDE")]
     pub lat: Option<f64>,
 
     /// Longitude for range filtering (-180.0 to 180.0).
-    #[arg(long, value_parser = parse_longitude, env = "BIRDA_LONGITUDE")]
+    #[arg(long, allow_hyphen_values = true, value_parser = parse_longitude, env = "BIRDA_LONGITUDE")]
     pub lon: Option<f64>,
 
     /// Week number for range filtering (1-48).
@@ -423,6 +423,38 @@ mod tests {
         assert!(parse_longitude("181.0").is_err());
         assert!(parse_longitude("-181.0").is_err());
         assert!(parse_longitude("abc").is_err());
+    }
+
+    #[test]
+    fn test_cli_parse_negative_coordinates() {
+        // Verify negative lat/lon without = syntax works (southern/western hemisphere)
+        let cli = Cli::try_parse_from([
+            "birda",
+            "test.wav",
+            "--lat",
+            "-33.86",
+            "--lon",
+            "-74.0",
+            "--week=24",
+        ]);
+        assert!(cli.is_ok());
+        let cli = cli.unwrap();
+        assert_eq!(cli.analyze.lat, Some(-33.86));
+        assert_eq!(cli.analyze.lon, Some(-74.0));
+    }
+
+    #[test]
+    fn test_cli_parse_species_negative_coordinates() {
+        let cli = Cli::try_parse_from([
+            "birda",
+            "species",
+            "--lat",
+            "-33.86",
+            "--lon",
+            "-74.0",
+            "--week=24",
+        ]);
+        assert!(cli.is_ok());
     }
 
     #[test]

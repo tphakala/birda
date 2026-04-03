@@ -63,6 +63,8 @@ pub fn build_range_filter_config(
         month,
         day,
         rerank: args.rerank,
+        cross_model_labels: None,
+        meta_model_source: None,
     }))
 }
 

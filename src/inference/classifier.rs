@@ -93,6 +93,30 @@ fn remap_location_scores(
         .collect()
 }
 
+/// Fill in zero-score entries for mapped species absent from the scores vector.
+///
+/// In cross-model mode, `predict()` only returns scores above the threshold.
+/// Species in the mapping but below the threshold have no entry, causing
+/// `filter_predictions_impl` to pass them through. This function adds
+/// zero-score entries for those species so they get correctly filtered out.
+fn fill_missing_mapped_scores(scores: &mut Vec<LocationScore>, mapping: &HashMap<String, String>) {
+    let present: HashSet<&str> = scores.iter().map(|s| s.species.as_str()).collect();
+
+    let missing: Vec<String> = mapping
+        .values()
+        .filter(|label| !present.contains(label.as_str()))
+        .cloned()
+        .collect();
+
+    for label in missing {
+        scores.push(LocationScore {
+            species: label,
+            score: 0.0,
+            index: 0,
+        });
+    }
+}
+
 /// Load labels from a cross-model labels file.
 ///
 /// Reads one label per line from a text file. This is used to load
@@ -463,7 +487,14 @@ impl BirdClassifier {
 
                 // Build mapping and remap scores to classifier's label format
                 let mapping = build_cross_model_mapping(&meta_labels, inner.labels());
-                let remapped_scores = remap_location_scores(raw_scores, &mapping);
+                let mut remapped_scores = remap_location_scores(raw_scores, &mapping);
+
+                // Fill in zero-score entries for mapped species not in the remapped scores.
+                // predict() only returns species above the threshold, so species that ARE
+                // in the mapping but below the threshold have no entry. Without this,
+                // filter_predictions_impl treats missing entries as "keep unchanged",
+                // letting out-of-range species pass through unfiltered.
+                fill_missing_mapped_scores(&mut remapped_scores, &mapping);
 
                 let source = rf_config.meta_model_source.as_deref().unwrap_or("unknown");
                 info!(
@@ -946,6 +977,73 @@ mod tests {
         assert_eq!(remapped[0].species, "Parus major");
         assert_eq!(remapped[0].score, 0.42);
         assert_eq!(remapped[0].index, 5);
+    }
+
+    #[test]
+    fn test_fill_missing_mapped_scores() {
+        use birdnet_onnx::LocationScore;
+
+        // Simulate: mapping has 3 species, but only 1 is in the scores (above threshold)
+        let mut scores = vec![LocationScore {
+            species: "Accipiter nisus".to_string(),
+            score: 0.9,
+            index: 0,
+        }];
+
+        let mut mapping = HashMap::new();
+        mapping.insert(
+            "Accipiter nisus_Eurasian Sparrowhawk".to_string(),
+            "Accipiter nisus".to_string(),
+        );
+        mapping.insert(
+            "Parus major_Great Tit".to_string(),
+            "Parus major".to_string(),
+        );
+        mapping.insert(
+            "Turdus merula_Eurasian Blackbird".to_string(),
+            "Turdus merula".to_string(),
+        );
+
+        fill_missing_mapped_scores(&mut scores, &mapping);
+
+        // Should now have 3 entries: 1 real + 2 zero-filled
+        assert_eq!(scores.len(), 3);
+
+        // Original score preserved
+        let nisus = scores.iter().find(|s| s.species == "Accipiter nisus");
+        assert!(nisus.is_some());
+        assert_eq!(nisus.map(|s| s.score), Some(0.9));
+
+        // Missing species filled with score 0.0
+        let major = scores.iter().find(|s| s.species == "Parus major");
+        assert!(major.is_some());
+        assert_eq!(major.map(|s| s.score), Some(0.0));
+
+        let merula = scores.iter().find(|s| s.species == "Turdus merula");
+        assert!(merula.is_some());
+        assert_eq!(merula.map(|s| s.score), Some(0.0));
+    }
+
+    #[test]
+    fn test_fill_missing_mapped_scores_all_present() {
+        use birdnet_onnx::LocationScore;
+
+        let mut scores = vec![LocationScore {
+            species: "Accipiter nisus".to_string(),
+            score: 0.9,
+            index: 0,
+        }];
+
+        let mut mapping = HashMap::new();
+        mapping.insert(
+            "Accipiter nisus_Sparrowhawk".to_string(),
+            "Accipiter nisus".to_string(),
+        );
+
+        fill_missing_mapped_scores(&mut scores, &mapping);
+
+        // No new entries added
+        assert_eq!(scores.len(), 1);
     }
 
     #[test]

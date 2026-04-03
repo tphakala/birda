@@ -2,7 +2,7 @@
 
 use crate::cli::AnalyzeArgs;
 use crate::config::types::{Config, ModelConfig};
-use crate::error::{Error, Result};
+use crate::error::Result;
 use crate::inference::RangeFilterConfig;
 use crate::utils::date::{date_to_week, day_of_year_to_date, week_to_start_day};
 
@@ -11,6 +11,9 @@ use crate::utils::date::{date_to_week, day_of_year_to_date, week_to_start_day};
 /// Range filtering activates when:
 /// - Coordinates are available (CLI or config)
 /// - Time parameter is available (week OR month+day)
+/// - A meta model is configured (per-model or via defaults)
+///
+/// Returns `Ok(None)` with a warning if any condition is unmet.
 pub fn build_range_filter_config(
     args: &AnalyzeArgs,
     config: &Config,
@@ -45,10 +48,15 @@ pub fn build_range_filter_config(
     let meta_model_path = model_config
         .meta_model
         .as_ref()
-        .or(config.defaults.meta_model.as_ref())
-        .ok_or_else(|| Error::MetaModelMissing {
-            model_name: model_name.to_string(),
-        })?;
+        .or(config.defaults.meta_model.as_ref());
+
+    let Some(meta_model_path) = meta_model_path else {
+        tracing::warn!(
+            "Range filtering disabled for model '{}': no meta model configured",
+            model_name
+        );
+        return Ok(None);
+    };
 
     // Get threshold (CLI overrides config)
     let threshold = args
@@ -249,7 +257,8 @@ mod tests {
 
         let result = build_range_filter_config(&args, &config, &model_config, "test-model");
 
-        assert!(result.is_err());
-        assert!(matches!(result, Err(Error::MetaModelMissing { .. })));
+        // Should gracefully return None instead of erroring
+        assert!(result.is_ok());
+        assert!(result.unwrap().is_none());
     }
 }

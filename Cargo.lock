@@ -441,7 +441,7 @@ checksum = "2af50177e190e07a26ab74f8b1efbfe2ef87da2116221318cb1c2e82baf7de06"
 
 [[package]]
 name = "birda"
-version = "1.7.1"
+version = "1.8.0"
 dependencies = [
  "arrow",
  "assert_cmd",
@@ -475,9 +475,9 @@ dependencies = [
 
 [[package]]
 name = "birdnet-onnx"
-version = "2.0.0-rc.11"
+version = "2.0.0-rc.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "023ee110423832538479cf9c73370eb11f5fcfefaaa5a24190f0272ede385d61"
+checksum = "520557539fd0600e009d31e68d0dec7af3406c804eb6c1b29190c25488c3afed"
 dependencies = [
  "chrono",
  "clap",
@@ -571,9 +571,9 @@ checksum = "1e748733b7cbc798e1434b6ac524f0c1ff2ab456fe201501e6497c8417a4fc33"
 
 [[package]]
 name = "cc"
-version = "1.2.58"
+version = "1.2.59"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e1e928d4b69e3077709075a938a05ffbedfa53a84c8f766efbf8220bb1ff60e1"
+checksum = "b7a4d3ec6524d28a329fc53654bbadc9bdd7b0431f5d65f1a56ffb28a1ee5283"
 dependencies = [
  "find-msvc-tools",
  "jobserver",

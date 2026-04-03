@@ -162,3 +162,53 @@ pub mod clipper {
     /// Supported audio file extensions for source audio resolution.
     pub const AUDIO_EXTENSIONS: &[&str] = &["wav", "flac", "mp3", "m4a", "aac"];
 }
+
+/// ONNX Runtime discovery constants.
+pub mod onnx_runtime {
+    /// Environment variable used to override the ONNX Runtime dynamic library path.
+    pub const DYLIB_PATH_ENV: &str = "ORT_DYLIB_PATH";
+
+    #[cfg(target_os = "linux")]
+    /// Name of the ONNX Runtime shared library on Linux.
+    pub const LIBRARY_FILE_NAME: &str = "libonnxruntime.so";
+
+    #[cfg(target_os = "macos")]
+    /// Name of the ONNX Runtime shared library on macOS.
+    pub const LIBRARY_FILE_NAME: &str = "libonnxruntime.dylib";
+
+    #[cfg(target_os = "windows")]
+    /// Name of the ONNX Runtime shared library on Windows.
+    pub const LIBRARY_FILE_NAME: &str = "onnxruntime.dll";
+
+    #[cfg(target_os = "linux")]
+    /// Search path environment variable used by the dynamic linker on Linux.
+    pub const SEARCH_PATH_ENV: &str = "LD_LIBRARY_PATH";
+
+    #[cfg(target_os = "macos")]
+    /// Search path environment variable used by the dynamic linker on macOS.
+    pub const SEARCH_PATH_ENV: &str = "DYLD_LIBRARY_PATH";
+
+    #[cfg(target_os = "windows")]
+    /// Search path environment variable used by the dynamic linker on Windows.
+    pub const SEARCH_PATH_ENV: &str = "PATH";
+
+    #[cfg(target_os = "linux")]
+    /// Common Linux library directories to probe before letting ORT fall back to loader defaults.
+    pub const COMMON_SEARCH_DIRS: &[&str] = &[
+        "/usr/lib",
+        "/usr/local/lib",
+        "/lib",
+        "/lib64",
+        "/usr/lib64",
+        "/usr/lib/x86_64-linux-gnu",
+        "/usr/lib/aarch64-linux-gnu",
+    ];
+
+    #[cfg(target_os = "macos")]
+    /// Common macOS library directories to probe before letting ORT fall back to loader defaults.
+    pub const COMMON_SEARCH_DIRS: &[&str] = &["/opt/homebrew/lib", "/usr/local/lib", "/usr/lib"];
+
+    #[cfg(target_os = "windows")]
+    /// Common Windows library directories to probe before letting ORT fall back to loader defaults.
+    pub const COMMON_SEARCH_DIRS: &[&str] = &["C:\\Windows\\System32", "C:\\Windows", "."];
+}

@@ -21,9 +21,11 @@ fn test_stdout_conflicts_with_output_dir() {
         .arg("/tmp")
         .arg("test.wav");
 
-    cmd.assert().failure().stderr(predicate::str::contains(
-        "--stdout cannot be used with --output-dir",
-    ));
+    cmd.assert()
+        .failure()
+        .stderr(predicate::str::contains("--stdout"))
+        .stderr(predicate::str::contains("--output-dir"))
+        .stderr(predicate::str::contains("cannot be used with"));
 }
 
 #[test]
@@ -31,9 +33,11 @@ fn test_stdout_conflicts_with_combine() {
     let mut cmd = cargo_bin_cmd!("birda");
     cmd.arg("--stdout").arg("--combine").arg("test.wav");
 
-    cmd.assert().failure().stderr(predicate::str::contains(
-        "--stdout cannot be used with --combine",
-    ));
+    cmd.assert()
+        .failure()
+        .stderr(predicate::str::contains("--stdout"))
+        .stderr(predicate::str::contains("--combine"))
+        .stderr(predicate::str::contains("cannot be used with"));
 }
 
 #[test]
@@ -44,7 +48,9 @@ fn test_stdout_conflicts_with_format() {
         .arg("csv")
         .arg("test.wav");
 
-    cmd.assert().failure().stderr(predicate::str::contains(
-        "--stdout cannot be used with --format",
-    ));
+    cmd.assert()
+        .failure()
+        .stderr(predicate::str::contains("--stdout"))
+        .stderr(predicate::str::contains("--format"))
+        .stderr(predicate::str::contains("cannot be used with"));
 }

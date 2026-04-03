@@ -45,7 +45,6 @@ struct RangeFilterData {
 /// `"Accipiter nisus_Eurasian Sparrowhawk"` → `"Accipiter nisus"`
 ///
 /// Labels without an underscore are returned as-is (already plain scientific names).
-#[allow(dead_code)]
 fn extract_scientific_name(label: &str) -> &str {
     label.split('_').next().unwrap_or(label)
 }
@@ -55,7 +54,6 @@ fn extract_scientific_name(label: &str) -> &str {
 /// For each meta model label, extracts the scientific name and checks if it exists
 /// in the classifier's label set. Returns a map of `meta_label` → `classifier_label`
 /// for all species that overlap.
-#[allow(dead_code)]
 fn build_cross_model_mapping(
     meta_labels: &[String],
     classifier_labels: &[String],
@@ -78,7 +76,6 @@ fn build_cross_model_mapping(
 /// classifier predictions anyway). Scores and indices are preserved. Note: the
 /// `index` field retains the meta model's label array position, not the
 /// classifier's, since matching at filter time is done by species name.
-#[allow(dead_code)]
 fn remap_location_scores(
     scores: Vec<LocationScore>,
     mapping: &HashMap<String, String>,
@@ -94,6 +91,32 @@ fn remap_location_scores(
             }
         })
         .collect()
+}
+
+/// Load labels from a cross-model labels file.
+///
+/// Reads one label per line from a text file. This is used to load
+/// the fallback model's labels for cross-model range filtering.
+fn load_cross_model_labels(path: &std::path::Path) -> Result<Vec<String>> {
+    let content = std::fs::read_to_string(path).map_err(|e| Error::LabelLoad {
+        path: path.display().to_string(),
+        reason: e.to_string(),
+    })?;
+
+    let labels: Vec<String> = content
+        .lines()
+        .map(|l| l.trim().to_string())
+        .filter(|l| !l.is_empty())
+        .collect();
+
+    if labels.is_empty() {
+        return Err(Error::LabelLoad {
+            path: path.display().to_string(),
+            reason: "file contains no labels".to_string(),
+        });
+    }
+
+    Ok(labels)
 }
 
 /// Wrapper around birdnet-onnx Classifier with birda configuration.
@@ -419,35 +442,79 @@ impl BirdClassifier {
         } else if let Some(rf_config) = range_filter_config {
             use crate::inference::range_filter::RangeFilter;
 
-            let filter = RangeFilter::from_config(
-                &rf_config.meta_model_path,
-                inner.labels(),
-                rf_config.threshold,
-            )?;
+            let filter_and_scores = if let Some(ref cross_labels_path) =
+                rf_config.cross_model_labels
+            {
+                // Cross-model mode: load fallback model's labels, build filter, remap scores
+                let meta_labels = load_cross_model_labels(cross_labels_path)?;
 
-            // Compute location scores once during initialization
-            // If this fails, we want to fail classifier construction (not silently disable)
-            let scores = filter.predict(
-                rf_config.latitude,
-                rf_config.longitude,
-                rf_config.month,
-                rf_config.day,
-            )?;
+                let filter = RangeFilter::from_config(
+                    &rf_config.meta_model_path,
+                    &meta_labels,
+                    rf_config.threshold,
+                )?;
 
-            debug!(
-                "Range filter: computed {} location scores for lat={:.4}, lon={:.4}, month={}, day={}",
-                scores.len(),
-                rf_config.latitude,
-                rf_config.longitude,
-                rf_config.month,
-                rf_config.day
-            );
+                let raw_scores = filter.predict(
+                    rf_config.latitude,
+                    rf_config.longitude,
+                    rf_config.month,
+                    rf_config.day,
+                )?;
 
-            Some(RangeFilterData {
-                filter,
-                config: rf_config,
-                scores,
-            })
+                // Build mapping and remap scores to classifier's label format
+                let mapping = build_cross_model_mapping(&meta_labels, inner.labels());
+                let remapped_scores = remap_location_scores(raw_scores, &mapping);
+
+                let source = rf_config.meta_model_source.as_deref().unwrap_or("unknown");
+                info!(
+                    "Cross-model range filter: {} of {} classifier species have range data (from '{}')",
+                    mapping.len(),
+                    inner.labels().len(),
+                    source
+                );
+
+                if remapped_scores.is_empty() {
+                    warn!("Cross-model range filter produced zero matching species, disabling");
+                    None
+                } else {
+                    Some((filter, remapped_scores))
+                }
+            } else {
+                // Same-model mode: use classifier's own labels (existing behavior)
+                let filter = RangeFilter::from_config(
+                    &rf_config.meta_model_path,
+                    inner.labels(),
+                    rf_config.threshold,
+                )?;
+
+                let scores = filter.predict(
+                    rf_config.latitude,
+                    rf_config.longitude,
+                    rf_config.month,
+                    rf_config.day,
+                )?;
+
+                Some((filter, scores))
+            };
+
+            if let Some((filter, scores)) = filter_and_scores {
+                debug!(
+                    "Range filter: computed {} location scores for lat={:.4}, lon={:.4}, month={}, day={}",
+                    scores.len(),
+                    rf_config.latitude,
+                    rf_config.longitude,
+                    rf_config.month,
+                    rf_config.day
+                );
+
+                Some(RangeFilterData {
+                    filter,
+                    config: rf_config,
+                    scores,
+                })
+            } else {
+                None
+            }
         } else {
             None
         };
@@ -936,6 +1003,67 @@ mod tests {
         assert_eq!(status.requested, "cuda");
         assert_eq!(status.actual, "CUDA");
         assert!(status.fallback_reason.is_none());
+    }
+
+    #[test]
+    #[allow(clippy::unwrap_used)]
+    fn test_load_cross_model_labels_happy_path() {
+        let dir = tempfile::tempdir().unwrap();
+        let labels_path = dir.path().join("labels.txt");
+        std::fs::write(
+            &labels_path,
+            "Accipiter nisus_Eurasian Sparrowhawk\nParus major_Great Tit\nTurdus merula_Eurasian Blackbird\n",
+        )
+        .unwrap();
+
+        let labels = load_cross_model_labels(&labels_path).unwrap();
+        assert_eq!(labels.len(), 3);
+        assert_eq!(labels[0], "Accipiter nisus_Eurasian Sparrowhawk");
+        assert_eq!(labels[1], "Parus major_Great Tit");
+        assert_eq!(labels[2], "Turdus merula_Eurasian Blackbird");
+    }
+
+    #[test]
+    fn test_load_cross_model_labels_file_not_found() {
+        let result = load_cross_model_labels(std::path::Path::new("/tmp/nonexistent_labels.txt"));
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(
+            matches!(err, Error::LabelLoad { .. }),
+            "expected LabelLoad, got: {err:?}"
+        );
+    }
+
+    #[test]
+    #[allow(clippy::unwrap_used)]
+    fn test_load_cross_model_labels_empty_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let labels_path = dir.path().join("empty_labels.txt");
+        std::fs::write(&labels_path, "").unwrap();
+
+        let result = load_cross_model_labels(&labels_path);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(
+            matches!(err, Error::LabelLoad { .. }),
+            "expected LabelLoad, got: {err:?}"
+        );
+    }
+
+    #[test]
+    #[allow(clippy::unwrap_used)]
+    fn test_load_cross_model_labels_whitespace_only() {
+        let dir = tempfile::tempdir().unwrap();
+        let labels_path = dir.path().join("whitespace_labels.txt");
+        std::fs::write(&labels_path, "  \n\n  \n").unwrap();
+
+        let result = load_cross_model_labels(&labels_path);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(
+            matches!(err, Error::LabelLoad { .. }),
+            "expected LabelLoad, got: {err:?}"
+        );
     }
 }
 

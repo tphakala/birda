@@ -489,6 +489,15 @@ pub enum Error {
     /// No input files provided for combining operation.
     #[error("no input files were provided to combine")]
     NoInputFilesToCombine,
+
+    /// Failed to load labels from file.
+    #[error("failed to load labels from {path}: {reason}")]
+    LabelLoad {
+        /// Path to the labels file.
+        path: String,
+        /// Description of the failure.
+        reason: String,
+    },
 }
 
 #[cfg(test)]

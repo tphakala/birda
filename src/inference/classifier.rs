@@ -9,7 +9,7 @@ use birdnet_onnx::{
     InferenceOptions, LocationScore, PredictionResult, TensorRTConfig,
     available_execution_providers, ort_execution_providers,
 };
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use tracing::{debug, error, info, warn};
 
@@ -38,6 +38,85 @@ struct RangeFilterData {
     /// Pre-computed location scores (computed once at initialization).
     /// Avoids recomputing scores on every batch (significant performance optimization).
     scores: Vec<LocationScore>,
+}
+
+/// Extract scientific name from a BirdNET-format label.
+///
+/// `"Accipiter nisus_Eurasian Sparrowhawk"` → `"Accipiter nisus"`
+///
+/// Labels without an underscore are returned as-is (already plain scientific names).
+fn extract_scientific_name(label: &str) -> &str {
+    label.split('_').next().unwrap_or(label)
+}
+
+/// Build a mapping from meta model labels to classifier labels by scientific name.
+///
+/// For each meta model label, extracts the scientific name and checks if it exists
+/// in the classifier's label set. Returns a map of `meta_label` → `classifier_label`
+/// for all species that overlap.
+fn build_cross_model_mapping(
+    meta_labels: &[String],
+    classifier_labels: &[String],
+) -> HashMap<String, String> {
+    let classifier_set: HashSet<&str> = classifier_labels.iter().map(String::as_str).collect();
+
+    let mut mapping = HashMap::new();
+    for meta_label in meta_labels {
+        let scientific = extract_scientific_name(meta_label);
+        if classifier_set.contains(scientific) {
+            mapping.insert(meta_label.clone(), scientific.to_string());
+        }
+    }
+    mapping
+}
+
+/// Remap location scores from meta model label format to classifier label format.
+///
+/// Scores for species not in the mapping are dropped (they won't appear in
+/// classifier predictions anyway). Scores and indices are preserved. Note: the
+/// `index` field retains the meta model's label array position, not the
+/// classifier's, since matching at filter time is done by species name.
+fn remap_location_scores(
+    scores: Vec<LocationScore>,
+    mapping: &HashMap<String, String>,
+) -> Vec<LocationScore> {
+    scores
+        .into_iter()
+        .filter_map(|mut score| {
+            if let Some(classifier_label) = mapping.get(&score.species) {
+                score.species.clone_from(classifier_label);
+                Some(score)
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
+/// Load labels from a cross-model labels file.
+///
+/// Reads one label per line from a text file. This is used to load
+/// the fallback model's labels for cross-model range filtering.
+fn load_cross_model_labels(path: &std::path::Path) -> Result<Vec<String>> {
+    let content = std::fs::read_to_string(path).map_err(|e| Error::LabelLoad {
+        path: path.display().to_string(),
+        reason: e.to_string(),
+    })?;
+
+    let labels: Vec<String> = content
+        .lines()
+        .map(|l| l.trim().to_string())
+        .filter(|l| !l.is_empty())
+        .collect();
+
+    if labels.is_empty() {
+        return Err(Error::LabelLoad {
+            path: path.display().to_string(),
+            reason: "file contains no labels".to_string(),
+        });
+    }
+
+    Ok(labels)
 }
 
 /// Wrapper around birdnet-onnx Classifier with birda configuration.
@@ -363,35 +442,79 @@ impl BirdClassifier {
         } else if let Some(rf_config) = range_filter_config {
             use crate::inference::range_filter::RangeFilter;
 
-            let filter = RangeFilter::from_config(
-                &rf_config.meta_model_path,
-                inner.labels(),
-                rf_config.threshold,
-            )?;
+            let filter_and_scores = if let Some(ref cross_labels_path) =
+                rf_config.cross_model_labels
+            {
+                // Cross-model mode: load fallback model's labels, build filter, remap scores
+                let meta_labels = load_cross_model_labels(cross_labels_path)?;
 
-            // Compute location scores once during initialization
-            // If this fails, we want to fail classifier construction (not silently disable)
-            let scores = filter.predict(
-                rf_config.latitude,
-                rf_config.longitude,
-                rf_config.month,
-                rf_config.day,
-            )?;
+                let filter = RangeFilter::from_config(
+                    &rf_config.meta_model_path,
+                    &meta_labels,
+                    rf_config.threshold,
+                )?;
 
-            debug!(
-                "Range filter: computed {} location scores for lat={:.4}, lon={:.4}, month={}, day={}",
-                scores.len(),
-                rf_config.latitude,
-                rf_config.longitude,
-                rf_config.month,
-                rf_config.day
-            );
+                let raw_scores = filter.predict(
+                    rf_config.latitude,
+                    rf_config.longitude,
+                    rf_config.month,
+                    rf_config.day,
+                )?;
 
-            Some(RangeFilterData {
-                filter,
-                config: rf_config,
-                scores,
-            })
+                // Build mapping and remap scores to classifier's label format
+                let mapping = build_cross_model_mapping(&meta_labels, inner.labels());
+                let remapped_scores = remap_location_scores(raw_scores, &mapping);
+
+                let source = rf_config.meta_model_source.as_deref().unwrap_or("unknown");
+                info!(
+                    "Cross-model range filter: {} of {} classifier species have range data (from '{}')",
+                    mapping.len(),
+                    inner.labels().len(),
+                    source
+                );
+
+                if remapped_scores.is_empty() {
+                    warn!("Cross-model range filter produced zero matching species, disabling");
+                    None
+                } else {
+                    Some((filter, remapped_scores))
+                }
+            } else {
+                // Same-model mode: use classifier's own labels (existing behavior)
+                let filter = RangeFilter::from_config(
+                    &rf_config.meta_model_path,
+                    inner.labels(),
+                    rf_config.threshold,
+                )?;
+
+                let scores = filter.predict(
+                    rf_config.latitude,
+                    rf_config.longitude,
+                    rf_config.month,
+                    rf_config.day,
+                )?;
+
+                Some((filter, scores))
+            };
+
+            if let Some((filter, scores)) = filter_and_scores {
+                debug!(
+                    "Range filter: computed {} location scores for lat={:.4}, lon={:.4}, month={}, day={}",
+                    scores.len(),
+                    rf_config.latitude,
+                    rf_config.longitude,
+                    rf_config.month,
+                    rf_config.day
+                );
+
+                Some(RangeFilterData {
+                    filter,
+                    config: rf_config,
+                    scores,
+                })
+            } else {
+                None
+            }
         } else {
             None
         };
@@ -471,6 +594,18 @@ impl BirdClassifier {
     /// Get execution provider status (requested, actual, fallback reason).
     pub fn execution_provider_status(&self) -> &ExecutionProviderStatus {
         &self.ep_status
+    }
+
+    /// Get range filter info for reporting (cross-model status, species coverage).
+    pub fn range_filter_info(&self) -> Option<crate::output::RangeFilterInfo> {
+        self.range_filter_data
+            .as_ref()
+            .map(|data| crate::output::RangeFilterInfo {
+                cross_model: data.config.cross_model_labels.is_some(),
+                meta_model_source: data.config.meta_model_source.clone(),
+                species_in_range: data.scores.len(),
+                total_species: self.inner.labels().len(),
+            })
     }
 
     /// Perform a warm-up inference to initialize GPU resources.
@@ -694,6 +829,126 @@ mod tests {
     use super::*;
 
     #[test]
+    fn test_extract_scientific_name_birdnet_format() {
+        assert_eq!(
+            extract_scientific_name("Accipiter nisus_Eurasian Sparrowhawk"),
+            "Accipiter nisus"
+        );
+    }
+
+    #[test]
+    fn test_extract_scientific_name_plain() {
+        // Labels without underscore return the full string
+        assert_eq!(
+            extract_scientific_name("Accipiter nisus"),
+            "Accipiter nisus"
+        );
+    }
+
+    #[test]
+    fn test_extract_scientific_name_empty() {
+        assert_eq!(extract_scientific_name(""), "");
+    }
+
+    #[test]
+    fn test_extract_scientific_name_multiple_underscores() {
+        // Should only split on first underscore
+        assert_eq!(
+            extract_scientific_name("Genus species_Common_Name With_Underscores"),
+            "Genus species"
+        );
+    }
+
+    #[test]
+    fn test_build_cross_model_mapping_basic() {
+        let meta_labels = vec![
+            "Accipiter nisus_Eurasian Sparrowhawk".to_string(),
+            "Parus major_Great Tit".to_string(),
+            "Turdus merula_Eurasian Blackbird".to_string(),
+        ];
+        let classifier_labels = vec![
+            "Accipiter nisus".to_string(),
+            "Parus major".to_string(),
+            "Unknown species".to_string(), // not in meta model
+        ];
+
+        let mapping = build_cross_model_mapping(&meta_labels, &classifier_labels);
+
+        assert_eq!(mapping.len(), 2); // Only 2 overlap
+        assert_eq!(
+            mapping.get("Accipiter nisus_Eurasian Sparrowhawk"),
+            Some(&"Accipiter nisus".to_string())
+        );
+        assert_eq!(
+            mapping.get("Parus major_Great Tit"),
+            Some(&"Parus major".to_string())
+        );
+        // Turdus merula is in meta but not classifier → not in mapping
+        assert!(!mapping.contains_key("Turdus merula_Eurasian Blackbird"));
+    }
+
+    #[test]
+    fn test_build_cross_model_mapping_empty_inputs() {
+        let mapping = build_cross_model_mapping(&[], &[]);
+        assert!(mapping.is_empty());
+    }
+
+    #[test]
+    fn test_remap_location_scores_basic() {
+        use birdnet_onnx::LocationScore;
+
+        let scores = vec![
+            LocationScore {
+                species: "Accipiter nisus_Eurasian Sparrowhawk".to_string(),
+                score: 0.9,
+                index: 0,
+            },
+            LocationScore {
+                species: "Turdus merula_Eurasian Blackbird".to_string(),
+                score: 0.7,
+                index: 1,
+            },
+        ];
+
+        let mut mapping = std::collections::HashMap::new();
+        mapping.insert(
+            "Accipiter nisus_Eurasian Sparrowhawk".to_string(),
+            "Accipiter nisus".to_string(),
+        );
+        // Turdus merula NOT in mapping → should be dropped
+
+        let remapped = remap_location_scores(scores, &mapping);
+
+        assert_eq!(remapped.len(), 1);
+        assert_eq!(remapped[0].species, "Accipiter nisus");
+        assert_eq!(remapped[0].score, 0.9);
+    }
+
+    #[test]
+    fn test_remap_location_scores_preserves_scores() {
+        use birdnet_onnx::LocationScore;
+
+        let scores = vec![LocationScore {
+            species: "Parus major_Great Tit".to_string(),
+            score: 0.42,
+            index: 5,
+        }];
+
+        let mut mapping = std::collections::HashMap::new();
+        mapping.insert(
+            "Parus major_Great Tit".to_string(),
+            "Parus major".to_string(),
+        );
+
+        let remapped = remap_location_scores(scores, &mapping);
+
+        assert_eq!(remapped.len(), 1);
+        assert_eq!(remapped[0].species, "Parus major");
+        assert_eq!(remapped[0].score, 0.42);
+        assert_eq!(remapped[0].index, 5);
+    }
+
+    #[test]
     #[allow(clippy::unwrap_used)]
     fn test_filter_predictions_with_species_list() {
         use birdnet_onnx::Prediction;
@@ -760,6 +1015,67 @@ mod tests {
         assert_eq!(status.requested, "cuda");
         assert_eq!(status.actual, "CUDA");
         assert!(status.fallback_reason.is_none());
+    }
+
+    #[test]
+    #[allow(clippy::unwrap_used)]
+    fn test_load_cross_model_labels_happy_path() {
+        let dir = tempfile::tempdir().unwrap();
+        let labels_path = dir.path().join("labels.txt");
+        std::fs::write(
+            &labels_path,
+            "Accipiter nisus_Eurasian Sparrowhawk\nParus major_Great Tit\nTurdus merula_Eurasian Blackbird\n",
+        )
+        .unwrap();
+
+        let labels = load_cross_model_labels(&labels_path).unwrap();
+        assert_eq!(labels.len(), 3);
+        assert_eq!(labels[0], "Accipiter nisus_Eurasian Sparrowhawk");
+        assert_eq!(labels[1], "Parus major_Great Tit");
+        assert_eq!(labels[2], "Turdus merula_Eurasian Blackbird");
+    }
+
+    #[test]
+    fn test_load_cross_model_labels_file_not_found() {
+        let result = load_cross_model_labels(std::path::Path::new("/tmp/nonexistent_labels.txt"));
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(
+            matches!(err, Error::LabelLoad { .. }),
+            "expected LabelLoad, got: {err:?}"
+        );
+    }
+
+    #[test]
+    #[allow(clippy::unwrap_used)]
+    fn test_load_cross_model_labels_empty_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let labels_path = dir.path().join("empty_labels.txt");
+        std::fs::write(&labels_path, "").unwrap();
+
+        let result = load_cross_model_labels(&labels_path);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(
+            matches!(err, Error::LabelLoad { .. }),
+            "expected LabelLoad, got: {err:?}"
+        );
+    }
+
+    #[test]
+    #[allow(clippy::unwrap_used)]
+    fn test_load_cross_model_labels_whitespace_only() {
+        let dir = tempfile::tempdir().unwrap();
+        let labels_path = dir.path().join("whitespace_labels.txt");
+        std::fs::write(&labels_path, "  \n\n  \n").unwrap();
+
+        let result = load_cross_model_labels(&labels_path);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(
+            matches!(err, Error::LabelLoad { .. }),
+            "expected LabelLoad, got: {err:?}"
+        );
     }
 }
 

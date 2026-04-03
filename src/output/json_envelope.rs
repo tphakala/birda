@@ -169,6 +169,25 @@ pub struct PipelineStartedPayload {
     pub min_confidence: f32,
     /// Execution provider information.
     pub execution_provider: ExecutionProviderInfo,
+    /// Range filter information, if active.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub range_filter: Option<RangeFilterInfo>,
+}
+
+/// Range filter status information for GUI display.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RangeFilterInfo {
+    /// Whether this is cross-model (using another model's meta model).
+    pub cross_model: bool,
+    /// Source model for the meta model (e.g., "birdnet-v24"). Absent when same-model.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub meta_model_source: Option<String>,
+    /// Number of species predicted present at the query location/date.
+    /// In cross-model mode, this is further limited to species that overlap
+    /// between the meta model and classifier label sets.
+    pub species_in_range: usize,
+    /// Total classifier species.
+    pub total_species: usize,
 }
 
 /// Execution provider information for GUI display.
@@ -645,6 +664,7 @@ mod tests {
                 actual: "CPU".to_string(),
                 fallback_reason: None,
             },
+            range_filter: None,
         };
         let envelope = JsonEnvelope::new(EventType::PipelineStarted, payload);
 
@@ -706,6 +726,7 @@ mod tests {
                 actual: "TensorRT".to_string(),
                 fallback_reason: None,
             },
+            range_filter: None,
         };
 
         let envelope = JsonEnvelope::new(EventType::PipelineStarted, payload);
@@ -995,6 +1016,51 @@ mod tests {
         // new_default must be present as null (not omitted)
         assert!(actual.get("new_default").is_some());
         assert!(actual["new_default"].is_null());
+    }
+
+    #[test]
+    fn test_range_filter_info_same_model() {
+        let info = RangeFilterInfo {
+            cross_model: false,
+            meta_model_source: None,
+            species_in_range: 350,
+            total_species: 6522,
+        };
+
+        let json = serde_json::to_string(&info).expect("serialize");
+        let actual: serde_json::Value = serde_json::from_str(&json).expect("deserialize");
+
+        let expected = serde_json::json!({
+            "cross_model": false,
+            "species_in_range": 350,
+            "total_species": 6522
+        });
+
+        // meta_model_source should be omitted when None
+        assert_eq!(actual, expected);
+        assert!(actual.get("meta_model_source").is_none());
+    }
+
+    #[test]
+    fn test_range_filter_info_cross_model() {
+        let info = RangeFilterInfo {
+            cross_model: true,
+            meta_model_source: Some("birdnet-v24".to_string()),
+            species_in_range: 280,
+            total_species: 900,
+        };
+
+        let json = serde_json::to_string(&info).expect("serialize");
+        let actual: serde_json::Value = serde_json::from_str(&json).expect("deserialize");
+
+        let expected = serde_json::json!({
+            "cross_model": true,
+            "meta_model_source": "birdnet-v24",
+            "species_in_range": 280,
+            "total_species": 900
+        });
+
+        assert_eq!(actual, expected);
     }
 
     #[test]

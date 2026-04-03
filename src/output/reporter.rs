@@ -27,6 +27,7 @@ pub trait ProgressReporter: Send + Sync {
         model: &str,
         min_confidence: f32,
         execution_provider: &crate::output::ExecutionProviderInfo,
+        range_filter: Option<&crate::output::RangeFilterInfo>,
     );
 
     /// Report file processing start.
@@ -261,6 +262,7 @@ impl ProgressReporter for JsonProgressReporter {
         model: &str,
         min_confidence: f32,
         execution_provider: &crate::output::ExecutionProviderInfo,
+        range_filter: Option<&crate::output::RangeFilterInfo>,
     ) {
         self.emit(
             EventType::PipelineStarted,
@@ -269,6 +271,7 @@ impl ProgressReporter for JsonProgressReporter {
                 model: model.to_string(),
                 min_confidence,
                 execution_provider: execution_provider.clone(),
+                range_filter: range_filter.cloned(),
             },
         );
     }
@@ -447,6 +450,7 @@ impl ProgressReporter for NullReporter {
         _model: &str,
         _min_confidence: f32,
         _execution_provider: &crate::output::ExecutionProviderInfo,
+        _range_filter: Option<&crate::output::RangeFilterInfo>,
     ) {
     }
     fn file_started(
@@ -551,7 +555,7 @@ mod tests {
             actual: "CPU".to_string(),
             fallback_reason: None,
         };
-        reporter.pipeline_started(5, "test-model", 0.1, &dummy_ep);
+        reporter.pipeline_started(5, "test-model", 0.1, &dummy_ep, None);
 
         let output = buffer.lock().expect("lock");
         let output_str = String::from_utf8_lossy(&output);
@@ -567,7 +571,7 @@ mod tests {
             actual: "CPU".to_string(),
             fallback_reason: None,
         };
-        reporter.pipeline_started(10, "model", 0.1, &dummy_ep);
+        reporter.pipeline_started(10, "model", 0.1, &dummy_ep, None);
         reporter.file_started(Path::new("test.wav"), 0, 100, Some(60.0));
         reporter.file_completed_success(Path::new("test.wav"), 5, 1000);
         // No assertions - just verifying it doesn't panic
@@ -626,7 +630,7 @@ mod tests {
             actual: "CPU".to_string(),
             fallback_reason: None,
         };
-        reporter.pipeline_started(1, "test", 0.1, &dummy_ep);
+        reporter.pipeline_started(1, "test", 0.1, &dummy_ep, None);
         // Test passes if no panic occurs
     }
 

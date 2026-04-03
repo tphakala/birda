@@ -34,4 +34,12 @@ pub struct RangeFilterConfig {
     pub day: u32,
     /// Enable re-ranking.
     pub rerank: bool,
+    /// When using a meta model from a different model, this holds the path
+    /// to that model's labels file. The classifier uses these labels to build
+    /// the range filter (for correct output-size validation) and then remaps
+    /// the resulting location scores to the classifier's own label format.
+    pub cross_model_labels: Option<PathBuf>,
+    /// Name of the model that provided the meta model (for logging/reporting).
+    /// e.g., "birdnet-v24" when using `BirdNET`'s meta model for perch-v2.
+    pub meta_model_source: Option<String>,
 }

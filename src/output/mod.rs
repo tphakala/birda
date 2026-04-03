@@ -23,8 +23,8 @@ pub use json_envelope::{
     FileStatus, JsonEnvelope, ModelCheckEntry, ModelCheckPayload, ModelDetails, ModelEntry,
     ModelInfoPayload, ModelInstalledPayload, ModelListPayload, ModelRemovedPayload,
     PipelineCompletedPayload, PipelineStartedPayload, PipelineStatus, ProgressPayload,
-    ProviderInfo, ProvidersPayload, ResultType, SPEC_VERSION, SpeciesEntry, SpeciesListPayload,
-    VersionPayload,
+    ProviderInfo, ProvidersPayload, RangeFilterInfo, ResultType, SPEC_VERSION, SpeciesEntry,
+    SpeciesListPayload, VersionPayload,
 };
 pub use kaleidoscope::KaleidoscopeWriter;
 pub use parquet::{ParquetWriter, combine_parquet_files};

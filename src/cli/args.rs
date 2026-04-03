@@ -444,6 +444,20 @@ mod tests {
     }
 
     #[test]
+    fn test_cli_parse_species_negative_coordinates() {
+        let cli = Cli::try_parse_from([
+            "birda",
+            "species",
+            "--lat",
+            "-33.86",
+            "--lon",
+            "-74.0",
+            "--week=24",
+        ]);
+        assert!(cli.is_ok());
+    }
+
+    #[test]
     fn test_cli_parse_range_filter_week() {
         let cli = Cli::try_parse_from([
             "birda",

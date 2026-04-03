@@ -102,15 +102,16 @@ fn remap_location_scores(
 fn fill_missing_mapped_scores(scores: &mut Vec<LocationScore>, mapping: &HashMap<String, String>) {
     let present: HashSet<&str> = scores.iter().map(|s| s.species.as_str()).collect();
 
-    let missing: Vec<String> = mapping
+    // Use HashSet to deduplicate: multiple meta labels can map to the same classifier label
+    let missing: HashSet<&str> = mapping
         .values()
-        .filter(|label| !present.contains(label.as_str()))
-        .cloned()
+        .map(String::as_str)
+        .filter(|label| !present.contains(label))
         .collect();
 
     for label in missing {
         scores.push(LocationScore {
-            species: label,
+            species: label.to_string(),
             score: 0.0,
             index: 0,
         });
@@ -634,7 +635,7 @@ impl BirdClassifier {
             .map(|data| crate::output::RangeFilterInfo {
                 cross_model: data.config.cross_model_labels.is_some(),
                 meta_model_source: data.config.meta_model_source.clone(),
-                species_in_range: data.scores.len(),
+                species_in_range: data.scores.iter().filter(|s| s.score > 0.0).count(),
                 total_species: self.inner.labels().len(),
             })
     }

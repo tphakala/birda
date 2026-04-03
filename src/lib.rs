@@ -591,8 +591,6 @@ fn analyze_files(
 
     let total_start = Instant::now();
 
-    validate_analyze_args_preflight(inputs, args)?;
-
     // Fail fast on configuration errors before scanning filesystem
     // Resolve model configuration using priority-based resolution
     let (model_config, model_name) = resolve_model_config(args, config)?;

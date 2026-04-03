@@ -63,6 +63,13 @@ fn common_search_directories() -> impl Iterator<Item = PathBuf> {
 }
 
 fn find_runtime_in_directory(directory: &Path) -> Option<PathBuf> {
+    // Check exact library name first (fast path, avoids read_dir on large dirs).
+    let exact = directory.join(onnx_runtime::LIBRARY_FILE_NAME);
+    if exact.is_file() {
+        return Some(exact);
+    }
+
+    // On Linux, also look for versioned variants (e.g. libonnxruntime.so.1.22.0).
     #[cfg(target_os = "linux")]
     {
         if let Ok(entries) = std::fs::read_dir(directory) {
@@ -74,14 +81,9 @@ fn find_runtime_in_directory(directory: &Path) -> Option<PathBuf> {
                     .then_some(entry.path())
             });
         }
-        None
     }
 
-    #[cfg(not(target_os = "linux"))]
-    {
-        let path = directory.join(onnx_runtime::LIBRARY_FILE_NAME);
-        path.is_file().then_some(path)
-    }
+    None
 }
 
 fn initialize_runtime(path: &Path) -> Result<()> {

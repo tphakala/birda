@@ -9,7 +9,7 @@ use predicates::prelude::*;
 const STARTUP_FAILURE_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// Missing ONNX Runtime path used to force fast startup failure.
-const MISSING_ORT_DYLIB_PATH: &str = "/definitely/missing/libonnxruntime.dylib";
+const MISSING_ORT_DYLIB_PATH: &str = "/definitely/missing/onnxruntime";
 
 #[test]
 fn test_invalid_ort_dylib_path_exits_with_error() {

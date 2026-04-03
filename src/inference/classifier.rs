@@ -596,6 +596,18 @@ impl BirdClassifier {
         &self.ep_status
     }
 
+    /// Get range filter info for reporting (cross-model status, species coverage).
+    pub fn range_filter_info(&self) -> Option<crate::output::RangeFilterInfo> {
+        self.range_filter_data
+            .as_ref()
+            .map(|data| crate::output::RangeFilterInfo {
+                cross_model: data.config.cross_model_labels.is_some(),
+                meta_model_source: data.config.meta_model_source.clone(),
+                species_in_range: data.scores.len(),
+                total_species: self.inner.labels().len(),
+            })
+    }
+
     /// Perform a warm-up inference to initialize GPU resources.
     ///
     /// This method runs inference with the specified batch size to trigger any

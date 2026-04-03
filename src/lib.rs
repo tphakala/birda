@@ -705,7 +705,14 @@ fn analyze_files(
 
     // Report pipeline start with execution provider info
     let ep_info = classifier.execution_provider_status().clone().into();
-    reporter.pipeline_started(files.len(), &model_name, min_confidence, &ep_info);
+    let range_filter_info = classifier.range_filter_info();
+    reporter.pipeline_started(
+        files.len(),
+        &model_name,
+        min_confidence,
+        &ep_info,
+        range_filter_info.as_ref(),
+    );
 
     // Build processing parameters
     let is_json_output = matches!(output_mode, OutputMode::Json | OutputMode::Ndjson);

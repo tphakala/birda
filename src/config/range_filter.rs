@@ -1,17 +1,60 @@
 //! Range filter configuration resolution.
 
 use crate::cli::AnalyzeArgs;
-use crate::config::types::{Config, ModelConfig};
+use crate::config::types::{Config, ModelConfig, ModelType};
 use crate::error::Result;
 use crate::inference::RangeFilterConfig;
 use crate::utils::date::{date_to_week, day_of_year_to_date, week_to_start_day};
+use std::path::PathBuf;
+
+/// Find a fallback meta model from other installed models.
+///
+/// Searches all configured models (excluding the current one and BSG models)
+/// for one that has a `meta_model`. Prefers `BirdNET` models for largest species coverage.
+/// Uses alphabetical model name ordering as a deterministic tiebreaker.
+///
+/// Returns `(model_name, model_config, meta_model_path)` so callers need no unwrapping.
+fn find_fallback_meta_model<'a>(
+    config: &'a Config,
+    current_model_name: &str,
+) -> Option<(&'a str, &'a ModelConfig, &'a PathBuf)> {
+    let mut candidates: Vec<(&str, &ModelConfig, &PathBuf)> = config
+        .models
+        .iter()
+        .filter_map(|(name, mc)| {
+            if name.as_str() != current_model_name && mc.model_type != ModelType::BsgFinland {
+                mc.meta_model.as_ref().map(|meta| (name.as_str(), mc, meta))
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    // Sort: BirdNET models first, then alphabetical by name
+    candidates.sort_by(|(name_a, mc_a, _), (name_b, mc_b, _)| {
+        let a_is_birdnet = matches!(
+            mc_a.model_type,
+            ModelType::BirdnetV24 | ModelType::BirdnetV30
+        );
+        let b_is_birdnet = matches!(
+            mc_b.model_type,
+            ModelType::BirdnetV24 | ModelType::BirdnetV30
+        );
+        b_is_birdnet.cmp(&a_is_birdnet).then(name_a.cmp(name_b))
+    });
+
+    candidates.into_iter().next()
+}
 
 /// Build `RangeFilterConfig` from CLI args and config file.
 ///
 /// Range filtering activates when:
 /// - Coordinates are available (CLI or config)
 /// - Time parameter is available (week OR month+day)
-/// - A meta model is configured (per-model or via defaults)
+/// - A meta model is configured (per-model, via defaults, or via cross-model fallback)
+///
+/// When the selected model has no meta model, other installed models are searched for
+/// one that does. `BirdNET` models are preferred for largest species coverage.
 ///
 /// Returns `Ok(None)` with a warning if any condition is unmet.
 pub fn build_range_filter_config(
@@ -44,19 +87,43 @@ pub fn build_range_filter_config(
     let day_of_year = week_to_start_day(week);
     let (month, day) = day_of_year_to_date(day_of_year);
 
+    // BSG models use their own species distribution mechanism, not meta-model range filtering
+    if model_config.model_type == ModelType::BsgFinland {
+        return Ok(None);
+    }
+
     // Get meta model path (per-model overrides global default)
-    let meta_model_path = model_config
+    let direct_meta_model = model_config
         .meta_model
         .as_ref()
         .or(config.defaults.meta_model.as_ref());
 
-    let Some(meta_model_path) = meta_model_path else {
-        tracing::warn!(
-            "Range filtering disabled for model '{}': no meta model configured",
-            model_name
-        );
-        return Ok(None);
-    };
+    // If no meta model found via direct config, try to discover from other installed models
+    let (meta_model_path, cross_model_labels, meta_model_source) =
+        if let Some(path) = direct_meta_model {
+            // Direct meta model (same-model or global default)
+            (path.clone(), None, None)
+        } else if let Some((source_name, source_config, meta_path)) =
+            find_fallback_meta_model(config, model_name)
+        {
+            // Cross-model fallback found
+            tracing::info!(
+                "Using range filter from model '{}' for model '{}' (cross-model mode)",
+                source_name,
+                model_name
+            );
+            (
+                meta_path.clone(),
+                Some(source_config.labels.clone()),
+                Some(source_name.to_string()),
+            )
+        } else {
+            tracing::warn!(
+                "Range filtering disabled for model '{}': no meta model configured",
+                model_name
+            );
+            return Ok(None);
+        };
 
     // Get threshold (CLI overrides config)
     let threshold = args
@@ -64,15 +131,15 @@ pub fn build_range_filter_config(
         .unwrap_or(config.defaults.range_threshold);
 
     Ok(Some(RangeFilterConfig {
-        meta_model_path: meta_model_path.clone(),
+        meta_model_path,
         threshold,
         latitude,
         longitude,
         month,
         day,
         rerank: args.rerank,
-        cross_model_labels: None,
-        meta_model_source: None,
+        cross_model_labels,
+        meta_model_source,
     }))
 }
 
@@ -258,6 +325,96 @@ mod tests {
         let result = build_range_filter_config(&args, &config, &model_config, "test-model");
 
         // Should gracefully return None instead of erroring
+        assert!(result.is_ok());
+        assert!(result.unwrap().is_none());
+    }
+
+    #[test]
+    fn test_build_range_filter_cross_model_fallback() {
+        use crate::config::types::{Config, ModelConfig, ModelType};
+        use std::path::PathBuf;
+
+        let mut args = crate::cli::AnalyzeArgs::default();
+        args.lat = Some(60.1699);
+        args.lon = Some(24.9384);
+        args.week = Some(24);
+
+        // Config has another model with a meta model installed
+        let mut config = Config::default();
+        config.models.insert(
+            "birdnet-v24".to_string(),
+            ModelConfig {
+                path: PathBuf::from("birdnet.onnx"),
+                labels: PathBuf::from("birdnet_labels.txt"),
+                model_type: ModelType::BirdnetV24,
+                meta_model: Some(PathBuf::from("meta.onnx")),
+                bsg_calibration: None,
+                bsg_migration: None,
+                bsg_distribution_maps: None,
+            },
+        );
+
+        // The model being used has no meta model
+        let model_config = ModelConfig {
+            path: PathBuf::from("perch.onnx"),
+            labels: PathBuf::from("perch_labels.csv"),
+            model_type: ModelType::PerchV2,
+            meta_model: None,
+            bsg_calibration: None,
+            bsg_migration: None,
+            bsg_distribution_maps: None,
+        };
+
+        let result = build_range_filter_config(&args, &config, &model_config, "perch-v2");
+
+        assert!(result.is_ok());
+        let rf_config = result.unwrap().unwrap();
+        assert_eq!(rf_config.meta_model_path, PathBuf::from("meta.onnx"));
+        assert_eq!(
+            rf_config.cross_model_labels,
+            Some(PathBuf::from("birdnet_labels.txt"))
+        );
+        assert_eq!(rf_config.meta_model_source, Some("birdnet-v24".to_string()));
+    }
+
+    #[test]
+    fn test_build_range_filter_no_fallback_bsg_only() {
+        use crate::config::types::{Config, ModelConfig, ModelType};
+        use std::path::PathBuf;
+
+        let mut args = crate::cli::AnalyzeArgs::default();
+        args.lat = Some(60.1699);
+        args.lon = Some(24.9384);
+        args.week = Some(24);
+
+        // Only BSG model installed (no meta model)
+        let mut config = Config::default();
+        config.models.insert(
+            "bsg-fi-v44".to_string(),
+            ModelConfig {
+                path: PathBuf::from("bsg.onnx"),
+                labels: PathBuf::from("bsg_labels.txt"),
+                model_type: ModelType::BsgFinland,
+                meta_model: None,
+                bsg_calibration: Some(PathBuf::from("cal.csv")),
+                bsg_migration: Some(PathBuf::from("mig.csv")),
+                bsg_distribution_maps: Some(PathBuf::from("dist.bin")),
+            },
+        );
+
+        let model_config = ModelConfig {
+            path: PathBuf::from("perch.onnx"),
+            labels: PathBuf::from("perch_labels.csv"),
+            model_type: ModelType::PerchV2,
+            meta_model: None,
+            bsg_calibration: None,
+            bsg_migration: None,
+            bsg_distribution_maps: None,
+        };
+
+        let result = build_range_filter_config(&args, &config, &model_config, "perch-v2");
+
+        // No fallback found, should return None gracefully
         assert!(result.is_ok());
         assert!(result.unwrap().is_none());
     }

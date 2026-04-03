@@ -18,7 +18,7 @@ load-dynamic = ["birdnet-onnx/load-dynamic"]
 [dependencies]
 birdnet-onnx = { version = "2.0.0-rc.11", features = ["load-dynamic"] }
 symphonia = { git = "https://github.com/tphakala/Symphonia", branch = "feature/rf64-support", features = ["aac", "mp3", "flac", "wav", "pcm"] }
-rubato = "1.0"
+rubato = "2.0"
 audioadapter-buffers = "2.0"
 clap = { version = "4", features = ["derive", "env"] }
 toml = "1.1"

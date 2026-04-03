@@ -9,7 +9,7 @@ use birdnet_onnx::{
     InferenceOptions, LocationScore, PredictionResult, TensorRTConfig,
     available_execution_providers, ort_execution_providers,
 };
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use tracing::{debug, error, info, warn};
 
@@ -38,6 +38,62 @@ struct RangeFilterData {
     /// Pre-computed location scores (computed once at initialization).
     /// Avoids recomputing scores on every batch (significant performance optimization).
     scores: Vec<LocationScore>,
+}
+
+/// Extract scientific name from a BirdNET-format label.
+///
+/// `"Accipiter nisus_Eurasian Sparrowhawk"` → `"Accipiter nisus"`
+///
+/// Labels without an underscore are returned as-is (already plain scientific names).
+#[allow(dead_code)]
+fn extract_scientific_name(label: &str) -> &str {
+    label.split('_').next().unwrap_or(label)
+}
+
+/// Build a mapping from meta model labels to classifier labels by scientific name.
+///
+/// For each meta model label, extracts the scientific name and checks if it exists
+/// in the classifier's label set. Returns a map of `meta_label` → `classifier_label`
+/// for all species that overlap.
+#[allow(dead_code)]
+fn build_cross_model_mapping(
+    meta_labels: &[String],
+    classifier_labels: &[String],
+) -> HashMap<String, String> {
+    let classifier_set: HashSet<&str> = classifier_labels.iter().map(String::as_str).collect();
+
+    let mut mapping = HashMap::new();
+    for meta_label in meta_labels {
+        let scientific = extract_scientific_name(meta_label);
+        if classifier_set.contains(scientific) {
+            mapping.insert(meta_label.clone(), scientific.to_string());
+        }
+    }
+    mapping
+}
+
+/// Remap location scores from meta model label format to classifier label format.
+///
+/// Scores for species not in the mapping are dropped (they won't appear in
+/// classifier predictions anyway). Scores and indices are preserved. Note: the
+/// `index` field retains the meta model's label array position, not the
+/// classifier's, since matching at filter time is done by species name.
+#[allow(dead_code)]
+fn remap_location_scores(
+    scores: Vec<LocationScore>,
+    mapping: &HashMap<String, String>,
+) -> Vec<LocationScore> {
+    scores
+        .into_iter()
+        .filter_map(|mut score| {
+            if let Some(classifier_label) = mapping.get(&score.species) {
+                score.species.clone_from(classifier_label);
+                Some(score)
+            } else {
+                None
+            }
+        })
+        .collect()
 }
 
 /// Wrapper around birdnet-onnx Classifier with birda configuration.
@@ -692,6 +748,126 @@ impl BirdClassifier {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_extract_scientific_name_birdnet_format() {
+        assert_eq!(
+            extract_scientific_name("Accipiter nisus_Eurasian Sparrowhawk"),
+            "Accipiter nisus"
+        );
+    }
+
+    #[test]
+    fn test_extract_scientific_name_plain() {
+        // Labels without underscore return the full string
+        assert_eq!(
+            extract_scientific_name("Accipiter nisus"),
+            "Accipiter nisus"
+        );
+    }
+
+    #[test]
+    fn test_extract_scientific_name_empty() {
+        assert_eq!(extract_scientific_name(""), "");
+    }
+
+    #[test]
+    fn test_extract_scientific_name_multiple_underscores() {
+        // Should only split on first underscore
+        assert_eq!(
+            extract_scientific_name("Genus species_Common_Name With_Underscores"),
+            "Genus species"
+        );
+    }
+
+    #[test]
+    fn test_build_cross_model_mapping_basic() {
+        let meta_labels = vec![
+            "Accipiter nisus_Eurasian Sparrowhawk".to_string(),
+            "Parus major_Great Tit".to_string(),
+            "Turdus merula_Eurasian Blackbird".to_string(),
+        ];
+        let classifier_labels = vec![
+            "Accipiter nisus".to_string(),
+            "Parus major".to_string(),
+            "Unknown species".to_string(), // not in meta model
+        ];
+
+        let mapping = build_cross_model_mapping(&meta_labels, &classifier_labels);
+
+        assert_eq!(mapping.len(), 2); // Only 2 overlap
+        assert_eq!(
+            mapping.get("Accipiter nisus_Eurasian Sparrowhawk"),
+            Some(&"Accipiter nisus".to_string())
+        );
+        assert_eq!(
+            mapping.get("Parus major_Great Tit"),
+            Some(&"Parus major".to_string())
+        );
+        // Turdus merula is in meta but not classifier → not in mapping
+        assert!(!mapping.contains_key("Turdus merula_Eurasian Blackbird"));
+    }
+
+    #[test]
+    fn test_build_cross_model_mapping_empty_inputs() {
+        let mapping = build_cross_model_mapping(&[], &[]);
+        assert!(mapping.is_empty());
+    }
+
+    #[test]
+    fn test_remap_location_scores_basic() {
+        use birdnet_onnx::LocationScore;
+
+        let scores = vec![
+            LocationScore {
+                species: "Accipiter nisus_Eurasian Sparrowhawk".to_string(),
+                score: 0.9,
+                index: 0,
+            },
+            LocationScore {
+                species: "Turdus merula_Eurasian Blackbird".to_string(),
+                score: 0.7,
+                index: 1,
+            },
+        ];
+
+        let mut mapping = std::collections::HashMap::new();
+        mapping.insert(
+            "Accipiter nisus_Eurasian Sparrowhawk".to_string(),
+            "Accipiter nisus".to_string(),
+        );
+        // Turdus merula NOT in mapping → should be dropped
+
+        let remapped = remap_location_scores(scores, &mapping);
+
+        assert_eq!(remapped.len(), 1);
+        assert_eq!(remapped[0].species, "Accipiter nisus");
+        assert_eq!(remapped[0].score, 0.9);
+    }
+
+    #[test]
+    fn test_remap_location_scores_preserves_scores() {
+        use birdnet_onnx::LocationScore;
+
+        let scores = vec![LocationScore {
+            species: "Parus major_Great Tit".to_string(),
+            score: 0.42,
+            index: 5,
+        }];
+
+        let mut mapping = std::collections::HashMap::new();
+        mapping.insert(
+            "Parus major_Great Tit".to_string(),
+            "Parus major".to_string(),
+        );
+
+        let remapped = remap_location_scores(scores, &mapping);
+
+        assert_eq!(remapped.len(), 1);
+        assert_eq!(remapped[0].species, "Parus major");
+        assert_eq!(remapped[0].score, 0.42);
+        assert_eq!(remapped[0].index, 5);
+    }
 
     #[test]
     #[allow(clippy::unwrap_used)]

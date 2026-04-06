@@ -94,6 +94,13 @@ pub async fn fetch_manifest(client: &reqwest::Client) -> Result<Manifest> {
             reason: format!("failed to read response body: {e}"),
         })?;
 
+    // Also check actual body size (Content-Length can be omitted or spoofed)
+    if bytes.len() as u64 > super::constants::MANIFEST_MAX_BYTES {
+        return Err(Error::UpdateFetchFailed {
+            reason: format!("manifest too large: {} bytes", bytes.len()),
+        });
+    }
+
     Manifest::from_json(&bytes)
 }
 

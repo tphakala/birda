@@ -46,6 +46,39 @@ fn find_fallback_meta_model<'a>(
     candidates.into_iter().next()
 }
 
+/// Find the `BirdNET` model that owns a given meta model path.
+///
+/// When a meta model is configured directly (per-model or via defaults) for a
+/// non-BirdNET model, we need to find the labels file of the `BirdNET` model that
+/// the meta model belongs to for cross-model label mapping.
+///
+/// Only returns `BirdNET`-compatible models, since the meta model's labels must
+/// match its output size (6,522 for `BirdNET` v2.4). Returning a non-BirdNET
+/// model would cause the same label count mismatch this function exists to solve.
+/// Prefers `BirdNET` v2.4 over v3.0 (alphabetical tiebreaker).
+fn find_meta_model_owner<'a>(
+    config: &'a Config,
+    meta_model_path: &std::path::Path,
+) -> Option<(&'a str, &'a ModelConfig)> {
+    config
+        .models
+        .iter()
+        .filter_map(|(name, mc)| {
+            mc.meta_model
+                .as_ref()
+                .filter(|p| p.as_path() == meta_model_path && is_birdnet_model(mc.model_type))
+                .map(|_| (name.as_str(), mc))
+        })
+        .min_by(|(name_a, _), (name_b, _)| name_a.cmp(name_b))
+}
+
+/// Check if a model type uses `BirdNET`-compatible labels for the range filter.
+///
+/// Must be updated if new BirdNET-compatible model types are added to `ModelType`.
+fn is_birdnet_model(model_type: ModelType) -> bool {
+    matches!(model_type, ModelType::BirdnetV24 | ModelType::BirdnetV30)
+}
+
 /// Build `RangeFilterConfig` from CLI args and config file.
 ///
 /// Range filtering activates when:
@@ -98,15 +131,65 @@ pub fn build_range_filter_config(
         .as_ref()
         .or(config.defaults.meta_model.as_ref());
 
-    // If no meta model found via direct config, try to discover from other installed models
+    // Resolve meta model path and determine if cross-model label mapping is needed.
+    //
+    // Cross-model mode activates when the current model (e.g., perch-v2) uses a
+    // meta model from a different model family (e.g., BirdNET). In this case we
+    // need the meta model owner's labels for correct output-size validation and
+    // score remapping.
     let (meta_model_path, cross_model_labels, meta_model_source) =
         if let Some(path) = direct_meta_model {
-            // Direct meta model (same-model or global default)
-            (path.clone(), None, None)
+            if is_birdnet_model(model_config.model_type) {
+                // Same-model mode: BirdNET model using its own meta model
+                (path.clone(), None, None)
+            } else if let Some((source_name, source_config)) = find_meta_model_owner(config, path) {
+                // Cross-model: non-BirdNET model with a directly configured meta model
+                // that belongs to another installed model
+                tracing::info!(
+                    "Using range filter from model '{}' for model '{}' (cross-model mode)",
+                    source_name,
+                    model_name
+                );
+                (
+                    path.clone(),
+                    Some(source_config.labels.clone()),
+                    Some(source_name.to_string()),
+                )
+            } else {
+                // Meta model is configured but we can't find its owner's labels.
+                // This happens when defaults.meta_model points to a file but the
+                // owning model isn't installed. Try fallback discovery.
+                tracing::warn!(
+                    "Meta model configured for '{}' but no matching model found for labels, \
+                     trying fallback discovery",
+                    model_name
+                );
+                if let Some((source_name, source_config, meta_path)) =
+                    find_fallback_meta_model(config, model_name)
+                {
+                    tracing::info!(
+                        "Using range filter from model '{}' for model '{}' (cross-model mode)",
+                        source_name,
+                        model_name
+                    );
+                    (
+                        meta_path.clone(),
+                        Some(source_config.labels.clone()),
+                        Some(source_name.to_string()),
+                    )
+                } else {
+                    tracing::warn!(
+                        "Range filtering disabled for model '{}': \
+                         no labels found for meta model",
+                        model_name
+                    );
+                    return Ok(None);
+                }
+            }
         } else if let Some((source_name, source_config, meta_path)) =
             find_fallback_meta_model(config, model_name)
         {
-            // Cross-model fallback found
+            // No direct meta model — cross-model fallback found
             tracing::info!(
                 "Using range filter from model '{}' for model '{}' (cross-model mode)",
                 source_name,
@@ -417,5 +500,137 @@ mod tests {
         // No fallback found, should return None gracefully
         assert!(result.is_ok());
         assert!(result.unwrap().is_none());
+    }
+
+    #[test]
+    fn test_perch_with_defaults_meta_model_uses_cross_model() {
+        use crate::config::types::{Config, ModelConfig, ModelType};
+        use std::path::PathBuf;
+
+        let mut args = crate::cli::AnalyzeArgs::default();
+        args.lat = Some(60.1699);
+        args.lon = Some(24.9384);
+        args.week = Some(24);
+
+        // Config has birdnet installed (owns the meta model) and defaults.meta_model set
+        let mut config = Config::default();
+        config.defaults.meta_model = Some(PathBuf::from("meta.onnx"));
+        config.models.insert(
+            "birdnet-v24".to_string(),
+            ModelConfig {
+                path: PathBuf::from("birdnet.onnx"),
+                labels: PathBuf::from("birdnet_labels.txt"),
+                model_type: ModelType::BirdnetV24,
+                meta_model: Some(PathBuf::from("meta.onnx")),
+                bsg_calibration: None,
+                bsg_migration: None,
+                bsg_distribution_maps: None,
+            },
+        );
+
+        // Perch model has no meta_model — relies on defaults.meta_model
+        let model_config = ModelConfig {
+            path: PathBuf::from("perch.onnx"),
+            labels: PathBuf::from("perch_labels.csv"),
+            model_type: ModelType::PerchV2,
+            meta_model: None,
+            bsg_calibration: None,
+            bsg_migration: None,
+            bsg_distribution_maps: None,
+        };
+
+        let result = build_range_filter_config(&args, &config, &model_config, "perch-v2");
+
+        assert!(result.is_ok());
+        let rf_config = result.unwrap().unwrap();
+        assert_eq!(rf_config.meta_model_path, PathBuf::from("meta.onnx"));
+        // Must use cross-model mode with BirdNET labels, not perch labels
+        assert_eq!(
+            rf_config.cross_model_labels,
+            Some(PathBuf::from("birdnet_labels.txt"))
+        );
+        assert_eq!(rf_config.meta_model_source, Some("birdnet-v24".to_string()));
+    }
+
+    #[test]
+    fn test_perch_with_direct_meta_model_uses_cross_model() {
+        use crate::config::types::{Config, ModelConfig, ModelType};
+        use std::path::PathBuf;
+
+        let mut args = crate::cli::AnalyzeArgs::default();
+        args.lat = Some(60.1699);
+        args.lon = Some(24.9384);
+        args.week = Some(24);
+
+        // Config has birdnet installed
+        let mut config = Config::default();
+        config.models.insert(
+            "birdnet-v24".to_string(),
+            ModelConfig {
+                path: PathBuf::from("birdnet.onnx"),
+                labels: PathBuf::from("birdnet_labels.txt"),
+                model_type: ModelType::BirdnetV24,
+                meta_model: Some(PathBuf::from("meta.onnx")),
+                bsg_calibration: None,
+                bsg_migration: None,
+                bsg_distribution_maps: None,
+            },
+        );
+
+        // Perch model has meta_model set directly (e.g., user configured it)
+        let model_config = ModelConfig {
+            path: PathBuf::from("perch.onnx"),
+            labels: PathBuf::from("perch_labels.csv"),
+            model_type: ModelType::PerchV2,
+            meta_model: Some(PathBuf::from("meta.onnx")),
+            bsg_calibration: None,
+            bsg_migration: None,
+            bsg_distribution_maps: None,
+        };
+
+        let result = build_range_filter_config(&args, &config, &model_config, "perch-v2");
+
+        assert!(result.is_ok());
+        let rf_config = result.unwrap().unwrap();
+        assert_eq!(rf_config.meta_model_path, PathBuf::from("meta.onnx"));
+        // Must detect cross-model even when meta_model is set directly on perch
+        assert_eq!(
+            rf_config.cross_model_labels,
+            Some(PathBuf::from("birdnet_labels.txt"))
+        );
+        assert_eq!(rf_config.meta_model_source, Some("birdnet-v24".to_string()));
+    }
+
+    #[test]
+    fn test_birdnet_with_direct_meta_model_uses_same_model() {
+        use crate::config::types::{Config, ModelConfig, ModelType};
+        use std::path::PathBuf;
+
+        let mut args = crate::cli::AnalyzeArgs::default();
+        args.lat = Some(60.1699);
+        args.lon = Some(24.9384);
+        args.week = Some(24);
+
+        let config = Config::default();
+
+        // BirdNET model with its own meta model — should be same-model mode
+        let model_config = ModelConfig {
+            path: PathBuf::from("birdnet.onnx"),
+            labels: PathBuf::from("birdnet_labels.txt"),
+            model_type: ModelType::BirdnetV24,
+            meta_model: Some(PathBuf::from("meta.onnx")),
+            bsg_calibration: None,
+            bsg_migration: None,
+            bsg_distribution_maps: None,
+        };
+
+        let result = build_range_filter_config(&args, &config, &model_config, "birdnet-v24");
+
+        assert!(result.is_ok());
+        let rf_config = result.unwrap().unwrap();
+        assert_eq!(rf_config.meta_model_path, PathBuf::from("meta.onnx"));
+        // BirdNET should use same-model mode (no cross_model_labels)
+        assert!(rf_config.cross_model_labels.is_none());
+        assert!(rf_config.meta_model_source.is_none());
     }
 }

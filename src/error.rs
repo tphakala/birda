@@ -533,7 +533,9 @@ pub enum Error {
     },
 
     /// Update blocked due to ONNX Runtime ABI incompatibility.
-    #[error("update blocked: ONNX Runtime version changed ({current} -> {required}), binary-only update would break birda")]
+    #[error(
+        "update blocked: ONNX Runtime version changed ({current} -> {required}), binary-only update would break birda"
+    )]
     UpdateBlocked {
         /// Current ONNX Runtime version.
         current: String,

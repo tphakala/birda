@@ -15,9 +15,10 @@ pub fn verify_sha256(path: &Path, expected_hex: &str) -> Result<()> {
 
     if actual_hex != expected_hex.to_ascii_lowercase() {
         return Err(Error::UpdateChecksumMismatch {
-            file: path
-                .file_name()
-                .map_or_else(|| "unknown".to_string(), |n| n.to_string_lossy().to_string()),
+            file: path.file_name().map_or_else(
+                || "unknown".to_string(),
+                |n| n.to_string_lossy().to_string(),
+            ),
             expected: expected_hex.to_string(),
             actual: actual_hex,
         });
@@ -30,11 +31,12 @@ pub fn verify_sha256(path: &Path, expected_hex: &str) -> Result<()> {
 fn hex_digest(data: &[u8]) -> String {
     let hash = Sha256::digest(data);
     // Format each byte as two lowercase hex characters
-    hash.iter().fold(String::with_capacity(64), |mut acc, byte| {
-        use std::fmt::Write;
-        let _ = write!(acc, "{byte:02x}");
-        acc
-    })
+    hash.iter()
+        .fold(String::with_capacity(64), |mut acc, byte| {
+            use std::fmt::Write;
+            let _ = write!(acc, "{byte:02x}");
+            acc
+        })
 }
 
 #[cfg(test)]
@@ -81,7 +83,10 @@ mod tests {
         f.write_all(b"test content").unwrap();
         drop(f);
 
-        let result = verify_sha256(&path, "0000000000000000000000000000000000000000000000000000000000000000");
+        let result = verify_sha256(
+            &path,
+            "0000000000000000000000000000000000000000000000000000000000000000",
+        );
         assert!(result.is_err());
     }
 }

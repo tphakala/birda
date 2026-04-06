@@ -10,12 +10,14 @@ use tracing::debug;
 /// Check that the parent directory of the current binary is writable.
 #[allow(unsafe_code)]
 pub fn check_write_permission(exe_path: &Path) -> Result<()> {
-    let parent = exe_path.parent().ok_or_else(|| Error::UpdateReplaceFailed {
-        reason: format!(
-            "cannot determine parent directory of '{}'",
-            exe_path.display()
-        ),
-    })?;
+    let parent = exe_path
+        .parent()
+        .ok_or_else(|| Error::UpdateReplaceFailed {
+            reason: format!(
+                "cannot determine parent directory of '{}'",
+                exe_path.display()
+            ),
+        })?;
 
     let metadata = std::fs::metadata(parent).map_err(|e| Error::UpdateReplaceFailed {
         reason: format!("cannot read metadata of '{}': {e}", parent.display()),

@@ -64,11 +64,13 @@ pub async fn fetch_manifest(client: &reqwest::Client) -> Result<Manifest> {
         .replace("{repo}", super::constants::GITHUB_REPO)
         .replace("{file}", super::constants::MANIFEST_FILENAME);
 
-    let response = client.get(&url).send().await.map_err(|e| {
-        Error::UpdateFetchFailed {
+    let response = client
+        .get(&url)
+        .send()
+        .await
+        .map_err(|e| Error::UpdateFetchFailed {
             reason: format!("HTTP request failed: {e}"),
-        }
-    })?;
+        })?;
 
     if !response.status().is_success() {
         return Err(Error::UpdateFetchFailed {
@@ -76,11 +78,12 @@ pub async fn fetch_manifest(client: &reqwest::Client) -> Result<Manifest> {
         });
     }
 
-    let bytes = response.bytes().await.map_err(|e| {
-        Error::UpdateFetchFailed {
+    let bytes = response
+        .bytes()
+        .await
+        .map_err(|e| Error::UpdateFetchFailed {
             reason: format!("failed to read response body: {e}"),
-        }
-    })?;
+        })?;
 
     Manifest::from_json(&bytes)
 }

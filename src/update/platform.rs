@@ -42,7 +42,9 @@ fn platform_base() -> &'static str {
         all(target_os = "macos", target_arch = "aarch64"),
     )))]
     {
-        compile_error!("Unsupported platform for birda update. Supported: linux-x64, windows-x64, macos-arm64");
+        compile_error!(
+            "Unsupported platform for birda update. Supported: linux-x64, windows-x64, macos-arm64"
+        );
     }
 }
 

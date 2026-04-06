@@ -6,8 +6,7 @@ pub const GITHUB_REPO: &str = "tphakala/birda";
 /// URL pattern for downloading from the latest GitHub release.
 /// The `{repo}` placeholder is replaced with `GITHUB_REPO`.
 /// The `{file}` placeholder is replaced with the asset filename.
-pub const RELEASE_DOWNLOAD_URL: &str =
-    "https://github.com/{repo}/releases/latest/download/{file}";
+pub const RELEASE_DOWNLOAD_URL: &str = "https://github.com/{repo}/releases/latest/download/{file}";
 
 /// Filename of the release manifest.
 pub const MANIFEST_FILENAME: &str = "manifest.json";

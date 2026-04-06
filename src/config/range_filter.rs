@@ -150,9 +150,7 @@ pub fn build_range_filter_config(
             if is_birdnet_model(model_config.model_type) {
                 // Same-model mode: BirdNET model using its own meta model
                 (path.clone(), None, None)
-            } else if let Some((source_name, source_config)) =
-                find_meta_model_owner(config, path)
-            {
+            } else if let Some((source_name, source_config)) = find_meta_model_owner(config, path) {
                 // Cross-model: non-BirdNET model with a directly configured meta model
                 // that belongs to another installed model
                 tracing::info!(

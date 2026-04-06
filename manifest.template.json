@@ -2,6 +2,28 @@
   "version": "${VERSION}",
   "min_gui_version": "1.1.0",
   "assets": {
+    "bin": {
+      "linux-x64": {
+        "file": "birda-linux-x64-bin-${TAG}.tar.gz",
+        "sha256": "${SHA256_LINUX_BIN}"
+      },
+      "linux-x64-cuda": {
+        "file": "birda-linux-x64-cuda-bin-${TAG}.tar.gz",
+        "sha256": "${SHA256_LINUX_CUDA_BIN}"
+      },
+      "windows-x64": {
+        "file": "birda-windows-x64-bin-${TAG}.zip",
+        "sha256": "${SHA256_WINDOWS_BIN}"
+      },
+      "windows-x64-cuda": {
+        "file": "birda-windows-x64-cuda-bin-${TAG}.zip",
+        "sha256": "${SHA256_WINDOWS_CUDA_BIN}"
+      },
+      "macos-arm64": {
+        "file": "birda-macos-arm64-bin-${TAG}.tar.gz",
+        "sha256": "${SHA256_MACOS_BIN}"
+      }
+    },
     "embed": {
       "linux-x64": "birda-linux-x64-embed-${TAG}.tar.gz",
       "windows-x64": "birda-windows-x64-embed-${TAG}.zip",
@@ -12,8 +34,10 @@
       "windows-x64": "birda-cuda-libs-windows-x64-${TAG}.zip"
     }
   },
+  "dependencies": {
+    "onnxruntime": "${ONNXRUNTIME_VERSION}"
+  },
   "cuda": {
-    "onnxruntime": "${ONNXRUNTIME_VERSION}",
     "cuda_toolkit": "${CUDA_TOOLKIT_VERSION}",
     "cudnn": "${CUDNN_VERSION}"
   }

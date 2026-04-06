@@ -7,8 +7,7 @@ use std::path::Path;
 /// Verify that a file's SHA256 hash matches the expected hex digest.
 ///
 /// Returns `Ok(())` if the checksum matches. Returns `Err(UpdateChecksumMismatch)`
-/// if it doesn't. The file is read in streaming fashion to avoid loading it all
-/// into memory.
+/// if it doesn't.
 pub fn verify_sha256(path: &Path, expected_hex: &str) -> Result<()> {
     let file_bytes = std::fs::read(path).map_err(Error::Io)?;
     let actual_hex = hex_digest(&file_bytes);

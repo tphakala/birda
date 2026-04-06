@@ -48,18 +48,6 @@ fn platform_base() -> &'static str {
     }
 }
 
-/// Returns the archive extension for the current platform.
-pub fn archive_extension() -> &'static str {
-    #[cfg(target_os = "windows")]
-    {
-        "zip"
-    }
-    #[cfg(not(target_os = "windows"))]
-    {
-        "tar.gz"
-    }
-}
-
 /// Returns the binary filename for the current platform.
 pub fn binary_name() -> &'static str {
     #[cfg(target_os = "windows")]
@@ -87,16 +75,6 @@ mod tests {
         let base = platform_base();
         let valid = ["linux-x64", "windows-x64", "macos-arm64"];
         assert!(valid.contains(&base), "unexpected platform: {base}");
-    }
-
-    #[test]
-    fn test_archive_extension_matches_platform() {
-        let ext = archive_extension();
-        if cfg!(target_os = "windows") {
-            assert_eq!(ext, "zip");
-        } else {
-            assert_eq!(ext, "tar.gz");
-        }
     }
 
     #[test]

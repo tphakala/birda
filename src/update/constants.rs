@@ -14,8 +14,11 @@ pub const MANIFEST_FILENAME: &str = "manifest.json";
 /// Temporary file suffix used during extraction.
 pub const UPDATE_TEMP_SUFFIX: &str = ".birda-update-new.tmp";
 
-/// Backup file extension for the old binary on Unix.
-pub const BACKUP_EXTENSION: &str = ".old";
+/// HTTP connect timeout in seconds for update requests.
+pub const CONNECT_TIMEOUT_SECS: u64 = 30;
+
+/// Total HTTP timeout in seconds for update download requests.
+pub const DOWNLOAD_TIMEOUT_SECS: u64 = 300;
 
 /// Embedded ONNX Runtime version from build time.
 pub const BUILT_ONNXRUNTIME_VERSION: &str = env!("BIRDA_ONNXRUNTIME_VERSION");

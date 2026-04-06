@@ -908,8 +908,12 @@ fn handle_update_command(check_only: bool, output_mode: OutputMode) -> Result<()
 
     let client = reqwest::Client::builder()
         .user_agent(format!("birda/{}", env!("CARGO_PKG_VERSION")))
-        .connect_timeout(std::time::Duration::from_secs(30))
-        .timeout(std::time::Duration::from_secs(300))
+        .connect_timeout(std::time::Duration::from_secs(
+            update::constants::CONNECT_TIMEOUT_SECS,
+        ))
+        .timeout(std::time::Duration::from_secs(
+            update::constants::DOWNLOAD_TIMEOUT_SECS,
+        ))
         .build()
         .map_err(|e| Error::Internal {
             message: format!("Failed to create HTTP client: {e}"),

@@ -355,6 +355,12 @@ fn extract_tar_gz(archive_path: &Path, dest: &Path) -> Result<()> {
             .map(|n| n.to_string_lossy().to_string())
             .unwrap_or_default();
 
+        // Skip non-file entries (directories, symlinks) to avoid extracting
+        // a directory named "birda" as a 0-byte file
+        if !entry.header().entry_type().is_file() {
+            continue;
+        }
+
         if filename == binary_name {
             let mut output = std::fs::File::create(dest).map_err(Error::Io)?;
             std::io::copy(&mut entry, &mut output).map_err(|e| Error::UpdateExtractFailed {
@@ -384,6 +390,11 @@ fn extract_zip(archive_path: &Path, dest: &Path) -> Result<()> {
             .map_err(|e| Error::UpdateExtractFailed {
                 reason: format!("failed to read zip entry: {e}"),
             })?;
+
+        // Skip directories
+        if entry.is_dir() {
+            continue;
+        }
 
         let path = entry
             .enclosed_name()

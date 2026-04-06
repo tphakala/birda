@@ -3,11 +3,11 @@
 //! Downloads and installs new releases from GitHub, replacing only the binary.
 //! Warns when CUDA or ONNX Runtime library versions change between releases.
 
-pub mod checksum;
+mod checksum;
 pub mod constants;
 pub mod manifest;
-pub mod platform;
-pub mod replace;
+mod platform;
+mod replace;
 
 use crate::error::{Error, Result};
 use constants::{

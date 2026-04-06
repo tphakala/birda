@@ -136,7 +136,7 @@ mod tests {
             }
         }"#;
 
-        let manifest = Manifest::from_json(json).unwrap();
+        let manifest = Manifest::from_json(json).expect("test manifest should parse");
         assert_eq!(manifest.version, "1.9.0");
         assert_eq!(manifest.dependencies.onnxruntime, "1.24.2");
         assert_eq!(manifest.cuda.cuda_toolkit, "12.9");

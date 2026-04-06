@@ -64,10 +64,10 @@ mod tests {
 
     #[test]
     fn test_verify_sha256_matching() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = tempfile::tempdir().expect("test setup failed");
         let path = dir.path().join("test.bin");
-        let mut f = std::fs::File::create(&path).unwrap();
-        f.write_all(b"test content").unwrap();
+        let mut f = std::fs::File::create(&path).expect("test setup failed");
+        f.write_all(b"test content").expect("test setup failed");
         drop(f);
 
         let expected = hex_digest(b"test content");
@@ -76,10 +76,10 @@ mod tests {
 
     #[test]
     fn test_verify_sha256_mismatch() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = tempfile::tempdir().expect("test setup failed");
         let path = dir.path().join("test.bin");
-        let mut f = std::fs::File::create(&path).unwrap();
-        f.write_all(b"test content").unwrap();
+        let mut f = std::fs::File::create(&path).expect("test setup failed");
+        f.write_all(b"test content").expect("test setup failed");
         drop(f);
 
         let result = verify_sha256(

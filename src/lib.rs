@@ -16,6 +16,7 @@ pub mod locking;
 pub mod output;
 pub mod pipeline;
 pub mod registry;
+pub mod update;
 pub mod utils;
 
 use clap::Parser;

@@ -1,0 +1,33 @@
+//! Constants for the update command.
+
+/// GitHub repository used for release downloads.
+pub const GITHUB_REPO: &str = "tphakala/birda";
+
+/// URL pattern for downloading from the latest GitHub release.
+/// The `{repo}` placeholder is replaced with `GITHUB_REPO`.
+/// The `{file}` placeholder is replaced with the asset filename.
+pub const RELEASE_DOWNLOAD_URL: &str = "https://github.com/{repo}/releases/latest/download/{file}";
+
+/// Filename of the release manifest.
+pub const MANIFEST_FILENAME: &str = "manifest.json";
+
+/// Temporary file suffix used during extraction.
+pub const UPDATE_TEMP_SUFFIX: &str = ".birda-update-new.tmp";
+
+/// Maximum manifest response size in bytes (1 MiB).
+pub const MANIFEST_MAX_BYTES: u64 = 1024 * 1024;
+
+/// HTTP connect timeout in seconds for update requests.
+pub const CONNECT_TIMEOUT_SECS: u64 = 30;
+
+/// Total HTTP timeout in seconds for update download requests.
+pub const DOWNLOAD_TIMEOUT_SECS: u64 = 300;
+
+/// Embedded ONNX Runtime version from build time.
+pub const BUILT_ONNXRUNTIME_VERSION: &str = env!("BIRDA_ONNXRUNTIME_VERSION");
+
+/// Embedded CUDA toolkit version from build time.
+pub const BUILT_CUDA_TOOLKIT_VERSION: &str = env!("BIRDA_CUDA_TOOLKIT_VERSION");
+
+/// Embedded cuDNN version from build time.
+pub const BUILT_CUDNN_VERSION: &str = env!("BIRDA_CUDNN_VERSION");

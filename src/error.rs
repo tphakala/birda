@@ -498,6 +498,85 @@ pub enum Error {
         /// Description of the failure.
         reason: String,
     },
+
+    /// Failed to fetch update manifest from GitHub.
+    #[error("failed to fetch update manifest: {reason}")]
+    UpdateFetchFailed {
+        /// Description of the failure.
+        reason: String,
+    },
+
+    /// Update manifest JSON was malformed.
+    #[error("failed to parse update manifest")]
+    UpdateManifestParse {
+        /// Underlying parse error.
+        #[source]
+        source: serde_json::Error,
+    },
+
+    /// SHA256 checksum mismatch after download.
+    #[error("checksum mismatch for '{file}': expected {expected}, got {actual}")]
+    UpdateChecksumMismatch {
+        /// File name that failed verification.
+        file: String,
+        /// Expected SHA256 hash.
+        expected: String,
+        /// Actual SHA256 hash.
+        actual: String,
+    },
+
+    /// Binary replacement failed.
+    #[error("failed to replace binary: {reason}")]
+    UpdateReplaceFailed {
+        /// Description of the failure.
+        reason: String,
+    },
+
+    /// Update blocked due to ONNX Runtime ABI incompatibility.
+    #[error(
+        "update blocked: ONNX Runtime version changed ({current} -> {required}), binary-only update would break birda\nPlease download the full package from: {release_url}"
+    )]
+    UpdateBlocked {
+        /// Current ONNX Runtime version.
+        current: String,
+        /// Required ONNX Runtime version.
+        required: String,
+        /// URL to the full release for manual download.
+        release_url: String,
+    },
+
+    /// No write permission to the binary's parent directory.
+    #[error("no write permission to '{path}', try running with elevated privileges")]
+    UpdatePermissionDenied {
+        /// Path that lacks write permission.
+        path: std::path::PathBuf,
+    },
+
+    /// No matching update asset for this platform/variant.
+    #[error("no update available for platform '{platform}'")]
+    UpdateUnsupportedPlatform {
+        /// Platform key that wasn't found in manifest.
+        platform: String,
+    },
+
+    /// Archive extraction failed.
+    #[error("failed to extract update archive: {reason}")]
+    UpdateExtractFailed {
+        /// Description of the failure.
+        reason: String,
+    },
+
+    /// Update refused because binary is a dev build (in target/ directory).
+    #[error("refusing to update a development build (binary is in a cargo target/ directory)")]
+    UpdateDevBuild,
+
+    /// Failed to determine the current executable path.
+    #[error("failed to determine current executable path")]
+    UpdateExeNotFound {
+        /// Underlying I/O error.
+        #[source]
+        source: std::io::Error,
+    },
 }
 
 #[cfg(test)]

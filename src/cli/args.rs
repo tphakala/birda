@@ -57,6 +57,12 @@ pub enum Command {
     Providers,
     /// Extract audio clips from detection results.
     Clip(ClipArgs),
+    /// Check for and install updates from GitHub.
+    Update {
+        /// Only check for updates, don't install.
+        #[arg(long)]
+        check: bool,
+    },
     /// Generate species list from range filter.
     #[command(group(
         clap::ArgGroup::new("time")

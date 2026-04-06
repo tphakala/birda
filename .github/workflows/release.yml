@@ -994,15 +994,64 @@ jobs:
           echo "=== Embed archives ==="
           ls -la artifacts/*embed* 2>/dev/null || true
 
+      - name: Create binary-only archives
+        run: |
+          VERSION="${{ github.ref_name }}"
+
+          # Linux CPU binary-only
+          if [ -d "artifacts/birda-linux-x64" ]; then
+            tar -czvf artifacts/birda-linux-x64-bin-${VERSION}.tar.gz -C artifacts/birda-linux-x64 birda
+          fi
+
+          # Linux CUDA binary-only (same binary, different build)
+          if [ -d "artifacts/birda-linux-x64-cuda" ]; then
+            tar -czvf artifacts/birda-linux-x64-cuda-bin-${VERSION}.tar.gz -C artifacts/birda-linux-x64-cuda birda
+          fi
+
+          # Windows CPU binary-only
+          if [ -d "artifacts/birda-windows-x64" ]; then
+            cd artifacts/birda-windows-x64
+            zip ../birda-windows-x64-bin-${VERSION}.zip birda.exe
+            cd ../..
+          fi
+
+          # Windows CUDA binary-only
+          if [ -d "artifacts/birda-windows-x64-cuda" ]; then
+            cd artifacts/birda-windows-x64-cuda
+            zip ../birda-windows-x64-cuda-bin-${VERSION}.zip birda.exe
+            cd ../..
+          fi
+
+          # macOS binary-only (from the signed macOS artifact)
+          if [ -d "artifacts/birda-macos-arm64" ]; then
+            tar -czvf artifacts/birda-macos-arm64-bin-${VERSION}.tar.gz -C artifacts/birda-macos-arm64 birda
+          fi
+
+          echo "=== Binary-only archives ==="
+          ls -la artifacts/*bin* 2>/dev/null || true
+
       - name: Generate manifest.json
         run: |
           VERSION="${{ github.ref_name }}"
           SEMVER="${VERSION#v}"
+
+          # Compute SHA256 for binary-only archives
+          SHA256_LINUX_BIN=$(sha256sum artifacts/birda-linux-x64-bin-${VERSION}.tar.gz 2>/dev/null | cut -d' ' -f1 || echo "")
+          SHA256_LINUX_CUDA_BIN=$(sha256sum artifacts/birda-linux-x64-cuda-bin-${VERSION}.tar.gz 2>/dev/null | cut -d' ' -f1 || echo "")
+          SHA256_WINDOWS_BIN=$(sha256sum artifacts/birda-windows-x64-bin-${VERSION}.zip 2>/dev/null | cut -d' ' -f1 || echo "")
+          SHA256_WINDOWS_CUDA_BIN=$(sha256sum artifacts/birda-windows-x64-cuda-bin-${VERSION}.zip 2>/dev/null | cut -d' ' -f1 || echo "")
+          SHA256_MACOS_BIN=$(sha256sum artifacts/birda-macos-arm64-bin-${VERSION}.tar.gz 2>/dev/null | cut -d' ' -f1 || echo "")
+
           sed -e "s/\${VERSION}/$SEMVER/g" \
               -e "s/\${TAG}/$VERSION/g" \
               -e "s/\${ONNXRUNTIME_VERSION}/${{ env.ONNXRUNTIME_VERSION }}/g" \
               -e "s/\${CUDNN_VERSION}/${{ env.CUDNN_VERSION }}/g" \
               -e "s/\${CUDA_TOOLKIT_VERSION}/${{ env.CUDA_TOOLKIT_VERSION }}/g" \
+              -e "s/\${SHA256_LINUX_BIN}/$SHA256_LINUX_BIN/g" \
+              -e "s/\${SHA256_LINUX_CUDA_BIN}/$SHA256_LINUX_CUDA_BIN/g" \
+              -e "s/\${SHA256_WINDOWS_BIN}/$SHA256_WINDOWS_BIN/g" \
+              -e "s/\${SHA256_WINDOWS_CUDA_BIN}/$SHA256_WINDOWS_CUDA_BIN/g" \
+              -e "s/\${SHA256_MACOS_BIN}/$SHA256_MACOS_BIN/g" \
               manifest.template.json > artifacts/manifest.json
 
           echo "=== Generated manifest.json ==="
@@ -1044,6 +1093,9 @@ jobs:
             | `birda-linux-x64-embed-${{ github.ref_name }}.tar.gz` | Linux embeddable (CLI + ONNX Runtime CPU) |
             | `birda-windows-x64-embed-${{ github.ref_name }}.zip` | Windows embeddable (CLI + ONNX Runtime CPU) |
             | `birda-macos-arm64-embed-${{ github.ref_name }}.tar.gz` | macOS embeddable (Signed, CLI + ONNX Runtime CPU) |
+            | `birda-linux-x64-bin-${{ github.ref_name }}.tar.gz` | Linux binary-only (for updates) |
+            | `birda-windows-x64-bin-${{ github.ref_name }}.zip` | Windows binary-only (for updates) |
+            | `birda-macos-arm64-bin-${{ github.ref_name }}.tar.gz` | macOS binary-only (for updates) |
             | `birda-cuda-libs-linux-x64-${{ github.ref_name }}.tar.gz` | Linux CUDA libraries only |
             | `birda-cuda-libs-windows-x64-${{ github.ref_name }}.zip` | Windows CUDA libraries only |
             | `manifest.json` | Version manifest for GUI integration |
@@ -1074,6 +1126,11 @@ jobs:
             artifacts/**/*.tar.gz
             artifacts/**/*.zip
             artifacts/**/*-setup.exe
+            artifacts/birda-linux-x64-bin-${{ github.ref_name }}.tar.gz
+            artifacts/birda-linux-x64-cuda-bin-${{ github.ref_name }}.tar.gz
+            artifacts/birda-windows-x64-bin-${{ github.ref_name }}.zip
+            artifacts/birda-windows-x64-cuda-bin-${{ github.ref_name }}.zip
+            artifacts/birda-macos-arm64-bin-${{ github.ref_name }}.tar.gz
             artifacts/manifest.json
 
       - name: Scan release assets with VirusTotal

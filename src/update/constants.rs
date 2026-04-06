@@ -14,6 +14,9 @@ pub const MANIFEST_FILENAME: &str = "manifest.json";
 /// Temporary file suffix used during extraction.
 pub const UPDATE_TEMP_SUFFIX: &str = ".birda-update-new.tmp";
 
+/// Maximum manifest response size in bytes (1 MiB).
+pub const MANIFEST_MAX_BYTES: u64 = 1024 * 1024;
+
 /// HTTP connect timeout in seconds for update requests.
 pub const CONNECT_TIMEOUT_SECS: u64 = 30;
 

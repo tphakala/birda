@@ -78,6 +78,15 @@ pub async fn fetch_manifest(client: &reqwest::Client) -> Result<Manifest> {
         });
     }
 
+    // Guard against oversized responses (manifest should be < 1 MiB)
+    if let Some(len) = response.content_length()
+        && len > super::constants::MANIFEST_MAX_BYTES
+    {
+        return Err(Error::UpdateFetchFailed {
+            reason: format!("manifest too large: {len} bytes"),
+        });
+    }
+
     let bytes = response
         .bytes()
         .await

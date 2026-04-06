@@ -116,7 +116,13 @@ pub async fn perform_update(
     // 5. Check write permissions
     replace::check_write_permission(&exe_path)?;
 
-    // 6. Download the archive
+    // 6. Validate asset filename and download the archive
+    if asset.file.contains('/') || asset.file.contains('\\') || asset.file.contains("..") {
+        return Err(Error::UpdateFetchFailed {
+            reason: format!("invalid asset filename: {}", asset.file),
+        });
+    }
+
     let download_url = RELEASE_DOWNLOAD_URL
         .replace("{repo}", GITHUB_REPO)
         .replace("{file}", &asset.file);

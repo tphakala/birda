@@ -1003,9 +1003,11 @@ jobs:
             tar -czvf artifacts/birda-linux-x64-bin-${VERSION}.tar.gz -C artifacts/birda-linux-x64 birda
           fi
 
-          # Linux CUDA binary-only (same binary, different build)
+          # Linux CUDA binary-only (artifact contains a .tar.gz, extract first)
           if [ -d "artifacts/birda-linux-x64-cuda" ]; then
-            tar -czvf artifacts/birda-linux-x64-cuda-bin-${VERSION}.tar.gz -C artifacts/birda-linux-x64-cuda birda
+            mkdir -p cuda-linux-extract
+            tar -xzf artifacts/birda-linux-x64-cuda/birda-linux-x64-cuda-${VERSION}.tar.gz -C cuda-linux-extract
+            tar -czvf artifacts/birda-linux-x64-cuda-bin-${VERSION}.tar.gz -C cuda-linux-extract birda
           fi
 
           # Windows CPU binary-only
@@ -1015,15 +1017,21 @@ jobs:
             cd ../..
           fi
 
-          # Windows CUDA binary-only
+          # Windows CUDA binary-only (artifact contains a .zip, extract first)
           if [ -d "artifacts/birda-windows-x64-cuda" ]; then
-            cd artifacts/birda-windows-x64-cuda
-            zip ../birda-windows-x64-cuda-bin-${VERSION}.zip birda.exe
-            cd ../..
+            mkdir -p cuda-windows-extract
+            unzip -o artifacts/birda-windows-x64-cuda/birda-windows-x64-cuda-${VERSION}.zip -d cuda-windows-extract
+            cd cuda-windows-extract
+            zip ../artifacts/birda-windows-x64-cuda-bin-${VERSION}.zip birda.exe
+            cd ..
           fi
 
-          # macOS binary-only (from the signed macOS artifact)
-          if [ -d "artifacts/birda-macos-arm64" ]; then
+          # macOS binary-only (use the signed artifact, which contains a .tar.gz)
+          if [ -d "artifacts/birda-macos-arm64-signed" ]; then
+            mkdir -p macos-signed-extract
+            tar -xzf artifacts/birda-macos-arm64-signed/birda-macos-arm64-${VERSION}-signed.tar.gz -C macos-signed-extract
+            tar -czvf artifacts/birda-macos-arm64-bin-${VERSION}.tar.gz -C macos-signed-extract birda
+          elif [ -d "artifacts/birda-macos-arm64" ]; then
             tar -czvf artifacts/birda-macos-arm64-bin-${VERSION}.tar.gz -C artifacts/birda-macos-arm64 birda
           fi
 
@@ -1094,7 +1102,9 @@ jobs:
             | `birda-windows-x64-embed-${{ github.ref_name }}.zip` | Windows embeddable (CLI + ONNX Runtime CPU) |
             | `birda-macos-arm64-embed-${{ github.ref_name }}.tar.gz` | macOS embeddable (Signed, CLI + ONNX Runtime CPU) |
             | `birda-linux-x64-bin-${{ github.ref_name }}.tar.gz` | Linux binary-only (for updates) |
+            | `birda-linux-x64-cuda-bin-${{ github.ref_name }}.tar.gz` | Linux CUDA binary-only (for updates) |
             | `birda-windows-x64-bin-${{ github.ref_name }}.zip` | Windows binary-only (for updates) |
+            | `birda-windows-x64-cuda-bin-${{ github.ref_name }}.zip` | Windows CUDA binary-only (for updates) |
             | `birda-macos-arm64-bin-${{ github.ref_name }}.tar.gz` | macOS binary-only (for updates) |
             | `birda-cuda-libs-linux-x64-${{ github.ref_name }}.tar.gz` | Linux CUDA libraries only |
             | `birda-cuda-libs-windows-x64-${{ github.ref_name }}.zip` | Windows CUDA libraries only |

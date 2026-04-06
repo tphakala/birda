@@ -46,43 +46,35 @@ fn find_fallback_meta_model<'a>(
     candidates.into_iter().next()
 }
 
-/// Find the model that owns a given meta model path.
+/// Find the `BirdNET` model that owns a given meta model path.
 ///
 /// When a meta model is configured directly (per-model or via defaults) for a
-/// non-BirdNET model, we need to find the labels file of the model that the
-/// meta model belongs to for cross-model label mapping.
+/// non-BirdNET model, we need to find the labels file of the `BirdNET` model that
+/// the meta model belongs to for cross-model label mapping.
+///
+/// Only returns `BirdNET`-compatible models, since the meta model's labels must
+/// match its output size (6,522 for `BirdNET` v2.4). Returning a non-BirdNET
+/// model would cause the same label count mismatch this function exists to solve.
+/// Prefers `BirdNET` v2.4 over v3.0 (alphabetical tiebreaker).
 fn find_meta_model_owner<'a>(
     config: &'a Config,
-    meta_model_path: &PathBuf,
+    meta_model_path: &std::path::Path,
 ) -> Option<(&'a str, &'a ModelConfig)> {
-    let mut candidates: Vec<(&str, &ModelConfig)> = config
+    config
         .models
         .iter()
         .filter_map(|(name, mc)| {
             mc.meta_model
                 .as_ref()
-                .filter(|p| *p == meta_model_path)
+                .filter(|p| p.as_path() == meta_model_path && is_birdnet_model(mc.model_type))
                 .map(|_| (name.as_str(), mc))
         })
-        .collect();
-
-    // Sort: BirdNET models first for deterministic selection
-    candidates.sort_by(|(name_a, mc_a), (name_b, mc_b)| {
-        let a_is_birdnet = matches!(
-            mc_a.model_type,
-            ModelType::BirdnetV24 | ModelType::BirdnetV30
-        );
-        let b_is_birdnet = matches!(
-            mc_b.model_type,
-            ModelType::BirdnetV24 | ModelType::BirdnetV30
-        );
-        b_is_birdnet.cmp(&a_is_birdnet).then(name_a.cmp(name_b))
-    });
-
-    candidates.into_iter().next()
+        .min_by(|(name_a, _), (name_b, _)| name_a.cmp(name_b))
 }
 
 /// Check if a model type uses `BirdNET`-compatible labels for the range filter.
+///
+/// Must be updated if new BirdNET-compatible model types are added to `ModelType`.
 fn is_birdnet_model(model_type: ModelType) -> bool {
     matches!(model_type, ModelType::BirdnetV24 | ModelType::BirdnetV30)
 }

@@ -274,7 +274,12 @@ pub fn run() -> Result<()> {
 
 fn command_requires_runtime(command: Option<&Command>, has_no_inputs: bool) -> bool {
     match command {
-        Some(Command::Config { .. } | Command::Models { .. } | Command::Clip(_)) => false,
+        Some(
+            Command::Config { .. }
+            | Command::Models { .. }
+            | Command::Clip(_)
+            | Command::Update { .. },
+        ) => false,
         Some(Command::Providers | Command::Species { .. }) => true,
         None => !has_no_inputs,
     }
@@ -816,6 +821,7 @@ fn handle_command(
             output_mode,
         ),
         Command::Clip(args) => clipper::command::execute(&args, output_mode),
+        Command::Update { check } => handle_update_command(check, output_mode),
     }
 }
 
@@ -890,6 +896,89 @@ fn handle_providers_command(output_mode: OutputMode) {
     println!("Note: This shows compile-time availability. Runtime availability may");
     println!("      differ based on drivers and hardware. Check log output for actual");
     println!("      provider selection during inference.");
+}
+
+/// Handle the `update` subcommand.
+///
+/// Checks for a newer release on GitHub and optionally downloads and installs it.
+fn handle_update_command(check_only: bool, output_mode: OutputMode) -> Result<()> {
+    let runtime = tokio::runtime::Runtime::new().map_err(|e| Error::Internal {
+        message: format!("Failed to create async runtime: {e}"),
+    })?;
+
+    let client = reqwest::Client::builder()
+        .user_agent(format!("birda/{}", env!("CARGO_PKG_VERSION")))
+        .connect_timeout(std::time::Duration::from_secs(30))
+        .timeout(std::time::Duration::from_secs(300))
+        .build()
+        .map_err(|e| Error::Internal {
+            message: format!("Failed to create HTTP client: {e}"),
+        })?;
+
+    let check_result = runtime.block_on(update::check_for_update(&client))?;
+
+    match check_result {
+        update::UpdateCheck::UpToDate { version } => {
+            if output_mode.is_structured() {
+                emit_json_result(&serde_json::json!({
+                    "result_type": "update_check",
+                    "status": "up_to_date",
+                    "version": version,
+                }));
+            } else {
+                println!("birda is up to date (v{version})");
+            }
+            Ok(())
+        }
+        update::UpdateCheck::Available {
+            current,
+            available,
+            manifest,
+        } => {
+            if check_only {
+                if output_mode.is_structured() {
+                    emit_json_result(&serde_json::json!({
+                        "result_type": "update_check",
+                        "status": "available",
+                        "current_version": current,
+                        "available_version": available,
+                    }));
+                } else {
+                    println!("Update available: v{current} -> v{available}");
+                    println!("Run 'birda update' to install.");
+                }
+                return Ok(());
+            }
+
+            let result = runtime.block_on(update::perform_update(&client, &manifest, &current))?;
+
+            if output_mode.is_structured() {
+                emit_json_result(&serde_json::json!({
+                    "result_type": "update_result",
+                    "status": "updated",
+                    "old_version": result.old_version,
+                    "new_version": result.new_version,
+                    "backup_path": result.backup_path.as_ref().map(|p| p.display().to_string()),
+                    "warnings": result.warnings,
+                }));
+            } else {
+                println!("Verifying checksum... ok");
+                if let Some(ref path) = result.backup_path {
+                    println!("Previous version saved as {}", path.display());
+                }
+                println!(
+                    "Updated birda v{} -> v{}",
+                    result.old_version, result.new_version
+                );
+
+                for warning in &result.warnings {
+                    println!("\nNote: {warning}");
+                }
+            }
+
+            Ok(())
+        }
+    }
 }
 
 fn handle_config_command(action: cli::ConfigAction, output_mode: OutputMode) -> Result<()> {

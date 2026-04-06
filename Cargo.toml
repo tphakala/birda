@@ -16,7 +16,7 @@ cuda = ["birdnet-onnx/cuda"]
 load-dynamic = ["birdnet-onnx/load-dynamic"]
 
 [dependencies]
-birdnet-onnx = { version = "2.0.0-rc.12", features = ["load-dynamic"] }
+birdnet-onnx = { version = "2.0.0-rc.13", features = ["load-dynamic"] }
 ort = { version = "2.0.0-rc.12", default-features = false, features = ["load-dynamic"] }
 symphonia = { git = "https://github.com/tphakala/Symphonia", branch = "feature/rf64-support", features = ["aac", "mp3", "flac", "wav", "pcm"] }
 rubato = "2.0"

@@ -216,18 +216,21 @@ fn check_library_versions(manifest: &Manifest) -> Result<Vec<String>> {
         });
     }
 
-    // CUDA checks only for CUDA builds
-    if cfg!(feature = "cuda") && BUILT_CUDA_TOOLKIT_VERSION != "unknown" {
-        if manifest.cuda.cuda_toolkit != BUILT_CUDA_TOOLKIT_VERSION {
+    // CUDA checks only for CUDA builds when manifest includes CUDA info
+    if cfg!(feature = "cuda")
+        && BUILT_CUDA_TOOLKIT_VERSION != "unknown"
+        && let Some(cuda) = &manifest.cuda
+    {
+        if cuda.cuda_toolkit != BUILT_CUDA_TOOLKIT_VERSION {
             warnings.push(format!(
                 "CUDA toolkit requirement changed ({} -> {}). If you use GPU acceleration, you may need to update your CUDA installation.",
-                BUILT_CUDA_TOOLKIT_VERSION, manifest.cuda.cuda_toolkit,
+                BUILT_CUDA_TOOLKIT_VERSION, cuda.cuda_toolkit,
             ));
         }
-        if manifest.cuda.cudnn != BUILT_CUDNN_VERSION {
+        if cuda.cudnn != BUILT_CUDNN_VERSION {
             warnings.push(format!(
                 "cuDNN requirement changed ({} -> {}). If you use GPU acceleration, you may need to update cuDNN.",
-                BUILT_CUDNN_VERSION, manifest.cuda.cudnn,
+                BUILT_CUDNN_VERSION, cuda.cudnn,
             ));
         }
     }

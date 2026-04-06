@@ -44,8 +44,8 @@ pub struct Manifest {
     pub assets: Assets,
     /// Library dependency versions.
     pub dependencies: Dependencies,
-    /// CUDA-specific versions.
-    pub cuda: CudaVersions,
+    /// CUDA-specific versions (absent for CPU-only manifests).
+    pub cuda: Option<CudaVersions>,
 }
 
 impl Manifest {
@@ -139,8 +139,9 @@ mod tests {
         let manifest = Manifest::from_json(json).expect("test manifest should parse");
         assert_eq!(manifest.version, "1.9.0");
         assert_eq!(manifest.dependencies.onnxruntime, "1.24.2");
-        assert_eq!(manifest.cuda.cuda_toolkit, "12.9");
-        assert_eq!(manifest.cuda.cudnn, "9.17.1.4");
+        let cuda = manifest.cuda.expect("cuda should be present");
+        assert_eq!(cuda.cuda_toolkit, "12.9");
+        assert_eq!(cuda.cudnn, "9.17.1.4");
         assert_eq!(manifest.assets.bin.len(), 2);
 
         let linux = &manifest.assets.bin["linux-x64"];

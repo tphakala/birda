@@ -237,16 +237,17 @@ fn check_library_versions(manifest: &Manifest) -> Result<Vec<String>> {
 
 /// Check if the ONNX Runtime major.minor version has changed.
 fn ort_major_minor_changed(current: &str, required: &str) -> bool {
-    let current_parts: Vec<&str> = current.split('.').collect();
-    let required_parts: Vec<&str> = required.split('.').collect();
-
-    if current_parts.len() < 2 || required_parts.len() < 2 {
-        // Can't parse; assume changed to be safe
+    let Ok(current_ver) = semver::Version::parse(current) else {
+        // Can't parse; assume changed to be safe if strings differ
         return current != required;
-    }
+    };
+    let Ok(required_ver) = semver::Version::parse(required) else {
+        // Can't parse; assume changed to be safe if strings differ
+        return current != required;
+    };
 
     // Compare major.minor only
-    current_parts[0] != required_parts[0] || current_parts[1] != required_parts[1]
+    current_ver.major != required_ver.major || current_ver.minor != required_ver.minor
 }
 
 /// Download a file with a progress bar.
@@ -340,13 +341,14 @@ fn extract_tar_gz(archive_path: &Path, dest: &Path) -> Result<()> {
             reason: format!("failed to read entry path: {e}"),
         })?;
 
-        // Security: reject entries with path traversal
-        if path
-            .components()
-            .any(|c| matches!(c, std::path::Component::ParentDir))
+        // Security: reject entries with path traversal or absolute paths
+        if path.is_absolute()
+            || path
+                .components()
+                .any(|c| matches!(c, std::path::Component::ParentDir))
         {
             return Err(Error::UpdateExtractFailed {
-                reason: "archive contains path traversal entry".to_string(),
+                reason: "archive contains an unsafe path entry".to_string(),
             });
         }
 

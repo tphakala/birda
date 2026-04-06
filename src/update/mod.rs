@@ -134,7 +134,12 @@ pub async fn perform_update(
         })?;
 
     let archive_path = parent_dir.join(format!("{}.download", asset.file));
-    download_with_progress(client, &download_url, &archive_path, &manifest.version).await?;
+    if let Err(e) =
+        download_with_progress(client, &download_url, &archive_path, &manifest.version).await
+    {
+        let _ = std::fs::remove_file(&archive_path);
+        return Err(e);
+    }
 
     // 7. Verify checksum
     info!("Verifying checksum...");
@@ -156,7 +161,10 @@ pub async fn perform_update(
     let _ = std::fs::remove_file(&archive_path);
 
     // 9. Set executable permissions (Unix)
-    replace::set_executable(&temp_binary)?;
+    if let Err(e) = replace::set_executable(&temp_binary) {
+        let _ = std::fs::remove_file(&temp_binary);
+        return Err(e);
+    }
 
     // 10. Replace binary
     let backup_kept = match replace::replace_binary(&exe_path, &temp_binary) {

@@ -1047,9 +1047,8 @@ jobs:
           compute_sha256() {
             local file="$1"
             if [ ! -f "$file" ]; then
-              echo "WARNING: $file not found, SHA256 will be empty" >&2
-              echo ""
-              return
+              echo "ERROR: $file not found, cannot compute SHA256" >&2
+              exit 1
             fi
             sha256sum "$file" | cut -d' ' -f1
           }

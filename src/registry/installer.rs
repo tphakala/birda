@@ -132,7 +132,7 @@ pub async fn install_model(model: &ModelEntry, language: Option<&str>) -> Result
     // Create HTTP client with timeouts for all downloads
     let client = Client::builder()
         .connect_timeout(std::time::Duration::from_secs(30))
-        .timeout(std::time::Duration::from_secs(300))
+        .timeout(std::time::Duration::from_mins(5))
         .build()
         .map_err(|e| Error::Internal {
             message: format!("Failed to create HTTP client: {e}"),

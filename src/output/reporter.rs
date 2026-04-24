@@ -133,11 +133,9 @@ impl ProgressThrottler {
         let percent_changed = current.saturating_sub(last) >= self.min_percent_change;
 
         // Check time threshold
-        let time_elapsed = self
-            .last_update
-            .lock()
-            .map(|last| last.elapsed().as_millis() >= u128::from(self.min_interval_ms))
-            .unwrap_or(true);
+        let time_elapsed = self.last_update.lock().map_or(true, |last| {
+            last.elapsed().as_millis() >= u128::from(self.min_interval_ms)
+        });
 
         if percent_changed || time_elapsed {
             self.last_percent.store(current, Ordering::Relaxed);

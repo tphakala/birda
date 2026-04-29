@@ -6,6 +6,25 @@ use std::path::Path;
 /// Configuration for processing a single audio file.
 ///
 /// Bundles the parameters needed by `process_file` to reduce its argument count.
+///
+/// ```ignore
+/// let config = ProcessingConfig {
+///     input_path: Path::new("recording.wav"),
+///     output_dir: Path::new("output/"),
+///     formats: &[OutputFormat::Csv],
+///     min_confidence: 0.5,
+///     overlap: 0.0,
+///     batch_size: 32,
+///     csv_columns: &[],
+///     progress_enabled: true,
+///     csv_bom_enabled: false,
+///     model_name: "birdnet-v2.4",
+///     range_filter_params: None,
+///     bsg_params: None,
+///     reporter: None,
+///     dual_output_mode: false,
+/// };
+/// ```
 pub struct ProcessingConfig<'a> {
     /// Path to input audio file.
     pub input_path: &'a Path,

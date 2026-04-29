@@ -358,7 +358,7 @@ fn process_batch(
 /// * `config` - Configuration bundling all file-processing parameters
 /// * `classifier` - `BirdNET` classifier for inference (kept separate as a heavyweight runtime object)
 pub fn process_file(
-    config: &crate::pipeline::config::ProcessingConfig<'_>,
+    config: &super::ProcessingConfig<'_>,
     classifier: &BirdClassifier,
 ) -> Result<ProcessResult> {
     use crate::audio::StreamingDecoder;

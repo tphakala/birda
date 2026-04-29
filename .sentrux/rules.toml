@@ -1,0 +1,99 @@
+# Sentrux Architectural Rules for Birda
+# Checked by `sentrux check` and the `check_rules` MCP tool.
+#
+# Layer convention: lower order = top/presentation, higher order = foundational.
+# A file may only import from layers with HIGHER order (more foundational).
+
+[constraints]
+max_cycles = 0           # No circular dependencies allowed
+max_cc = 50              # Max cyclomatic complexity per function
+max_fn_lines = 450       # Max function length (relaxed to pass current state; tighten over time)
+no_god_files = true      # No god files allowed
+
+# Layer definitions (order 0 = top, higher = more foundational)
+
+[[layers]]
+name = "cli"
+paths = ["src/cli/*"]
+order = 0
+
+[[layers]]
+name = "pipeline"
+paths = ["src/pipeline/*"]
+order = 1
+
+[[layers]]
+name = "clipper"
+paths = ["src/clipper/*"]
+order = 2
+
+[[layers]]
+name = "output"
+paths = ["src/output/*"]
+order = 2
+
+[[layers]]
+name = "update"
+paths = ["src/update/*"]
+order = 2
+
+[[layers]]
+name = "inference"
+paths = ["src/inference/*"]
+order = 3
+
+[[layers]]
+name = "registry"
+paths = ["src/registry/*"]
+order = 3
+
+[[layers]]
+name = "audio"
+paths = ["src/audio/*"]
+order = 4
+
+[[layers]]
+name = "gpu"
+paths = ["src/gpu/*"]
+order = 4
+
+[[layers]]
+name = "locking"
+paths = ["src/locking/*"]
+order = 5
+
+[[layers]]
+name = "config"
+paths = ["src/config/*"]
+order = 5
+
+[[layers]]
+name = "utils"
+paths = ["src/utils/*"]
+order = 6
+
+# Boundary rules: forbidden cross-layer shortcuts
+[[boundaries]]
+from = "src/audio/*"
+to = "src/cli/*"
+reason = "Audio must not depend on CLI layer"
+
+[[boundaries]]
+from = "src/inference/*"
+to = "src/cli/*"
+reason = "Inference must not depend on CLI layer"
+
+[[boundaries]]
+from = "src/config/*"
+to = "src/inference/*"
+reason = "Config must not depend on inference"
+
+[[boundaries]]
+from = "src/utils/*"
+to = "src/pipeline/*"
+reason = "Utils must not depend on pipeline"
+
+[[boundaries]]
+from = "src/output/*"
+to = "src/cli/*"
+reason = "Output must not depend on CLI layer"

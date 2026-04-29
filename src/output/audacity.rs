@@ -23,11 +23,6 @@ impl AudacityWriter {
 }
 
 impl OutputWriter for AudacityWriter {
-    fn write_header(&mut self) -> Result<()> {
-        // Audacity format has no header
-        Ok(())
-    }
-
     fn write_detection(&mut self, detection: &Detection) -> Result<()> {
         // Replace underscores with commas for Audacity format
         let species_name = detection.common_name.replace('_', ", ");

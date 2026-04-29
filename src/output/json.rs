@@ -151,11 +151,6 @@ impl JsonResultWriter {
 }
 
 impl OutputWriter for JsonResultWriter {
-    fn write_header(&mut self) -> Result<()> {
-        // No header for JSON - written at finalize
-        Ok(())
-    }
-
     fn write_detection(&mut self, detection: &Detection) -> Result<()> {
         self.detections.push(detection.clone());
         Ok(())

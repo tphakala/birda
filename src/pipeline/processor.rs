@@ -355,41 +355,30 @@ fn process_batch(
 ///
 /// # Arguments
 ///
-/// * `input_path` - Path to input audio file
-/// * `output_dir` - Directory for output files
-/// * `classifier` - `BirdNET` classifier for inference
-/// * `formats` - Output formats to generate
-/// * `min_confidence` - Minimum confidence threshold (0.0-1.0)
-/// * `overlap` - Overlap between chunks in seconds
-/// * `batch_size` - Number of chunks to process in parallel
-/// * `csv_columns` - Additional columns to include in CSV output
-/// * `progress_enabled` - Whether to show progress bars
-/// * `csv_bom_enabled` - Whether to include UTF-8 BOM in CSV output for Excel compatibility
-/// * `model_name` - Model name for JSON output metadata
-/// * `range_filter_params` - Optional (lat, lon, week) for JSON output metadata
-/// * `bsg_params` - Optional (lat, lon, `day_of_year`) for BSG SDM, `day_of_year=None` for auto-detect
-/// * `reporter` - Optional reporter for stdout mode (emits detections instead of writing files)
-#[allow(clippy::too_many_arguments)]
+/// * `config` - Configuration bundling all file-processing parameters
+/// * `classifier` - `BirdNET` classifier for inference (kept separate as a heavyweight runtime object)
 pub fn process_file(
-    input_path: &Path,
-    output_dir: &Path,
+    config: &super::ProcessingConfig<'_>,
     classifier: &BirdClassifier,
-    formats: &[OutputFormat],
-    min_confidence: f32,
-    overlap: f32,
-    batch_size: usize,
-    csv_columns: &[String],
-    progress_enabled: bool,
-    csv_bom_enabled: bool,
-    model_name: &str,
-    range_filter_params: Option<(f64, f64, u8)>,
-    bsg_params: Option<(f64, f64, Option<u32>)>,
-    reporter: Option<&dyn crate::output::ProgressReporter>,
-    dual_output_mode: bool,
 ) -> Result<ProcessResult> {
     use crate::audio::StreamingDecoder;
     use crate::output::progress::{self, estimate_segment_count};
     use std::time::Instant;
+
+    let input_path = config.input_path;
+    let output_dir = config.output_dir;
+    let formats = config.formats;
+    let min_confidence = config.min_confidence;
+    let overlap = config.overlap;
+    let batch_size = config.batch_size;
+    let csv_columns = config.csv_columns;
+    let progress_enabled = config.progress_enabled;
+    let csv_bom_enabled = config.csv_bom_enabled;
+    let model_name = config.model_name;
+    let range_filter_params = config.range_filter_params;
+    let bsg_params = config.bsg_params;
+    let reporter = config.reporter;
+    let dual_output_mode = config.dual_output_mode;
 
     let start_time = Instant::now();
 

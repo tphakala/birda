@@ -119,11 +119,6 @@ impl ParquetWriter {
 }
 
 impl OutputWriter for ParquetWriter {
-    fn write_header(&mut self) -> Result<()> {
-        // Parquet doesn't need a separate header - schema is embedded in file format
-        Ok(())
-    }
-
     fn write_detection(&mut self, detection: &Detection) -> Result<()> {
         self.write_detection(detection.clone())
     }

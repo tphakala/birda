@@ -6,7 +6,9 @@ use crate::output::Detection;
 /// Trait for writing detection results.
 pub trait OutputWriter {
     /// Write the file header (if applicable).
-    fn write_header(&mut self) -> Result<()>;
+    fn write_header(&mut self) -> Result<()> {
+        Ok(())
+    }
 
     /// Write a single detection.
     fn write_detection(&mut self, detection: &Detection) -> Result<()>;

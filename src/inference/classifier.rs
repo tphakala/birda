@@ -188,257 +188,11 @@ impl BirdClassifier {
             .top_k(top_k)
             .min_confidence(min_confidence);
 
-        // Select and configure execution provider based on device setting
-        // GPU provider priority order (shared by Auto and --gpu modes)
-        //
-        // This list includes general-purpose GPU acceleration providers.
-        // Excluded from auto-selection:
-        // - oneDNN: Intel CPU optimizer (not GPU acceleration)
-        // - QNN: Qualcomm-specific hardware (mobile/edge devices only)
-        // - ACL/ArmNN: ARM-specific devices only
-        // - CoreML: Excluded on macOS due to poor ONNX Runtime support (use --coreml to force)
-        //
-        // These specialized providers are available via explicit flags
-        // (--onednn, --qnn, --acl, --armnn, --coreml) for users with specific hardware.
-        #[allow(unused_mut)]
-        let mut gpu_priority = vec![
-            (ExecutionProviderInfo::TensorRt, "TensorRT"),
-            (ExecutionProviderInfo::Cuda, "CUDA"),
-            (ExecutionProviderInfo::DirectMl, "DirectML"),
-            (ExecutionProviderInfo::Rocm, "ROCm"),
-            (ExecutionProviderInfo::OpenVino, "OpenVINO"),
-        ];
-
-        // Include CoreML in auto-selection only on non-macOS platforms
-        // (macOS users can still use --coreml explicitly if needed)
-        // Insert at position 3 to preserve original priority order (between DirectML and ROCm)
-        #[cfg(not(target_os = "macos"))]
-        gpu_priority.insert(3, (ExecutionProviderInfo::CoreMl, "CoreML"));
-
-        let (builder, actual_device_msg, ep_status) = match device {
-            InferenceDevice::Cpu => {
-                info!("Requested device: CPU");
-                (
-                    builder,
-                    "CPU",
-                    ExecutionProviderStatus {
-                        requested: "cpu".to_string(),
-                        actual: "CPU".to_string(),
-                        fallback_reason: None,
-                    },
-                )
-            }
-            InferenceDevice::Auto => {
-                // Auto mode: try GPU providers in priority order, silent CPU fallback
-
-                // Filter TensorRT if libraries not available
-                let mut available_gpu_priority = gpu_priority.clone();
-                if let Some(pos) = available_gpu_priority
-                    .iter()
-                    .position(|(p, _)| *p == ExecutionProviderInfo::TensorRt)
-                    && !crate::inference::is_tensorrt_available()
-                {
-                    debug!(
-                        "Auto mode: TensorRT in priority list but libraries not found, skipping"
-                    );
-                    available_gpu_priority.remove(pos);
-                }
-
-                // Filter CUDA if libraries not available
-                if let Some(pos) = available_gpu_priority
-                    .iter()
-                    .position(|(p, _)| *p == ExecutionProviderInfo::Cuda)
-                    && !crate::inference::is_cuda_available()
-                {
-                    debug!("Auto mode: CUDA in priority list but libraries not found, skipping");
-                    available_gpu_priority.remove(pos);
-                }
-
-                if let Some(&(provider_info, name)) = available_gpu_priority
-                    .iter()
-                    .find(|(p, _)| available_providers.contains(p))
-                {
-                    info!("Auto mode: {} available, attempting GPU", name);
-                    let builder = add_execution_provider(builder, provider_info);
-                    (
-                        builder,
-                        name,
-                        ExecutionProviderStatus {
-                            requested: "auto".to_string(),
-                            actual: name.to_string(),
-                            fallback_reason: None,
-                        },
-                    )
-                } else {
-                    info!("Auto mode: No GPU providers available, using CPU");
-                    (
-                        builder,
-                        "Auto (CPU)",
-                        ExecutionProviderStatus {
-                            requested: "auto".to_string(),
-                            actual: "CPU".to_string(),
-                            fallback_reason: Some("No GPU providers available".to_string()),
-                        },
-                    )
-                }
-            }
-            InferenceDevice::Gpu => {
-                // Best-effort GPU: try providers in priority order, warn if CPU fallback
-
-                // Filter TensorRT if libraries not available
-                let mut available_gpu_priority = gpu_priority.clone();
-                let mut tensorrt_fallback = None;
-                let mut cuda_fallback = None;
-
-                if let Some(pos) = available_gpu_priority
-                    .iter()
-                    .position(|(p, _)| *p == ExecutionProviderInfo::TensorRt)
-                    && !crate::inference::is_tensorrt_available()
-                {
-                    warn!(
-                        "TensorRT libraries not found ({})",
-                        get_tensorrt_library_name()
-                    );
-                    warn!("TensorRT requires NVIDIA TensorRT 10.x runtime libraries");
-                    warn!("Install from: https://developer.nvidia.com/tensorrt");
-                    tensorrt_fallback = Some(format!(
-                        "TensorRT libraries not found ({} missing)",
-                        get_tensorrt_library_name()
-                    ));
-                    available_gpu_priority.remove(pos);
-                }
-
-                // Filter CUDA if libraries not available
-                if let Some(pos) = available_gpu_priority
-                    .iter()
-                    .position(|(p, _)| *p == ExecutionProviderInfo::Cuda)
-                    && !crate::inference::is_cuda_available()
-                {
-                    warn!("CUDA runtime libraries not found");
-                    warn!(
-                        "Looking for: {}",
-                        crate::inference::get_cuda_library_patterns().join(", ")
-                    );
-                    warn!("CUDA requires NVIDIA CUDA runtime libraries");
-                    warn!("Install from: https://developer.nvidia.com/cuda-downloads");
-                    cuda_fallback = Some("CUDA runtime libraries not found".to_string());
-                    available_gpu_priority.remove(pos);
-                }
-
-                if let Some(&(provider_info, name)) = available_gpu_priority
-                    .iter()
-                    .find(|(p, _)| available_providers.contains(p))
-                {
-                    info!("--gpu: Selected {} provider", name);
-                    let builder = add_execution_provider(builder, provider_info);
-
-                    // Combine fallback reasons
-                    let fallback = match (tensorrt_fallback, cuda_fallback) {
-                        (Some(tr), Some(cu)) => {
-                            warn!("Falling back to {}", name);
-                            Some(format!("{tr}; {cu}"))
-                        }
-                        (Some(tr), None) => {
-                            warn!("Falling back to {}", name);
-                            Some(tr)
-                        }
-                        (None, Some(cu)) => {
-                            warn!("Falling back to {}", name);
-                            Some(cu)
-                        }
-                        (None, None) => None,
-                    };
-
-                    (
-                        builder,
-                        name,
-                        ExecutionProviderStatus {
-                            requested: "gpu".to_string(),
-                            actual: name.to_string(),
-                            fallback_reason: fallback,
-                        },
-                    )
-                } else {
-                    warn!("--gpu requested but no GPU providers available, using CPU");
-                    (
-                        builder,
-                        "GPU (fallback to CPU)",
-                        ExecutionProviderStatus {
-                            requested: "gpu".to_string(),
-                            actual: "CPU".to_string(),
-                            fallback_reason: Some("No GPU providers available".to_string()),
-                        },
-                    )
-                }
-            }
-            // Explicit providers use the helper function
-            InferenceDevice::Cuda => configure_explicit_provider(
-                builder,
-                &available_providers,
-                ExecutionProviderInfo::Cuda,
-                "CUDA",
-            )?,
-            InferenceDevice::TensorRt => configure_explicit_provider(
-                builder,
-                &available_providers,
-                ExecutionProviderInfo::TensorRt,
-                "TensorRT",
-            )?,
-            InferenceDevice::DirectMl => configure_explicit_provider(
-                builder,
-                &available_providers,
-                ExecutionProviderInfo::DirectMl,
-                "DirectML",
-            )?,
-            InferenceDevice::CoreMl => configure_explicit_provider(
-                builder,
-                &available_providers,
-                ExecutionProviderInfo::CoreMl,
-                "CoreML",
-            )?,
-            InferenceDevice::Rocm => configure_explicit_provider(
-                builder,
-                &available_providers,
-                ExecutionProviderInfo::Rocm,
-                "ROCm",
-            )?,
-            InferenceDevice::OpenVino => configure_explicit_provider(
-                builder,
-                &available_providers,
-                ExecutionProviderInfo::OpenVino,
-                "OpenVINO",
-            )?,
-            InferenceDevice::OneDnn => configure_explicit_provider(
-                builder,
-                &available_providers,
-                ExecutionProviderInfo::OneDnn,
-                "oneDNN",
-            )?,
-            InferenceDevice::Qnn => configure_explicit_provider(
-                builder,
-                &available_providers,
-                ExecutionProviderInfo::Qnn,
-                "QNN",
-            )?,
-            InferenceDevice::Acl => configure_explicit_provider(
-                builder,
-                &available_providers,
-                ExecutionProviderInfo::Acl,
-                "ACL",
-            )?,
-            InferenceDevice::ArmNn => configure_explicit_provider(
-                builder,
-                &available_providers,
-                ExecutionProviderInfo::ArmNn,
-                "ArmNN",
-            )?,
-            InferenceDevice::Xnnpack => configure_explicit_provider(
-                builder,
-                &available_providers,
-                ExecutionProviderInfo::Xnnpack,
-                "XNNPACK",
-            )?,
-        };
+        let ProviderSelection {
+            builder,
+            device_name: actual_device_msg,
+            status: ep_status,
+        } = select_execution_provider(builder, device, &available_providers)?;
 
         let inner = builder.build().map_err(|e| Error::ClassifierBuild {
             reason: e.to_string(),
@@ -1176,6 +930,281 @@ mod tests {
             "expected LabelLoad, got: {err:?}"
         );
     }
+}
+
+/// Holds the result of execution provider selection.
+struct ProviderSelection {
+    /// Builder with the chosen provider configured.
+    builder: ClassifierBuilder,
+    /// Human-readable name of the selected device (e.g. "CUDA", "CPU", "Auto (CPU)").
+    device_name: &'static str,
+    /// Status record for reporting requested vs. actual provider.
+    status: ExecutionProviderStatus,
+}
+
+/// Select and configure the execution provider based on the requested device.
+///
+/// Handles the full priority logic for Auto and Gpu modes, library availability
+/// checks, and delegates explicit provider arms to `configure_explicit_provider`.
+fn select_execution_provider(
+    builder: ClassifierBuilder,
+    device: InferenceDevice,
+    available_providers: &[ExecutionProviderInfo],
+) -> Result<ProviderSelection> {
+    // GPU provider priority order (shared by Auto and --gpu modes)
+    //
+    // This list includes general-purpose GPU acceleration providers.
+    // Excluded from auto-selection:
+    // - oneDNN: Intel CPU optimizer (not GPU acceleration)
+    // - QNN: Qualcomm-specific hardware (mobile/edge devices only)
+    // - ACL/ArmNN: ARM-specific devices only
+    // - CoreML: Excluded on macOS due to poor ONNX Runtime support (use --coreml to force)
+    //
+    // These specialized providers are available via explicit flags
+    // (--onednn, --qnn, --acl, --armnn, --coreml) for users with specific hardware.
+    #[allow(unused_mut)]
+    let mut gpu_priority = vec![
+        (ExecutionProviderInfo::TensorRt, "TensorRT"),
+        (ExecutionProviderInfo::Cuda, "CUDA"),
+        (ExecutionProviderInfo::DirectMl, "DirectML"),
+        (ExecutionProviderInfo::Rocm, "ROCm"),
+        (ExecutionProviderInfo::OpenVino, "OpenVINO"),
+    ];
+
+    // Include CoreML in auto-selection only on non-macOS platforms
+    // (macOS users can still use --coreml explicitly if needed)
+    // Insert at position 3 to preserve original priority order (between DirectML and ROCm)
+    #[cfg(not(target_os = "macos"))]
+    gpu_priority.insert(3, (ExecutionProviderInfo::CoreMl, "CoreML"));
+
+    let (builder, device_name, status) = match device {
+        InferenceDevice::Cpu => {
+            info!("Requested device: CPU");
+            (
+                builder,
+                "CPU",
+                ExecutionProviderStatus {
+                    requested: "cpu".to_string(),
+                    actual: "CPU".to_string(),
+                    fallback_reason: None,
+                },
+            )
+        }
+        InferenceDevice::Auto => {
+            // Auto mode: try GPU providers in priority order, silent CPU fallback
+
+            // Filter TensorRT if libraries not available
+            let mut available_gpu_priority = gpu_priority.clone();
+            if let Some(pos) = available_gpu_priority
+                .iter()
+                .position(|(p, _)| *p == ExecutionProviderInfo::TensorRt)
+                && !crate::inference::is_tensorrt_available()
+            {
+                debug!("Auto mode: TensorRT in priority list but libraries not found, skipping");
+                available_gpu_priority.remove(pos);
+            }
+
+            // Filter CUDA if libraries not available
+            if let Some(pos) = available_gpu_priority
+                .iter()
+                .position(|(p, _)| *p == ExecutionProviderInfo::Cuda)
+                && !crate::inference::is_cuda_available()
+            {
+                debug!("Auto mode: CUDA in priority list but libraries not found, skipping");
+                available_gpu_priority.remove(pos);
+            }
+
+            if let Some(&(provider_info, name)) = available_gpu_priority
+                .iter()
+                .find(|(p, _)| available_providers.contains(p))
+            {
+                info!("Auto mode: {} available, attempting GPU", name);
+                let builder = add_execution_provider(builder, provider_info);
+                (
+                    builder,
+                    name,
+                    ExecutionProviderStatus {
+                        requested: "auto".to_string(),
+                        actual: name.to_string(),
+                        fallback_reason: None,
+                    },
+                )
+            } else {
+                info!("Auto mode: No GPU providers available, using CPU");
+                (
+                    builder,
+                    "Auto (CPU)",
+                    ExecutionProviderStatus {
+                        requested: "auto".to_string(),
+                        actual: "CPU".to_string(),
+                        fallback_reason: Some("No GPU providers available".to_string()),
+                    },
+                )
+            }
+        }
+        InferenceDevice::Gpu => {
+            // Best-effort GPU: try providers in priority order, warn if CPU fallback
+
+            // Filter TensorRT if libraries not available
+            let mut available_gpu_priority = gpu_priority.clone();
+            let mut tensorrt_fallback = None;
+            let mut cuda_fallback = None;
+
+            if let Some(pos) = available_gpu_priority
+                .iter()
+                .position(|(p, _)| *p == ExecutionProviderInfo::TensorRt)
+                && !crate::inference::is_tensorrt_available()
+            {
+                warn!(
+                    "TensorRT libraries not found ({})",
+                    get_tensorrt_library_name()
+                );
+                warn!("TensorRT requires NVIDIA TensorRT 10.x runtime libraries");
+                warn!("Install from: https://developer.nvidia.com/tensorrt");
+                tensorrt_fallback = Some(format!(
+                    "TensorRT libraries not found ({} missing)",
+                    get_tensorrt_library_name()
+                ));
+                available_gpu_priority.remove(pos);
+            }
+
+            // Filter CUDA if libraries not available
+            if let Some(pos) = available_gpu_priority
+                .iter()
+                .position(|(p, _)| *p == ExecutionProviderInfo::Cuda)
+                && !crate::inference::is_cuda_available()
+            {
+                warn!("CUDA runtime libraries not found");
+                warn!(
+                    "Looking for: {}",
+                    crate::inference::get_cuda_library_patterns().join(", ")
+                );
+                warn!("CUDA requires NVIDIA CUDA runtime libraries");
+                warn!("Install from: https://developer.nvidia.com/cuda-downloads");
+                cuda_fallback = Some("CUDA runtime libraries not found".to_string());
+                available_gpu_priority.remove(pos);
+            }
+
+            if let Some(&(provider_info, name)) = available_gpu_priority
+                .iter()
+                .find(|(p, _)| available_providers.contains(p))
+            {
+                info!("--gpu: Selected {} provider", name);
+                let builder = add_execution_provider(builder, provider_info);
+
+                // Combine fallback reasons
+                let fallback = match (tensorrt_fallback, cuda_fallback) {
+                    (Some(tr), Some(cu)) => {
+                        warn!("Falling back to {}", name);
+                        Some(format!("{tr}; {cu}"))
+                    }
+                    (Some(tr), None) => {
+                        warn!("Falling back to {}", name);
+                        Some(tr)
+                    }
+                    (None, Some(cu)) => {
+                        warn!("Falling back to {}", name);
+                        Some(cu)
+                    }
+                    (None, None) => None,
+                };
+
+                (
+                    builder,
+                    name,
+                    ExecutionProviderStatus {
+                        requested: "gpu".to_string(),
+                        actual: name.to_string(),
+                        fallback_reason: fallback,
+                    },
+                )
+            } else {
+                warn!("--gpu requested but no GPU providers available, using CPU");
+                (
+                    builder,
+                    "GPU (fallback to CPU)",
+                    ExecutionProviderStatus {
+                        requested: "gpu".to_string(),
+                        actual: "CPU".to_string(),
+                        fallback_reason: Some("No GPU providers available".to_string()),
+                    },
+                )
+            }
+        }
+        // Explicit providers use the helper function
+        InferenceDevice::Cuda => configure_explicit_provider(
+            builder,
+            available_providers,
+            ExecutionProviderInfo::Cuda,
+            "CUDA",
+        )?,
+        InferenceDevice::TensorRt => configure_explicit_provider(
+            builder,
+            available_providers,
+            ExecutionProviderInfo::TensorRt,
+            "TensorRT",
+        )?,
+        InferenceDevice::DirectMl => configure_explicit_provider(
+            builder,
+            available_providers,
+            ExecutionProviderInfo::DirectMl,
+            "DirectML",
+        )?,
+        InferenceDevice::CoreMl => configure_explicit_provider(
+            builder,
+            available_providers,
+            ExecutionProviderInfo::CoreMl,
+            "CoreML",
+        )?,
+        InferenceDevice::Rocm => configure_explicit_provider(
+            builder,
+            available_providers,
+            ExecutionProviderInfo::Rocm,
+            "ROCm",
+        )?,
+        InferenceDevice::OpenVino => configure_explicit_provider(
+            builder,
+            available_providers,
+            ExecutionProviderInfo::OpenVino,
+            "OpenVINO",
+        )?,
+        InferenceDevice::OneDnn => configure_explicit_provider(
+            builder,
+            available_providers,
+            ExecutionProviderInfo::OneDnn,
+            "oneDNN",
+        )?,
+        InferenceDevice::Qnn => configure_explicit_provider(
+            builder,
+            available_providers,
+            ExecutionProviderInfo::Qnn,
+            "QNN",
+        )?,
+        InferenceDevice::Acl => configure_explicit_provider(
+            builder,
+            available_providers,
+            ExecutionProviderInfo::Acl,
+            "ACL",
+        )?,
+        InferenceDevice::ArmNn => configure_explicit_provider(
+            builder,
+            available_providers,
+            ExecutionProviderInfo::ArmNn,
+            "ArmNN",
+        )?,
+        InferenceDevice::Xnnpack => configure_explicit_provider(
+            builder,
+            available_providers,
+            ExecutionProviderInfo::Xnnpack,
+            "XNNPACK",
+        )?,
+    };
+
+    Ok(ProviderSelection {
+        builder,
+        device_name,
+        status,
+    })
 }
 
 /// Configure an explicit execution provider (fail if unavailable).

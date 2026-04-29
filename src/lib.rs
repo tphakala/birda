@@ -33,7 +33,10 @@ use output::{
     PipelineSummary, ProgressReporter, ProviderInfo, ProvidersPayload, ResultType, create_reporter,
     emit_json_result,
 };
-use pipeline::{ProcessCheck, collect_input_files, output_dir_for, process_file, should_process};
+use pipeline::{
+    ProcessCheck, ProcessingConfig, collect_input_files, output_dir_for, process_file,
+    should_process,
+};
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -542,23 +545,23 @@ fn process_all_files(
         } else {
             None
         };
-        match process_file(
-            file,
-            &file_output_dir,
-            classifier,
-            params.formats,
-            params.min_confidence,
-            params.overlap,
-            params.batch_size,
-            params.csv_columns,
-            params.progress_enabled,
-            params.csv_bom,
-            params.model_name,
-            params.range_filter_params,
-            params.bsg_params,
-            reporter_ref,
-            params.dual_output_mode,
-        ) {
+        let proc_config = ProcessingConfig {
+            input_path: file,
+            output_dir: &file_output_dir,
+            formats: params.formats,
+            min_confidence: params.min_confidence,
+            overlap: params.overlap,
+            batch_size: params.batch_size,
+            csv_columns: params.csv_columns,
+            progress_enabled: params.progress_enabled,
+            csv_bom_enabled: params.csv_bom,
+            model_name: params.model_name,
+            range_filter_params: params.range_filter_params,
+            bsg_params: params.bsg_params,
+            reporter: reporter_ref,
+            dual_output_mode: params.dual_output_mode,
+        };
+        match process_file(&proc_config, classifier) {
             Ok(result) => {
                 #[allow(clippy::cast_possible_truncation)]
                 let duration_ms = file_start.elapsed().as_millis() as u64;

@@ -10,6 +10,7 @@ use crate::output::{
     ParquetWriter, RavenWriter,
 };
 use crate::pipeline::output_path_for;
+use birdnet_onnx::CustomClassifier;
 use std::path::Path;
 use std::sync::mpsc::{Receiver, SyncSender, sync_channel};
 use std::thread::{self, JoinHandle};
@@ -121,6 +122,7 @@ fn run_streaming_inference(
     reporter: Option<&dyn crate::output::ProgressReporter>,
     estimated_segments: usize,
     bsg_params: Option<(f64, f64, Option<u32>)>,
+    custom_classifier: Option<&CustomClassifier>,
 ) -> Result<(Vec<Detection>, usize)> {
     let mut detections = Vec::new();
     let mut batch: Vec<AudioChunk> = Vec::with_capacity(batch_size);
@@ -146,6 +148,7 @@ fn run_streaming_inference(
                 &mut segments_done,
                 estimated_segments,
                 bsg_params,
+                custom_classifier,
             )?;
             batch.clear();
         }
@@ -166,6 +169,7 @@ fn run_streaming_inference(
             &mut segments_done,
             estimated_segments,
             bsg_params,
+            custom_classifier,
         )?;
     }
 
@@ -226,6 +230,7 @@ fn process_batch(
     segments_done: &mut usize,
     estimated_segments: usize,
     bsg_params: Option<(f64, f64, Option<u32>)>,
+    custom_classifier: Option<&CustomClassifier>,
 ) -> Result<()> {
     use crate::gpu::start_inference_watchdog;
     use crate::output::progress::inc_progress;
@@ -309,11 +314,64 @@ fn process_batch(
     }
 
     // Apply range filtering if configured (skipped for BSG models)
-    let results = classifier.apply_range_filter(results)?;
+    let mut results = classifier.apply_range_filter(results)?;
+
+    // Two-stage inference: if a custom classifier is present (bat mode),
+    // extract embeddings from the backbone and classify them with the
+    // secondary model. The custom classifier predictions replace the
+    // backbone predictions for detection extraction.
+    let bat_predictions: Option<Vec<Vec<birdnet_onnx::Prediction>>> =
+        if let Some(cc) = custom_classifier {
+            let embeddings_batch: Vec<Vec<f32>> = results
+                .iter_mut()
+                .take(valid_count)
+                .filter_map(|r| r.embeddings.take())
+                .collect();
+
+            if embeddings_batch.len() != valid_count {
+                return Err(crate::error::Error::Inference {
+                    reason: format!(
+                        "bat mode requires embeddings from backbone, but got {} of {} segments",
+                        embeddings_batch.len(),
+                        valid_count
+                    ),
+                });
+            }
+
+            let batch_preds = cc.predict_batch(&embeddings_batch).map_err(|e| {
+                crate::error::Error::Inference {
+                    reason: format!("bat custom classifier failed: {e}"),
+                }
+            })?;
+
+            if batch_preds.len() != valid_count {
+                return Err(crate::error::Error::Inference {
+                    reason: format!(
+                        "bat classifier returned {} predictions for {} segments",
+                        batch_preds.len(),
+                        valid_count,
+                    ),
+                });
+            }
+
+            Some(batch_preds)
+        } else {
+            None
+        };
 
     // Only process results from valid segments (excludes padding)
-    for (chunk, result) in batch.iter().zip(results.iter()).take(valid_count) {
-        for pred in &result.predictions {
+    for (i, (chunk, result)) in batch
+        .iter()
+        .zip(results.iter())
+        .enumerate()
+        .take(valid_count)
+    {
+        // Use bat predictions if available, otherwise use backbone predictions
+        let preds: &[birdnet_onnx::Prediction] = bat_predictions
+            .as_ref()
+            .map_or(&result.predictions, |bp| &bp[i]);
+
+        for pred in preds {
             if pred.confidence >= min_confidence {
                 let detection = Detection::from_label(
                     &pred.species,
@@ -379,6 +437,8 @@ pub fn process_file(
     let bsg_params = config.bsg_params;
     let reporter = config.reporter;
     let dual_output_mode = config.dual_output_mode;
+    let custom_classifier = config.custom_classifier;
+    let bat_mode = config.bat_mode;
 
     let start_time = Instant::now();
 
@@ -397,8 +457,22 @@ pub fn process_file(
     let decoder = StreamingDecoder::open(input_path)?;
     let source_rate = decoder.sample_rate();
     let duration_hint = decoder.duration_hint();
-    let target_rate = classifier.sample_rate();
-    let segment_duration = classifier.segment_duration();
+
+    // In bat mode, skip resampling: feed raw samples directly to the model.
+    // BirdNET v2.4 expects 144,000 samples; at 256kHz this is 0.5625s of audio,
+    // but the model treats them as 48kHz (the "slow-down trick").
+    let (target_rate, segment_duration) = if bat_mode {
+        if source_rate != crate::constants::bat::SAMPLE_RATE {
+            tracing::warn!(
+                "Bat mode expects {}kHz audio, source is {}kHz. Results may be unreliable.",
+                crate::constants::bat::SAMPLE_RATE / 1000,
+                source_rate / 1000,
+            );
+        }
+        (source_rate, crate::constants::bat::SEGMENT_DURATION)
+    } else {
+        (classifier.sample_rate(), classifier.segment_duration())
+    };
 
     // Resolve BSG parameters with day-of-year auto-detection (once per file, not per batch)
     let resolved_bsg_params = if let Some((lat, lon, day_of_year)) = bsg_params {
@@ -425,18 +499,27 @@ pub fn process_file(
     };
 
     // Calculate segment parameters (needed for batch size adjustment and progress bar)
-    #[allow(
-        clippy::cast_possible_truncation,
-        clippy::cast_sign_loss,
-        clippy::cast_precision_loss
-    )]
-    let segment_samples = (segment_duration * target_rate as f32) as usize;
-    #[allow(
-        clippy::cast_possible_truncation,
-        clippy::cast_sign_loss,
-        clippy::cast_precision_loss
-    )]
-    let overlap_samples = (overlap * target_rate as f32) as usize;
+    let (segment_samples, overlap_samples) = if bat_mode {
+        // Bat mode: use fixed 144,000 samples and bat-specific overlap.
+        // Overlap is derived from the bat sample rate (256kHz), not the source rate,
+        // because the constants are coupled to the model's expected input.
+        let overlap_samps = crate::constants::bat::CHUNK_SAMPLES / 4;
+        (crate::constants::bat::CHUNK_SAMPLES, overlap_samps)
+    } else {
+        #[allow(
+            clippy::cast_possible_truncation,
+            clippy::cast_sign_loss,
+            clippy::cast_precision_loss
+        )]
+        let seg = (segment_duration * target_rate as f32) as usize;
+        #[allow(
+            clippy::cast_possible_truncation,
+            clippy::cast_sign_loss,
+            clippy::cast_precision_loss
+        )]
+        let ovl = (overlap * target_rate as f32) as usize;
+        (seg, ovl)
+    };
 
     // Estimate segment count for batch size adjustment and progress bar
     let estimated_segments = estimate_segment_count(duration_hint, segment_duration, overlap);
@@ -563,6 +646,7 @@ pub fn process_file(
         reporter,
         estimated_segments_usize,
         resolved_bsg_params,
+        custom_classifier,
     )?;
 
     // Wait for decode thread to finish

@@ -163,6 +163,26 @@ pub mod clipper {
     pub const AUDIO_EXTENSIONS: &[&str] = &["wav", "flac", "mp3", "m4a", "aac"];
 }
 
+/// Bat detection constants.
+pub mod bat {
+    /// Audio sample rate for bat recordings (256 kHz).
+    pub const SAMPLE_RATE: u32 = 256_000;
+
+    /// Number of audio samples per segment.
+    /// Equals `BirdNET` v2.4's 144,000 samples; this is the "slow-down trick".
+    pub const CHUNK_SAMPLES: usize = 144_000;
+
+    /// Segment duration in seconds, derived from chunk samples and sample rate.
+    #[allow(clippy::cast_precision_loss)]
+    pub const SEGMENT_DURATION: f32 = CHUNK_SAMPLES as f32 / SAMPLE_RATE as f32;
+
+    /// Fraction of segment duration used as overlap between segments.
+    pub const OVERLAP_FRACTION: f32 = 0.25;
+
+    /// Overlap between segments in seconds.
+    pub const OVERLAP: f32 = SEGMENT_DURATION * OVERLAP_FRACTION;
+}
+
 /// ONNX Runtime discovery constants.
 pub mod onnx_runtime {
     /// Environment variable used to override the ONNX Runtime dynamic library path.

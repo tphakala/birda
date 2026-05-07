@@ -482,8 +482,8 @@ dependencies = [
 
 [[package]]
 name = "birdnet-onnx"
-version = "2.0.0-rc.13"
-source = "git+https://github.com/tphakala/rust-birdnet-onnx.git#f972a30729665f91b84f1ce87adde6a08770eefe"
+version = "2.0.0-rc.14"
+source = "git+https://github.com/tphakala/rust-birdnet-onnx.git?tag=v2.0.0-rc.14#fd51842488b0c0552ac4780aa58180a10bb87d9e"
 dependencies = [
  "chrono",
  "clap",

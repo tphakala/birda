@@ -215,6 +215,11 @@ pub struct AnalyzeArgs {
     #[arg(long, env = "BIRDA_META_MODEL_PATH")]
     pub meta_model_path: Option<PathBuf>,
 
+    /// Enable bat detection with a regional classifier.
+    /// Implies BirdNET v2.4 backbone with embedding extraction.
+    #[arg(long, value_name = "REGION")]
+    pub bat: Option<crate::config::BatRegion>,
+
     /// Output formats (comma-separated: csv,raven,audacity,kaleidoscope).
     #[arg(short, long, value_delimiter = ',', env = "BIRDA_FORMAT")]
     pub format: Option<Vec<OutputFormat>>,

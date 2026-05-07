@@ -564,6 +564,7 @@ fn process_all_files(
             reporter: reporter_ref,
             dual_output_mode: params.dual_output_mode,
             custom_classifier: params.custom_classifier,
+            bat_mode: params.custom_classifier.is_some(),
         };
         match process_file(&proc_config, classifier) {
             Ok(result) => {

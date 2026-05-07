@@ -314,7 +314,7 @@ fn process_batch(
     }
 
     // Apply range filtering if configured (skipped for BSG models)
-    let results = classifier.apply_range_filter(results)?;
+    let mut results = classifier.apply_range_filter(results)?;
 
     // Two-stage inference: if a custom classifier is present (bat mode),
     // extract embeddings from the backbone and classify them with the
@@ -323,9 +323,9 @@ fn process_batch(
     let bat_predictions: Option<Vec<Vec<birdnet_onnx::Prediction>>> =
         if let Some(cc) = custom_classifier {
             let embeddings_batch: Vec<Vec<f32>> = results
-                .iter()
+                .iter_mut()
                 .take(valid_count)
-                .filter_map(|r| r.embeddings.clone())
+                .filter_map(|r| r.embeddings.take())
                 .collect();
 
             if embeddings_batch.len() != valid_count {
@@ -422,6 +422,7 @@ pub fn process_file(
     let reporter = config.reporter;
     let dual_output_mode = config.dual_output_mode;
     let custom_classifier = config.custom_classifier;
+    let bat_mode = config.bat_mode;
 
     let start_time = Instant::now();
 
@@ -444,7 +445,7 @@ pub fn process_file(
     // In bat mode, skip resampling: feed raw samples directly to the model.
     // BirdNET v2.4 expects 144,000 samples; at 256kHz this is 0.5625s of audio,
     // but the model treats them as 48kHz (the "slow-down trick").
-    let (target_rate, segment_duration) = if custom_classifier.is_some() {
+    let (target_rate, segment_duration) = if bat_mode {
         if source_rate != crate::constants::bat::SAMPLE_RATE {
             tracing::warn!(
                 "Bat mode expects {}kHz audio, source is {}kHz. Results may be unreliable.",
@@ -482,7 +483,7 @@ pub fn process_file(
     };
 
     // Calculate segment parameters (needed for batch size adjustment and progress bar)
-    let (segment_samples, overlap_samples) = if custom_classifier.is_some() {
+    let (segment_samples, overlap_samples) = if bat_mode {
         // Bat mode: use fixed 144,000 samples and bat-specific overlap
         #[allow(
             clippy::cast_possible_truncation,

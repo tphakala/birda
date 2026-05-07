@@ -58,4 +58,6 @@ pub struct ProcessingConfig<'a> {
     /// Optional custom classifier for two-stage inference (e.g., bat detection).
     /// When present, backbone embeddings are fed to this classifier for final predictions.
     pub custom_classifier: Option<&'a CustomClassifier>,
+    /// Whether bat audio mode is active (skip resampling, use bat chunk params).
+    pub bat_mode: bool,
 }

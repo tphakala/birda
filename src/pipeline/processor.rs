@@ -440,8 +440,22 @@ pub fn process_file(
     let decoder = StreamingDecoder::open(input_path)?;
     let source_rate = decoder.sample_rate();
     let duration_hint = decoder.duration_hint();
-    let target_rate = classifier.sample_rate();
-    let segment_duration = classifier.segment_duration();
+
+    // In bat mode, skip resampling: feed raw samples directly to the model.
+    // BirdNET v2.4 expects 144,000 samples; at 256kHz this is 0.5625s of audio,
+    // but the model treats them as 48kHz (the "slow-down trick").
+    let (target_rate, segment_duration) = if custom_classifier.is_some() {
+        if source_rate != crate::constants::bat::SAMPLE_RATE {
+            tracing::warn!(
+                "Bat mode expects {}kHz audio, source is {}kHz. Results may be unreliable.",
+                crate::constants::bat::SAMPLE_RATE / 1000,
+                source_rate / 1000,
+            );
+        }
+        (source_rate, crate::constants::bat::SEGMENT_DURATION)
+    } else {
+        (classifier.sample_rate(), classifier.segment_duration())
+    };
 
     // Resolve BSG parameters with day-of-year auto-detection (once per file, not per batch)
     let resolved_bsg_params = if let Some((lat, lon, day_of_year)) = bsg_params {
@@ -468,18 +482,30 @@ pub fn process_file(
     };
 
     // Calculate segment parameters (needed for batch size adjustment and progress bar)
-    #[allow(
-        clippy::cast_possible_truncation,
-        clippy::cast_sign_loss,
-        clippy::cast_precision_loss
-    )]
-    let segment_samples = (segment_duration * target_rate as f32) as usize;
-    #[allow(
-        clippy::cast_possible_truncation,
-        clippy::cast_sign_loss,
-        clippy::cast_precision_loss
-    )]
-    let overlap_samples = (overlap * target_rate as f32) as usize;
+    let (segment_samples, overlap_samples) = if custom_classifier.is_some() {
+        // Bat mode: use fixed 144,000 samples and bat-specific overlap
+        #[allow(
+            clippy::cast_possible_truncation,
+            clippy::cast_sign_loss,
+            clippy::cast_precision_loss
+        )]
+        let overlap_samps = (crate::constants::bat::OVERLAP * source_rate as f32) as usize;
+        (crate::constants::bat::CHUNK_SAMPLES, overlap_samps)
+    } else {
+        #[allow(
+            clippy::cast_possible_truncation,
+            clippy::cast_sign_loss,
+            clippy::cast_precision_loss
+        )]
+        let seg = (segment_duration * target_rate as f32) as usize;
+        #[allow(
+            clippy::cast_possible_truncation,
+            clippy::cast_sign_loss,
+            clippy::cast_precision_loss
+        )]
+        let ovl = (overlap * target_rate as f32) as usize;
+        (seg, ovl)
+    };
 
     // Estimate segment count for batch size adjustment and progress bar
     let estimated_segments = estimate_segment_count(duration_hint, segment_duration, overlap);

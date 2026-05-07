@@ -1,6 +1,7 @@
 //! Configuration types for the processing pipeline.
 
 use crate::config::OutputFormat;
+use birdnet_onnx::CustomClassifier;
 use std::path::Path;
 
 /// Configuration for processing a single audio file.
@@ -54,4 +55,7 @@ pub struct ProcessingConfig<'a> {
     pub reporter: Option<&'a dyn crate::output::ProgressReporter>,
     /// Whether to write both files and stdout.
     pub dual_output_mode: bool,
+    /// Optional custom classifier for two-stage inference (e.g., bat detection).
+    /// When present, backbone embeddings are fed to this classifier for final predictions.
+    pub custom_classifier: Option<&'a CustomClassifier>,
 }

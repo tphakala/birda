@@ -22,8 +22,9 @@ pub mod utils;
 use clap::Parser;
 use cli::{AnalyzeArgs, Cli, Command};
 use config::{
-    Config, InferenceDevice, ModelConfig, ModelType, OutputFormat, OutputMode, config_file_path,
-    load_default_config, range_filter::build_range_filter_config, save_default_config,
+    BatConfig, Config, InferenceDevice, ModelConfig, ModelType, OutputFormat, OutputMode,
+    config_file_path, load_default_config, range_filter::build_range_filter_config,
+    save_default_config,
 };
 use constants::DEFAULT_TOP_K;
 use inference::BirdClassifier;
@@ -209,6 +210,8 @@ struct ProcessingParams<'a> {
     /// BSG SDM parameters: (latitude, longitude, `day_of_year`)
     /// `day_of_year` is None for auto-detection from file timestamp
     bsg_params: Option<(f64, f64, Option<u32>)>,
+    /// Optional custom classifier for two-stage inference (bat detection).
+    custom_classifier: Option<&'a birdnet_onnx::CustomClassifier>,
 }
 
 /// Statistics from processing all files.
@@ -560,6 +563,7 @@ fn process_all_files(
             bsg_params: params.bsg_params,
             reporter: reporter_ref,
             dual_output_mode: params.dual_output_mode,
+            custom_classifier: params.custom_classifier,
         };
         match process_file(&proc_config, classifier) {
             Ok(result) => {
@@ -605,6 +609,47 @@ fn analyze_files(
     let (model_config, model_name) = resolve_model_config(args, config)?;
     validate_model_files(&model_config)?;
 
+    // Bat mode: validate backbone is BirdNET v2.4 and build custom classifier
+    let bat_classifier: Option<birdnet_onnx::CustomClassifier> = if let Some(region) = args.bat {
+        // Bat mode requires BirdNET v2.4 as the backbone (for embedding extraction)
+        if model_config.model_type != ModelType::BirdnetV24 {
+            return Err(Error::ConfigValidation {
+                message: format!(
+                    "--bat requires a BirdNET v2.4 model as backbone, but '{}' is {:?}",
+                    model_name, model_config.model_type
+                ),
+            });
+        }
+
+        // Resolve bat models directory: <data_dir>/models/bat/
+        let bat_models_dir = registry::models_dir()?.join("bat");
+        let bat_config = BatConfig::resolve(region, &bat_models_dir)?;
+
+        info!(
+            "Bat mode: region={}, classifier={}",
+            region,
+            bat_config.classifier_path.display()
+        );
+
+        let cc = birdnet_onnx::CustomClassifier::builder()
+            .model_path(&bat_config.classifier_path)
+            .labels_path(&bat_config.labels_path)
+            .build()
+            .map_err(|e| Error::ClassifierBuild {
+                reason: format!("failed to build bat classifier: {e}"),
+            })?;
+
+        info!(
+            "Bat classifier loaded: {} classes, {}-dim embeddings",
+            cc.num_classes(),
+            cc.input_dim()
+        );
+
+        Some(cc)
+    } else {
+        None
+    };
+
     // Collect input files only after config is validated
     let files = collect_input_files(inputs)?;
     if files.is_empty() {
@@ -618,7 +663,17 @@ fn analyze_files(
         .min_confidence
         .unwrap_or(config.defaults.min_confidence);
 
-    let overlap = args.overlap.unwrap_or(config.defaults.overlap);
+    // In bat mode, override overlap to the bat-specific value unless the user
+    // explicitly provided one via CLI
+    let overlap = if bat_classifier.is_some() && args.overlap.is_none() {
+        info!(
+            "Bat mode: using overlap {}s (override with --overlap)",
+            constants::bat::OVERLAP
+        );
+        constants::bat::OVERLAP
+    } else {
+        args.overlap.unwrap_or(config.defaults.overlap)
+    };
 
     // Store user's explicit batch size choice (if any)
     // CLI takes precedence, then config file, then smart default (calculated later)
@@ -748,6 +803,7 @@ fn analyze_files(
         stdout_mode: args.stdout,
         dual_output_mode,
         bsg_params,
+        custom_classifier: bat_classifier.as_ref(),
     };
 
     // Process all files - stats owned here so partial results available on fail-fast

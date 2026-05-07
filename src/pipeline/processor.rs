@@ -10,6 +10,7 @@ use crate::output::{
     ParquetWriter, RavenWriter,
 };
 use crate::pipeline::output_path_for;
+use birdnet_onnx::CustomClassifier;
 use std::path::Path;
 use std::sync::mpsc::{Receiver, SyncSender, sync_channel};
 use std::thread::{self, JoinHandle};
@@ -121,6 +122,7 @@ fn run_streaming_inference(
     reporter: Option<&dyn crate::output::ProgressReporter>,
     estimated_segments: usize,
     bsg_params: Option<(f64, f64, Option<u32>)>,
+    custom_classifier: Option<&CustomClassifier>,
 ) -> Result<(Vec<Detection>, usize)> {
     let mut detections = Vec::new();
     let mut batch: Vec<AudioChunk> = Vec::with_capacity(batch_size);
@@ -146,6 +148,7 @@ fn run_streaming_inference(
                 &mut segments_done,
                 estimated_segments,
                 bsg_params,
+                custom_classifier,
             )?;
             batch.clear();
         }
@@ -166,6 +169,7 @@ fn run_streaming_inference(
             &mut segments_done,
             estimated_segments,
             bsg_params,
+            custom_classifier,
         )?;
     }
 
@@ -226,6 +230,7 @@ fn process_batch(
     segments_done: &mut usize,
     estimated_segments: usize,
     bsg_params: Option<(f64, f64, Option<u32>)>,
+    custom_classifier: Option<&CustomClassifier>,
 ) -> Result<()> {
     use crate::gpu::start_inference_watchdog;
     use crate::output::progress::inc_progress;
@@ -311,9 +316,49 @@ fn process_batch(
     // Apply range filtering if configured (skipped for BSG models)
     let results = classifier.apply_range_filter(results)?;
 
+    // Two-stage inference: if a custom classifier is present (bat mode),
+    // extract embeddings from the backbone and classify them with the
+    // secondary model. The custom classifier predictions replace the
+    // backbone predictions for detection extraction.
+    let bat_predictions: Option<Vec<Vec<birdnet_onnx::Prediction>>> =
+        if let Some(cc) = custom_classifier {
+            let embeddings_batch: Vec<Vec<f32>> = results
+                .iter()
+                .take(valid_count)
+                .filter_map(|r| r.embeddings.clone())
+                .collect();
+
+            if embeddings_batch.len() != valid_count {
+                return Err(crate::error::Error::Inference {
+                    reason: format!(
+                        "bat mode requires embeddings from backbone, but got {} of {} segments",
+                        embeddings_batch.len(),
+                        valid_count
+                    ),
+                });
+            }
+
+            let batch_preds = cc.predict_batch(&embeddings_batch).map_err(|e| {
+                crate::error::Error::Inference {
+                    reason: format!("bat custom classifier failed: {e}"),
+                }
+            })?;
+
+            Some(batch_preds)
+        } else {
+            None
+        };
+
     // Only process results from valid segments (excludes padding)
-    for (chunk, result) in batch.iter().zip(results.iter()).take(valid_count) {
-        for pred in &result.predictions {
+    for (i, (chunk, result)) in batch.iter().zip(results.iter()).enumerate().take(valid_count) {
+        // Use bat predictions if available, otherwise use backbone predictions
+        let preds: &[birdnet_onnx::Prediction] = if let Some(ref bp) = bat_predictions {
+            &bp[i]
+        } else {
+            &result.predictions
+        };
+
+        for pred in preds {
             if pred.confidence >= min_confidence {
                 let detection = Detection::from_label(
                     &pred.species,
@@ -379,6 +424,7 @@ pub fn process_file(
     let bsg_params = config.bsg_params;
     let reporter = config.reporter;
     let dual_output_mode = config.dual_output_mode;
+    let custom_classifier = config.custom_classifier;
 
     let start_time = Instant::now();
 
@@ -563,6 +609,7 @@ pub fn process_file(
         reporter,
         estimated_segments_usize,
         resolved_bsg_params,
+        custom_classifier,
     )?;
 
     // Wait for decode thread to finish

@@ -350,10 +350,16 @@ fn process_batch(
         };
 
     // Only process results from valid segments (excludes padding)
-    for (i, (chunk, result)) in batch.iter().zip(results.iter()).enumerate().take(valid_count) {
+    for (i, (chunk, result)) in batch
+        .iter()
+        .zip(results.iter())
+        .enumerate()
+        .take(valid_count)
+    {
         // Use bat predictions if available, otherwise use backbone predictions
-        let preds: &[birdnet_onnx::Prediction] =
-            bat_predictions.as_ref().map_or(&result.predictions, |bp| &bp[i]);
+        let preds: &[birdnet_onnx::Prediction] = bat_predictions
+            .as_ref()
+            .map_or(&result.predictions, |bp| &bp[i]);
 
         for pred in preds {
             if pred.confidence >= min_confidence {

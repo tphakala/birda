@@ -344,6 +344,16 @@ fn process_batch(
                 }
             })?;
 
+            if batch_preds.len() != valid_count {
+                return Err(crate::error::Error::Inference {
+                    reason: format!(
+                        "bat classifier returned {} predictions for {} segments",
+                        batch_preds.len(),
+                        valid_count,
+                    ),
+                });
+            }
+
             Some(batch_preds)
         } else {
             None
@@ -490,13 +500,10 @@ pub fn process_file(
 
     // Calculate segment parameters (needed for batch size adjustment and progress bar)
     let (segment_samples, overlap_samples) = if bat_mode {
-        // Bat mode: use fixed 144,000 samples and bat-specific overlap
-        #[allow(
-            clippy::cast_possible_truncation,
-            clippy::cast_sign_loss,
-            clippy::cast_precision_loss
-        )]
-        let overlap_samps = (crate::constants::bat::OVERLAP * source_rate as f32) as usize;
+        // Bat mode: use fixed 144,000 samples and bat-specific overlap.
+        // Overlap is derived from the bat sample rate (256kHz), not the source rate,
+        // because the constants are coupled to the model's expected input.
+        let overlap_samps = crate::constants::bat::CHUNK_SAMPLES / 4;
         (crate::constants::bat::CHUNK_SAMPLES, overlap_samps)
     } else {
         #[allow(

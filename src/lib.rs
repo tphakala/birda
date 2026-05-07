@@ -530,12 +530,24 @@ fn process_all_files(
         // Get audio duration for progress estimation
         let audio_duration = crate::audio::get_audio_duration(file).ok().flatten();
 
-        // Estimate segments for reporter
-        let segment_duration = classifier.segment_duration();
+        // Estimate segments for reporter; bat mode uses shorter segments
+        let segment_duration = if params.custom_classifier.is_some() {
+            crate::constants::bat::SEGMENT_DURATION
+        } else {
+            classifier.segment_duration()
+        };
+        let overlap = if params.custom_classifier.is_some() {
+            crate::constants::bat::OVERLAP
+        } else {
+            params.overlap
+        };
         #[allow(clippy::cast_possible_truncation)]
-        let estimated_segments =
-            progress::estimate_segment_count(audio_duration, segment_duration, params.overlap)
-                .unwrap_or(0) as usize;
+        let estimated_segments = progress::estimate_segment_count(
+            audio_duration,
+            segment_duration,
+            overlap,
+        )
+        .unwrap_or(0) as usize;
 
         // Report file start
         reporter.file_started(file, index, estimated_segments, audio_duration);

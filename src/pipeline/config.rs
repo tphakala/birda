@@ -28,6 +28,7 @@ use std::path::Path;
 ///     bat_mode: false,
 /// };
 /// ```
+#[allow(clippy::struct_excessive_bools)]
 pub struct ProcessingConfig<'a> {
     /// Path to input audio file.
     pub input_path: &'a Path,

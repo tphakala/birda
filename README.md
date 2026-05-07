@@ -9,7 +9,7 @@ A fast, cross-platform CLI tool for bird species detection using [BirdNET](https
 
 ## Features
 
-- **Multiple AI Models**: Support for BirdNET v2.4, BirdNET v3.0, Google Perch v2, and BSG Finnish Birds models
+- **Multiple AI Models**: Support for BirdNET v2.4, BirdNET v3.0, Google Perch v2, BSG Finnish Birds, and BattyBirdNET bat classifiers
 - **GPU Acceleration**: Optional CUDA support for faster inference on NVIDIA GPUs
 - **Species Filtering**: Dynamic range filtering by location/date or static species list files
 - **Multiple Output Formats**: CSV, Parquet, JSON, Raven selection tables, Audacity labels, Kaleidoscope CSV
@@ -244,6 +244,7 @@ Options:
   -c, --min-confidence <VALUE>  Minimum confidence threshold (0.0-1.0)
   -b, --batch-size <SIZE>       Inference batch size
       --overlap <SECONDS>       Segment overlap in seconds
+      --bat <REGION>            Enable bat detection with a regional classifier
       --gpu                     Enable CUDA GPU acceleration
       --cpu                     Force CPU inference
       --force                   Reprocess files even if output exists
@@ -508,6 +509,66 @@ export BIRDA_OUTPUT_MODE=json
 
 **See [JSON Output Guide](docs/json-output.md) for complete documentation including payload schemas, integration examples, and error handling.**
 
+## Bat Detection
+
+Birda supports bat species detection using [BattyBirdNET](https://github.com/rdz-oss/BattyBirdNET-Analyzer) regional classifiers. This uses a two-stage pipeline: BirdNET v2.4 extracts audio embeddings, then a regional bat classifier identifies bat species from those embeddings.
+
+### How It Works
+
+Bat echolocation calls are ultrasonic (20-120 kHz). BattyBirdNET exploits a "slow-down trick": 256 kHz bat recordings are fed directly to BirdNET without resampling. BirdNET's spectrogram pipeline (trained on 48 kHz bird audio) treats the samples as 48 kHz, shifting ultrasonic frequencies into the audible range where its learned features can extract useful embeddings. Regional bat classifiers then map these 1024-dim embeddings to bat species.
+
+### Prerequisites
+
+1. **BirdNET v2.4 with embeddings**: A patched model that exposes the embedding layer. Create it with [birdnet-onnx-converter](https://github.com/tphakala/birdnet-onnx-converter):
+
+   ```bash
+   python expose_embeddings.py --input birdnet-v24.onnx --output birdnet-v24-embeddings.onnx
+   ```
+
+2. **Regional bat classifier models**: ONNX models converted from BattyBirdNET. Place them in the birda models directory:
+   - Linux: `~/.local/share/birda/models/bat/`
+   - macOS: `~/Library/Application Support/birda/models/bat/`
+   - Windows: `%APPDATA%\birda\models\bat\`
+
+### Usage
+
+```bash
+# Analyze bat recordings with the Bavaria classifier
+birda analyze -m birdnet-v24-embeddings --bat bavaria bat_recording.wav
+
+# Other available regions
+birda analyze -m birdnet-v24-embeddings --bat uk bat_recording.wav
+birda analyze -m birdnet-v24-embeddings --bat eu bat_recording.wav
+```
+
+### Available Regions
+
+| Region | Flag | Species | Coverage |
+|--------|------|---------|----------|
+| Bavaria | `--bat bavaria` | 32 | Germany, Central Europe |
+| Bavaria (high confidence) | `--bat bavaria-high` | 24 | Germany, stricter thresholds |
+| EU | `--bat eu` | 30 | Broad European coverage |
+| Scotland | `--bat scotland` | 11 | Scotland |
+| South Wales | `--bat south-wales` | 29 | South Wales |
+| Sweden | `--bat sweden` | 23 | Sweden, Nordic |
+| UK | `--bat uk` | 20 | United Kingdom |
+| USA | `--bat usa` | 38 | United States (full) |
+| USA East | `--bat usa-east` | 23 | Eastern United States |
+| USA East (high confidence) | `--bat usa-east-high` | 17 | Eastern US, stricter thresholds |
+| USA West | `--bat usa-west` | 28 | Western United States |
+
+### Audio Requirements
+
+- **Sample rate**: 256 kHz (standard for bat recording devices like AudioMoth)
+- **Format**: WAV, FLAC, or MP3
+- Birda will warn if the source audio is not 256 kHz but will still attempt analysis
+
+### Notes
+
+- Bat mode overrides segment duration to 0.5625s (144,000 samples at 256 kHz) with 25% overlap
+- The backbone model must be BirdNET v2.4 with the embedding output exposed
+- All standard output formats are supported (CSV, Raven, Audacity, JSON, Parquet, Kaleidoscope)
+
 ## Performance Tips
 
 ### GPU vs CPU
@@ -718,6 +779,7 @@ MIT License - see [LICENSE](LICENSE) for details.
 
 ## Acknowledgments
 
+- [BattyBirdNET](https://github.com/rdz-oss/BattyBirdNET-Analyzer) by rdz-oss for bat species detection using BirdNET embeddings
 - [BirdNET](https://github.com/birdnet-team/BirdNET-Analyzer) by the K. Lisa Yang Center for Conservation Bioacoustics
 - [BSG](https://github.com/luomus/BSG) by the University of Jyväskylä for Finnish bird sound classification
 - [birdnet-bsg-fuser](https://github.com/tphakala/birdnet-bsg-fuser) for fusing BirdNET feature extractor with BSG classifier

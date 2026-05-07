@@ -176,8 +176,11 @@ pub mod bat {
     #[allow(clippy::cast_precision_loss)]
     pub const SEGMENT_DURATION: f32 = CHUNK_SAMPLES as f32 / SAMPLE_RATE as f32;
 
-    /// Overlap between segments in seconds (25% of segment duration).
-    pub const OVERLAP: f32 = SEGMENT_DURATION * 0.25;
+    /// Fraction of segment duration used as overlap between segments.
+    pub const OVERLAP_FRACTION: f32 = 0.25;
+
+    /// Overlap between segments in seconds.
+    pub const OVERLAP: f32 = SEGMENT_DURATION * OVERLAP_FRACTION;
 }
 
 /// ONNX Runtime discovery constants.

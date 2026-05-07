@@ -24,6 +24,8 @@ use std::path::Path;
 ///     bsg_params: None,
 ///     reporter: None,
 ///     dual_output_mode: false,
+///     custom_classifier: None,
+///     bat_mode: false,
 /// };
 /// ```
 pub struct ProcessingConfig<'a> {

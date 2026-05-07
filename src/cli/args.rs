@@ -216,7 +216,7 @@ pub struct AnalyzeArgs {
     pub meta_model_path: Option<PathBuf>,
 
     /// Enable bat detection with a regional classifier.
-    /// Implies BirdNET v2.4 backbone with embedding extraction.
+    /// Implies `BirdNET` v2.4 backbone with embedding extraction.
     #[arg(long, value_name = "REGION")]
     pub bat: Option<crate::config::BatRegion>,
 

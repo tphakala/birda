@@ -483,7 +483,8 @@ dependencies = [
 [[package]]
 name = "birdnet-onnx"
 version = "2.0.0-rc.14"
-source = "git+https://github.com/tphakala/rust-birdnet-onnx.git?tag=v2.0.0-rc.14#fd51842488b0c0552ac4780aa58180a10bb87d9e"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8078ffb30e7d936b9e9443461172e9950f8afe3991fe34fe7a9ec6ed7b77f2d7"
 dependencies = [
  "chrono",
  "clap",

@@ -27,6 +27,9 @@ jobs:
         with:
           crate: cargo-about
 
+      - name: Add Cargo bin to PATH
+        run: echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+
       - name: Generate Rust dependency licenses
         run: |
           cargo about generate about.hbs > RUST_LICENSES.txt

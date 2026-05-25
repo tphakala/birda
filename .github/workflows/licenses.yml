@@ -23,9 +23,10 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Install cargo-about
-        uses: baptiste0928/cargo-install@v3
-        with:
-          crate: cargo-about
+        run: cargo install cargo-about --features cli --locked
+
+      - name: Add Cargo bin to PATH
+        run: echo "$HOME/.cargo/bin" >> $GITHUB_PATH
 
       - name: Generate Rust dependency licenses
         run: |

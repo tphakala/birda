@@ -11,14 +11,6 @@ updates:
       - "dependencies"
       - "rust"
     open-pull-requests-limit: 10
-    ignore:
-      # rubato 3.x re-exports audioadapter[-buffers] 3.x types in its public
-      # Adapter trait, so audioadapter-buffers must stay on 3.x until rubato
-      # ships a release built against audioadapter 4.x. A direct 4.0 bump puts
-      # two versions of the crate in the graph and breaks the resampler.
-      # Remove this ignore once rubato moves to audioadapter 4.x.
-      - dependency-name: "audioadapter-buffers"
-        update-types: ["version-update:semver-major"]
 
   # GitHub Actions
   - package-ecosystem: "github-actions"

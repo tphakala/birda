@@ -124,6 +124,8 @@ mod tests {
     const TEST_RATE_HIGH: u32 = 48_000;
     /// Target rate used by the downsample tests, matching the `BirdNET` input rate.
     const TEST_RATE_LOW: u32 = 32_000;
+    /// The rate of CD sourced audio, and the usual rate for mp3 files.
+    const TEST_RATE_CD: u32 = 44_100;
     /// Length of the generated test signals, one second at the higher rate.
     const TEST_SIGNAL_LEN: usize = 48_000;
     /// A tone in the middle of the range most bird vocalisations occupy.
@@ -250,6 +252,41 @@ mod tests {
             level < 0.1,
             "content above the output Nyquist limit survived resampling: rms {level}"
         );
+    }
+
+    #[test]
+    fn test_resample_from_cd_rate_filters_above_output_nyquist() {
+        // 44.1 kHz is what mp3 and CD sourced files arrive at, so this path is
+        // as real as the 48 kHz one, and it sizes the FFT completely
+        // differently. The block size comes from the greatest common divisor of
+        // the two rates: 48 kHz and 32 kHz share 16000, giving 342 FFT chunks
+        // for a 1024 frame chunk, while 44.1 kHz and 32 kHz share only 100,
+        // giving 3. Passing at one rate pair says little about the other.
+        let input = sine(20_000.0, TEST_RATE_CD, 44_100);
+        let output = resample(input, TEST_RATE_CD, TEST_RATE_LOW).unwrap();
+        let body = steady_state(&output);
+
+        let level = rms(body);
+        assert!(
+            level < 0.1,
+            "content above the output Nyquist limit survived 44.1 kHz to 32 kHz resampling: rms {level}"
+        );
+    }
+
+    #[test]
+    fn test_resample_from_cd_rate_preserves_bird_band_content() {
+        let input = sine(BIRD_BAND_HZ, TEST_RATE_CD, 44_100);
+        let output = resample(input, TEST_RATE_CD, TEST_RATE_LOW).unwrap();
+        let body = steady_state(&output);
+
+        let at_tone = tone_power(body, TEST_RATE_LOW, BIRD_BAND_HZ);
+        for other in [3_000.0, 9_000.0, 12_000.0] {
+            let at_other = tone_power(body, TEST_RATE_LOW, other);
+            assert!(
+                at_tone > at_other * DOMINANCE_RATIO,
+                "6 kHz tone did not dominate {other} Hz after 44.1 kHz resampling: {at_tone} vs {at_other}"
+            );
+        }
     }
 
     #[test]

@@ -19,6 +19,10 @@ jobs:
   update-licenses:
     name: Update Licenses
     runs-on: ubuntu-latest
+    # A dispatch can select a tag, not just a branch, and base below would then
+    # resolve to that tag. create-pull-request requires a branch to merge into,
+    # so a tag run cannot do anything useful. Skip rather than fail late.
+    if: github.ref_type == 'branch'
     permissions:
       contents: write
       pull-requests: write

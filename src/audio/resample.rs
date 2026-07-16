@@ -130,8 +130,47 @@ mod tests {
     const TEST_SIGNAL_LEN: usize = 48_000;
     /// A tone in the middle of the range most bird vocalisations occupy.
     const BIRD_BAND_HZ: f32 = 6_000.0;
+    /// A reference tone low in the band, used to check pitch is preserved.
+    const REFERENCE_TONE_HZ: f32 = 1_000.0;
+    /// A tone above the 16 kHz Nyquist limit of the output rate, used to check
+    /// the anti-aliasing filter removes what it cannot represent.
+    const ABOVE_NYQUIST_HZ: f32 = 20_000.0;
+    /// Where a resampler with no anti-aliasing filter folds `ABOVE_NYQUIST_HZ`
+    /// back to, as |20000 - 32000|. Nothing should ever be measurable here.
+    const ALIAS_IMAGE_HZ: f32 = 12_000.0;
     /// How far the measured tone may sit below the strongest competing band.
     const DOMINANCE_RATIO: f32 = 100.0;
+    /// Least of the expected power a tone may retain in its own bin.
+    ///
+    /// Dominance over other bins is not enough on its own: a tone shifted by a
+    /// few Hz leaves its bin while still towering over distant ones, so the
+    /// ratio alone accepts a pitch shift. This pins the energy to where it
+    /// belongs.
+    const MIN_TONE_POWER_FRACTION: f32 = 0.5;
+    /// Highest RMS accepted for a signal that should have been filtered away.
+    const FILTERED_RMS_CEILING: f32 = 0.1;
+    /// Least RMS expected of a tone that must survive resampling intact.
+    ///
+    /// A full amplitude sine has an RMS of about 0.707.
+    const PRESERVED_RMS_FLOOR: f32 = 0.6;
+    /// Most the RMS may drift between input and output.
+    const RMS_TOLERANCE: f32 = 0.05;
+    /// Fraction of a resampled signal trimmed from each end before measuring.
+    const STEADY_STATE_MARGIN: usize = 8;
+    /// Length of the 44.1 kHz test signals, one second at that rate.
+    const TEST_SIGNAL_LEN_CD: usize = 44_100;
+    /// Most of the expected power an aliased image may carry.
+    ///
+    /// A working filter leaves nothing measurable here, so this only needs to
+    /// sit far below a real tone.
+    const ALIAS_POWER_FRACTION: f32 = 1e-6;
+
+    /// Power the Goertzel filter reports for a full amplitude sine sitting
+    /// exactly on the bin being measured. Falls out of the algorithm as n / 4.
+    #[allow(clippy::cast_precision_loss)]
+    fn expected_tone_power(len: usize) -> f32 {
+        len as f32 / 4.0
+    }
 
     /// Generate a pure sine wave.
     #[allow(clippy::cast_precision_loss)]
@@ -173,27 +212,42 @@ mod tests {
     /// The resampler ramps up over its delay and the last chunk is zero padded,
     /// so both ends are unrepresentative. The middle is the steady state.
     fn steady_state(samples: &[f32]) -> &[f32] {
-        let margin = samples.len() / 8;
+        let margin = samples.len() / STEADY_STATE_MARGIN;
         &samples[margin..samples.len() - margin]
+    }
+
+    /// Assert a tone came through at its own frequency and at full strength.
+    ///
+    /// Both halves are needed. The absolute floor catches a tone that drifted
+    /// off its bin, and the dominance check catches energy appearing where it
+    /// should not be.
+    fn assert_tone_intact(body: &[f32], rate: u32, tone_hz: f32, other_bins: &[f32]) {
+        let at_tone = tone_power(body, rate, tone_hz);
+        let floor = expected_tone_power(body.len()) * MIN_TONE_POWER_FRACTION;
+        assert!(
+            at_tone > floor,
+            "{tone_hz} Hz tone lost power in its own bin, so the pitch moved: {at_tone}, expected above {floor}"
+        );
+
+        for other in other_bins {
+            let at_other = tone_power(body, rate, *other);
+            assert!(
+                at_tone > at_other * DOMINANCE_RATIO,
+                "{tone_hz} Hz tone did not dominate {other} Hz: {at_tone} vs {at_other}"
+            );
+        }
     }
 
     #[test]
     fn test_resample_preserves_tone_frequency() {
-        let input = sine(1_000.0, TEST_RATE_HIGH, TEST_SIGNAL_LEN);
+        let input = sine(REFERENCE_TONE_HZ, TEST_RATE_HIGH, TEST_SIGNAL_LEN);
         let output = resample(input, TEST_RATE_HIGH, TEST_RATE_LOW).unwrap();
-        let body = steady_state(&output);
-
-        let at_tone = tone_power(body, TEST_RATE_LOW, 1_000.0);
-        // A resampler that shifted the pitch would move the energy to a
-        // different bin, so check the neighbours are quiet rather than just
-        // checking the tone is present.
-        for other in [500.0, 2_000.0, 4_000.0] {
-            let at_other = tone_power(body, TEST_RATE_LOW, other);
-            assert!(
-                at_tone > at_other * DOMINANCE_RATIO,
-                "1 kHz tone did not dominate {other} Hz: {at_tone} vs {at_other}"
-            );
-        }
+        assert_tone_intact(
+            steady_state(&output),
+            TEST_RATE_LOW,
+            REFERENCE_TONE_HZ,
+            &[500.0, 2_000.0, 4_000.0],
+        );
     }
 
     #[test]
@@ -207,20 +261,18 @@ mod tests {
         let output = resample(input, TEST_RATE_HIGH, TEST_RATE_LOW).unwrap();
         let body = steady_state(&output);
 
-        let at_tone = tone_power(body, TEST_RATE_LOW, BIRD_BAND_HZ);
-        for other in [3_000.0, 9_000.0, 12_000.0] {
-            let at_other = tone_power(body, TEST_RATE_LOW, other);
-            assert!(
-                at_tone > at_other * DOMINANCE_RATIO,
-                "6 kHz tone did not dominate {other} Hz: {at_tone} vs {at_other}"
-            );
-        }
+        assert_tone_intact(
+            body,
+            TEST_RATE_LOW,
+            BIRD_BAND_HZ,
+            &[3_000.0, 9_000.0, 12_000.0],
+        );
 
         // The tone must also survive at close to full amplitude. Dominance
         // alone would still pass if everything were attenuated together.
         let level = rms(body);
         assert!(
-            level > 0.6,
+            level > PRESERVED_RMS_FLOOR,
             "6 kHz tone was attenuated by resampling: rms {level}, expected about 0.707"
         );
     }
@@ -237,19 +289,20 @@ mod tests {
         // In-band tones cannot catch this: they stay dominant either way, which
         // is why the other tests here pass even against nearest-neighbour
         // decimation.
-        let input = sine(20_000.0, TEST_RATE_HIGH, TEST_SIGNAL_LEN);
+        let input = sine(ABOVE_NYQUIST_HZ, TEST_RATE_HIGH, TEST_SIGNAL_LEN);
         let output = resample(input, TEST_RATE_HIGH, TEST_RATE_LOW).unwrap();
         let body = steady_state(&output);
 
-        let alias = tone_power(body, TEST_RATE_LOW, 12_000.0);
+        let alias = tone_power(body, TEST_RATE_LOW, ALIAS_IMAGE_HZ);
+        let ceiling = expected_tone_power(body.len()) * ALIAS_POWER_FRACTION;
         assert!(
-            alias < 1e-3,
-            "20 kHz folded back to 12 kHz, anti-aliasing filter is not working: power {alias}"
+            alias < ceiling,
+            "20 kHz folded back to {ALIAS_IMAGE_HZ} Hz, anti-aliasing filter is not working: power {alias}"
         );
 
         let level = rms(body);
         assert!(
-            level < 0.1,
+            level < FILTERED_RMS_CEILING,
             "content above the output Nyquist limit survived resampling: rms {level}"
         );
     }
@@ -262,42 +315,38 @@ mod tests {
         // the two rates: 48 kHz and 32 kHz share 16000, giving 342 FFT chunks
         // for a 1024 frame chunk, while 44.1 kHz and 32 kHz share only 100,
         // giving 3. Passing at one rate pair says little about the other.
-        let input = sine(20_000.0, TEST_RATE_CD, 44_100);
+        let input = sine(ABOVE_NYQUIST_HZ, TEST_RATE_CD, TEST_SIGNAL_LEN_CD);
         let output = resample(input, TEST_RATE_CD, TEST_RATE_LOW).unwrap();
         let body = steady_state(&output);
 
         let level = rms(body);
         assert!(
-            level < 0.1,
+            level < FILTERED_RMS_CEILING,
             "content above the output Nyquist limit survived 44.1 kHz to 32 kHz resampling: rms {level}"
         );
     }
 
     #[test]
     fn test_resample_from_cd_rate_preserves_bird_band_content() {
-        let input = sine(BIRD_BAND_HZ, TEST_RATE_CD, 44_100);
+        let input = sine(BIRD_BAND_HZ, TEST_RATE_CD, TEST_SIGNAL_LEN_CD);
         let output = resample(input, TEST_RATE_CD, TEST_RATE_LOW).unwrap();
-        let body = steady_state(&output);
-
-        let at_tone = tone_power(body, TEST_RATE_LOW, BIRD_BAND_HZ);
-        for other in [3_000.0, 9_000.0, 12_000.0] {
-            let at_other = tone_power(body, TEST_RATE_LOW, other);
-            assert!(
-                at_tone > at_other * DOMINANCE_RATIO,
-                "6 kHz tone did not dominate {other} Hz after 44.1 kHz resampling: {at_tone} vs {at_other}"
-            );
-        }
+        assert_tone_intact(
+            steady_state(&output),
+            TEST_RATE_LOW,
+            BIRD_BAND_HZ,
+            &[3_000.0, 9_000.0, 12_000.0],
+        );
     }
 
     #[test]
     fn test_resample_preserves_amplitude() {
-        let input = sine(1_000.0, TEST_RATE_HIGH, TEST_SIGNAL_LEN);
+        let input = sine(REFERENCE_TONE_HZ, TEST_RATE_HIGH, TEST_SIGNAL_LEN);
         let input_rms = rms(&input);
         let output = resample(input, TEST_RATE_HIGH, TEST_RATE_LOW).unwrap();
         let output_rms = rms(steady_state(&output));
 
         assert!(
-            (output_rms - input_rms).abs() < 0.05,
+            (output_rms - input_rms).abs() < RMS_TOLERANCE,
             "amplitude changed: {input_rms} in, {output_rms} out"
         );
     }

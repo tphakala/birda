@@ -222,17 +222,31 @@ jobs:
             sleep "$POLL_DELAY"
           done
 
-          if [ "$state" = "UNKNOWN" ]; then
-            echo "::error::mergeability never resolved for PR #$PR_NUMBER; leaving it open for review"
+          # Name the states worth merging rather than the ones worth rejecting.
+          # An unrecognised state should stop the merge, not fall through it.
+          #
+          # UNSTABLE is expected, not a warning sign: these PRs carry no required
+          # checks, and GitHub reports an empty status set as pending. Refusing
+          # it would mean no licence PR ever merges.
+          case "$state" in
+            CLEAN | UNSTABLE | HAS_HOOKS)
+              ;;
+            UNKNOWN)
+              echo "::error::mergeability never resolved for PR #$PR_NUMBER; leaving it open for review"
+              exit 1 ;;
+            DIRTY)
+              # The base moved and the branch now conflicts. Retrying cannot fix
+              # that, and the next run regenerates the file from scratch anyway.
+              echo "::error::PR #$PR_NUMBER conflicts with its base; leaving it open for review"
+              exit 1 ;;
+            *)
+              # BLOCKED, BEHIND, DRAFT, or anything GitHub adds later.
+              echo "::error::PR #$PR_NUMBER is in merge state $state; leaving it open for review"
+              exit 1 ;;
+          esac
+
+          if ! gh pr merge "$PR_NUMBER" --squash --delete-branch; then
+            echo "::error::merge of PR #$PR_NUMBER failed from state $state; leaving it open for review"
             exit 1
           fi
-
-          # DIRTY means the base moved under us and the branch now conflicts.
-          # Nothing here can resolve that, so fail rather than thrash.
-          if [ "$state" = "DIRTY" ]; then
-            echo "::error::PR #$PR_NUMBER conflicts with its base; leaving it open for review"
-            exit 1
-          fi
-
-          gh pr merge "$PR_NUMBER" --squash --delete-branch
           echo "merged licence PR #$PR_NUMBER (state was $state)"

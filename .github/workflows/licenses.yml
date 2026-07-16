@@ -136,7 +136,38 @@ jobs:
             echo "changed=true" >> $GITHUB_OUTPUT
           fi
 
+      # GitHub does not run workflows on a pull request opened with GITHUB_TOKEN,
+      # so Lint and Test never see this file, and the merge below is unattended.
+      # That makes this step the only thing standing between a broken generator
+      # and the base branch. Fail loudly rather than merge nonsense.
+      - name: Validate generated licence file
+        if: steps.check.outputs.changed == 'true'
+        env:
+          MIN_LINES: '1000'
+        run: |
+          set -euo pipefail
+          lines=$(wc -l < THIRD_PARTY_LICENSES.txt)
+          if [ "$lines" -lt "$MIN_LINES" ]; then
+            echo "::error::THIRD_PARTY_LICENSES.txt has $lines lines, expected at least $MIN_LINES. cargo-about likely emitted a truncated file."
+            exit 1
+          fi
+          # Keep this list in sync with the section headers written by the
+          # "Combine all licenses" step above. A header added there but not here
+          # is simply never checked.
+          while IFS= read -r marker; do
+            if ! grep -qF "$marker" THIRD_PARTY_LICENSES.txt; then
+              echo "::error::THIRD_PARTY_LICENSES.txt is missing the section marker: $marker"
+              exit 1
+            fi
+          done <<'MARKERS'
+          THIRD-PARTY SOFTWARE LICENSES
+          SECTION 1: RUST DEPENDENCIES
+          SECTION 2: GPU LIBRARIES (included in CUDA builds only)
+          MARKERS
+          echo "licence file looks sane: $lines lines"
+
       - name: Create Pull Request
+        id: cpr
         if: steps.check.outputs.changed == 'true'
         uses: peter-evans/create-pull-request@v8
         with:
@@ -158,3 +189,64 @@ jobs:
           branch: update-licenses/${{ github.ref_name }}
           delete-branch: true
           labels: dependencies
+
+      # The file is generated from Cargo.lock and contains no code, so there is
+      # nothing for a human to decide here. Merge outright rather than with
+      # --auto: auto-merge only queues behind required checks, and this repo has
+      # none, so enabling it on an already-mergeable PR just errors.
+      #
+      # This does not re-trigger the workflow. The merge only touches
+      # THIRD_PARTY_LICENSES.txt, which is not in the paths filter above.
+      - name: Merge the licence PR
+        if: steps.check.outputs.changed == 'true' && steps.cpr.outputs.pull-request-number != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ steps.cpr.outputs.pull-request-number }}
+          POLL_ATTEMPTS: '12'
+          POLL_DELAY: '5'
+        run: |
+          set -euo pipefail
+
+          # GitHub computes mergeability in a background job, so a PR queried
+          # straight after creation reports UNKNOWN. Merging on UNKNOWN fails and
+          # leaves the PR open, which is the exact state this step exists to
+          # avoid, so wait for a real answer first.
+          state=UNKNOWN
+          for attempt in $(seq 1 "$POLL_ATTEMPTS"); do
+            state=$(gh pr view "$PR_NUMBER" --json mergeStateStatus --jq .mergeStateStatus)
+            if [ "$state" != "UNKNOWN" ]; then
+              echo "mergeability resolved to $state after $attempt attempt(s)"
+              break
+            fi
+            echo "mergeability still UNKNOWN, retrying in ${POLL_DELAY}s ($attempt/$POLL_ATTEMPTS)"
+            sleep "$POLL_DELAY"
+          done
+
+          # Name the states worth merging rather than the ones worth rejecting.
+          # An unrecognised state should stop the merge, not fall through it.
+          #
+          # UNSTABLE is expected, not a warning sign: these PRs carry no required
+          # checks, and GitHub reports an empty status set as pending. Refusing
+          # it would mean no licence PR ever merges.
+          case "$state" in
+            CLEAN | UNSTABLE | HAS_HOOKS)
+              ;;
+            UNKNOWN)
+              echo "::error::mergeability never resolved for PR #$PR_NUMBER; leaving it open for review"
+              exit 1 ;;
+            DIRTY)
+              # The base moved and the branch now conflicts. Retrying cannot fix
+              # that, and the next run regenerates the file from scratch anyway.
+              echo "::error::PR #$PR_NUMBER conflicts with its base; leaving it open for review"
+              exit 1 ;;
+            *)
+              # BLOCKED, BEHIND, DRAFT, or anything GitHub adds later.
+              echo "::error::PR #$PR_NUMBER is in merge state $state; leaving it open for review"
+              exit 1 ;;
+          esac
+
+          if ! gh pr merge "$PR_NUMBER" --squash --delete-branch; then
+            echo "::error::merge of PR #$PR_NUMBER failed from state $state; leaving it open for review"
+            exit 1
+          fi
+          echo "merged licence PR #$PR_NUMBER (state was $state)"

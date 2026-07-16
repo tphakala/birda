@@ -148,6 +148,7 @@ jobs:
         if: steps.check.outputs.changed == 'true'
         env:
           MIN_LINES: '1000'
+          MIN_ATTRIBUTED: '100'
         run: |
           set -euo pipefail
           lines=$(wc -l < THIRD_PARTY_LICENSES.txt)
@@ -168,7 +169,27 @@ jobs:
           SECTION 1: RUST DEPENDENCIES
           SECTION 2: GPU LIBRARIES (included in CUDA builds only)
           MARKERS
-          echo "licence file looks sane: $lines lines"
+
+          # The checks above cannot see the failure this file actually had. The
+          # version that shipped before #275 was 6590 lines with every marker in
+          # place, and named none of the dependencies it was there to attribute.
+          # So count the attributions rather than the lines. Counting instead of
+          # naming specific crates keeps this from breaking when a dependency is
+          # legitimately dropped.
+          attributed=$(grep -cE '^  - [A-Za-z0-9_.-]+ [0-9]' THIRD_PARTY_LICENSES.txt || true)
+          if [ "$attributed" -lt "$MIN_ATTRIBUTED" ]; then
+            echo "::error::THIRD_PARTY_LICENSES.txt attributes $attributed components, expected at least $MIN_ATTRIBUTED. about.hbs is probably not reading licenses[].used_by[]."
+            exit 1
+          fi
+
+          # A double stache escapes for HTML, and this is a text file. An escaped
+          # licence is not the verbatim text the licence requires us to reproduce.
+          if grep -qE '&(quot|amp|lt|gt|#x?[0-9]+);' THIRD_PARTY_LICENSES.txt; then
+            echo "::error::THIRD_PARTY_LICENSES.txt contains HTML entities; about.hbs must use triple staches"
+            exit 1
+          fi
+
+          echo "licence file looks sane: $lines lines, $attributed components attributed"
 
       - name: Create Pull Request
         id: cpr

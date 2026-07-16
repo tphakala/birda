@@ -7,7 +7,11 @@ on:
     paths:
       - 'Cargo.lock'
       - 'Cargo.toml'
+      # Both halves of the generator: about.toml picks the licences, about.hbs
+      # decides what the file says about them. A change to either one changes
+      # the output.
       - 'about.toml'
+      - 'about.hbs'
   workflow_dispatch:
 
 # Serialise runs per ref so two pushes cannot race to push the same branch.
@@ -164,7 +168,34 @@ jobs:
           SECTION 1: RUST DEPENDENCIES
           SECTION 2: GPU LIBRARIES (included in CUDA builds only)
           MARKERS
-          echo "licence file looks sane: $lines lines"
+
+          # The checks above cannot see the failure this file actually had. The
+          # version that shipped before #275 was 6590 lines with every marker in
+          # place, and named none of the dependencies it was there to attribute.
+          # So count the attributions rather than the lines.
+          #
+          # Scale the floor to the lockfile rather than fixing a number. Roughly
+          # every locked package earns an entry, 384 of 391 at the time of
+          # writing, but not exactly: birda itself is in there, and about.toml
+          # can exclude crates. Half the lockfile is therefore a collapse
+          # detector rather than a headcount, and it moves with the graph instead
+          # of failing the day the dependency list gets shorter.
+          locked=$(grep -c '^name = ' Cargo.lock)
+          min_attributed=$(( locked / 2 ))
+          attributed=$(grep -cE '^  - [A-Za-z0-9_.-]+ [0-9]' THIRD_PARTY_LICENSES.txt || true)
+          if [ "$attributed" -lt "$min_attributed" ]; then
+            echo "::error::THIRD_PARTY_LICENSES.txt attributes $attributed components against $locked locked packages, expected at least $min_attributed. about.hbs is probably not reading licenses[].used_by[]."
+            exit 1
+          fi
+
+          # A double stache escapes for HTML, and this is a text file. An escaped
+          # licence is not the verbatim text the licence requires us to reproduce.
+          if grep -qE '&(quot|amp|lt|gt|#x?[0-9]+);' THIRD_PARTY_LICENSES.txt; then
+            echo "::error::THIRD_PARTY_LICENSES.txt contains HTML entities; about.hbs must use triple staches"
+            exit 1
+          fi
+
+          echo "licence file looks sane: $lines lines, $attributed of $locked packages attributed"
 
       - name: Create Pull Request
         id: cpr

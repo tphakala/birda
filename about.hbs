@@ -1,27 +1,40 @@
-THIRD-PARTY SOFTWARE LICENSES
-=============================
-
-This software includes the following third-party components:
+{{! The licenses workflow wraps this output in its own document header and     }}
+{{! section banners, so this template starts straight at the content.          }}
+{{!                                                                            }}
+{{! Every field is written with a triple stache. This renders a plain text     }}
+{{! file, and the double stache form escapes for HTML, which turns the quotes  }}
+{{! in a licence into &quot; and stops it being the verbatim text the licence  }}
+{{! requires us to reproduce.                                                  }}
+{{!                                                                            }}
+{{! Field reference, since the names are not guessable:                        }}
+{{!   overview[]  - one entry per distinct license: id, name, count.           }}
+{{!                 It has no version and no crate, so do not try to list      }}
+{{!                 components from here.                                      }}
+{{!   licenses[]  - one entry per license text: id, name, text, used_by.       }}
+{{!                 The same license appears more than once when crates ship   }}
+{{!                 it with different copyright lines, so used_by is the only  }}
+{{!                 place the component names live.                            }}
+SUMMARY
+-------
 
 {{#each overview}}
-## {{name}} ({{version}})
-
-License: {{licenses}}
-{{#if repository}}
-Repository: {{repository}}
-{{/if}}
-
+{{{name}}}: {{{count}}} crate(s)
 {{/each}}
 
 ================================================================================
-FULL LICENSE TEXTS
+COMPONENTS AND THEIR LICENSES
 ================================================================================
 
 {{#each licenses}}
 --------------------------------------------------------------------------------
-{{name}}
+{{{name}}}
 --------------------------------------------------------------------------------
 
-{{text}}
+Used by:
+{{#each used_by}}
+  - {{{crate.name}}} {{{crate.version}}}
+{{/each}}
+
+{{{text}}}
 
 {{/each}}

@@ -14,14 +14,12 @@ pub fn resample(samples: Vec<f32>, from_rate: u32, to_rate: u32) -> Result<Vec<f
 
     // Create FFT-based synchronous resampler with fixed input/output sizes
     let chunk_size = 1024;
-    let sub_chunks = 1;
     let channels = 1;
 
     let mut resampler = Fft::<f32>::new(
         from_rate as usize,
         to_rate as usize,
         chunk_size,
-        sub_chunks,
         channels,
         FixedSync::Both,
     )
@@ -44,12 +42,11 @@ pub fn resample(samples: Vec<f32>, from_rate: u32, to_rate: u32) -> Result<Vec<f
                 }
             })?;
 
-        let resampled =
-            resampler
-                .process(&input_adapter, 0, None)
-                .map_err(|e| Error::Resample {
-                    reason: e.to_string(),
-                })?;
+        let resampled = resampler
+            .process(&input_adapter, None)
+            .map_err(|e| Error::Resample {
+                reason: e.to_string(),
+            })?;
 
         // Extract samples from the interleaved output
         let output_data = resampled.take_data();
@@ -70,12 +67,11 @@ pub fn resample(samples: Vec<f32>, from_rate: u32, to_rate: u32) -> Result<Vec<f
                 }
             })?;
 
-        let resampled =
-            resampler
-                .process(&input_adapter, 0, None)
-                .map_err(|e| Error::Resample {
-                    reason: e.to_string(),
-                })?;
+        let resampled = resampler
+            .process(&input_adapter, None)
+            .map_err(|e| Error::Resample {
+                reason: e.to_string(),
+            })?;
 
         // Only take proportional amount of output
         #[allow(

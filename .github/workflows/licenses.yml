@@ -151,6 +151,9 @@ jobs:
             echo "::error::THIRD_PARTY_LICENSES.txt has $lines lines, expected at least $MIN_LINES. cargo-about likely emitted a truncated file."
             exit 1
           fi
+          # Keep this list in sync with the section headers written by the
+          # "Combine all licenses" step above. A header added there but not here
+          # is simply never checked.
           while IFS= read -r marker; do
             if ! grep -qF "$marker" THIRD_PARTY_LICENSES.txt; then
               echo "::error::THIRD_PARTY_LICENSES.txt is missing the section marker: $marker"
@@ -199,7 +202,37 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_NUMBER: ${{ steps.cpr.outputs.pull-request-number }}
+          POLL_ATTEMPTS: '12'
+          POLL_DELAY: '5'
         run: |
           set -euo pipefail
+
+          # GitHub computes mergeability in a background job, so a PR queried
+          # straight after creation reports UNKNOWN. Merging on UNKNOWN fails and
+          # leaves the PR open, which is the exact state this step exists to
+          # avoid, so wait for a real answer first.
+          state=UNKNOWN
+          for attempt in $(seq 1 "$POLL_ATTEMPTS"); do
+            state=$(gh pr view "$PR_NUMBER" --json mergeStateStatus --jq .mergeStateStatus)
+            if [ "$state" != "UNKNOWN" ]; then
+              echo "mergeability resolved to $state after $attempt attempt(s)"
+              break
+            fi
+            echo "mergeability still UNKNOWN, retrying in ${POLL_DELAY}s ($attempt/$POLL_ATTEMPTS)"
+            sleep "$POLL_DELAY"
+          done
+
+          if [ "$state" = "UNKNOWN" ]; then
+            echo "::error::mergeability never resolved for PR #$PR_NUMBER; leaving it open for review"
+            exit 1
+          fi
+
+          # DIRTY means the base moved under us and the branch now conflicts.
+          # Nothing here can resolve that, so fail rather than thrash.
+          if [ "$state" = "DIRTY" ]; then
+            echo "::error::PR #$PR_NUMBER conflicts with its base; leaving it open for review"
+            exit 1
+          fi
+
           gh pr merge "$PR_NUMBER" --squash --delete-branch
-          echo "merged licence PR #$PR_NUMBER"
+          echo "merged licence PR #$PR_NUMBER (state was $state)"

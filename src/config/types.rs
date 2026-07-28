@@ -486,8 +486,11 @@ meta_model = "/models/birdnet-v24-meta.onnx"
 
         let written = toml::to_string(&defaults).unwrap();
 
-        assert!(written.contains("geomodel"));
-        assert!(written.contains("geomodel_labels"));
+        // Match the key with its separator: "geomodel_labels = ..." contains the
+        // substring "geomodel", so a bare contains("geomodel") is satisfied by
+        // the labels key alone and would not catch the model key going missing.
+        assert!(written.contains("geomodel = "));
+        assert!(written.contains("geomodel_labels = "));
     }
 
     #[test]

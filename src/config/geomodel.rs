@@ -336,12 +336,8 @@ mod tests {
 
     #[test]
     fn test_non_interactive_missing_geomodel_is_unavailable_not_an_error() {
-        let dir = tempfile::tempdir().unwrap();
-        let paths = InstalledRangeFilter {
-            model: dir.path().join("absent.onnx"),
-            labels: dir.path().join("absent.txt"),
-        };
-
+        // No on-disk setup: acquire() resolves the destination from the asset,
+        // and test_asset()'s filenames are not installed in this environment.
         let resolution = acquire(&test_asset(), false, false).unwrap();
 
         match resolution {

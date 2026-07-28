@@ -39,8 +39,13 @@ pub struct ModelConfig {
     #[serde(rename = "type")]
     pub model_type: ModelType,
 
-    /// Optional meta model for range filtering.
-    #[serde(default)]
+    /// Deprecated. The `BirdNET` v2.4 meta model was replaced by the shared
+    /// `BirdNET` Geomodel v3.0.2, configured under `defaults.geomodel`.
+    ///
+    /// Parsed only so a stale key can be reported. Serde ignores unknown keys,
+    /// so dropping the field outright would make a per-model `meta_model`
+    /// disappear without a word. Never written back.
+    #[serde(default, skip_serializing)]
     pub meta_model: Option<PathBuf>,
 
     /// BSG calibration CSV file (required for BSG models).
@@ -86,7 +91,22 @@ pub struct DefaultsConfig {
     #[serde(default = "default_range_threshold")]
     pub range_threshold: f32,
 
-    /// Global default meta model path.
+    /// Path to the `BirdNET` Geomodel v3.0.2 ONNX file used for range filtering.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub geomodel: Option<PathBuf>,
+
+    /// Path to the `BirdNET` Geomodel v3.0.2 labels file.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub geomodel_labels: Option<PathBuf>,
+
+    /// How to treat classifier species that have no geomodel entry.
+    #[serde(default)]
+    pub range_unmatched: UnmatchedPolicy,
+
+    /// Deprecated. Replaced by [`DefaultsConfig::geomodel`].
+    ///
+    /// Parsed only so a stale key can be reported; never written back.
+    #[serde(default, skip_serializing)]
     pub meta_model: Option<PathBuf>,
 
     /// Optional species list file for filtering results.
@@ -105,6 +125,35 @@ pub struct DefaultsConfig {
     pub csv_columns: CsvColumnsConfig,
 }
 
+/// What to do with classifier species that have no `BirdNET` Geomodel entry.
+///
+/// No classifier's label set is a subset of the geomodel's 12,012 species.
+/// `BirdNET` v2.4 has 305 labels with no geomodel entry, mostly eBird taxonomic
+/// revisions plus non-species labels such as Dog and Siren; Perch v2 has 3,650,
+/// mostly sound classes, insects and amphibians.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, clap::ValueEnum)]
+#[serde(rename_all = "kebab-case")]
+pub enum UnmatchedPolicy {
+    /// Pass unmatched species through unfiltered, so no detection is ever lost
+    /// to missing range data. This is the default.
+    #[default]
+    #[value(name = "keep")]
+    Keep,
+    /// Filter out unmatched species, treating absence from the geomodel as
+    /// absence from the location.
+    #[value(name = "drop")]
+    Drop,
+}
+
+impl std::fmt::Display for UnmatchedPolicy {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Keep => write!(f, "keep"),
+            Self::Drop => write!(f, "drop"),
+        }
+    }
+}
+
 /// Default range filter threshold.
 fn default_range_threshold() -> f32 {
     crate::constants::range_filter::DEFAULT_THRESHOLD
@@ -121,6 +170,9 @@ impl Default for DefaultsConfig {
             latitude: None,
             longitude: None,
             range_threshold: default_range_threshold(),
+            geomodel: None,
+            geomodel_labels: None,
+            range_unmatched: UnmatchedPolicy::default(),
             meta_model: None,
             species_list_file: None,
             day_of_year: None,
@@ -338,8 +390,105 @@ impl std::str::FromStr for ModelType {
 
 #[cfg(test)]
 #[allow(clippy::float_cmp)]
+#[allow(clippy::unwrap_used)] // Test setup code - panics are acceptable
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_unmatched_policy_defaults_to_keep() {
+        assert_eq!(UnmatchedPolicy::default(), UnmatchedPolicy::Keep);
+        assert_eq!(
+            DefaultsConfig::default().range_unmatched,
+            UnmatchedPolicy::Keep,
+            "keeping unmatched species must be the default, so upgrading never \
+             silently drops detections"
+        );
+    }
+
+    #[test]
+    fn test_unmatched_policy_parses_kebab_case() {
+        let defaults: DefaultsConfig = toml::from_str("range_unmatched = \"drop\"\n").unwrap();
+        assert_eq!(defaults.range_unmatched, UnmatchedPolicy::Drop);
+    }
+
+    #[test]
+    fn test_unmatched_policy_displays_as_its_cli_value() {
+        assert_eq!(UnmatchedPolicy::Keep.to_string(), "keep");
+        assert_eq!(UnmatchedPolicy::Drop.to_string(), "drop");
+    }
+
+    #[test]
+    fn test_defaults_config_reads_geomodel_paths() {
+        let toml_src = r#"
+geomodel = "/models/birdnet-geomodel-v3.0.2.onnx"
+geomodel_labels = "/models/birdnet-geomodel-v3.0.2-labels.txt"
+"#;
+        let defaults: DefaultsConfig = toml::from_str(toml_src).unwrap();
+
+        assert_eq!(
+            defaults.geomodel.unwrap(),
+            PathBuf::from("/models/birdnet-geomodel-v3.0.2.onnx")
+        );
+        assert_eq!(
+            defaults.geomodel_labels.unwrap(),
+            PathBuf::from("/models/birdnet-geomodel-v3.0.2-labels.txt")
+        );
+    }
+
+    #[test]
+    fn test_deprecated_meta_model_still_parses_in_defaults() {
+        let defaults: DefaultsConfig =
+            toml::from_str("meta_model = \"/models/birdnet-v24-meta.onnx\"\n").unwrap();
+
+        assert!(
+            defaults.meta_model.is_some(),
+            "the key must still parse so its presence can be reported"
+        );
+    }
+
+    #[test]
+    fn test_deprecated_meta_model_still_parses_per_model() {
+        // Keeping the field only on DefaultsConfig would make a per-model
+        // meta_model vanish silently, because serde drops unknown keys.
+        let toml_src = r#"
+path = "/m.onnx"
+labels = "/l.txt"
+type = "birdnet-v24"
+meta_model = "/models/birdnet-v24-meta.onnx"
+"#;
+        let model: ModelConfig = toml::from_str(toml_src).unwrap();
+
+        assert!(model.meta_model.is_some());
+    }
+
+    #[test]
+    fn test_deprecated_meta_model_is_not_written_back() {
+        let defaults = DefaultsConfig {
+            meta_model: Some(PathBuf::from("/models/birdnet-v24-meta.onnx")),
+            ..Default::default()
+        };
+
+        let written = toml::to_string(&defaults).unwrap();
+
+        assert!(
+            !written.contains("meta_model"),
+            "the deprecated key must be dropped on the next config write"
+        );
+    }
+
+    #[test]
+    fn test_geomodel_paths_are_written_back() {
+        let defaults = DefaultsConfig {
+            geomodel: Some(PathBuf::from("/models/birdnet-geomodel-v3.0.2.onnx")),
+            geomodel_labels: Some(PathBuf::from("/models/birdnet-geomodel-v3.0.2-labels.txt")),
+            ..Default::default()
+        };
+
+        let written = toml::to_string(&defaults).unwrap();
+
+        assert!(written.contains("geomodel"));
+        assert!(written.contains("geomodel_labels"));
+    }
 
     #[test]
     fn test_output_format_from_str() {

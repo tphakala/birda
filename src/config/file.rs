@@ -17,10 +17,38 @@ pub fn load_config_file(path: &Path) -> Result<Config> {
         source: e,
     })?;
 
-    toml::from_str(&contents).map_err(|e| Error::ConfigParse {
+    let config: Config = toml::from_str(&contents).map_err(|e| Error::ConfigParse {
         path: path.to_path_buf(),
         source: e,
-    })
+    })?;
+
+    warn_deprecated_keys(&config);
+
+    Ok(config)
+}
+
+/// Warn about configuration keys that are parsed only to report deprecation.
+///
+/// Serde ignores unknown keys, so a key that has been removed from the structs
+/// vanishes without a word. Keeping the field and reporting it here is the only
+/// way a user learns that their setting stopped taking effect.
+fn warn_deprecated_keys(config: &Config) {
+    if config.defaults.meta_model.is_some() {
+        tracing::warn!(
+            "config key 'defaults.meta_model' is deprecated and ignored; range filtering now \
+             uses the BirdNET Geomodel v3.0.2. The key is dropped the next time the config is \
+             saved. Run 'birda models install geomodel' if range filtering is not working."
+        );
+    }
+
+    for (name, model) in &config.models {
+        if model.meta_model.is_some() {
+            tracing::warn!(
+                "config key 'models.{name}.meta_model' is deprecated and ignored; range \
+                 filtering now uses the BirdNET Geomodel v3.0.2."
+            );
+        }
+    }
 }
 
 /// Load configuration from the default platform-specific path.

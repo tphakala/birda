@@ -59,19 +59,23 @@ pub fn generate_species_list(
 
     let model_config = crate::config::get_model(&config, &model_name)?;
 
-    // Get meta model path
-    let meta_model_path = model_config
-        .meta_model
-        .as_ref()
-        .or(config.defaults.meta_model.as_ref())
-        .ok_or_else(|| Error::MetaModelMissing {
-            model_name: model_name.clone(),
-        })?;
+    // Get the geomodel path. Task 10 replaces this with full resolution
+    // through config::geomodel, including the download offer.
+    let meta_model_path =
+        config
+            .defaults
+            .geomodel
+            .as_ref()
+            .ok_or_else(|| Error::GeomodelNotInstalled {
+                hint: "run 'birda models install geomodel'".to_string(),
+            })?;
 
-    // Verify meta model file exists
     if !meta_model_path.exists() {
-        return Err(Error::MetaModelNotFound {
-            path: meta_model_path.clone(),
+        return Err(Error::GeomodelNotInstalled {
+            hint: format!(
+                "{} does not exist; run 'birda models install geomodel'",
+                meta_model_path.display()
+            ),
         });
     }
 

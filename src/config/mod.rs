@@ -12,6 +12,6 @@ pub use file::{load_config_file, load_default_config, save_config, save_default_
 pub use paths::{config_dir, config_file_path, tensorrt_cache_dir};
 pub use types::{
     Config, CsvColumnsConfig, DefaultsConfig, InferenceConfig, InferenceDevice, ModelConfig,
-    ModelType, OutputConfig, OutputFormat, OutputMode,
+    ModelType, OutputConfig, OutputFormat, OutputMode, UnmatchedPolicy,
 };
 pub use validate::{get_model, validate_config, validate_model_config};

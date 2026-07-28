@@ -372,11 +372,6 @@ fn validate_model_files(model_config: &ModelConfig) -> Result<()> {
             path: model_config.labels.clone(),
         });
     }
-    if let Some(ref meta) = model_config.meta_model
-        && !meta.exists()
-    {
-        return Err(Error::MetaModelNotFound { path: meta.clone() });
-    }
     Ok(())
 }
 
@@ -1607,11 +1602,24 @@ fn handle_models_install(
 
     // Load registry
     let registry = registry::load_registry()?;
+
+    // The shared range filter asset is installable under its own id, since it
+    // is used by every classifier rather than belonging to any one of them.
+    if id == registry::GEOMODEL_INSTALL_ID {
+        return handle_geomodel_install(&registry, interactive, output_mode);
+    }
+
     let model = registry::find_model(&registry, id)
         .ok_or_else(|| Error::ModelNotFoundInRegistry { id: id.to_string() })?;
 
     // Prompt for license acceptance
-    if !registry::prompt_license_acceptance(model, interactive)? {
+    let asset = registry::LicensedAsset {
+        name: &model.name,
+        vendor: &model.vendor,
+        version: &model.version,
+        license: &model.license,
+    };
+    if !registry::prompt_license_acceptance(asset, interactive)? {
         if !output_mode.is_structured() {
             println!("Installation cancelled.");
         }
@@ -1624,6 +1632,18 @@ fn handle_models_install(
     })?;
 
     let installed = runtime.block_on(async { registry::install_model(model, language).await })?;
+
+    // Ensure the shared range filter is present so a fresh install can range
+    // filter immediately. A failure here is a warning, not an error: the
+    // classifier itself installed fine and works without range filtering.
+    if let Some(asset) = registry.range_filter.as_ref()
+        && let Err(e) = runtime.block_on(registry::install_range_filter(asset))
+    {
+        warn!(
+            "Could not install the BirdNET Geomodel v3.0.2 range filter: {e}. \
+             Run 'birda models install geomodel' to retry."
+        );
+    }
 
     if !output_mode.is_structured() {
         println!();
@@ -1708,6 +1728,56 @@ fn handle_models_install(
         println!();
         println!("Ready to analyze:");
         println!("  birda recording.wav");
+    }
+
+    Ok(())
+}
+
+/// Handle `birda models install geomodel`.
+///
+/// Installs the shared `BirdNET` Geomodel v3.0.2 range filter and records its
+/// paths in the configuration, so every installed classifier can use it.
+fn handle_geomodel_install(
+    registry: &registry::Registry,
+    interactive: bool,
+    output_mode: OutputMode,
+) -> Result<()> {
+    let asset = registry
+        .range_filter
+        .as_ref()
+        .ok_or(Error::RangeFilterAssetMissing)?;
+
+    let licensed = registry::LicensedAsset {
+        name: &asset.name,
+        vendor: &asset.vendor,
+        version: &asset.version,
+        license: &asset.license,
+    };
+    if !registry::prompt_license_acceptance(licensed, interactive)? {
+        if !output_mode.is_structured() {
+            println!("Installation cancelled.");
+        }
+        return Ok(());
+    }
+
+    let runtime = tokio::runtime::Runtime::new().map_err(|e| Error::Internal {
+        message: format!("Failed to create async runtime: {e}"),
+    })?;
+    let installed = runtime.block_on(registry::install_range_filter(asset))?;
+
+    let mut config = load_default_config()?;
+    config.defaults.geomodel = Some(installed.model.clone());
+    config.defaults.geomodel_labels = Some(installed.labels.clone());
+    save_default_config(&config)?;
+
+    if !output_mode.is_structured() {
+        println!();
+        println!("{} installed.", asset.name);
+        println!("  {}", installed.model.display());
+        println!("  {}", installed.labels.display());
+        println!();
+        println!("Range filtering covers {} species.", asset.species_count);
+        println!("Powered by BirdNET (https://birdnet.cornell.edu/)");
     }
 
     Ok(())
@@ -2012,11 +2082,12 @@ mod tests {
     }
 
     #[test]
-    fn test_validate_model_files_missing_meta_model() {
+    fn test_validate_model_files_ignores_a_deprecated_meta_model() {
+        // meta_model is parsed only so a stale key can be reported. It must
+        // never gate validation: the file it points at is expected to be gone.
         let dir = tempfile::tempdir().unwrap();
         let model_path = dir.path().join("model.onnx");
         let labels_path = dir.path().join("labels.txt");
-        let meta_path = dir.path().join("missing_meta.onnx");
         std::fs::write(&model_path, "model").unwrap();
         std::fs::write(&labels_path, "labels").unwrap();
 
@@ -2024,31 +2095,7 @@ mod tests {
             path: model_path,
             labels: labels_path,
             model_type: ModelType::BirdnetV24,
-            meta_model: Some(meta_path),
-            bsg_calibration: None,
-            bsg_migration: None,
-            bsg_distribution_maps: None,
-        };
-
-        let err = validate_model_files(&config).unwrap_err();
-        assert!(matches!(err, Error::MetaModelNotFound { .. }));
-    }
-
-    #[test]
-    fn test_validate_model_files_with_existing_meta_model() {
-        let dir = tempfile::tempdir().unwrap();
-        let model_path = dir.path().join("model.onnx");
-        let labels_path = dir.path().join("labels.txt");
-        let meta_path = dir.path().join("meta.onnx");
-        std::fs::write(&model_path, "model").unwrap();
-        std::fs::write(&labels_path, "labels").unwrap();
-        std::fs::write(&meta_path, "meta").unwrap();
-
-        let config = ModelConfig {
-            path: model_path,
-            labels: labels_path,
-            model_type: ModelType::BirdnetV24,
-            meta_model: Some(meta_path),
+            meta_model: Some(dir.path().join("long_gone_meta.onnx")),
             bsg_calibration: None,
             bsg_migration: None,
             bsg_distribution_maps: None,

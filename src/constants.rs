@@ -135,6 +135,17 @@ pub mod download {
     /// completes, so a concurrent or interrupted download can never leave a
     /// truncated destination file behind.
     pub const PARTIAL_SUFFIX: &str = "part";
+
+    /// Connection timeout for registry downloads, in seconds.
+    pub const CONNECT_TIMEOUT_SECS: u64 = 30;
+
+    /// Total request timeout for registry downloads, in minutes.
+    pub const REQUEST_TIMEOUT_MINS: u64 = 5;
+
+    /// Timeout for the connectivity probe made before offering a download.
+    ///
+    /// Short, because its only job is to tell "offline" apart from "slow".
+    pub const CONNECTIVITY_PROBE_TIMEOUT_SECS: u64 = 5;
 }
 
 /// Files left behind by earlier birda versions that are no longer used.

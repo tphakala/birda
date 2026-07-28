@@ -118,6 +118,29 @@ pub mod range_filter {
 
     /// Default range filter threshold.
     pub const DEFAULT_THRESHOLD: f32 = 0.01;
+
+    /// Threshold used when querying the geomodel itself.
+    ///
+    /// Zero so the model returns a score for every class. Thresholding and the
+    /// unmatched-species policy are applied afterwards, in birda, against the
+    /// classifier's own label space.
+    pub const GEOMODEL_QUERY_THRESHOLD: f32 = 0.0;
+}
+
+/// Download constants.
+pub mod download {
+    /// Suffix for in-progress downloads.
+    ///
+    /// The file is renamed onto the real destination only once the transfer
+    /// completes, so a concurrent or interrupted download can never leave a
+    /// truncated destination file behind.
+    pub const PARTIAL_SUFFIX: &str = "part";
+}
+
+/// Files left behind by earlier birda versions that are no longer used.
+pub mod obsolete_files {
+    /// The `BirdNET` v2.4 meta model, replaced by the `BirdNET` Geomodel v3.0.2.
+    pub const NAMES: &[&str] = &["birdnet-v24-meta.onnx"];
 }
 
 /// Calendar constants.

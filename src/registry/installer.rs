@@ -63,7 +63,48 @@ pub async fn download_file(client: &Client, url: &str, dest: &Path) -> Result<()
         )
     ));
 
-    // Stream download
+    // Stream the download to a part file, then rename it onto the destination.
+    // Rename is atomic within a filesystem, so a concurrent download or an
+    // interrupted transfer can never leave a truncated file that a later
+    // existence check would accept as complete.
+    let part = part_path(dest);
+    let result = stream_to_file(response, url, &part, &pb).await;
+
+    if let Err(e) = result {
+        // Best effort cleanup: the part file is useless without the rename,
+        // and leaving it behind would waste disk on a retry loop.
+        drop(tokio::fs::remove_file(&part).await);
+        return Err(e);
+    }
+
+    finalize_download(&part, dest)?;
+    pb.finish_with_message("Download complete");
+
+    Ok(())
+}
+
+/// Path of the in-progress download file for a destination.
+fn part_path(dest: &Path) -> PathBuf {
+    // `file_name` is None only for paths ending in `..`, which a download
+    // destination never is. Defaulting avoids an unwrap per the project lints.
+    let mut name = dest.file_name().unwrap_or_default().to_os_string();
+    name.push(".");
+    name.push(crate::constants::download::PARTIAL_SUFFIX);
+    dest.with_file_name(name)
+}
+
+/// Move a completed download onto its destination, consuming the part file.
+fn finalize_download(part: &Path, dest: &Path) -> Result<()> {
+    std::fs::rename(part, dest).map_err(Error::Io)
+}
+
+/// Stream a response body into `dest`, updating the progress bar as it goes.
+async fn stream_to_file(
+    response: reqwest::Response,
+    url: &str,
+    dest: &Path,
+    pb: &ProgressBar,
+) -> Result<()> {
     let mut file = File::create(dest).await.map_err(Error::Io)?;
     let mut stream = response.bytes_stream();
     let mut downloaded = 0u64;
@@ -80,15 +121,7 @@ pub async fn download_file(client: &Client, url: &str, dest: &Path) -> Result<()
         pb.set_position(downloaded);
     }
 
-    pb.finish_with_message("Download complete");
-
-    // TODO: Implement SHA256 checksum verification for downloaded files
-    // Currently all SHA256 checksums in registry.json are null, which is a security risk.
-    // Future work should:
-    // 1. Generate SHA256 checksums for all model and label files
-    // 2. Update registry.json with the checksums
-    // 3. Verify downloaded files against checksums here before returning
-    // See: https://github.com/tphakala/birda/issues/XX
+    file.flush().await.map_err(Error::Io)?;
 
     Ok(())
 }
@@ -186,8 +219,63 @@ pub async fn install_model(model: &ModelEntry, language: Option<&str>) -> Result
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used)] // Test setup code - panics are acceptable
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_part_path_appends_suffix() {
+        let p = part_path(Path::new("/models/birdnet-geomodel-v3.0.2.onnx"));
+        assert_eq!(
+            p.file_name().unwrap(),
+            "birdnet-geomodel-v3.0.2.onnx.part",
+            "part file must sit beside the destination"
+        );
+        assert_eq!(p.parent(), Some(Path::new("/models")));
+    }
+
+    #[test]
+    fn test_part_path_preserves_multi_dot_filenames() {
+        // with_extension would mangle "v3.0.2.onnx" into "v3.0.2.part".
+        let p = part_path(Path::new("/models/birdnet-geomodel-v3.0.2.onnx"));
+        assert!(p.to_string_lossy().ends_with("v3.0.2.onnx.part"));
+    }
+
+    #[test]
+    fn test_finalize_download_renames_and_clears_part() {
+        let dir = tempfile::tempdir().unwrap();
+        let dest = dir.path().join("m.onnx");
+        let part = part_path(&dest);
+        std::fs::write(&part, b"data").unwrap();
+
+        finalize_download(&part, &dest).unwrap();
+
+        assert_eq!(std::fs::read(&dest).unwrap(), b"data");
+        assert!(!part.exists(), "part file must not survive finalization");
+    }
+
+    #[test]
+    fn test_finalize_download_overwrites_an_existing_destination() {
+        // A checksum mismatch triggers a re-download onto an existing file.
+        let dir = tempfile::tempdir().unwrap();
+        let dest = dir.path().join("m.onnx");
+        std::fs::write(&dest, b"stale").unwrap();
+        let part = part_path(&dest);
+        std::fs::write(&part, b"fresh").unwrap();
+
+        finalize_download(&part, &dest).unwrap();
+
+        assert_eq!(std::fs::read(&dest).unwrap(), b"fresh");
+    }
+
+    #[test]
+    fn test_finalize_download_errors_without_a_part_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let dest = dir.path().join("m.onnx");
+
+        assert!(finalize_download(&part_path(&dest), &dest).is_err());
+        assert!(!dest.exists());
+    }
 
     #[test]
     fn test_models_dir_path() {

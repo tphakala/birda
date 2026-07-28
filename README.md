@@ -772,7 +772,7 @@ The shared range filter, used by every classifier. It predicts an occurrence pro
 
 - **License**: CC BY-SA 4.0
 - **Vendor**: Cornell Lab of Ornithology & Chemnitz University of Technology
-- **Species**: 12,012 (11,157 birds, 1,087 mammals, 566 insects, 540 amphibians, 11 reptiles)
+- **Species**: 12,012 scored classes, covering birds plus mammals, insects, amphibians and reptiles
 - **Size**: 14.7 MB
 - **Source**: [BirdNET-Geomodel on Hugging Face](https://huggingface.co/tphakala/BirdNET-Geomodel)
 

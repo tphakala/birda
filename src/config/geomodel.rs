@@ -87,17 +87,49 @@ pub fn resolve_geomodel(
         .as_ref()
         .ok_or(Error::RangeFilterAssetMissing)?;
 
-    let paths = match configured_paths(args, config)? {
-        Some(paths) => paths,
-        None => crate::registry::geomodel_paths(asset)?,
-    };
+    let registry_paths = crate::registry::geomodel_paths(asset)?;
+    let paths = configured_paths(args, config)?.unwrap_or_else(|| registry_paths.clone());
+
+    // "Ours to verify" is decided by which file this is, not by how the path
+    // was reached: `birda models install geomodel` records its own install path
+    // in config, so keying on "did it come from config" would exempt exactly
+    // the copy birda manages, which is the copy that needs checking.
+    let birda_managed = paths == registry_paths;
 
     if paths.is_installed() {
-        return Ok(GeomodelResolution::Ready(paths));
+        // Presence is not enough for the copy birda manages: a download
+        // interrupted by an older version, a half-copied models directory, or
+        // two processes racing all leave a file that exists but is corrupt.
+        // Without this check the bad file is loaded on every later run and
+        // never re-verified, because only the install path verifies.
+        //
+        // A path pointing somewhere else is taken on trust: it may legitimately
+        // be a different build of the geomodel, and its checksum is not ours to
+        // police. The label-count check still guards the shape.
+        if !birda_managed || paths.verify(asset).is_ok() {
+            return Ok(GeomodelResolution::Ready(paths));
+        }
+
+        warn!(
+            "Installed {} failed checksum verification and will be downloaded again",
+            asset.name
+        );
+    }
+
+    // A configured path pointing outside the models directory is a
+    // configuration error when it is missing, not something to paper over by
+    // downloading to a different location and rewriting the user's setting.
+    if !birda_managed {
+        return Ok(GeomodelResolution::Unavailable(format!(
+            "configured geomodel path {} does not exist; correct defaults.geomodel \
+             or run 'birda models install {}'",
+            paths.model.display(),
+            crate::registry::GEOMODEL_INSTALL_ID
+        )));
     }
 
     let interactive = std::io::stdin().is_terminal() && !output_mode.is_structured();
-    acquire(asset, paths, interactive, args.yes)
+    acquire(asset, interactive, args.yes)
 }
 
 /// Acquire a geomodel that is not on disk.
@@ -108,7 +140,6 @@ pub fn resolve_geomodel(
 /// and continue unfiltered; `--yes` is how such a run opts into the download.
 fn acquire(
     asset: &crate::registry::RangeFilterAsset,
-    paths: InstalledRangeFilter,
     interactive: bool,
     assume_yes: bool,
 ) -> Result<GeomodelResolution> {
@@ -142,16 +173,12 @@ fn acquire(
 
     let installed = runtime.block_on(crate::registry::install_range_filter(asset))?;
 
-    // Remember where it landed so the next run resolves it from config.
-    if let Ok(mut config) = crate::config::load_default_config() {
-        config.defaults.geomodel = Some(installed.model.clone());
-        config.defaults.geomodel_labels = Some(installed.labels.clone());
-        if let Err(e) = crate::config::save_default_config(&config) {
-            warn!("Could not record the geomodel paths in the config: {e}");
-        }
-    }
-
-    drop(paths);
+    // Deliberately NOT written back to config.toml here. save_config truncates
+    // and rewrites the whole file, dropping comments and any unrecognised keys,
+    // and a failed write leaves an empty config that parses as all-defaults and
+    // silently loses every model the user had configured. An analyze run must
+    // not risk that; the paths resolve from the registry on the next run anyway,
+    // and 'birda models install geomodel' records them explicitly.
     Ok(GeomodelResolution::Ready(installed))
 }
 
@@ -311,7 +338,7 @@ mod tests {
             labels: dir.path().join("absent.txt"),
         };
 
-        let resolution = acquire(&test_asset(), paths, false, false).unwrap();
+        let resolution = acquire(&test_asset(), false, false).unwrap();
 
         match resolution {
             GeomodelResolution::Unavailable(message) => {

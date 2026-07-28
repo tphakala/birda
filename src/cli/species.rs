@@ -31,8 +31,8 @@ const DEFAULT_OUTPUT_FILE: &str = "species_list.txt";
 /// # Errors
 /// Returns error if:
 /// - Config cannot be loaded
-/// - Model not found or has no meta model
-/// - Meta model file not found
+/// - Model not found
+/// - The `BirdNET` Geomodel is not installed and could not be acquired
 /// - Range filter prediction fails
 /// - Cannot write output file
 #[allow(clippy::too_many_arguments)]
@@ -209,7 +209,7 @@ pub fn generate_species_list(
 /// Project geomodel scores onto the classifier's labels and sort them.
 ///
 /// Emits the classifier's own label for each species, so the resulting file can
-/// be fed straight back in as a `--species-list` for that model. Species below
+/// be fed straight back in with `--slist` for that model. Species below
 /// `threshold`, and geomodel species the classifier cannot predict, are omitted.
 fn build_species_entries(
     location_scores: &[birdnet_onnx::LocationScore],

@@ -100,7 +100,7 @@ pub async fn download_file(client: &Client, url: &str, dest: &Path) -> Result<()
     // Rename is atomic within a filesystem, so a concurrent download or an
     // interrupted transfer can never leave a truncated file that a later
     // existence check would accept as complete.
-    let part = part_path(dest);
+    let part = part_path(dest)?;
     let result = stream_to_file(response, url, &part, &pb).await;
 
     if let Err(e) = result {
@@ -117,13 +117,24 @@ pub async fn download_file(client: &Client, url: &str, dest: &Path) -> Result<()
 }
 
 /// Path of the in-progress download file for a destination.
-fn part_path(dest: &Path) -> PathBuf {
-    // `file_name` is None only for paths ending in `..`, which a download
-    // destination never is. Defaulting avoids an unwrap per the project lints.
-    let mut name = dest.file_name().unwrap_or_default().to_os_string();
-    name.push(".");
-    name.push(crate::constants::download::PARTIAL_SUFFIX);
-    dest.with_file_name(name)
+///
+/// The name is qualified with this process's id so two concurrent birda
+/// processes downloading the same destination cannot write into one file. A
+/// shared part name lets their writes interleave, and lets one process's error
+/// cleanup unlink the other's in-progress transfer.
+fn part_path(dest: &Path) -> Result<PathBuf> {
+    let name = dest.file_name().ok_or_else(|| Error::Internal {
+        message: format!("download destination has no file name: {}", dest.display()),
+    })?;
+
+    let mut part = name.to_os_string();
+    part.push(format!(
+        ".{}.{}",
+        std::process::id(),
+        crate::constants::download::PARTIAL_SUFFIX
+    ));
+
+    Ok(dest.with_file_name(part))
 }
 
 /// Move a completed download onto its destination, consuming the part file.
@@ -154,7 +165,10 @@ async fn stream_to_file(
         pb.set_position(downloaded);
     }
 
+    // Flush the userspace buffer and then the kernel's, so a crash after the
+    // rename cannot publish a short file at the destination.
     file.flush().await.map_err(Error::Io)?;
+    file.sync_all().await.map_err(Error::Io)?;
 
     Ok(())
 }
@@ -195,7 +209,15 @@ pub async fn install_range_filter(asset: &RangeFilterAsset) -> Result<InstalledR
 
     download_file(&client, &asset.model.url, &paths.model).await?;
     download_file(&client, &asset.labels.url, &paths.labels).await?;
-    paths.verify(asset)?;
+
+    // A post-download checksum failure must not leave the bad files installed.
+    // Consumers gate on presence, so a corrupt file left behind here would be
+    // loaded on every later run without ever being re-verified.
+    if let Err(e) = paths.verify(asset) {
+        drop(std::fs::remove_file(&paths.model));
+        drop(std::fs::remove_file(&paths.labels));
+        return Err(e);
+    }
 
     Ok(paths)
 }
@@ -448,11 +470,19 @@ mod tests {
 
     #[test]
     fn test_part_path_appends_suffix() {
-        let p = part_path(Path::new("/models/birdnet-geomodel-v3.0.2.onnx"));
-        assert_eq!(
-            p.file_name().unwrap(),
-            "birdnet-geomodel-v3.0.2.onnx.part",
-            "part file must sit beside the destination"
+        let p = part_path(Path::new("/models/birdnet-geomodel-v3.0.2.onnx")).unwrap();
+        let name = p.file_name().unwrap().to_string_lossy().to_string();
+        assert!(
+            name.starts_with("birdnet-geomodel-v3.0.2.onnx."),
+            "part file must sit beside the destination, got {name}"
+        );
+        assert!(
+            name.ends_with(".part"),
+            "part file must carry the partial suffix, got {name}"
+        );
+        assert!(
+            name.contains(&std::process::id().to_string()),
+            "part file must be qualified by pid so concurrent writers cannot collide, got {name}"
         );
         assert_eq!(p.parent(), Some(Path::new("/models")));
     }
@@ -460,15 +490,34 @@ mod tests {
     #[test]
     fn test_part_path_preserves_multi_dot_filenames() {
         // with_extension would mangle "v3.0.2.onnx" into "v3.0.2.part".
-        let p = part_path(Path::new("/models/birdnet-geomodel-v3.0.2.onnx"));
-        assert!(p.to_string_lossy().ends_with("v3.0.2.onnx.part"));
+        let p = part_path(Path::new("/models/birdnet-geomodel-v3.0.2.onnx")).unwrap();
+        assert!(p.to_string_lossy().contains("v3.0.2.onnx."));
+    }
+
+    #[test]
+    fn test_part_path_differs_from_the_plain_suffix_form() {
+        // A shared "<dest>.part" let two processes interleave writes into one
+        // file and let one process's error cleanup unlink the other's transfer.
+        let dest = Path::new("/models/m.onnx");
+        let p = part_path(dest).unwrap();
+
+        assert_ne!(
+            p,
+            dest.with_file_name("m.onnx.part"),
+            "the part name must be process-qualified, not a fixed suffix"
+        );
+    }
+
+    #[test]
+    fn test_part_path_rejects_a_destination_without_a_file_name() {
+        assert!(part_path(Path::new("/models/..")).is_err());
     }
 
     #[test]
     fn test_finalize_download_renames_and_clears_part() {
         let dir = tempfile::tempdir().unwrap();
         let dest = dir.path().join("m.onnx");
-        let part = part_path(&dest);
+        let part = part_path(&dest).unwrap();
         std::fs::write(&part, b"data").unwrap();
 
         finalize_download(&part, &dest).unwrap();
@@ -483,7 +532,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let dest = dir.path().join("m.onnx");
         std::fs::write(&dest, b"stale").unwrap();
-        let part = part_path(&dest);
+        let part = part_path(&dest).unwrap();
         std::fs::write(&part, b"fresh").unwrap();
 
         finalize_download(&part, &dest).unwrap();
@@ -496,7 +545,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let dest = dir.path().join("m.onnx");
 
-        assert!(finalize_download(&part_path(&dest), &dest).is_err());
+        assert!(finalize_download(&part_path(&dest).unwrap(), &dest).is_err());
         assert!(!dest.exists());
     }
 

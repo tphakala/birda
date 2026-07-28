@@ -189,8 +189,8 @@ fn build_range_filter_data(
 /// Wrapper around birdnet-onnx Classifier with birda configuration.
 pub struct BirdClassifier {
     inner: Classifier,
-    /// Range filtering data (filter, config, and cached scores).
-    /// All three components are present together or None.
+    /// Projected geomodel scores, filter settings and coverage counts.
+    /// None when range filtering is not active for this run.
     range_filter_data: Option<RangeFilterData>,
     /// Optional species list for filtering (from file).
     /// None if no species list file provided or if using dynamic range filtering.
@@ -255,12 +255,12 @@ impl BirdClassifier {
             actual_device_msg
         );
 
-        // Build the range filter and project its scores into this
-        // classifier's label space. BSG is excluded: it has its own species
-        // distribution maps, and its label set does not overlap the geomodel's.
-        let range_filter_data = if model_config.model_type == ModelType::BsgFinland {
-            None
-        } else if let Some(rf_config) = range_filter_config {
+        // Build the range filter and project its scores into this classifier's
+        // label space. Which models range filter at all is decided once, by
+        // config::range_filter::supports_range_filter, and a caller that passes
+        // a config here has already been through it. Re-deriving the rule here
+        // is what let an earlier copy drift and omit the bat-mode exclusion.
+        let range_filter_data = if let Some(rf_config) = range_filter_config {
             Some(build_range_filter_data(&rf_config, inner.labels())?)
         } else {
             None

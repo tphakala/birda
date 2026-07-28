@@ -138,19 +138,34 @@ fn resolve_model_config(args: &AnalyzeArgs, config: &Config) -> Result<(ModelCon
 fn resolve_range_filter_geomodel(
     args: &AnalyzeArgs,
     config: &Config,
+    model_config: &ModelConfig,
     output_mode: OutputMode,
 ) -> Result<Option<registry::InstalledRangeFilter>> {
-    // Skip the registry load entirely when no coordinates are available: there
-    // is nothing to range filter against.
-    let has_coordinates = args.lat.or(config.defaults.latitude).is_some()
-        && args.lon.or(config.defaults.longitude).is_some();
-    if !has_coordinates {
+    // Ask whether range filtering can apply at all before touching the
+    // registry. Coordinates alone are not enough: a run also needs a time
+    // parameter, and BSG and bat mode never range filter. Gating on
+    // coordinates only would prompt for and download 15 MB that
+    // build_range_filter_config then discards.
+    if !config::range_filter::wants_range_filter(args, config, model_config.model_type) {
         return Ok(None);
     }
 
     let registry = registry::load_registry()?;
 
-    match config::resolve_geomodel(args, config, &registry, output_mode)? {
+    // Every failure here degrades to unfiltered analysis. Returning Err would
+    // abort the whole run on a transient network blip, a stale cached registry,
+    // or a checksum failure, which is exactly the pipeline break this function
+    // exists to prevent. Only `birda species`, where the species list IS the
+    // output, treats an unavailable geomodel as fatal.
+    let resolution = match config::resolve_geomodel(args, config, &registry, output_mode) {
+        Ok(resolution) => resolution,
+        Err(e) => {
+            warn!("Range filtering disabled: {e}");
+            return Ok(None);
+        }
+    };
+
+    match resolution {
         config::GeomodelResolution::Ready(geomodel) => Ok(Some(geomodel)),
         config::GeomodelResolution::Unavailable(reason) => {
             warn!("Range filtering disabled: {reason}");
@@ -372,7 +387,17 @@ fn resolve_species_filter(
     has_range_filter: bool,
 ) -> Result<Option<HashSet<String>>> {
     if has_range_filter {
-        // Dynamic filtering - species list will come from range filter
+        // Dynamic filtering wins, but say so when the user explicitly asked for
+        // a list. Range filtering used to require a configured meta model, so
+        // a user without one kept their --slist; it now activates on
+        // coordinates plus a time parameter alone and would silently override
+        // the list they passed.
+        if args.slist.is_some() {
+            warn!(
+                "Ignoring --slist: range filtering takes precedence when coordinates \
+                 and a date are given. Drop --lat/--lon to use the species list instead."
+            );
+        }
         return Ok(None);
     }
 
@@ -395,7 +420,7 @@ fn resolve_species_filter(
     Ok(None)
 }
 
-/// Validate that model, labels, and optional meta-model files exist.
+/// Validate that the model and labels files exist.
 fn validate_model_files(model_config: &ModelConfig) -> Result<()> {
     if !model_config.path.exists() {
         return Err(Error::ModelFileNotFound {
@@ -739,10 +764,11 @@ fn analyze_files(
     // a warning rather than failing the run: coordinates in config enable range
     // filtering implicitly, so erroring would break existing pipelines on
     // upgrade.
-    let range_filter_config = match resolve_range_filter_geomodel(args, config, output_mode)? {
-        Some(geomodel) => build_range_filter_config(args, config, &model_config, &geomodel)?,
-        None => None,
-    };
+    let range_filter_config =
+        match resolve_range_filter_geomodel(args, config, &model_config, output_mode)? {
+            Some(geomodel) => build_range_filter_config(args, config, &model_config, &geomodel)?,
+            None => None,
+        };
 
     // Log if range filtering is enabled
     if let Some(ref rf_config) = range_filter_config {

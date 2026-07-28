@@ -19,7 +19,10 @@ use crate::utils::date::{date_to_week, day_of_year_to_date, week_to_start_day};
 /// range filtered by this geomodel at all: v3.0.2 scores resident bats at
 /// roughly 0.002 to 0.016 against 0.85 and above for birds, so every bat
 /// detection would fall below any useful threshold.
-fn supports_range_filter(args: &AnalyzeArgs, model_type: ModelType) -> bool {
+///
+/// This is the single authority on the question. Do not re-derive it at the
+/// point of use: an earlier duplicate in the classifier omitted the bat case.
+pub fn supports_range_filter(args: &AnalyzeArgs, model_type: ModelType) -> bool {
     if args.bat.is_some() {
         return false;
     }
@@ -28,6 +31,21 @@ fn supports_range_filter(args: &AnalyzeArgs, model_type: ModelType) -> bool {
         ModelType::BirdnetV24 | ModelType::BirdnetV30 | ModelType::PerchV2 => true,
         ModelType::BsgFinland => false,
     }
+}
+
+/// Whether range filtering is wanted at all, before the geomodel is resolved.
+///
+/// Checked ahead of acquisition so birda never prompts for, downloads, or
+/// records a 15 MB geomodel it is then going to discard. Coordinates alone are
+/// not enough: a run also needs a time parameter, and BSG and bat mode never
+/// range filter however complete the query is.
+#[must_use]
+pub fn wants_range_filter(args: &AnalyzeArgs, config: &Config, model_type: ModelType) -> bool {
+    let has_coordinates = args.lat.or(config.defaults.latitude).is_some()
+        && args.lon.or(config.defaults.longitude).is_some();
+    let has_time = args.week.is_some() || (args.month.is_some() && args.day.is_some());
+
+    has_coordinates && has_time && supports_range_filter(args, model_type)
 }
 
 /// Build `RangeFilterConfig` from CLI args, config file, and resolved geomodel.

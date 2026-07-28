@@ -107,7 +107,7 @@ pub enum Command {
         #[arg(long, default_value = "freq")]
         sort: SortOrder,
 
-        /// Model name to use (must have `meta_model` configured).
+        /// Model name whose label set the species list is written in.
         #[arg(short, long)]
         model: Option<String>,
     },

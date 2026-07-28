@@ -6,7 +6,7 @@ This guide covers birda's species filtering capabilities, including both dynamic
 
 Birda supports two methods for filtering bird species detections:
 
-1. **Dynamic Range Filtering** - Uses BirdNET's meta model to filter species based on location and date
+1. **Dynamic Range Filtering** - Uses the BirdNET Geomodel v3.0.2 to filter species based on location and date
 2. **Static Species Lists** - Uses pre-generated text files containing species lists
 
 Both methods are fully compatible with BirdNET-Analyzer's species list file format.
@@ -23,13 +23,26 @@ If you provide both `--lat`/`--lon` AND `--slist`, the species list file will be
 
 ## Dynamic Range Filtering
 
-Dynamic filtering uses the meta model to predict which species are likely to occur at a specific location and time.
+Dynamic filtering uses the BirdNET Geomodel v3.0.2 to predict which species are likely to occur at a specific location and time. The geomodel covers 12,012 species across birds, mammals, insects, amphibians and reptiles, and is shared by every classifier: BirdNET v2.4, BirdNET v3.0 and Perch v2 all use the same one.
 
 ### Requirements
 
-- Model with `meta_model` configured in `config.toml`
+- The BirdNET Geomodel, which birda offers to download on first use (14.7 MB, CC BY-SA 4.0). Install it explicitly with `birda models install geomodel`.
 - Location coordinates (latitude and longitude)
 - Date information (week OR month+day)
+
+### Species coverage
+
+No classifier's species list is a subset of the geomodel's, so some species have no range data at all:
+
+| Model | Species | With geomodel coverage |
+|-------|---------|------------------------|
+| BirdNET v2.4 | 6,522 | 6,217 |
+| Perch v2 | 14,795 | 11,145 |
+
+The BirdNET v2.4 shortfall is mostly recent eBird taxonomic revisions, plus the ten non-species labels (`Dog`, `Engine`, `Fireworks`, `Gun`, `Human non-vocal`, `Human vocal`, `Human whistle`, `Noise`, `Power tools`, `Siren`). Perch's is mostly environmental sound classes, insects and amphibians.
+
+By default these species **pass through unfiltered**, so range filtering never silently loses a detection it has no evidence about. Use `--range-unmatched drop` to filter them out instead. birda prints the mapped and unmatched counts at startup, so coverage is visible rather than assumed.
 
 ### Usage Examples
 
@@ -65,15 +78,27 @@ birda recording.wav --lat 60.1699 --lon 24.9384 --week 24 --rerank
 | `--day` | Day of month | 1-31 | (one required) |
 | `--range-threshold` | Minimum location score | 0.0-1.0 | 0.01 |
 | `--rerank` | Re-rank by confidence × location | boolean | false |
+| `--range-unmatched` | Species with no geomodel entry | keep, drop | keep |
+| `--geomodel-path` | Override the geomodel ONNX path | path | from config |
+| `--geomodel-labels-path` | Override the geomodel labels path | path | from config |
+| `--yes` | Accept the geomodel download without prompting | boolean | false |
 
 **Note:** You must provide either `--week` OR `--month`+`--day`, but not both.
 
 ### How It Works
 
-1. The meta model predicts a probability score for each species at your location and date
-2. Species with scores below `--range-threshold` are filtered out
-3. If `--rerank` is enabled, detection confidence scores are multiplied by location scores
-4. Only detections above `--min-confidence` are reported
+1. The BirdNET Geomodel predicts an occurrence probability for each of its 12,012 species at your location and date
+2. Those scores are matched onto your model's labels by scientific name, so localized label files work unchanged
+3. Species with scores below `--range-threshold` are filtered out
+4. Species with no geomodel entry pass through, unless `--range-unmatched drop` is set
+5. If `--rerank` is enabled, detection confidence scores are multiplied by occurrence probability, and species with no geomodel entry are excluded: reranking has no probability to weight them by, and treating a missing one as certainty would push exactly the least-known species to the top
+6. Only detections above `--min-confidence` are reported
+
+Note that `--rerank` rewrites the reported confidence values, so they are not comparable with a non-reranked run. `--min-confidence` is applied before range filtering, so reranking can push a detection below your threshold and it will still be reported.
+
+### Attribution
+
+The geomodel is a BirdNET product, licensed CC BY-SA 4.0. Powered by [BirdNET](https://birdnet.cornell.edu/).
 
 ## Static Species Lists
 
@@ -132,7 +157,7 @@ birda recording.wav
 
 ## Generating Species Lists
 
-Use the `species` subcommand to generate species list files from the meta model.
+Use the `species` subcommand to generate species list files from the BirdNET Geomodel. The output is written in your model's own label language, so it can be fed straight back in with `--slist`.
 
 ### Basic Usage
 
@@ -277,9 +302,9 @@ birda fall_recordings/*.wav --slist chicago_fall.txt
 
 ## Configuration
 
-### Meta Model Setup
+### Geomodel Setup
 
-To enable range filtering, add a meta model to your config:
+`birda models install geomodel` records the geomodel paths for you, so this is usually not something you edit by hand. The geomodel is shared, so it is configured once under `[defaults]` rather than per model:
 
 ```toml
 # ~/.config/birda/config.toml
@@ -288,11 +313,15 @@ To enable range filtering, add a meta model to your config:
 path = "/path/to/BirdNET_GLOBAL_6K_V2.4_Model_FP32.onnx"
 labels = "/path/to/BirdNET_GLOBAL_6K_V2.4_Labels.txt"
 type = "birdnet-v24"
-meta_model = "/path/to/BirdNET_GLOBAL_6K_V2.4_MData_Model_FP32.onnx"
 
 [defaults]
 model = "birdnet-v24"
+geomodel = "~/.local/share/birda/models/birdnet-geomodel-v3.0.2.onnx"
+geomodel_labels = "~/.local/share/birda/models/birdnet-geomodel-v3.0.2-labels.txt"
+range_unmatched = "keep"
 ```
+
+The old per-model `meta_model` key is ignored. birda warns once when it sees one and drops it the next time the config is written.
 
 ### Default Species List
 
@@ -309,18 +338,32 @@ This will be used unless:
 
 ## Troubleshooting
 
-### "meta model required" error
+### Range filtering is disabled
+
+**Warning:**
+```
+Range filtering disabled: BirdNET Geomodel v3.0.2 is not installed;
+run 'birda models install geomodel' to enable range filtering
+```
+
+This is what you see after upgrading from a version that used the old BirdNET v2.4 meta model, in a non-interactive run. Analysis continues without range filtering rather than failing, so scripts and cron jobs keep working.
+
+**Solution:**
+```bash
+birda models install geomodel
+```
+
+In an interactive terminal birda offers the download instead of warning. Pass `--yes` to accept it without a prompt in a script.
+
+### "no network connectivity" error
 
 **Error:**
 ```
-error: range filtering requires meta model (model birdnet-v24 has no meta model configured)
+error: no network connectivity to huggingface.co;
+run 'birda models install geomodel' when online
 ```
 
-**Solution:**
-Add `meta_model` path to your model config, or download a model that includes it:
-```bash
-birda models install birdnet-v24 --language en
-```
+birda checks the download host before starting a transfer, so being offline reports this rather than timing out. Install the geomodel once while online and it is reused afterwards.
 
 ### "species list file not found" error
 

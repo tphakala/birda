@@ -1325,7 +1325,7 @@ fn handle_models_command(
             default,
         } => handle_models_add(name, path, labels, r#type, default),
         ModelsAction::Check => {
-            // JSON/NDJSON output — collect all results then emit
+            // JSON/NDJSON output: collect all results then emit
             if output_mode.is_structured() {
                 let models: Vec<ModelCheckEntry> = config
                     .models
@@ -1551,7 +1551,7 @@ fn handle_models_remove(name: &str, purge: bool, output_mode: OutputMode) -> Res
     // Remove from config and handle default promotion
     let (model, promoted) = remove_model_from_config(&mut config, name)?;
 
-    // Save config before deleting files (safer — config is consistent even if delete fails)
+    // Save config before deleting files (safer: config stays consistent even if delete fails)
     let config_path = save_default_config(&config)?;
 
     // Build the structured-output payload once for reuse in both the error and success paths.

@@ -183,20 +183,24 @@ fn acquire(
 }
 
 /// Ask the user whether to download the geomodel.
-#[allow(clippy::print_stdout, clippy::print_stderr)]
+#[allow(clippy::print_stderr)]
 fn prompt_for_download(asset: &crate::registry::RangeFilterAsset) -> Result<bool> {
-    println!(
+    // Written to stderr, not stdout. Interactivity is decided by stdin being a
+    // terminal, so `birda ... > results.txt` from a terminal still prompts; on
+    // stdout the prompt would land in the redirected file and the user would
+    // see an unexplained hang on the read below.
+    eprintln!(
         "Range filtering needs the {}, which is not installed.",
         asset.name
     );
-    println!(
+    eprintln!(
         "  Model: {}    Labels: {}    Licence: {}",
         human_size(asset.model.size_bytes),
         human_size(asset.labels.size_bytes),
         asset.license.r#type
     );
-    print!("Download it now? [y/N]: ");
-    std::io::stdout().flush()?;
+    eprint!("Download it now? [y/N]: ");
+    std::io::stderr().flush()?;
 
     let mut input = String::new();
     std::io::stdin().read_line(&mut input)?;

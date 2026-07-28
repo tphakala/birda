@@ -130,27 +130,38 @@ fn resolve_model_config(args: &AnalyzeArgs, config: &Config) -> Result<(ModelCon
 
 /// Resolve the shared geomodel for range filtering, if it is wanted at all.
 ///
-/// Returns `Ok(None)` when range filtering is not requested (no coordinates),
-/// or when the geomodel is unavailable. An unavailable geomodel warns rather
-/// than failing: range filtering turns on implicitly whenever coordinates are
-/// configured, so a hard error would break every automated pipeline that
-/// upgrades to this version before installing the geomodel.
+/// Returns `None` when range filtering is not requested, or when the geomodel
+/// is unavailable for any reason. The absent `Result` is deliberate: range
+/// filtering turns on implicitly whenever coordinates are configured, so a
+/// hard error would break every automated pipeline that upgrades to this
+/// version before installing the geomodel. Making the signature infallible
+/// means a future edit cannot reintroduce that failure mode by adding a `?`.
 fn resolve_range_filter_geomodel(
     args: &AnalyzeArgs,
     config: &Config,
     model_config: &ModelConfig,
     output_mode: OutputMode,
-) -> Result<Option<registry::InstalledRangeFilter>> {
+) -> Option<registry::InstalledRangeFilter> {
     // Ask whether range filtering can apply at all before touching the
     // registry. Coordinates alone are not enough: a run also needs a time
     // parameter, and BSG and bat mode never range filter. Gating on
     // coordinates only would prompt for and download 15 MB that
     // build_range_filter_config then discards.
     if !config::range_filter::wants_range_filter(args, config, model_config.model_type) {
-        return Ok(None);
+        return None;
     }
 
-    let registry = registry::load_registry()?;
+    // load_registry writes ~/.config/birda/registry.json, both to bootstrap it
+    // and to perform the v3 to v4 rewrite this release triggers, so it can fail
+    // on a read-only or unresolvable config dir. That must not abort analysis
+    // either: it is the upgrade path itself.
+    let registry = match registry::load_registry() {
+        Ok(registry) => registry,
+        Err(e) => {
+            warn!("Range filtering disabled: {e}");
+            return None;
+        }
+    };
 
     // Every failure here degrades to unfiltered analysis. Returning Err would
     // abort the whole run on a transient network blip, a stale cached registry,
@@ -161,15 +172,15 @@ fn resolve_range_filter_geomodel(
         Ok(resolution) => resolution,
         Err(e) => {
             warn!("Range filtering disabled: {e}");
-            return Ok(None);
+            return None;
         }
     };
 
     match resolution {
-        config::GeomodelResolution::Ready(geomodel) => Ok(Some(geomodel)),
+        config::GeomodelResolution::Ready(geomodel) => Some(geomodel),
         config::GeomodelResolution::Unavailable(reason) => {
             warn!("Range filtering disabled: {reason}");
-            Ok(None)
+            None
         }
     }
 }
@@ -765,7 +776,7 @@ fn analyze_files(
     // filtering implicitly, so erroring would break existing pipelines on
     // upgrade.
     let range_filter_config =
-        match resolve_range_filter_geomodel(args, config, &model_config, output_mode)? {
+        match resolve_range_filter_geomodel(args, config, &model_config, output_mode) {
             Some(geomodel) => build_range_filter_config(args, config, &model_config, &geomodel)?,
             None => None,
         };

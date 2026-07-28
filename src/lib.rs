@@ -89,7 +89,7 @@ fn resolve_model_config(args: &AnalyzeArgs, config: &Config) -> Result<(ModelCon
             path: path.clone(),
             labels,
             model_type,
-            meta_model: args.meta_model_path.clone(),
+            meta_model: None,
             bsg_calibration: None,
             bsg_migration: None,
             bsg_distribution_maps: None,
@@ -128,6 +128,37 @@ fn resolve_model_config(args: &AnalyzeArgs, config: &Config) -> Result<(ModelCon
     })
 }
 
+/// Resolve the shared geomodel for range filtering, if it is wanted at all.
+///
+/// Returns `Ok(None)` when range filtering is not requested (no coordinates),
+/// or when the geomodel is unavailable. An unavailable geomodel warns rather
+/// than failing: range filtering turns on implicitly whenever coordinates are
+/// configured, so a hard error would break every automated pipeline that
+/// upgrades to this version before installing the geomodel.
+fn resolve_range_filter_geomodel(
+    args: &AnalyzeArgs,
+    config: &Config,
+    output_mode: OutputMode,
+) -> Result<Option<registry::InstalledRangeFilter>> {
+    // Skip the registry load entirely when no coordinates are available: there
+    // is nothing to range filter against.
+    let has_coordinates = args.lat.or(config.defaults.latitude).is_some()
+        && args.lon.or(config.defaults.longitude).is_some();
+    if !has_coordinates {
+        return Ok(None);
+    }
+
+    let registry = registry::load_registry()?;
+
+    match config::resolve_geomodel(args, config, &registry, output_mode)? {
+        config::GeomodelResolution::Ready(geomodel) => Ok(Some(geomodel)),
+        config::GeomodelResolution::Unavailable(reason) => {
+            warn!("Range filtering disabled: {reason}");
+            Ok(None)
+        }
+    }
+}
+
 /// Apply CLI overrides to a model configuration.
 fn apply_model_overrides(model_config: &mut ModelConfig, args: &AnalyzeArgs) {
     if let Some(ref path) = args.model_path {
@@ -136,8 +167,12 @@ fn apply_model_overrides(model_config: &mut ModelConfig, args: &AnalyzeArgs) {
     if let Some(ref labels) = args.labels_path {
         model_config.labels.clone_from(labels);
     }
-    if let Some(ref meta) = args.meta_model_path {
-        model_config.meta_model = Some(meta.clone());
+    if args.meta_model_path.is_some() {
+        warn!(
+            "--meta-model-path is deprecated and ignored; range filtering uses the \
+             BirdNET Geomodel v3.0.2. Use --geomodel-path and --geomodel-labels-path \
+             to point at a specific copy."
+        );
     }
 }
 
@@ -698,8 +733,16 @@ fn analyze_files(
     // Resolve device from command-line flags or config
     let device = resolve_device(args, config);
 
-    // Build range filter config
-    let range_filter_config = build_range_filter_config(args, config, &model_config, &model_name)?;
+    // Build range filter config, resolving the shared geomodel first.
+    //
+    // A geomodel that cannot be found or fetched disables range filtering with
+    // a warning rather than failing the run: coordinates in config enable range
+    // filtering implicitly, so erroring would break existing pipelines on
+    // upgrade.
+    let range_filter_config = match resolve_range_filter_geomodel(args, config, output_mode)? {
+        Some(geomodel) => build_range_filter_config(args, config, &model_config, &geomodel)?,
+        None => None,
+    };
 
     // Log if range filtering is enabled
     if let Some(ref rf_config) = range_filter_config {
@@ -1236,7 +1279,6 @@ fn handle_models_command(
                         is_default,
                         path: Some(model.path.clone()),
                         labels_path: Some(model.labels.clone()),
-                        has_meta_model: model.meta_model.is_some(),
                     }
                 })
                 .collect();
@@ -1326,7 +1368,6 @@ fn handle_models_command(
                             model_type: reg_model.model_type.clone(),
                             path: None,
                             labels_path: None,
-                            meta_model_path: None,
                             source: "registry".to_string(),
                         },
                     };
@@ -1353,7 +1394,6 @@ fn handle_models_command(
                             model_type: model.model_type.to_string(),
                             path: Some(model.path.clone()),
                             labels_path: Some(model.labels.clone()),
-                            meta_model_path: model.meta_model.clone(),
                             source: "configured".to_string(),
                         },
                     };
@@ -1998,21 +2038,22 @@ mod tests {
     }
 
     #[test]
-    fn test_adhoc_with_meta_model() {
-        let config = Config::default();
-        let mut args = default_args();
-        args.model_type = Some(ModelType::BirdnetV24);
+    fn test_adhoc_ignores_the_deprecated_meta_model_flag() {
+        // --meta-model-path is retained as a hidden flag so scripts do not
+        // break, but it no longer configures anything.
+        let mut args = AnalyzeArgs::default();
         args.model_path = Some(PathBuf::from("/adhoc/model.onnx"));
         args.labels_path = Some(PathBuf::from("/adhoc/labels.txt"));
+        args.model_type = Some(ModelType::BirdnetV24);
         args.meta_model_path = Some(PathBuf::from("/adhoc/meta.onnx"));
 
-        let result = resolve_model_config(&args, &config);
-        assert!(result.is_ok());
+        let config = Config::default();
+        let (model_config, name) = resolve_model_config(&args, &config).unwrap();
 
-        let (model_config, _) = result.unwrap();
-        assert_eq!(
-            model_config.meta_model,
-            Some(PathBuf::from("/adhoc/meta.onnx"))
+        assert_eq!(name, ADHOC_MODEL_NAME);
+        assert!(
+            model_config.meta_model.is_none(),
+            "the deprecated flag must not populate the config"
         );
     }
 

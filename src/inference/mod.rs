@@ -22,10 +22,20 @@ pub use tensorrt_detection::{get_tensorrt_library_name, is_tensorrt_available};
 use std::path::PathBuf;
 
 /// Configuration for range filtering at runtime.
+///
+/// Every classifier uses the same `BirdNET` Geomodel v3.0.2, so there is no
+/// per-model variation here beyond the query parameters.
 #[derive(Debug, Clone)]
 pub struct RangeFilterConfig {
-    /// Path to meta model file.
-    pub meta_model_path: PathBuf,
+    /// Path to the geomodel ONNX file.
+    pub geomodel_path: PathBuf,
+    /// Path to the geomodel labels file.
+    ///
+    /// The filter is built from these labels, not the classifier's: the
+    /// geomodel has 12,012 outputs and `birdnet_onnx` validates that the label
+    /// count matches. Scores are projected into the classifier's label space
+    /// afterwards.
+    pub geomodel_labels_path: PathBuf,
     /// Filtering threshold.
     pub threshold: f32,
     /// Latitude.
@@ -38,12 +48,6 @@ pub struct RangeFilterConfig {
     pub day: u32,
     /// Enable re-ranking.
     pub rerank: bool,
-    /// When using a meta model from a different model, this holds the path
-    /// to that model's labels file. The classifier uses these labels to build
-    /// the range filter (for correct output-size validation) and then remaps
-    /// the resulting location scores to the classifier's own label format.
-    pub cross_model_labels: Option<PathBuf>,
-    /// Name of the model that provided the meta model (for logging/reporting).
-    /// e.g., "birdnet-v24" when using `BirdNET`'s meta model for perch-v2.
-    pub meta_model_source: Option<String>,
+    /// What to do with classifier species that have no geomodel entry.
+    pub unmatched: crate::config::UnmatchedPolicy,
 }

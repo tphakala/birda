@@ -119,6 +119,14 @@ pub mod range_filter {
     /// Default range filter threshold.
     pub const DEFAULT_THRESHOLD: f32 = 0.01;
 
+    /// Version of the `BirdNET` Geomodel birda range filters with.
+    ///
+    /// Kept in step with the `range_filter.version` field in `registry.json`.
+    pub const GEOMODEL_VERSION: &str = "3.0.2";
+
+    /// Number of species the `BirdNET` Geomodel v3.0.2 scores.
+    pub const GEOMODEL_SPECIES_COUNT: usize = 12_012;
+
     /// Threshold used when querying the geomodel itself.
     ///
     /// Zero so the model returns a score for every class. Thresholding and the

@@ -2,8 +2,14 @@
 //!
 //! These run against a tiny fixture ONNX with the same input and output
 //! contract as the real geomodel (3 float32 inputs, N sigmoid outputs), so the
-//! whole chain (build filter, predict, map, project, filter) is exercised in CI
+//! whole chain (build filter, predict, map, project, filter) is exercised
 //! without downloading 14.7 MB. See `tests/fixtures/make_fixture_geomodel.py`.
+//!
+//! Every test here needs the ONNX Runtime shared library, which birda loads
+//! dynamically and does not vendor. Where it is absent (a clean CI runner, a
+//! fresh checkout) each test skips rather than running: `ort` does not fail
+//! fast on a missing library, it blocks, so an unguarded session build hangs
+//! the job until the CI timeout instead of reporting anything useful.
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
@@ -18,6 +24,28 @@ const TEST_LAT: f64 = 60.1699;
 const TEST_LON: f64 = 24.9384;
 const TEST_MONTH: u32 = 6;
 const TEST_DAY: u32 = 15;
+
+/// Whether the ONNX Runtime shared library can be loaded.
+///
+/// Resolved once per test binary: the probe itself is cheap, but calling it
+/// per test would repeat the library search.
+fn onnx_runtime_available() -> bool {
+    static AVAILABLE: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *AVAILABLE.get_or_init(|| birda::inference::ensure_runtime_available().is_ok())
+}
+
+/// Skip the calling test when the ONNX Runtime is unavailable.
+///
+/// Rust has no first-class skip, so this returns from the test after saying
+/// why. Run with `cargo test -- --nocapture` to see the notice.
+macro_rules! require_onnx_runtime {
+    () => {
+        if !onnx_runtime_available() {
+            eprintln!("skipping: ONNX Runtime not available in this environment");
+            return;
+        }
+    };
+}
 
 fn fixture_path(name: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -50,6 +78,7 @@ fn prediction(species: &str, confidence: f32) -> Prediction {
 
 #[test]
 fn test_zero_threshold_returns_every_class() {
+    require_onnx_runtime!();
     // birda queries the geomodel at threshold 0.0 and thresholds afterwards, so
     // that every mapped species has a score and "no range data" stays
     // distinguishable from "out of range".
@@ -65,6 +94,7 @@ fn test_zero_threshold_returns_every_class() {
 
 #[test]
 fn test_classifier_labels_are_rejected_as_geomodel_labels() {
+    require_onnx_runtime!();
     // Regression guard for the failure this whole design exists to avoid:
     // building the filter from the classifier's labels fails birdnet-onnx's
     // label-count validation, because no classifier has the geomodel's classes.
@@ -84,6 +114,7 @@ fn test_classifier_labels_are_rejected_as_geomodel_labels() {
 
 #[test]
 fn test_scores_project_onto_localized_classifier_labels() {
+    require_onnx_runtime!();
     // The geomodel ships English labels only, so a localized classifier label
     // must still receive its score.
     let geomodel_labels = fixture_labels();
@@ -118,6 +149,7 @@ fn test_scores_project_onto_localized_classifier_labels() {
 
 #[test]
 fn test_keep_policy_passes_unmatched_species_through_end_to_end() {
+    require_onnx_runtime!();
     let geomodel_labels = fixture_labels();
     let filter = fixture_filter(&geomodel_labels);
     let scores = filter
@@ -147,6 +179,7 @@ fn test_keep_policy_passes_unmatched_species_through_end_to_end() {
 
 #[test]
 fn test_drop_policy_removes_unmatched_species_end_to_end() {
+    require_onnx_runtime!();
     let geomodel_labels = fixture_labels();
     let filter = fixture_filter(&geomodel_labels);
     let scores = filter
@@ -172,6 +205,7 @@ fn test_drop_policy_removes_unmatched_species_end_to_end() {
 
 #[test]
 fn test_out_of_range_species_is_filtered_end_to_end() {
+    require_onnx_runtime!();
     // The fixture gives species index 3 a large negative bias, so its sigmoid
     // score sits far below any sensible threshold at this query point.
     let geomodel_labels = fixture_labels();
@@ -210,6 +244,7 @@ fn test_out_of_range_species_is_filtered_end_to_end() {
 
 #[test]
 fn test_rerank_scales_confidence_by_the_predicted_score() {
+    require_onnx_runtime!();
     let geomodel_labels = fixture_labels();
     let filter = fixture_filter(&geomodel_labels);
     let scores = filter
@@ -238,6 +273,7 @@ fn test_rerank_scales_confidence_by_the_predicted_score() {
 
 #[test]
 fn test_a_different_location_produces_different_scores() {
+    require_onnx_runtime!();
     // Guards against the query parameters being ignored, which would make the
     // filter a constant and silently useless.
     let labels = fixture_labels();

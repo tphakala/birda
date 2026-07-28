@@ -16,8 +16,6 @@ pub struct InstalledModel {
     pub model: PathBuf,
     /// Path to downloaded labels file.
     pub labels: PathBuf,
-    /// Path to downloaded meta model file (if available).
-    pub meta_model: Option<PathBuf>,
     /// Path to downloaded BSG calibration file (if available).
     pub bsg_calibration: Option<PathBuf>,
     /// Path to downloaded BSG migration file (if available).
@@ -151,15 +149,6 @@ pub async fn install_model(model: &ModelEntry, language: Option<&str>) -> Result
     // Set the default labels path to the requested/default language
     let labels_dest = models_dir.join(&default_language_variant.filename);
 
-    // Download meta model if available
-    let meta_model_path = if let Some(meta_info) = &model.files.meta_model {
-        let meta_dest = models_dir.join(&meta_info.filename);
-        download_file(&client, &meta_info.url, &meta_dest).await?;
-        Some(meta_dest)
-    } else {
-        None
-    };
-
     // Download BSG calibration file if available
     let bsg_calibration_path = if let Some(cal_info) = &model.files.bsg_calibration {
         let cal_dest = models_dir.join(&cal_info.filename);
@@ -190,7 +179,6 @@ pub async fn install_model(model: &ModelEntry, language: Option<&str>) -> Result
     Ok(InstalledModel {
         model: model_dest,
         labels: labels_dest,
-        meta_model: meta_model_path,
         bsg_calibration: bsg_calibration_path,
         bsg_migration: bsg_migration_path,
         bsg_distribution_maps: bsg_maps_path,
@@ -216,7 +204,6 @@ mod tests {
         let installed = InstalledModel {
             model: PathBuf::from("/models/birdnet-v24.onnx"),
             labels: PathBuf::from("/models/birdnet-v24-en.txt"),
-            meta_model: None,
             bsg_calibration: None,
             bsg_migration: None,
             bsg_distribution_maps: None,

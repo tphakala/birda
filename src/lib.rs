@@ -1632,9 +1632,6 @@ fn handle_models_install(
         println!("Model files saved to:");
         println!("  {}", installed.model.display());
         println!("  {}", installed.labels.display());
-        if let Some(meta_path) = &installed.meta_model {
-            println!("  {}", meta_path.display());
-        }
         if let Some(cal_path) = &installed.bsg_calibration {
             println!("  {}", cal_path.display());
         }
@@ -1680,7 +1677,7 @@ fn handle_models_install(
             path: installed.model,
             labels: installed.labels,
             model_type,
-            meta_model: installed.meta_model,
+            meta_model: None,
             bsg_calibration: installed.bsg_calibration,
             bsg_migration: installed.bsg_migration,
             bsg_distribution_maps: installed.bsg_distribution_maps,

@@ -12,6 +12,36 @@ pub struct Registry {
     pub registry_version: u32,
     /// List of available models.
     pub models: Vec<ModelEntry>,
+    /// Shared range filter asset (`BirdNET` Geomodel), used by all classifiers.
+    ///
+    /// Optional so a registry written by an older birda still deserializes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub range_filter: Option<RangeFilterAsset>,
+}
+
+/// Shared range filter asset available to every classifier.
+///
+/// Unlike [`ModelEntry`] this has no language variants: the geomodel ships a
+/// single English labels file, and the species names shown to the user come
+/// from the active classifier's own labels.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct RangeFilterAsset {
+    /// Unique identifier, e.g. "birdnet-geomodel-v3".
+    pub id: String,
+    /// Display name. Always includes "`BirdNET`" for attribution.
+    pub name: String,
+    /// Upstream model version, e.g. "3.0.2". Authoritative over the filename.
+    pub version: String,
+    /// Organization/author.
+    pub vendor: String,
+    /// License information.
+    pub license: LicenseInfo,
+    /// Number of species the model scores.
+    pub species_count: usize,
+    /// ONNX model file.
+    pub model: FileInfo,
+    /// Labels file, one `Scientific name_Common name` per line.
+    pub labels: FileInfo,
 }
 
 /// Single model entry in registry.
@@ -61,9 +91,6 @@ pub struct ModelFiles {
     pub model: FileInfo,
     /// Labels file information with language variants.
     pub labels: LabelsInfo,
-    /// Optional meta model for range filtering.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub meta_model: Option<FileInfo>,
     /// BSG calibration CSV file.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub bsg_calibration: Option<FileInfo>,
@@ -112,6 +139,48 @@ pub struct LanguageVariant {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_deserialize_registry_with_range_filter() {
+        let json = r#"{"schema_version":"1.1","registry_version":4,"models":[],
+            "range_filter":{"id":"birdnet-geomodel-v3","name":"BirdNET Geomodel v3.0.2",
+            "version":"3.0.2","vendor":"Cornell Lab","species_count":12012,
+            "license":{"type":"CC-BY-SA-4.0","url":"https://x","commercial_use":true,
+                       "attribution_required":true,"share_alike":true},
+            "model":{"url":"https://x/m.onnx","filename":"m.onnx","sha256":"abc"},
+            "labels":{"url":"https://x/l.txt","filename":"l.txt","sha256":"def"}}}"#;
+        let registry: Registry = serde_json::from_str(json).unwrap();
+        let rf = registry.range_filter.unwrap();
+        assert_eq!(rf.version, "3.0.2");
+        assert_eq!(rf.species_count, 12012);
+        assert_eq!(rf.model.sha256.as_deref(), Some("abc"));
+        assert!(
+            rf.name.contains("BirdNET"),
+            "geomodel display name must credit BirdNET"
+        );
+    }
+
+    #[test]
+    fn test_deserialize_registry_without_range_filter() {
+        let json = r#"{"schema_version":"1.0","registry_version":3,"models":[]}"#;
+        let registry: Registry = serde_json::from_str(json).unwrap();
+        assert!(registry.range_filter.is_none());
+    }
+
+    #[test]
+    fn test_deserialize_legacy_model_files_with_meta_model() {
+        // A registry.json cached from schema 1.0 still carries files.meta_model.
+        // It must deserialize (serde ignores unknown fields) so the loader can
+        // replace it with the newer bundled registry.
+        let json = r#"{
+            "model": {"url":"https://x/m.onnx","filename":"m.onnx"},
+            "labels": {"default_language":"en","languages":[
+                {"code":"en","name":"English","url":"https://x/l.txt","filename":"l.txt"}]},
+            "meta_model": {"url":"https://x/meta.onnx","filename":"meta.onnx"}
+        }"#;
+        let files: ModelFiles = serde_json::from_str(json).unwrap();
+        assert_eq!(files.model.filename, "m.onnx");
+    }
 
     #[test]
     fn test_deserialize_empty_registry() {

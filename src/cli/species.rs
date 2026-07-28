@@ -3,6 +3,7 @@
 use crate::cli::SortOrder;
 use crate::config::{OutputMode, load_default_config};
 use crate::error::{Error, Result};
+use crate::inference::SpeciesMapping;
 use crate::inference::range_filter::RangeFilter;
 use crate::output::{ResultType, SpeciesEntry, SpeciesListPayload, emit_json_result};
 use crate::utils::date::{date_to_week, day_of_year_to_date, week_to_start_day};
@@ -59,25 +60,24 @@ pub fn generate_species_list(
 
     let model_config = crate::config::get_model(&config, &model_name)?;
 
-    // Get the geomodel path. Task 10 replaces this with full resolution
-    // through config::geomodel, including the download offer.
-    let meta_model_path =
-        config
-            .defaults
-            .geomodel
-            .as_ref()
-            .ok_or_else(|| Error::GeomodelNotInstalled {
-                hint: "run 'birda models install geomodel'".to_string(),
-            })?;
-
-    if !meta_model_path.exists() {
-        return Err(Error::GeomodelNotInstalled {
-            hint: format!(
-                "{} does not exist; run 'birda models install geomodel'",
-                meta_model_path.display()
-            ),
-        });
-    }
+    // Resolve the shared geomodel, offering to download it when absent.
+    //
+    // Unlike the analyze path, an unavailable geomodel is fatal here: producing
+    // a species list is the entire purpose of this command, so there is nothing
+    // useful to fall back to.
+    let registry = crate::registry::load_registry()?;
+    let geomodel_args = crate::cli::AnalyzeArgs {
+        lat: Some(lat),
+        lon: Some(lon),
+        ..crate::cli::AnalyzeArgs::default()
+    };
+    let geomodel =
+        match crate::config::resolve_geomodel(&geomodel_args, &config, &registry, output_mode)? {
+            crate::config::GeomodelResolution::Ready(paths) => paths,
+            crate::config::GeomodelResolution::Unavailable(hint) => {
+                return Err(Error::GeomodelNotInstalled { hint });
+            }
+        };
 
     let is_json = output_mode.is_structured();
 
@@ -109,11 +109,23 @@ pub fn generate_species_list(
     // Calculate week for JSON output using canonical date_to_week function
     let week_num = week.unwrap_or_else(|| date_to_week(filter_month, filter_day));
 
-    // Build range filter
+    // Build the range filter from the GEOMODEL's labels, not the classifier's.
+    // birdnet-onnx validates that the label count matches the model's output
+    // size, and no classifier has the geomodel's 12,012 classes. Scores are
+    // projected back into the classifier's label space afterwards, so the
+    // output stays usable as a --species-list for that model.
     if !is_json {
-        println!("Loading range filter model: {}", meta_model_path.display());
+        println!(
+            "Loading BirdNET Geomodel v3.0.2: {}",
+            geomodel.model.display()
+        );
     }
-    let range_filter = RangeFilter::from_config(meta_model_path, &labels, threshold)?;
+    let geomodel_labels = read_labels_file(&geomodel.labels)?;
+    let range_filter = RangeFilter::from_config(
+        &geomodel.model,
+        &geomodel_labels,
+        crate::constants::range_filter::GEOMODEL_QUERY_THRESHOLD,
+    )?;
 
     // Get location scores
     if !is_json {
@@ -123,32 +135,20 @@ pub fn generate_species_list(
     }
     let location_scores = range_filter.predict(lat, lon, filter_month, filter_day)?;
 
-    // Filter species based on threshold and create list
-    let mut species_list: Vec<(String, f32)> = location_scores
-        .iter()
-        .filter(|score| score.score >= threshold)
-        .map(|score| (score.species.clone(), score.score))
-        .collect();
+    let mapping = SpeciesMapping::build(&geomodel_labels, &labels);
+    let species_list = build_species_entries(&location_scores, &mapping, threshold, sort);
 
     if !is_json {
+        println!(
+            "{} of {} model species have BirdNET Geomodel v3.0.2 coverage",
+            mapping.mapped_count(),
+            mapping.total_classifier_species()
+        );
         println!(
             "Found {} species above threshold {:.3}",
             species_list.len(),
             threshold
         );
-    }
-
-    // Sort according to user preference
-    // Use sort_unstable_by for performance - stability not needed here
-    match sort {
-        SortOrder::Freq => {
-            // Sort by score descending (most likely first)
-            species_list.sort_unstable_by(|a, b| b.1.total_cmp(&a.1));
-        }
-        SortOrder::Alpha => {
-            // Sort alphabetically
-            species_list.sort_unstable_by(|a, b| a.0.cmp(&b.0));
-        }
     }
 
     // Determine output file path (only used for human mode)
@@ -206,6 +206,37 @@ pub fn generate_species_list(
     Ok(())
 }
 
+/// Project geomodel scores onto the classifier's labels and sort them.
+///
+/// Emits the classifier's own label for each species, so the resulting file can
+/// be fed straight back in as a `--species-list` for that model. Species below
+/// `threshold`, and geomodel species the classifier cannot predict, are omitted.
+fn build_species_entries(
+    location_scores: &[birdnet_onnx::LocationScore],
+    mapping: &SpeciesMapping,
+    threshold: f32,
+    sort: SortOrder,
+) -> Vec<(String, f32)> {
+    let mut species_list: Vec<(String, f32)> = location_scores
+        .iter()
+        .filter(|score| score.score >= threshold)
+        .filter_map(|score| {
+            mapping
+                .classifier_label_for(&score.species)
+                .map(|label| (label.to_string(), score.score))
+        })
+        .collect();
+
+    // sort_unstable_by is fine here: ties between equal scores or equal labels
+    // are not meaningful.
+    match sort {
+        SortOrder::Freq => species_list.sort_unstable_by(|a, b| b.1.total_cmp(&a.1)),
+        SortOrder::Alpha => species_list.sort_unstable_by(|a, b| a.0.cmp(&b.0)),
+    }
+
+    species_list
+}
+
 /// Convert week number to month/day.
 ///
 /// Week 1 = Jan 1 (day 1), Week 48 = Dec 24 (day 358)
@@ -260,6 +291,128 @@ fn write_species_list(path: &std::path::Path, species: &[(String, f32)]) -> Resu
 #[allow(clippy::unwrap_used, clippy::float_cmp)]
 mod tests {
     use super::*;
+
+    fn labels_of(values: &[&str]) -> Vec<String> {
+        values.iter().map(|v| (*v).to_string()).collect()
+    }
+
+    fn score(species: &str, score: f32, index: usize) -> birdnet_onnx::LocationScore {
+        birdnet_onnx::LocationScore {
+            species: species.to_string(),
+            score,
+            index,
+        }
+    }
+
+    #[test]
+    fn test_species_list_emits_classifier_labels_not_geomodel_labels() {
+        // The output is fed back in as a --species-list for this model, so it
+        // must carry the model's own labels, in the user's chosen language.
+        let geomodel = labels_of(&["Parus major_Great Tit"]);
+        let classifier = labels_of(&["Parus major_Talitiainen"]);
+        let mapping = SpeciesMapping::build(&geomodel, &classifier);
+
+        let entries = build_species_entries(
+            &[score("Parus major_Great Tit", 0.9, 0)],
+            &mapping,
+            0.01,
+            SortOrder::Freq,
+        );
+
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].0, "Parus major_Talitiainen");
+    }
+
+    #[test]
+    fn test_species_list_excludes_scores_below_threshold() {
+        let geomodel = labels_of(&["Aaa aaa_X", "Bbb bbb_Y"]);
+        let mapping = SpeciesMapping::build(&geomodel, &geomodel);
+
+        let entries = build_species_entries(
+            &[score("Aaa aaa_X", 0.9, 0), score("Bbb bbb_Y", 0.001, 1)],
+            &mapping,
+            0.01,
+            SortOrder::Freq,
+        );
+
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].0, "Aaa aaa_X");
+    }
+
+    #[test]
+    fn test_species_list_omits_species_the_model_cannot_predict() {
+        // The geomodel covers mammals and insects that no bird classifier
+        // predicts; listing them would produce an unusable species list.
+        let geomodel = labels_of(&["Parus major_Great Tit", "Vulpes vulpes_Red Fox"]);
+        let classifier = labels_of(&["Parus major_Great Tit"]);
+        let mapping = SpeciesMapping::build(&geomodel, &classifier);
+
+        let entries = build_species_entries(
+            &[
+                score("Parus major_Great Tit", 0.9, 0),
+                score("Vulpes vulpes_Red Fox", 0.95, 1),
+            ],
+            &mapping,
+            0.01,
+            SortOrder::Freq,
+        );
+
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].0, "Parus major_Great Tit");
+    }
+
+    #[test]
+    fn test_species_list_freq_sort_is_most_likely_first() {
+        let geomodel = labels_of(&["Zzz zzz_Zebra Finch", "Aaa aaa_Ant Bird"]);
+        let mapping = SpeciesMapping::build(&geomodel, &geomodel);
+
+        let entries = build_species_entries(
+            &[
+                score("Aaa aaa_Ant Bird", 0.5, 0),
+                score("Zzz zzz_Zebra Finch", 0.9, 1),
+            ],
+            &mapping,
+            0.01,
+            SortOrder::Freq,
+        );
+
+        assert_eq!(entries[0].0, "Zzz zzz_Zebra Finch");
+    }
+
+    #[test]
+    fn test_species_list_alpha_sort_orders_by_label() {
+        let geomodel = labels_of(&["Zzz zzz_Zebra Finch", "Aaa aaa_Ant Bird"]);
+        let mapping = SpeciesMapping::build(&geomodel, &geomodel);
+
+        let entries = build_species_entries(
+            &[
+                score("Zzz zzz_Zebra Finch", 0.9, 0),
+                score("Aaa aaa_Ant Bird", 0.5, 1),
+            ],
+            &mapping,
+            0.01,
+            SortOrder::Alpha,
+        );
+
+        assert_eq!(entries[0].0, "Aaa aaa_Ant Bird");
+    }
+
+    #[test]
+    fn test_species_list_is_empty_when_nothing_maps() {
+        let mapping = SpeciesMapping::build(
+            &labels_of(&["Parus major_Great Tit"]),
+            &labels_of(&["Dog_Dog"]),
+        );
+
+        let entries = build_species_entries(
+            &[score("Parus major_Great Tit", 0.9, 0)],
+            &mapping,
+            0.01,
+            SortOrder::Freq,
+        );
+
+        assert!(entries.is_empty());
+    }
 
     #[test]
     fn test_week_to_date_week_1() {

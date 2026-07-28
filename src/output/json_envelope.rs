@@ -520,6 +520,31 @@ pub struct ModelCheckPayload {
     pub result_type: ResultType,
     /// Check results per model.
     pub models: Vec<ModelCheckEntry>,
+    /// Shared range filter status.
+    pub geomodel: GeomodelInfo,
+}
+
+/// Status of the shared `BirdNET` Geomodel range filter.
+///
+/// Reported once rather than per model, since every classifier shares it.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GeomodelInfo {
+    /// Geomodel version, e.g. "3.0.2".
+    pub version: String,
+    /// Whether both geomodel files are present on disk.
+    pub installed: bool,
+    /// Number of species the geomodel scores.
+    pub species_count: usize,
+    /// Path to the geomodel ONNX file, when installed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model_path: Option<PathBuf>,
+    /// Path to the geomodel labels file, when installed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub labels_path: Option<PathBuf>,
+    /// Files from earlier birda versions that are no longer used and can be
+    /// deleted, such as a leftover `birdnet-v24-meta.onnx`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub obsolete_files: Vec<PathBuf>,
 }
 
 /// Validation result for a single model.
@@ -864,11 +889,26 @@ mod tests {
                     error: Some("model file not found".to_string()),
                 },
             ],
+            geomodel: GeomodelInfo {
+                version: "3.0.2".to_string(),
+                installed: true,
+                species_count: 12012,
+                model_path: Some(PathBuf::from("/models/birdnet-geomodel-v3.0.2.onnx")),
+                labels_path: Some(PathBuf::from("/models/birdnet-geomodel-v3.0.2-labels.txt")),
+                obsolete_files: Vec::new(),
+            },
         };
         let json = serde_json::to_string(&payload).expect("serialize");
         let actual: serde_json::Value = serde_json::from_str(&json).expect("deserialize");
         let expected = serde_json::json!({
             "result_type": "model_check",
+            "geomodel": {
+                "version": "3.0.2",
+                "installed": true,
+                "species_count": 12012,
+                "model_path": "/models/birdnet-geomodel-v3.0.2.onnx",
+                "labels_path": "/models/birdnet-geomodel-v3.0.2-labels.txt"
+            },
             "models": [
                 {
                     "id": "birdnet",

@@ -1342,6 +1342,7 @@ fn handle_models_command(
                 let payload = ModelCheckPayload {
                     result_type: ResultType::ModelCheck,
                     models,
+                    geomodel: check_geomodel()?,
                 };
                 emit_json_result(&payload);
                 return Ok(());
@@ -1352,6 +1353,8 @@ fn handle_models_command(
                 config::validate_model_config(name, model)?;
                 println!("  {name}: OK");
             }
+
+            report_geomodel_status(&check_geomodel()?);
             Ok(())
         }
         ModelsAction::Info { id, languages } => {
@@ -1771,6 +1774,51 @@ fn handle_models_install(
     }
 
     Ok(())
+}
+
+/// Collect the status of the shared range filter for `birda models check`.
+fn check_geomodel() -> Result<output::GeomodelInfo> {
+    let registry = registry::load_registry()?;
+    let asset = registry
+        .range_filter
+        .as_ref()
+        .ok_or(Error::RangeFilterAssetMissing)?;
+
+    let paths = registry::geomodel_paths(asset)?;
+    let installed = paths.is_installed();
+    let obsolete_files = registry::models_dir()
+        .and_then(|dir| registry::find_obsolete_files(&dir))
+        .unwrap_or_default();
+
+    Ok(output::GeomodelInfo {
+        version: asset.version.clone(),
+        installed,
+        species_count: asset.species_count,
+        model_path: installed.then(|| paths.model.clone()),
+        labels_path: installed.then(|| paths.labels.clone()),
+        obsolete_files,
+    })
+}
+
+/// Print the shared range filter status for `birda models check`.
+#[allow(clippy::print_stdout)]
+fn report_geomodel_status(info: &output::GeomodelInfo) {
+    if info.installed {
+        println!(
+            "  BirdNET Geomodel v{}: OK ({} species)",
+            info.version, info.species_count
+        );
+    } else {
+        println!(
+            "  BirdNET Geomodel v{}: not installed \
+             (run 'birda models install geomodel' to enable range filtering)",
+            info.version
+        );
+    }
+
+    for path in &info.obsolete_files {
+        println!("  {} is no longer used and can be deleted", path.display());
+    }
 }
 
 /// Handle `birda models install geomodel`.

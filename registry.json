@@ -352,12 +352,14 @@
     "model": {
       "url": "https://huggingface.co/tphakala/BirdNET-Geomodel/resolve/main/birdnet-geomodel-v3.0-fp32.onnx",
       "filename": "birdnet-geomodel-v3.0.2.onnx",
-      "sha256": "b151f680a47de5371f39b3df129aea5946ac6baa039582274f833b42eaf992ea"
+      "sha256": "b151f680a47de5371f39b3df129aea5946ac6baa039582274f833b42eaf992ea",
+      "size_bytes": 14700313
     },
     "labels": {
       "url": "https://huggingface.co/tphakala/BirdNET-Geomodel/resolve/main/geomodel_v3.0.2_labels.txt",
       "filename": "birdnet-geomodel-v3.0.2-labels.txt",
-      "sha256": "92cdca7ca95beb7ed16a0a39f4010fa9a8b468b854b6e8083f732647f136ee1c"
+      "sha256": "92cdca7ca95beb7ed16a0a39f4010fa9a8b468b854b6e8083f732647f136ee1c",
+      "size_bytes": 479350
     }
   }
 }

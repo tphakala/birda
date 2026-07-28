@@ -137,6 +137,7 @@ mod tests {
                             url: "https://example.com/model.onnx".into(),
                             filename: "model.onnx".into(),
                             sha256: None,
+                            size_bytes: None,
                         },
                         labels: LabelsInfo {
                             default_language: "en".into(),
@@ -172,6 +173,7 @@ mod tests {
                             url: "https://example.com/model2.onnx".into(),
                             filename: "model2.onnx".into(),
                             sha256: None,
+                            size_bytes: None,
                         },
                         labels: LabelsInfo {
                             default_language: "en".into(),

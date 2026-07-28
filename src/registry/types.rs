@@ -112,6 +112,10 @@ pub struct FileInfo {
     /// Optional SHA256 checksum for verification.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub sha256: Option<String>,
+    /// Optional file size in bytes, used to tell the user what a download costs
+    /// before they agree to it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub size_bytes: Option<u64>,
 }
 
 /// Labels with language variants.

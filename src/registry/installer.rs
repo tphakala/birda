@@ -336,11 +336,13 @@ mod tests {
                 url: "https://example.com/birdnet-geomodel-v3.0-fp32.onnx".into(),
                 filename: "birdnet-geomodel-v3.0.2.onnx".into(),
                 sha256: Some(RIGHT_SHA256.into()),
+                size_bytes: None,
             },
             labels: FileInfo {
                 url: "https://example.com/geomodel_v3.0.2_labels.txt".into(),
                 filename: "birdnet-geomodel-v3.0.2-labels.txt".into(),
                 sha256: Some(RIGHT_SHA256.into()),
+                size_bytes: None,
             },
         }
     }

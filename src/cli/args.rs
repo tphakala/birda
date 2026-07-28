@@ -211,9 +211,18 @@ pub struct AnalyzeArgs {
     #[arg(long, value_enum, env = "BIRDA_MODEL_TYPE")]
     pub model_type: Option<ModelType>,
 
-    /// Path to meta model file for range filtering (overrides config).
-    #[arg(long, env = "BIRDA_META_MODEL_PATH")]
+    /// Deprecated and ignored. Range filtering uses the `BirdNET` Geomodel
+    /// v3.0.2; see `--geomodel-path`.
+    #[arg(long, env = "BIRDA_META_MODEL_PATH", hide = true)]
     pub meta_model_path: Option<PathBuf>,
+
+    /// Path to the `BirdNET` Geomodel v3.0.2 ONNX file (overrides config).
+    #[arg(long, env = "BIRDA_GEOMODEL_PATH", requires = "geomodel_labels_path")]
+    pub geomodel_path: Option<PathBuf>,
+
+    /// Path to the `BirdNET` Geomodel v3.0.2 labels file (overrides config).
+    #[arg(long, env = "BIRDA_GEOMODEL_LABELS_PATH", requires = "geomodel_path")]
+    pub geomodel_labels_path: Option<PathBuf>,
 
     /// Enable bat detection with a regional classifier.
     /// Implies `BirdNET` v2.4 backbone with embedding extraction.
@@ -355,8 +364,19 @@ pub struct AnalyzeArgs {
     pub range_threshold: Option<f32>,
 
     /// Re-rank predictions by confidence × location score.
+    ///
+    /// Species with no geomodel entry are excluded when this is set, since
+    /// there is no occurrence probability to weight them by.
     #[arg(long)]
     pub rerank: bool,
+
+    /// What to do with species that have no `BirdNET` Geomodel entry.
+    #[arg(long, value_enum, env = "BIRDA_RANGE_UNMATCHED")]
+    pub range_unmatched: Option<crate::config::UnmatchedPolicy>,
+
+    /// Assume yes for prompts, including the geomodel download offer.
+    #[arg(short = 'y', long)]
+    pub yes: bool,
 
     /// Path to species list file.
     /// File should contain one species per line in format: `"Genus species_Common Name"`.

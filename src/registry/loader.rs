@@ -116,6 +116,7 @@ mod tests {
         let registry = Registry {
             schema_version: "1.0".into(),
             registry_version: 0,
+            range_filter: None,
             models: vec![
                 ModelEntry {
                     id: "test-1".into(),
@@ -136,6 +137,7 @@ mod tests {
                             url: "https://example.com/model.onnx".into(),
                             filename: "model.onnx".into(),
                             sha256: None,
+                            size_bytes: None,
                         },
                         labels: LabelsInfo {
                             default_language: "en".into(),
@@ -146,7 +148,6 @@ mod tests {
                                 filename: "labels.txt".into(),
                             }],
                         },
-                        meta_model: None,
                         bsg_calibration: None,
                         bsg_migration: None,
                         bsg_distribution_maps: None,
@@ -172,6 +173,7 @@ mod tests {
                             url: "https://example.com/model2.onnx".into(),
                             filename: "model2.onnx".into(),
                             sha256: None,
+                            size_bytes: None,
                         },
                         labels: LabelsInfo {
                             default_language: "en".into(),
@@ -182,7 +184,6 @@ mod tests {
                                 filename: "labels2.txt".into(),
                             }],
                         },
-                        meta_model: None,
                         bsg_calibration: None,
                         bsg_migration: None,
                         bsg_distribution_maps: None,
@@ -217,7 +218,7 @@ mod tests {
         assert!(result.is_ok(), "Bundled registry should parse successfully");
 
         let registry = result.unwrap();
-        assert_eq!(registry.schema_version, "1.0");
+        assert_eq!(registry.schema_version, "1.1");
         assert!(
             !registry.models.is_empty(),
             "Registry should contain models"
@@ -227,5 +228,34 @@ mod tests {
         assert!(find_model(&registry, "birdnet-v24").is_some());
         assert!(find_model(&registry, "perch-v2").is_some());
         assert!(find_model(&registry, "bsg-fi-v44").is_some());
+    }
+
+    #[test]
+    fn test_bundled_registry_defines_the_geomodel_range_filter() {
+        const BUNDLED_REGISTRY: &str = include_str!("../../registry.json");
+
+        let registry = serde_json::from_str::<Registry>(BUNDLED_REGISTRY).unwrap();
+        let range_filter = registry
+            .range_filter
+            .expect("bundled registry must define range_filter");
+
+        assert_eq!(range_filter.version, "3.0.2");
+        assert_eq!(range_filter.species_count, 12012);
+        assert!(
+            range_filter.name.contains("BirdNET"),
+            "geomodel display name must credit BirdNET"
+        );
+        assert!(
+            range_filter.model.sha256.is_some(),
+            "geomodel model file must be checksum verified"
+        );
+        assert!(
+            range_filter.labels.sha256.is_some(),
+            "geomodel labels file must be checksum verified"
+        );
+        assert!(
+            registry.registry_version >= 4,
+            "registry_version must be bumped so existing installs pick up the geomodel"
+        );
     }
 }

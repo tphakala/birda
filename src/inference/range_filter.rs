@@ -1,7 +1,7 @@
 //! Wrapper around birdnet-onnx `RangeFilter`.
 
 use crate::error::{Error, Result};
-use birdnet_onnx::{LocationScore, Prediction, RangeFilter as BirdnetRangeFilter};
+use birdnet_onnx::{LocationScore, RangeFilter as BirdnetRangeFilter};
 use std::path::Path;
 
 /// Wrapper around birdnet-onnx `RangeFilter`.
@@ -10,15 +10,21 @@ pub struct RangeFilter {
 }
 
 impl RangeFilter {
-    /// Build a range filter from configuration using classifier labels.
+    /// Build a range filter from the geomodel and ITS OWN labels.
+    ///
+    /// `geomodel_labels` must be the geomodel's label set, never a
+    /// classifier's: birdnet-onnx validates that the label count equals the
+    /// model's output size, and no classifier has the geomodel's 12,012
+    /// classes. Scores are projected into a classifier's label space
+    /// afterwards, by `crate::inference::geomodel`.
     pub fn from_config(
-        meta_model_path: &Path,
-        classifier_labels: &[String],
+        geomodel_path: &Path,
+        geomodel_labels: &[String],
         threshold: f32,
     ) -> Result<Self> {
         let inner = BirdnetRangeFilter::builder()
-            .model_path(meta_model_path.to_string_lossy().to_string())
-            .from_classifier_labels(classifier_labels)
+            .model_path(geomodel_path.to_string_lossy().to_string())
+            .from_classifier_labels(geomodel_labels)
             .threshold(threshold)
             .build()
             .map_err(|e| Error::RangeFilterBuild {
@@ -42,41 +48,5 @@ impl RangeFilter {
             .map_err(|e| Error::RangeFilterPredict {
                 reason: e.to_string(),
             })
-    }
-
-    /// Filter predictions using location scores.
-    /// Uses library's built-in filtering logic.
-    pub fn filter_predictions(
-        &self,
-        predictions: &[Prediction],
-        location_scores: &[LocationScore],
-        rerank: bool,
-    ) -> Vec<Prediction> {
-        self.inner
-            .filter_predictions(predictions, location_scores, rerank)
-    }
-
-    /// Filter multiple prediction sets efficiently.
-    /// Useful for batch processing.
-    pub fn filter_batch_predictions(
-        &self,
-        predictions: Vec<Vec<Prediction>>,
-        location_scores: &[LocationScore],
-        rerank: bool,
-    ) -> Vec<Vec<Prediction>> {
-        self.inner
-            .filter_batch_predictions(predictions, location_scores, rerank)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    // Note: Full integration tests require actual model files
-    // These are placeholder unit tests for structure
-
-    #[test]
-    fn test_range_filter_struct_exists() {
-        // Just verify the struct compiles
-        // Real tests will be integration tests with actual models
     }
 }

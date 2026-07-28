@@ -296,20 +296,43 @@ pub enum Error {
         reason: String,
     },
 
-    /// Range filtering requires meta model.
-    #[error(
-        "range filtering requires meta model (model {model_name} has no meta model configured)"
-    )]
-    MetaModelMissing {
-        /// Name of the model.
-        model_name: String,
+    /// Registry does not describe a range filter asset.
+    #[error("registry does not describe a range filter asset; update birda to a newer version")]
+    RangeFilterAssetMissing,
+
+    /// The geomodel is not installed and could not be acquired.
+    #[error("BirdNET Geomodel v3.0.2 is not installed: {hint}")]
+    GeomodelNotInstalled {
+        /// What the user should do next.
+        hint: String,
     },
 
-    /// Meta model file not found.
-    #[error("meta model file not found: {path}")]
-    MetaModelNotFound {
-        /// Path to the missing meta model file.
-        path: std::path::PathBuf,
+    /// Only one of the two geomodel paths was supplied.
+    #[error(
+        "geomodel path and geomodel labels path must be given together (received only {given})"
+    )]
+    GeomodelPathsIncomplete {
+        /// Which of the two paths was supplied.
+        given: String,
+    },
+
+    /// The geomodel labels file does not match the model's output size.
+    #[error(
+        "BirdNET Geomodel v3.0.2 labels file has {actual} labels, expected {expected}; \
+         reinstall with 'birda models install geomodel'"
+    )]
+    GeomodelLabelCount {
+        /// Number of labels the registry declares.
+        expected: usize,
+        /// Number of labels actually read from the file.
+        actual: usize,
+    },
+
+    /// No network connectivity when a download was requested.
+    #[error("no network connectivity to {host}; run 'birda models install geomodel' when online")]
+    NoNetworkConnectivity {
+        /// Host that could not be reached.
+        host: String,
     },
 
     /// Invalid latitude value.

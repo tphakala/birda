@@ -156,7 +156,7 @@ birda models list-available
 birda models install birdnet-v24
 ```
 
-This downloads the model, labels, and range filter files automatically.
+This downloads the model, its labels, and the shared BirdNET Geomodel v3.0.2 range filter automatically.
 
 ### 2. Analyze Audio Files
 
@@ -196,7 +196,7 @@ Birda supports filtering detections by species using two complementary approache
 
 ### Dynamic Range Filtering
 
-Filter species based on location and date using BirdNET's meta model:
+Filter species based on location and date using the BirdNET Geomodel v3.0.2, which covers 12,012 species and is shared by every classifier:
 
 ```bash
 # Filter by location and week
@@ -690,7 +690,7 @@ birda models install birdnet-v24
 - **Sample rate**: 48kHz
 - **Segment duration**: 3 seconds
 - **Species**: ~6,000 bird species globally
-- **Range filtering**: Supported with meta model
+- **Range filtering**: Supported (BirdNET Geomodel v3.0.2, 6,217 of 6,522 species covered)
 - **Source**: [BirdNET-onnx on Hugging Face](https://huggingface.co/justinchuby/BirdNET-onnx) (optimized ONNX conversion by Justin Chu)
 
 ### BSG Finnish Birds v4.4
@@ -738,7 +738,7 @@ birda recording.wav -m bsg-fi-v44
 
 **Notes:**
 
-- BirdNET range filtering (`--slist`, `--week`, `--month`) is **not compatible** with BSG models due to different species sets
+- Geomodel range filtering (`--slist`, `--week`, `--month`) is **not compatible** with BSG models due to different species sets
 - SDM filtering improves precision by reducing false positives from non-occurring species
 - Day-of-year auto-detection uses file modification timestamp when `--day-of-year` is omitted
 
@@ -752,6 +752,7 @@ birda models install perch-v2
 - **Vendor**: Google Research
 - **Sample rate**: 32kHz
 - **Segment duration**: 5 seconds
+- **Range filtering**: Supported (BirdNET Geomodel v3.0.2, 11,145 of 14,795 species covered)
 - **Source**: [Perch-onnx on Hugging Face](https://huggingface.co/justinchuby/Perch-onnx) (ONNX conversion by Justin Chu)
 
 ### BirdNET v3.0
@@ -760,6 +761,24 @@ birda models install perch-v2
 
 - **Model type**: `birdnet-v30`
 - **Status**: Developer preview only
+
+### BirdNET Geomodel v3.0.2
+
+```bash
+birda models install geomodel
+```
+
+The shared range filter, used by every classifier. It predicts an occurrence probability for 12,012 species at a given latitude, longitude and week, which birda matches onto your model's labels by scientific name.
+
+- **License**: CC BY-SA 4.0
+- **Vendor**: Cornell Lab of Ornithology & Chemnitz University of Technology
+- **Species**: 12,012 scored classes, covering birds plus mammals, insects, amphibians and reptiles
+- **Size**: 14.7 MB
+- **Source**: [BirdNET-Geomodel on Hugging Face](https://huggingface.co/tphakala/BirdNET-Geomodel)
+
+Installed automatically alongside any classifier, or downloaded on first use when you pass `--lat`/`--lon`. See [docs/species-list-usage.md](docs/species-list-usage.md) for coverage details and the `--range-unmatched` option.
+
+Powered by [BirdNET](https://birdnet.cornell.edu/).
 
 ### Custom Model Conversion
 

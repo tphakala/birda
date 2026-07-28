@@ -1,6 +1,6 @@
 {
-  "schema_version": "1.0",
-  "registry_version": 3,
+  "schema_version": "1.1",
+  "registry_version": 4,
   "models": [
     {
       "id": "birdnet-v24",
@@ -248,11 +248,6 @@
               "filename": "birdnet-v24-zh.txt"
             }
           ]
-        },
-        "meta_model": {
-          "url": "https://huggingface.co/justinchuby/BirdNET-onnx/resolve/main/birdnet_data_model.onnx",
-          "filename": "birdnet-v24-meta.onnx",
-          "sha256": null
         }
       },
       "recommended": true
@@ -340,5 +335,31 @@
       },
       "recommended": false
     }
-  ]
+  ],
+  "range_filter": {
+    "id": "birdnet-geomodel-v3",
+    "name": "BirdNET Geomodel v3.0.2",
+    "version": "3.0.2",
+    "vendor": "Cornell Lab of Ornithology & Chemnitz University of Technology",
+    "license": {
+      "type": "CC-BY-SA-4.0",
+      "url": "https://creativecommons.org/licenses/by-sa/4.0/",
+      "commercial_use": true,
+      "attribution_required": true,
+      "share_alike": true
+    },
+    "species_count": 12012,
+    "model": {
+      "url": "https://huggingface.co/tphakala/BirdNET-Geomodel/resolve/main/birdnet-geomodel-v3.0-fp32.onnx",
+      "filename": "birdnet-geomodel-v3.0.2.onnx",
+      "sha256": "b151f680a47de5371f39b3df129aea5946ac6baa039582274f833b42eaf992ea",
+      "size_bytes": 14700313
+    },
+    "labels": {
+      "url": "https://huggingface.co/tphakala/BirdNET-Geomodel/resolve/main/geomodel_v3.0.2_labels.txt",
+      "filename": "birdnet-geomodel-v3.0.2-labels.txt",
+      "sha256": "92cdca7ca95beb7ed16a0a39f4010fa9a8b468b854b6e8083f732647f136ee1c",
+      "size_bytes": 479350
+    }
+  }
 }

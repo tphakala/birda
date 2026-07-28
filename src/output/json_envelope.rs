@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
 /// Current spec version for JSON envelope.
-pub const SPEC_VERSION: &str = "1.0";
+pub const SPEC_VERSION: &str = "1.1";
 
 /// JSON envelope wrapping all CLI output events.
 #[derive(Debug, Serialize, Deserialize)]
@@ -177,17 +177,20 @@ pub struct PipelineStartedPayload {
 /// Range filter status information for GUI display.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RangeFilterInfo {
-    /// Whether this is cross-model (using another model's meta model).
-    pub cross_model: bool,
-    /// Source model for the meta model (e.g., "birdnet-v24"). Absent when same-model.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub meta_model_source: Option<String>,
-    /// Number of species predicted present at the query location/date.
-    /// In cross-model mode, this is further limited to species that overlap
-    /// between the meta model and classifier label sets.
+    /// `BirdNET` Geomodel version used, e.g. "3.0.2".
+    pub geomodel_version: String,
+    /// Number of species predicted present at the query location and date.
     pub species_in_range: usize,
     /// Total classifier species.
     pub total_species: usize,
+    /// Classifier species that have a geomodel entry.
+    pub mapped_species: usize,
+    /// Classifier species with no geomodel entry, so no range data.
+    pub unmatched_species: usize,
+    /// What happens to unmatched species: "keep" or "drop".
+    pub unmatched_policy: String,
+    /// Minimum occurrence score for a species to count as present.
+    pub threshold: f32,
 }
 
 /// Execution provider information for GUI display.
@@ -419,8 +422,6 @@ pub struct ModelEntry {
     /// Path to the labels file.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub labels_path: Option<PathBuf>,
-    /// Whether a meta model is configured.
-    pub has_meta_model: bool,
 }
 
 /// Payload for model info result.
@@ -445,9 +446,6 @@ pub struct ModelDetails {
     /// Path to the labels file.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub labels_path: Option<PathBuf>,
-    /// Path to the meta model file.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub meta_model_path: Option<PathBuf>,
     /// Source (configured or registry).
     pub source: String,
 }
@@ -522,6 +520,31 @@ pub struct ModelCheckPayload {
     pub result_type: ResultType,
     /// Check results per model.
     pub models: Vec<ModelCheckEntry>,
+    /// Shared range filter status.
+    pub geomodel: GeomodelInfo,
+}
+
+/// Status of the shared `BirdNET` Geomodel range filter.
+///
+/// Reported once rather than per model, since every classifier shares it.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GeomodelInfo {
+    /// Geomodel version, e.g. "3.0.2".
+    pub version: String,
+    /// Whether both geomodel files are present on disk.
+    pub installed: bool,
+    /// Number of species the geomodel scores.
+    pub species_count: usize,
+    /// Path to the geomodel ONNX file, when installed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model_path: Option<PathBuf>,
+    /// Path to the geomodel labels file, when installed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub labels_path: Option<PathBuf>,
+    /// Files from earlier birda versions that are no longer used and can be
+    /// deleted, such as a leftover `birdnet-v24-meta.onnx`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub obsolete_files: Vec<PathBuf>,
 }
 
 /// Validation result for a single model.
@@ -669,7 +692,7 @@ mod tests {
         let envelope = JsonEnvelope::new(EventType::PipelineStarted, payload);
 
         let json = serde_json::to_string(&envelope).expect("serialize");
-        assert!(json.contains("\"spec_version\":\"1.0\""));
+        assert!(json.contains("\"spec_version\":\"1.1\""));
         assert!(json.contains("\"event\":\"pipeline_started\""));
         assert!(json.contains("\"total_files\":10"));
     }
@@ -866,11 +889,26 @@ mod tests {
                     error: Some("model file not found".to_string()),
                 },
             ],
+            geomodel: GeomodelInfo {
+                version: "3.0.2".to_string(),
+                installed: true,
+                species_count: 12012,
+                model_path: Some(PathBuf::from("/models/birdnet-geomodel-v3.0.2.onnx")),
+                labels_path: Some(PathBuf::from("/models/birdnet-geomodel-v3.0.2-labels.txt")),
+                obsolete_files: Vec::new(),
+            },
         };
         let json = serde_json::to_string(&payload).expect("serialize");
         let actual: serde_json::Value = serde_json::from_str(&json).expect("deserialize");
         let expected = serde_json::json!({
             "result_type": "model_check",
+            "geomodel": {
+                "version": "3.0.2",
+                "installed": true,
+                "species_count": 12012,
+                "model_path": "/models/birdnet-geomodel-v3.0.2.onnx",
+                "labels_path": "/models/birdnet-geomodel-v3.0.2-labels.txt"
+            },
             "models": [
                 {
                     "id": "birdnet",
@@ -1019,48 +1057,60 @@ mod tests {
     }
 
     #[test]
-    fn test_range_filter_info_same_model() {
+    fn test_range_filter_info_serializes_geomodel_fields() {
         let info = RangeFilterInfo {
-            cross_model: false,
-            meta_model_source: None,
-            species_in_range: 350,
+            geomodel_version: "3.0.2".to_string(),
+            species_in_range: 341,
             total_species: 6522,
+            mapped_species: 6217,
+            unmatched_species: 305,
+            unmatched_policy: "keep".to_string(),
+            threshold: 0.01,
         };
 
         let json = serde_json::to_string(&info).expect("serialize");
         let actual: serde_json::Value = serde_json::from_str(&json).expect("deserialize");
 
         let expected = serde_json::json!({
-            "cross_model": false,
-            "species_in_range": 350,
-            "total_species": 6522
+            "geomodel_version": "3.0.2",
+            "species_in_range": 341,
+            "total_species": 6522,
+            "mapped_species": 6217,
+            "unmatched_species": 305,
+            "unmatched_policy": "keep",
+            "threshold": 0.01
         });
 
-        // meta_model_source should be omitted when None
         assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn test_range_filter_info_drops_the_cross_model_fields() {
+        // The cross-model fallback is gone: every classifier uses the same
+        // geomodel, so these fields must not reappear in the envelope.
+        let info = RangeFilterInfo {
+            geomodel_version: "3.0.2".to_string(),
+            species_in_range: 341,
+            total_species: 14795,
+            mapped_species: 11145,
+            unmatched_species: 3650,
+            unmatched_policy: "drop".to_string(),
+            threshold: 0.01,
+        };
+
+        let json = serde_json::to_string(&info).expect("serialize");
+        let actual: serde_json::Value = serde_json::from_str(&json).expect("deserialize");
+
+        assert!(actual.get("cross_model").is_none());
         assert!(actual.get("meta_model_source").is_none());
     }
 
     #[test]
-    fn test_range_filter_info_cross_model() {
-        let info = RangeFilterInfo {
-            cross_model: true,
-            meta_model_source: Some("birdnet-v24".to_string()),
-            species_in_range: 280,
-            total_species: 900,
-        };
-
-        let json = serde_json::to_string(&info).expect("serialize");
-        let actual: serde_json::Value = serde_json::from_str(&json).expect("deserialize");
-
-        let expected = serde_json::json!({
-            "cross_model": true,
-            "meta_model_source": "birdnet-v24",
-            "species_in_range": 280,
-            "total_species": 900
-        });
-
-        assert_eq!(actual, expected);
+    fn test_spec_version_is_bumped_for_the_geomodel_envelope() {
+        assert_eq!(
+            SPEC_VERSION, "1.1",
+            "range_filter changed shape, so consumers need the bump"
+        );
     }
 
     #[test]

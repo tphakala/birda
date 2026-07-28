@@ -2,9 +2,25 @@
 
 #![allow(clippy::print_stdout)]
 
-use super::types::{LicenseInfo, ModelEntry};
+use super::types::LicenseInfo;
 use crate::error::Result;
 use std::io::{self, Write};
+
+/// Identity of a downloadable asset, for the licence prompt.
+///
+/// Covers both classifier models and shared assets such as the `BirdNET`
+/// Geomodel, which is not a [`super::types::ModelEntry`].
+#[derive(Debug, Clone, Copy)]
+pub struct LicensedAsset<'a> {
+    /// Display name, e.g. "`BirdNET` Geomodel v3.0.2".
+    pub name: &'a str,
+    /// Organization/author.
+    pub vendor: &'a str,
+    /// Version string.
+    pub version: &'a str,
+    /// License terms.
+    pub license: &'a LicenseInfo,
+}
 
 /// Display license information and prompt for acceptance.
 ///
@@ -12,17 +28,17 @@ use std::io::{self, Write};
 /// (auto-accept). This is used for non-TTY or structured output modes.
 ///
 /// Returns `Ok(true)` if user accepts, `Ok(false)` if user declines.
-pub fn prompt_license_acceptance(model: &ModelEntry, interactive: bool) -> Result<bool> {
+pub fn prompt_license_acceptance(asset: LicensedAsset<'_>, interactive: bool) -> Result<bool> {
     if !interactive {
         return Ok(true);
     }
 
-    println!("Model: {}", model.name);
-    println!("Vendor: {}", model.vendor);
-    println!("Version: {}", model.version);
+    println!("Model: {}", asset.name);
+    println!("Vendor: {}", asset.vendor);
+    println!("Version: {}", asset.version);
     println!();
 
-    display_license_summary(&model.license, &model.vendor);
+    display_license_summary(asset.license, asset.vendor);
 
     println!();
     print!("Type 'accept' to continue, or anything else to cancel: ");
@@ -86,8 +102,39 @@ fn display_license_summary(license: &LicenseInfo, vendor: &str) {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used)] // Test setup code - panics are acceptable
 mod tests {
     use super::*;
+
+    fn geomodel_license() -> LicenseInfo {
+        LicenseInfo {
+            r#type: "CC-BY-SA-4.0".into(),
+            url: "https://creativecommons.org/licenses/by-sa/4.0/".into(),
+            commercial_use: true,
+            attribution_required: true,
+            share_alike: true,
+        }
+    }
+
+    #[test]
+    fn test_prompt_auto_accepts_when_not_interactive() {
+        let license = geomodel_license();
+        let asset = LicensedAsset {
+            name: "BirdNET Geomodel v3.0.2",
+            vendor: "Cornell Lab of Ornithology",
+            version: "3.0.2",
+            license: &license,
+        };
+
+        assert!(prompt_license_acceptance(asset, false).unwrap());
+    }
+
+    #[test]
+    fn test_display_license_summary_share_alike() {
+        // The geomodel is CC BY-SA, unlike the CC BY-NC-SA classifier models,
+        // so the share-alike obligation must render.
+        display_license_summary(&geomodel_license(), "Cornell Lab of Ornithology");
+    }
 
     #[test]
     fn test_display_license_summary_noncommercial() {

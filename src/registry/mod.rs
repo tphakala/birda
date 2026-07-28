@@ -8,11 +8,15 @@ pub mod loader;
 pub mod types;
 
 // Re-export commonly used types and functions
-pub use installer::{download_file, install_model, models_dir};
-pub use license::prompt_license_acceptance;
+pub use installer::{
+    GEOMODEL_INSTALL_ID, InstalledRangeFilter, download_file, find_obsolete_files, geomodel_paths,
+    install_model, install_range_filter, models_dir,
+};
+pub use license::{LicensedAsset, prompt_license_acceptance};
 pub use loader::{find_model, load_registry};
 pub use types::{
-    FileInfo, LabelsInfo, LanguageVariant, LicenseInfo, ModelEntry, ModelFiles, Registry,
+    FileInfo, LabelsInfo, LanguageVariant, LicenseInfo, ModelEntry, ModelFiles, RangeFilterAsset,
+    Registry,
 };
 
 use crate::error::{Error, Result};

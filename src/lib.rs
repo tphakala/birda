@@ -89,7 +89,7 @@ fn resolve_model_config(args: &AnalyzeArgs, config: &Config) -> Result<(ModelCon
             path: path.clone(),
             labels,
             model_type,
-            meta_model: args.meta_model_path.clone(),
+            meta_model: None,
             bsg_calibration: None,
             bsg_migration: None,
             bsg_distribution_maps: None,
@@ -128,6 +128,63 @@ fn resolve_model_config(args: &AnalyzeArgs, config: &Config) -> Result<(ModelCon
     })
 }
 
+/// Resolve the shared geomodel for range filtering, if it is wanted at all.
+///
+/// Returns `None` when range filtering is not requested, or when the geomodel
+/// is unavailable for any reason. The absent `Result` is deliberate: range
+/// filtering turns on implicitly whenever coordinates are configured, so a
+/// hard error would break every automated pipeline that upgrades to this
+/// version before installing the geomodel. Making the signature infallible
+/// means a future edit cannot reintroduce that failure mode by adding a `?`.
+fn resolve_range_filter_geomodel(
+    args: &AnalyzeArgs,
+    config: &Config,
+    model_config: &ModelConfig,
+    output_mode: OutputMode,
+) -> Option<registry::InstalledRangeFilter> {
+    // Ask whether range filtering can apply at all before touching the
+    // registry. Coordinates alone are not enough: a run also needs a time
+    // parameter, and BSG and bat mode never range filter. Gating on
+    // coordinates only would prompt for and download 15 MB that
+    // build_range_filter_config then discards.
+    if !config::range_filter::wants_range_filter(args, config, model_config.model_type) {
+        return None;
+    }
+
+    // load_registry writes ~/.config/birda/registry.json, both to bootstrap it
+    // and to perform the v3 to v4 rewrite this release triggers, so it can fail
+    // on a read-only or unresolvable config dir. That must not abort analysis
+    // either: it is the upgrade path itself.
+    let registry = match registry::load_registry() {
+        Ok(registry) => registry,
+        Err(e) => {
+            warn!("Range filtering disabled: {e}");
+            return None;
+        }
+    };
+
+    // Every failure here degrades to unfiltered analysis. Returning Err would
+    // abort the whole run on a transient network blip, a stale cached registry,
+    // or a checksum failure, which is exactly the pipeline break this function
+    // exists to prevent. Only `birda species`, where the species list IS the
+    // output, treats an unavailable geomodel as fatal.
+    let resolution = match config::resolve_geomodel(args, config, &registry, output_mode) {
+        Ok(resolution) => resolution,
+        Err(e) => {
+            warn!("Range filtering disabled: {e}");
+            return None;
+        }
+    };
+
+    match resolution {
+        config::GeomodelResolution::Ready(geomodel) => Some(geomodel),
+        config::GeomodelResolution::Unavailable(reason) => {
+            warn!("Range filtering disabled: {reason}");
+            None
+        }
+    }
+}
+
 /// Apply CLI overrides to a model configuration.
 fn apply_model_overrides(model_config: &mut ModelConfig, args: &AnalyzeArgs) {
     if let Some(ref path) = args.model_path {
@@ -136,8 +193,12 @@ fn apply_model_overrides(model_config: &mut ModelConfig, args: &AnalyzeArgs) {
     if let Some(ref labels) = args.labels_path {
         model_config.labels.clone_from(labels);
     }
-    if let Some(ref meta) = args.meta_model_path {
-        model_config.meta_model = Some(meta.clone());
+    if args.meta_model_path.is_some() {
+        warn!(
+            "--meta-model-path is deprecated and ignored; range filtering uses the \
+             BirdNET Geomodel v3.0.2. Use --geomodel-path and --geomodel-labels-path \
+             to point at a specific copy."
+        );
     }
 }
 
@@ -337,7 +398,17 @@ fn resolve_species_filter(
     has_range_filter: bool,
 ) -> Result<Option<HashSet<String>>> {
     if has_range_filter {
-        // Dynamic filtering - species list will come from range filter
+        // Dynamic filtering wins, but say so when the user explicitly asked for
+        // a list. Range filtering used to require a configured meta model, so
+        // a user without one kept their --slist; it now activates on
+        // coordinates plus a time parameter alone and would silently override
+        // the list they passed.
+        if args.slist.is_some() {
+            warn!(
+                "Ignoring --slist: range filtering takes precedence when coordinates \
+                 and a date are given. Drop --lat/--lon to use the species list instead."
+            );
+        }
         return Ok(None);
     }
 
@@ -360,7 +431,7 @@ fn resolve_species_filter(
     Ok(None)
 }
 
-/// Validate that model, labels, and optional meta-model files exist.
+/// Validate that the model and labels files exist.
 fn validate_model_files(model_config: &ModelConfig) -> Result<()> {
     if !model_config.path.exists() {
         return Err(Error::ModelFileNotFound {
@@ -371,11 +442,6 @@ fn validate_model_files(model_config: &ModelConfig) -> Result<()> {
         return Err(Error::LabelsFileNotFound {
             path: model_config.labels.clone(),
         });
-    }
-    if let Some(ref meta) = model_config.meta_model
-        && !meta.exists()
-    {
-        return Err(Error::MetaModelNotFound { path: meta.clone() });
     }
     Ok(())
 }
@@ -703,8 +769,17 @@ fn analyze_files(
     // Resolve device from command-line flags or config
     let device = resolve_device(args, config);
 
-    // Build range filter config
-    let range_filter_config = build_range_filter_config(args, config, &model_config, &model_name)?;
+    // Build range filter config, resolving the shared geomodel first.
+    //
+    // A geomodel that cannot be found or fetched disables range filtering with
+    // a warning rather than failing the run: coordinates in config enable range
+    // filtering implicitly, so erroring would break existing pipelines on
+    // upgrade.
+    let range_filter_config =
+        match resolve_range_filter_geomodel(args, config, &model_config, output_mode) {
+            Some(geomodel) => build_range_filter_config(args, config, &model_config, &geomodel)?,
+            None => None,
+        };
 
     // Log if range filtering is enabled
     if let Some(ref rf_config) = range_filter_config {
@@ -1241,7 +1316,6 @@ fn handle_models_command(
                         is_default,
                         path: Some(model.path.clone()),
                         labels_path: Some(model.labels.clone()),
-                        has_meta_model: model.meta_model.is_some(),
                     }
                 })
                 .collect();
@@ -1288,7 +1362,7 @@ fn handle_models_command(
             default,
         } => handle_models_add(name, path, labels, r#type, default),
         ModelsAction::Check => {
-            // JSON/NDJSON output — collect all results then emit
+            // JSON/NDJSON output: collect all results then emit
             if output_mode.is_structured() {
                 let models: Vec<ModelCheckEntry> = config
                     .models
@@ -1305,6 +1379,7 @@ fn handle_models_command(
                 let payload = ModelCheckPayload {
                     result_type: ResultType::ModelCheck,
                     models,
+                    geomodel: check_geomodel()?,
                 };
                 emit_json_result(&payload);
                 return Ok(());
@@ -1315,6 +1390,8 @@ fn handle_models_command(
                 config::validate_model_config(name, model)?;
                 println!("  {name}: OK");
             }
+
+            report_geomodel_status(&check_geomodel()?);
             Ok(())
         }
         ModelsAction::Info { id, languages } => {
@@ -1331,7 +1408,6 @@ fn handle_models_command(
                             model_type: reg_model.model_type.clone(),
                             path: None,
                             labels_path: None,
-                            meta_model_path: None,
                             source: "registry".to_string(),
                         },
                     };
@@ -1358,7 +1434,6 @@ fn handle_models_command(
                             model_type: model.model_type.to_string(),
                             path: Some(model.path.clone()),
                             labels_path: Some(model.labels.clone()),
-                            meta_model_path: model.meta_model.clone(),
                             source: "configured".to_string(),
                         },
                     };
@@ -1513,7 +1588,7 @@ fn handle_models_remove(name: &str, purge: bool, output_mode: OutputMode) -> Res
     // Remove from config and handle default promotion
     let (model, promoted) = remove_model_from_config(&mut config, name)?;
 
-    // Save config before deleting files (safer — config is consistent even if delete fails)
+    // Save config before deleting files (safer: config stays consistent even if delete fails)
     let config_path = save_default_config(&config)?;
 
     // Build the structured-output payload once for reuse in both the error and success paths.
@@ -1607,11 +1682,24 @@ fn handle_models_install(
 
     // Load registry
     let registry = registry::load_registry()?;
+
+    // The shared range filter asset is installable under its own id, since it
+    // is used by every classifier rather than belonging to any one of them.
+    if id == registry::GEOMODEL_INSTALL_ID {
+        return handle_geomodel_install(&registry, interactive, output_mode);
+    }
+
     let model = registry::find_model(&registry, id)
         .ok_or_else(|| Error::ModelNotFoundInRegistry { id: id.to_string() })?;
 
     // Prompt for license acceptance
-    if !registry::prompt_license_acceptance(model, interactive)? {
+    let asset = registry::LicensedAsset {
+        name: &model.name,
+        vendor: &model.vendor,
+        version: &model.version,
+        license: &model.license,
+    };
+    if !registry::prompt_license_acceptance(asset, interactive)? {
         if !output_mode.is_structured() {
             println!("Installation cancelled.");
         }
@@ -1625,6 +1713,18 @@ fn handle_models_install(
 
     let installed = runtime.block_on(async { registry::install_model(model, language).await })?;
 
+    // Ensure the shared range filter is present so a fresh install can range
+    // filter immediately. A failure here is a warning, not an error: the
+    // classifier itself installed fine and works without range filtering.
+    if let Some(asset) = registry.range_filter.as_ref()
+        && let Err(e) = runtime.block_on(registry::install_range_filter(asset))
+    {
+        warn!(
+            "Could not install the BirdNET Geomodel v3.0.2 range filter: {e}. \
+             Run 'birda models install geomodel' to retry."
+        );
+    }
+
     if !output_mode.is_structured() {
         println!();
         println!("Installation complete!");
@@ -1632,9 +1732,6 @@ fn handle_models_install(
         println!("Model files saved to:");
         println!("  {}", installed.model.display());
         println!("  {}", installed.labels.display());
-        if let Some(meta_path) = &installed.meta_model {
-            println!("  {}", meta_path.display());
-        }
         if let Some(cal_path) = &installed.bsg_calibration {
             println!("  {}", cal_path.display());
         }
@@ -1680,7 +1777,7 @@ fn handle_models_install(
             path: installed.model,
             labels: installed.labels,
             model_type,
-            meta_model: installed.meta_model,
+            meta_model: None,
             bsg_calibration: installed.bsg_calibration,
             bsg_migration: installed.bsg_migration,
             bsg_distribution_maps: installed.bsg_distribution_maps,
@@ -1711,6 +1808,101 @@ fn handle_models_install(
         println!();
         println!("Ready to analyze:");
         println!("  birda recording.wav");
+    }
+
+    Ok(())
+}
+
+/// Collect the status of the shared range filter for `birda models check`.
+fn check_geomodel() -> Result<output::GeomodelInfo> {
+    let registry = registry::load_registry()?;
+    let asset = registry
+        .range_filter
+        .as_ref()
+        .ok_or(Error::RangeFilterAssetMissing)?;
+
+    let paths = registry::geomodel_paths(asset)?;
+    let installed = paths.is_installed();
+    let obsolete_files = registry::models_dir()
+        .and_then(|dir| registry::find_obsolete_files(&dir))
+        .unwrap_or_default();
+
+    Ok(output::GeomodelInfo {
+        version: asset.version.clone(),
+        installed,
+        species_count: asset.species_count,
+        model_path: installed.then(|| paths.model.clone()),
+        labels_path: installed.then(|| paths.labels.clone()),
+        obsolete_files,
+    })
+}
+
+/// Print the shared range filter status for `birda models check`.
+#[allow(clippy::print_stdout)]
+fn report_geomodel_status(info: &output::GeomodelInfo) {
+    if info.installed {
+        println!(
+            "  BirdNET Geomodel v{}: OK ({} species)",
+            info.version, info.species_count
+        );
+    } else {
+        println!(
+            "  BirdNET Geomodel v{}: not installed \
+             (run 'birda models install geomodel' to enable range filtering)",
+            info.version
+        );
+    }
+
+    for path in &info.obsolete_files {
+        println!("  {} is no longer used and can be deleted", path.display());
+    }
+}
+
+/// Handle `birda models install geomodel`.
+///
+/// Installs the shared `BirdNET` Geomodel v3.0.2 range filter and records its
+/// paths in the configuration, so every installed classifier can use it.
+fn handle_geomodel_install(
+    registry: &registry::Registry,
+    interactive: bool,
+    output_mode: OutputMode,
+) -> Result<()> {
+    let asset = registry
+        .range_filter
+        .as_ref()
+        .ok_or(Error::RangeFilterAssetMissing)?;
+
+    let licensed = registry::LicensedAsset {
+        name: &asset.name,
+        vendor: &asset.vendor,
+        version: &asset.version,
+        license: &asset.license,
+    };
+    if !registry::prompt_license_acceptance(licensed, interactive)? {
+        if !output_mode.is_structured() {
+            println!("Installation cancelled.");
+        }
+        return Ok(());
+    }
+
+    let runtime = tokio::runtime::Runtime::new().map_err(|e| Error::Internal {
+        message: format!("Failed to create async runtime: {e}"),
+    })?;
+    let installed = runtime.block_on(registry::install_range_filter(asset))?;
+
+    let mut config = load_default_config()?;
+    config.defaults.geomodel = Some(installed.model.clone());
+    config.defaults.geomodel_labels = Some(installed.labels.clone());
+    save_default_config(&config)?;
+
+    if !output_mode.is_structured() {
+        println!();
+        println!("{} installed.", asset.name);
+        println!("  {}", installed.model.display());
+        println!("  {}", installed.labels.display());
+        println!();
+        println!("Range filtering covers {} species.", asset.species_count);
+        println!("Powered by BirdNET (https://birdnet.cornell.edu/)");
     }
 
     Ok(())
@@ -1931,21 +2123,22 @@ mod tests {
     }
 
     #[test]
-    fn test_adhoc_with_meta_model() {
-        let config = Config::default();
-        let mut args = default_args();
-        args.model_type = Some(ModelType::BirdnetV24);
+    fn test_adhoc_ignores_the_deprecated_meta_model_flag() {
+        // --meta-model-path is retained as a hidden flag so scripts do not
+        // break, but it no longer configures anything.
+        let mut args = AnalyzeArgs::default();
         args.model_path = Some(PathBuf::from("/adhoc/model.onnx"));
         args.labels_path = Some(PathBuf::from("/adhoc/labels.txt"));
+        args.model_type = Some(ModelType::BirdnetV24);
         args.meta_model_path = Some(PathBuf::from("/adhoc/meta.onnx"));
 
-        let result = resolve_model_config(&args, &config);
-        assert!(result.is_ok());
+        let config = Config::default();
+        let (model_config, name) = resolve_model_config(&args, &config).unwrap();
 
-        let (model_config, _) = result.unwrap();
-        assert_eq!(
-            model_config.meta_model,
-            Some(PathBuf::from("/adhoc/meta.onnx"))
+        assert_eq!(name, ADHOC_MODEL_NAME);
+        assert!(
+            model_config.meta_model.is_none(),
+            "the deprecated flag must not populate the config"
         );
     }
 
@@ -2015,11 +2208,12 @@ mod tests {
     }
 
     #[test]
-    fn test_validate_model_files_missing_meta_model() {
+    fn test_validate_model_files_ignores_a_deprecated_meta_model() {
+        // meta_model is parsed only so a stale key can be reported. It must
+        // never gate validation: the file it points at is expected to be gone.
         let dir = tempfile::tempdir().unwrap();
         let model_path = dir.path().join("model.onnx");
         let labels_path = dir.path().join("labels.txt");
-        let meta_path = dir.path().join("missing_meta.onnx");
         std::fs::write(&model_path, "model").unwrap();
         std::fs::write(&labels_path, "labels").unwrap();
 
@@ -2027,31 +2221,7 @@ mod tests {
             path: model_path,
             labels: labels_path,
             model_type: ModelType::BirdnetV24,
-            meta_model: Some(meta_path),
-            bsg_calibration: None,
-            bsg_migration: None,
-            bsg_distribution_maps: None,
-        };
-
-        let err = validate_model_files(&config).unwrap_err();
-        assert!(matches!(err, Error::MetaModelNotFound { .. }));
-    }
-
-    #[test]
-    fn test_validate_model_files_with_existing_meta_model() {
-        let dir = tempfile::tempdir().unwrap();
-        let model_path = dir.path().join("model.onnx");
-        let labels_path = dir.path().join("labels.txt");
-        let meta_path = dir.path().join("meta.onnx");
-        std::fs::write(&model_path, "model").unwrap();
-        std::fs::write(&labels_path, "labels").unwrap();
-        std::fs::write(&meta_path, "meta").unwrap();
-
-        let config = ModelConfig {
-            path: model_path,
-            labels: labels_path,
-            model_type: ModelType::BirdnetV24,
-            meta_model: Some(meta_path),
+            meta_model: Some(dir.path().join("long_gone_meta.onnx")),
             bsg_calibration: None,
             bsg_migration: None,
             bsg_distribution_maps: None,

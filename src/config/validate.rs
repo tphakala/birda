@@ -119,24 +119,9 @@ pub fn validate_range_filter(config: &Config) -> Result<()> {
         return Err(Error::InvalidLongitude { value: lon });
     }
 
-    if let Some(meta_path) = &config.defaults.meta_model
-        && !meta_path.exists()
-    {
-        return Err(Error::MetaModelNotFound {
-            path: meta_path.clone(),
-        });
-    }
-
-    // Validate per-model meta model paths
-    for model_config in config.models.values() {
-        if let Some(meta_path) = &model_config.meta_model
-            && !meta_path.exists()
-        {
-            return Err(Error::MetaModelNotFound {
-                path: meta_path.clone(),
-            });
-        }
-    }
+    // The geomodel is resolved and acquired at analysis time rather than
+    // validated here: it is a shared asset that birda can offer to download,
+    // so a missing file is not a configuration error.
 
     Ok(())
 }

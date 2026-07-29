@@ -112,13 +112,20 @@ fn stderr_of(output: &std::process::Output) -> String {
 }
 
 /// Assert the analyze path refused to start, naming the offending value.
+///
+/// The exit code is pinned rather than tested with `!success`, because a panic
+/// (101), a clap failure (2) or the timeout kill would all satisfy the looser
+/// form while proving nothing about validation. This follows the convention
+/// `tests/geomodel_discoverability.rs` already established for the same reason.
 fn assert_analysis_rejected(home: &Path, expected: &str) {
     let input = dummy_input(home);
     let output = run_in(home, &[input.to_str().unwrap()]);
 
-    assert!(
-        !output.status.success(),
-        "analysis must not run against an invalid config"
+    assert_eq!(
+        output.status.code(),
+        Some(APPLICATION_ERROR),
+        "analysis must be rejected as an application error, got: {}",
+        stderr_of(&output)
     );
     let stderr = stderr_of(&output);
     assert!(
@@ -127,37 +134,46 @@ fn assert_analysis_rejected(home: &Path, expected: &str) {
     );
 }
 
-/// The message each rule in `validate_config` produces, as the user sees it.
-///
-/// Matched individually rather than on the shared `configuration validation
-/// failed:` prefix, because `Error::ConfigValidation` also carries errors that
-/// have nothing to do with the config file. "no model specified" is one, and it
-/// is the expected outcome of an analyze run in a HOME with no model installed,
-/// so keying on the prefix would make the control below assert its own failure.
-const RULE_VIOLATION_MESSAGES: [&str; 6] = [
-    "invalid latitude",
-    "invalid longitude",
-    "invalid range threshold",
-    "min_confidence must be between",
-    "overlap must be",
-    "batch_size must be at least",
-];
+/// Assert an analyze run cleared config validation and failed further in.
+fn assert_analysis_passes_validation(home: &Path) {
+    let input = dummy_input(home);
+    let stderr = stderr_of(&run_in(home, &[input.to_str().unwrap()]));
 
-/// Assert a command was not gated on the config.
+    assert!(
+        stderr.contains(PAST_VALIDATION_ERROR),
+        "analysis should have reached model resolution, meaning it cleared \
+         validation; expected {PAST_VALIDATION_ERROR:?}, got: {stderr}"
+    );
+}
+
+/// The error an analyze run reaches once it is past config validation.
 ///
-/// Checks the absence of a rule violation rather than success, because some
-/// exempt commands legitimately fail for their own reasons (a missing CSV, an
-/// unavailable ONNX runtime, no model installed). What must never appear is a
-/// complaint about a config value the command does not read.
-fn assert_not_gated_on_config(home: &Path, args: &[&str]) {
-    let stderr = stderr_of(&run_in(home, args));
-    for message in RULE_VIOLATION_MESSAGES {
-        assert!(
-            !stderr.contains(message),
-            "`birda {}` must not be blocked by config validation ({message}), got: {stderr}",
-            args.join(" ")
-        );
-    }
+/// These tests install no model, so this is where a run that cleared the gate
+/// lands. Asserting it positively is what makes the control meaningful: an
+/// assertion that merely failed to find a validation error would also pass if
+/// the binary died for any other reason, or if the error text drifted.
+const PAST_VALIDATION_ERROR: &str = "no model specified";
+
+/// The exit code birda uses for an application error, as opposed to a clap
+/// parse failure (2) or a panic (101). Pinned so a rejection test cannot be
+/// satisfied by the wrong kind of failure.
+const APPLICATION_ERROR: i32 = 1;
+
+/// Assert a command ran to completion, so it was not gated on the config.
+///
+/// A plain success assertion rather than the absence of a validation message.
+/// Absence fails open twice over: it passes when the command breaks for an
+/// unrelated reason, and it silently stops testing anything if the message it
+/// looks for is ever reworded.
+fn assert_command_succeeds(home: &Path, args: &[&str]) {
+    let output = run_in(home, args);
+    assert!(
+        output.status.success(),
+        "`birda {}` must run despite the invalid config, got {:?}: {}",
+        args.join(" "),
+        output.status.code(),
+        stderr_of(&output)
+    );
 }
 
 #[test]
@@ -188,17 +204,26 @@ fn test_config_show_still_works_with_an_invalid_config() {
     let home = tempfile::tempdir().unwrap();
     seed_config(home.path(), OUT_OF_RANGE_LATITUDE);
 
-    let output = run_in(home.path(), &["config", "show"]);
+    // Asserted through the JSON envelope rather than the human output. The
+    // structured payload is what birda-gui reads, and it is the only route
+    // that shows a GUI user which value is wrong; the human form would pin the
+    // assertion to `{config:#?}` Debug formatting, so a cosmetic change to how
+    // floats print would break the test while the behaviour was intact.
+    let output = run_in(home.path(), &["config", "show", "--output-mode", "json"]);
 
     assert!(
         output.status.success(),
         "`config show` must survive an invalid config: {}",
         stderr_of(&output)
     );
+
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(
-        stdout.contains("200.0"),
-        "`config show` should display the offending value so it can be found, got: {stdout}"
+    let envelope: serde_json::Value =
+        serde_json::from_str(&stdout).expect("`config show` must emit a parseable envelope");
+
+    assert_eq!(
+        envelope["payload"]["config"]["defaults"]["latitude"], 200.0,
+        "`config show` should report the offending value so it can be found, got: {stdout}"
     );
 }
 
@@ -219,7 +244,18 @@ fn test_config_set_repairs_an_invalid_config() {
         stderr_of(&repair)
     );
 
-    assert_not_gated_on_config(home.path(), &["models", "list"]);
+    // Pin that the requested value actually landed, not merely that the command
+    // exited 0. A `config set` that persisted defaults instead would clear the
+    // fault and satisfy every other assertion here.
+    let shown = run_in(home.path(), &["config", "show", "--output-mode", "json"]);
+    let envelope: serde_json::Value = serde_json::from_str(&String::from_utf8_lossy(&shown.stdout))
+        .expect("`config show` must emit a parseable envelope");
+    assert_eq!(
+        envelope["payload"]["config"]["defaults"]["latitude"], 60.17,
+        "the repaired value should be the one that was set"
+    );
+
+    assert_analysis_passes_validation(home.path());
 }
 
 #[test]
@@ -233,9 +269,13 @@ fn test_config_set_refuses_to_persist_an_invalid_value() {
 
     let output = run_in(home.path(), &["config", "set", "defaults.latitude", "200"]);
 
-    assert!(
-        !output.status.success(),
-        "`config set` must reject an out-of-range latitude"
+    assert_eq!(
+        output.status.code(),
+        Some(APPLICATION_ERROR),
+        "`config set` must reject an out-of-range latitude as an application \
+         error; a panic or a parse failure would satisfy a bare !success check \
+         while proving nothing, got: {}",
+        stderr_of(&output)
     );
     assert_eq!(
         std::fs::read_to_string(&path).unwrap(),
@@ -258,6 +298,14 @@ fn test_bare_invocation_prints_help_with_an_invalid_config() {
         "the bare invocation should still print help: {}",
         stderr_of(&output)
     );
+
+    // Exiting 0 is not the claim; printing the help is. Without this the test
+    // passes just as well against a `print_smart_help` that returns silently.
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("birda models list-available"),
+        "help should still guide a user with no models configured, got: {stdout}"
+    );
 }
 
 #[test]
@@ -272,10 +320,12 @@ fn test_repair_and_diagnostic_commands_are_not_gated() {
 
     for args in [
         vec!["models", "list"],
+        vec!["models", "check"],
         vec!["config", "path"],
         vec!["clip", "no-such-results.csv"],
+        vec!["update", "--check"],
     ] {
-        assert_not_gated_on_config(home.path(), &args);
+        assert_command_succeeds(home.path(), &args);
     }
 }
 
@@ -288,13 +338,8 @@ fn test_a_dangling_default_model_does_not_block_models_install() {
     let home = tempfile::tempdir().unwrap();
     seed_config(home.path(), "[defaults]\nmodel = \"gone-model\"\n");
 
-    assert_not_gated_on_config(home.path(), &["models", "list"]);
-
-    let stderr = stderr_of(&run_in(home.path(), &["models", "check"]));
-    assert!(
-        !stderr.contains("not found in configuration"),
-        "`models check` must not fail on the dangling default it exists to report, got: {stderr}"
-    );
+    assert_command_succeeds(home.path(), &["models", "list"]);
+    assert_command_succeeds(home.path(), &["models", "check"]);
 }
 
 #[test]
@@ -309,6 +354,5 @@ fn test_a_valid_config_still_loads() {
         "[defaults]\nlatitude = 60.17\nlongitude = 24.94\nrange_threshold = 0.03\n",
     );
 
-    let input = dummy_input(home.path());
-    assert_not_gated_on_config(home.path(), &[input.to_str().unwrap()]);
+    assert_analysis_passes_validation(home.path());
 }

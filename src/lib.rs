@@ -307,6 +307,15 @@ pub fn run() -> Result<()> {
     // Load configuration
     let config = load_default_config()?;
 
+    // `load_config_file` only parses TOML and reports deprecated keys, so until
+    // this call every rule in `config::validate` guarded `config set` alone.
+    // That is the path where clap's value parsers have usually already checked
+    // the value, and it left the hand-edited file, where a wrong value is most
+    // likely, entirely unchecked.
+    if command_requires_valid_config(cli.command.as_ref(), cli.inputs.is_empty()) {
+        config::validate_config(&config)?;
+    }
+
     // Determine output mode (CLI flag takes precedence over config)
     // Auto-enable NDJSON mode for stdout
     let output_mode = if cli.analyze.stdout {
@@ -344,6 +353,27 @@ pub fn run() -> Result<()> {
 
     // Run analysis
     analyze_files(&cli.inputs, &cli.analyze, &config, output_mode, &reporter)
+}
+
+/// Whether a command must run against a configuration that passes validation.
+///
+/// Commands that consume the values in `config.toml` treat an invalid one as an
+/// error rather than something to carry on with. Two paths are exempt, and both
+/// are exempt for the same reason: they are how a user diagnoses a broken file,
+/// so failing them would leave hand-editing as the only way out of a state that
+/// hand-editing caused.
+///
+/// - `config`, which is where `show`, `path` and `set` live.
+/// - The bare invocation with no inputs, which prints help and exits.
+///
+/// The exemption widens what can be read, not what can be persisted: every
+/// writer still validates inside [`config::save_config`].
+fn command_requires_valid_config(command: Option<&Command>, has_no_inputs: bool) -> bool {
+    match command {
+        Some(Command::Config { .. }) => false,
+        None => !has_no_inputs,
+        Some(_) => true,
+    }
 }
 
 fn command_requires_runtime(command: Option<&Command>, has_no_inputs: bool) -> bool {
@@ -1348,7 +1378,8 @@ fn handle_config_set(key: &str, value: &str, output_mode: OutputMode) -> Result<
         }
     }
 
-    config::validate_config(&config)?;
+    // Validation happens inside `save_default_config`, which every config writer
+    // goes through, so the mutated config is rejected before anything is written.
     save_default_config(&config)?;
 
     if output_mode.is_structured() {
@@ -2714,5 +2745,76 @@ mod tests {
         assert_eq!(model.path, PathBuf::from("/path/to/model.onnx"));
         assert_eq!(model.labels, PathBuf::from("/path/to/labels.txt"));
         assert_eq!(model.model_type, ModelType::BirdnetV24);
+    }
+
+    /// Which commands run against a validated config (#295).
+    ///
+    /// The predicate decides whether a hand-edited `config.toml` can reach a
+    /// command at all, so both answers need pinning: an exemption that spreads
+    /// silently reopens the bug, and one that shrinks locks a user out of the
+    /// commands that repair the file.
+    mod requires_valid_config {
+        use super::*;
+        use cli::{ConfigAction, ModelsAction};
+
+        /// Analysis with input files, the path that consumes every default.
+        const HAS_INPUTS: bool = false;
+        /// No input files, which is how the bare invocation reaches help.
+        const NO_INPUTS: bool = true;
+
+        #[test]
+        fn test_config_subcommand_is_exempt() {
+            // The repair surface. `config show` diagnoses the bad value and
+            // `config set` replaces it, so validating here would mean the only
+            // way out of a broken file is the hand-editing that broke it.
+            for action in [
+                ConfigAction::Show,
+                ConfigAction::Path,
+                ConfigAction::Init,
+                ConfigAction::Set {
+                    key: "defaults.latitude".to_string(),
+                    value: "60.1".to_string(),
+                },
+            ] {
+                let command = Command::Config { action };
+                assert!(
+                    !command_requires_valid_config(Some(&command), NO_INPUTS),
+                    "config subcommand must stay reachable with an invalid config"
+                );
+            }
+        }
+
+        #[test]
+        fn test_bare_invocation_without_inputs_is_exempt() {
+            // Falls through to `print_smart_help`. Refusing to print help
+            // because the config is wrong is the least useful moment to refuse.
+            assert!(!command_requires_valid_config(None, NO_INPUTS));
+        }
+
+        #[test]
+        fn test_analysis_requires_a_valid_config() {
+            // The reported case: `range_threshold = nan` dropped every mapped
+            // species and the only symptom was an info log reading "0 species
+            // in range".
+            assert!(command_requires_valid_config(None, HAS_INPUTS));
+        }
+
+        #[test]
+        fn test_other_subcommands_require_a_valid_config() {
+            let commands = [
+                Command::Models {
+                    action: ModelsAction::List,
+                },
+                Command::Providers,
+                Command::Update { check: true },
+            ];
+
+            for command in &commands {
+                assert!(
+                    command_requires_valid_config(Some(command), NO_INPUTS),
+                    "{command:?} reads config values and must validate them"
+                );
+            }
+        }
     }
 }

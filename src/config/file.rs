@@ -59,7 +59,18 @@ pub fn load_default_config() -> Result<Config> {
 }
 
 /// Save configuration to a TOML file.
+///
+/// The configuration is validated first, so no writer can persist a value that
+/// `config set` would have rejected. Several callers build a config by mutating
+/// a loaded one (`models add`, `models install`, `models remove`, the geomodel
+/// install) and reached this function without validating.
+///
+/// Validating before the write also matters because this function truncates and
+/// rewrites the whole file: refusing early means a bad config cannot destroy a
+/// good one on disk.
 pub fn save_config(config: &Config, path: &Path) -> Result<()> {
+    super::validate_config(config)?;
+
     // Create parent directories if they don't exist
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| Error::ConfigWrite {
@@ -78,6 +89,8 @@ pub fn save_config(config: &Config, path: &Path) -> Result<()> {
 }
 
 /// Save configuration to the default platform-specific path.
+///
+/// Validates before writing; see [`save_config`].
 pub fn save_default_config(config: &Config) -> Result<std::path::PathBuf> {
     let path = super::config_file_path()?;
     save_config(config, &path)?;
@@ -131,5 +144,83 @@ min_confidence = 0.25
 
         let config = load_config_file(file.path());
         assert!(config.is_err());
+    }
+
+    /// A config that `config set` would reject, for the save-path tests.
+    ///
+    /// `min_confidence` is used because `validate_defaults` checks it first, so
+    /// these assert the whole chain runs and not just the range-filter half.
+    fn invalid_config() -> Config {
+        let mut config = Config::default();
+        config.defaults.min_confidence = 1.5;
+        config
+    }
+
+    #[test]
+    fn test_save_config_rejects_an_invalid_config() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+
+        let err = save_config(&invalid_config(), &path).unwrap_err();
+
+        assert!(
+            matches!(err, Error::ConfigValidation { .. }),
+            "expected ConfigValidation, got {err:?}"
+        );
+    }
+
+    #[test]
+    fn test_save_config_writes_nothing_when_validation_fails() {
+        // `models add`, `models install`, `models remove` and the geomodel
+        // install all mutate a loaded config and save it without validating, so
+        // rejecting has to happen before the file is touched, not after.
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+
+        assert!(save_config(&invalid_config(), &path).is_err());
+        assert!(
+            !path.exists(),
+            "a rejected save must not leave a config file behind"
+        );
+    }
+
+    #[test]
+    fn test_save_config_does_not_truncate_an_existing_config() {
+        // The regression guard that matters most. This function truncates and
+        // rewrites the whole file, and a half-written config parses as
+        // all-defaults, silently losing every model the user had. Validating
+        // before the write is what stops a bad config destroying a good one.
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+
+        let mut good = Config::default();
+        good.defaults.min_confidence = 0.25;
+        save_config(&good, &path).unwrap();
+        let before = std::fs::read_to_string(&path).unwrap();
+
+        assert!(save_config(&invalid_config(), &path).is_err());
+
+        let after = std::fs::read_to_string(&path).unwrap();
+        assert_eq!(before, after, "the existing config must survive untouched");
+        assert_eq!(
+            load_config_file(&path).unwrap().defaults.min_confidence,
+            0.25
+        );
+    }
+
+    #[test]
+    fn test_save_config_still_writes_a_valid_config() {
+        // The happy path, so the guard above cannot pass by rejecting everything.
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("nested").join("config.toml");
+
+        let mut config = Config::default();
+        config.defaults.latitude = Some(60.17);
+        config.defaults.longitude = Some(24.94);
+        save_config(&config, &path).unwrap();
+
+        let loaded = load_config_file(&path).unwrap();
+        assert_eq!(loaded.defaults.latitude, Some(60.17));
+        assert_eq!(loaded.defaults.longitude, Some(24.94));
     }
 }

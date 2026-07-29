@@ -362,6 +362,24 @@ device = "auto"  # auto, gpu, or cpu
 combined_prefix = "BirdNET"
 ```
 
+### Configuration Validation
+
+The configuration file is validated when it is loaded, so a bad value is reported once, up front, instead of turning into odd behaviour later in a run. The rules cover `min_confidence` and `range_threshold` (both 0.0 to 1.0), `overlap` (non-negative), `batch_size` (at least 1), `latitude` (-90.0 to 90.0), `longitude` (-180.0 to 180.0), and `defaults.model`, which must name a model that exists in the file.
+
+```
+$ birda analyze recording.wav
+error: invalid latitude: 200 (must be -90.0 to 90.0)
+```
+
+The `config` commands are deliberately exempt, because they are how you fix the problem. `birda config show` still prints a config that fails validation, so you can see which value is wrong, and `birda config set` still repairs it:
+
+```
+$ birda config show                          # works, shows the bad value
+$ birda config set defaults.latitude 60.17   # repairs it
+```
+
+Writing is validated too. `birda config set` and the `birda models` commands all refuse to save a configuration that would not load, and they refuse before touching the file, so a rejected write leaves the existing configuration intact.
+
 ### Environment Variables
 
 All options can be set via environment variables:

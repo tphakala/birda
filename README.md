@@ -243,7 +243,7 @@ Options:
   -o, --output-dir <DIR>        Output directory (default: same as input)
   -c, --min-confidence <VALUE>  Minimum confidence threshold (0.0-1.0)
   -b, --batch-size <SIZE>       Inference batch size
-      --overlap <SECONDS>       Segment overlap in seconds
+      --overlap <SECONDS>       Segment overlap in seconds (finite, non-negative)
       --bat <REGION>            Enable bat detection with a regional classifier
       --gpu                     Enable CUDA GPU acceleration
       --cpu                     Force CPU inference
@@ -366,6 +366,8 @@ combined_prefix = "BirdNET"
 
 An analysis run validates the configuration file before it starts, so a bad value is reported once, up front, instead of turning into odd results later in the run. The rules cover `min_confidence` and `range_threshold` (both 0.0 to 1.0), `overlap` (finite and non-negative), `batch_size` (at least 1), `latitude` (-90.0 to 90.0), `longitude` (-180.0 to 180.0), and `defaults.model`, which must name a model that exists in the file.
 
+For `overlap` the rule also applies to the command-line flag and the environment variable, not just to the file: `--overlap`, `BIRDA_OVERLAP` and `defaults.overlap` are three routes to one setting, and all three reject a negative, NaN or infinite value. Previously only the file did, and the other two silently became zero overlap. `min_confidence`, `range_threshold`, `latitude` and `longitude` agree across their routes too.
+
 ```text
 $ birda recording.wav
 error: invalid latitude: 200 (must be -90.0 to 90.0)
@@ -385,6 +387,14 @@ One limitation worth knowing: `config set` validates the whole file before savin
 
 Writing is validated too. `config init`, `config set` and the `models` commands all refuse to save a configuration that would not load, and they refuse before touching the file, so a rejected write leaves the existing configuration intact.
 
+Writes are also atomic. The new configuration goes to a temporary file beside `config.toml` and is renamed over it, so an interrupted write cannot leave a truncated file. That matters because a truncated `config.toml` still parses: an empty file is valid TOML and loads as all-defaults, which would silently drop every model you had configured. Three consequences:
+
+- A `config.toml` that is a **symlink** is followed, and the file it points at is the one rewritten, so keeping it in a dotfiles repository works. This holds whether or not the target exists yet, so you can create the link first and let birda create the file.
+- A `config.toml` that is a **hardlink** is not, because a rename gives the path a new inode. The other name keeps the old contents and stops tracking.
+- If you run birda in a container, bind-mount the config **directory** rather than the `config.toml` file itself. Renaming over a bind-mounted file fails with `EBUSY`.
+
+A configuration file birda creates for the first time is readable only by you (mode 0600 on Unix). An existing file keeps whatever mode you gave it.
+
 ### Environment Variables
 
 All options can be set via environment variables:
@@ -397,7 +407,7 @@ All options can be set via environment variables:
 | `BIRDA_FORMAT` | Output formats (comma-separated) |
 | `BIRDA_OUTPUT_DIR` | Output directory |
 | `BIRDA_MIN_CONFIDENCE` | Minimum confidence threshold |
-| `BIRDA_OVERLAP` | Segment overlap in seconds |
+| `BIRDA_OVERLAP` | Segment overlap in seconds (finite, non-negative) |
 | `BIRDA_BATCH_SIZE` | Inference batch size |
 | `BIRDA_OUTPUT_MODE` | CLI output mode (human, json, ndjson) |
 

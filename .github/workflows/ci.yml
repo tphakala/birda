@@ -63,3 +63,72 @@ jobs:
 
       - name: Run tests
         run: cargo test --no-default-features --no-fail-fast
+
+  # Every other job installs @stable, which floats to whatever Rust shipped most
+  # recently (1.97.1 at the time of writing). That left the `rust-version` floor
+  # in Cargo.toml completely untested: nothing verified the promise, and the gap
+  # between it and the tested toolchain widened by itself every six weeks. This
+  # job closes that by building on exactly the version the crate advertises.
+  msrv:
+    name: MSRV
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      # Read the floor from Cargo.toml rather than hardcoding it here, so the
+      # manifest stays the single source of truth. Pinning the version in both
+      # places would let them drift, and a stale value here would silently test
+      # the wrong toolchain while still reporting green.
+      - name: Read the declared MSRV from Cargo.toml
+        id: msrv
+        run: |
+          version="$(grep -m1 '^rust-version' Cargo.toml | cut -d'"' -f2)"
+          if [ -z "$version" ]; then
+            echo "::error::could not read rust-version from Cargo.toml"
+            exit 1
+          fi
+          # On a pull_request event this file comes from the PR head, so on a
+          # fork its contents are attacker controlled. The value below is
+          # interpolated into a later step's `with:` input, so constrain it to a
+          # bare version number here and refuse anything else. Note the read
+          # above goes through a shell variable rather than a ${{ }} expansion,
+          # which keeps the untrusted text out of the command line entirely.
+          case "$version" in
+            *[!0-9.]* | "" | .* | *. | *..*)
+              echo "::error::rust-version '$version' is not a bare version number"
+              exit 1
+              ;;
+          esac
+          echo "Declared MSRV: $version"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Install the declared Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ steps.msrv.outputs.version }}
+
+      # This cache deliberately does NOT use the `<os>-cargo-` prefix the other
+      # jobs use. Compiled artifacts are tied to the rustc that produced them,
+      # and those jobs fall back on a bare `<os>-cargo-` restore key, so sharing
+      # the prefix would let them restore a target/ built by this older
+      # toolchain (and this job restore theirs), forcing needless full rebuilds
+      # on both sides.
+      - name: Cache cargo registry
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ~/.cache/ort.pyke.io
+            target
+          key: ${{ runner.os }}-msrv-${{ steps.msrv.outputs.version }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-msrv-${{ steps.msrv.outputs.version }}-cargo-
+
+      # --locked additionally catches a Cargo.lock that has drifted out of sync
+      # with Cargo.toml. --all-targets covers test code too, which is safe to
+      # require because Cargo's MSRV-aware resolver already holds dependencies
+      # back to satisfy the declared floor (this is why serial_test stays on 3.x
+      # rather than taking 4.0, which needs 1.93.1).
+      - name: Check that the crate builds on its declared MSRV
+        run: cargo check --locked --no-default-features --all-targets

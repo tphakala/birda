@@ -318,19 +318,45 @@ fn test_repair_and_diagnostic_commands_are_not_gated() {
     let home = tempfile::tempdir().unwrap();
     seed_config(home.path(), OUT_OF_RANGE_LATITUDE);
 
+    // Only hermetic, local commands are driven here. Every exempt command
+    // shares the single gate call site in `run()`, so proving the wiring with
+    // one of them proves it for all; which commands are exempt is a table fact,
+    // covered by the unit tests over the predicate. `update --check` and `clip`
+    // were both in this loop briefly and neither belonged: `update --check`
+    // performs a real release lookup and exits 1 with no network, so it would
+    // fail for an offline developer and under GitHub API rate limiting on
+    // shared CI runners, and `clip` currently exits 0 for a file that does not
+    // exist, so asserting its success would pin a production oddity that ought
+    // to be fixed.
     for args in [
         vec!["models", "list"],
         vec!["models", "check"],
         vec!["config", "path"],
-        vec!["clip", "no-such-results.csv"],
-        vec!["update", "--check"],
+        vec!["config", "show"],
     ] {
         assert_command_succeeds(home.path(), &args);
     }
 }
 
 #[test]
-fn test_a_dangling_default_model_does_not_block_models_install() {
+fn test_an_overlap_rule_violation_is_rejected_on_load() {
+    // `validate_config` runs two halves and only `validate_range_filter` was
+    // reached end to end: swapping the gate call to `validate_range_filter`
+    // alone left the whole suite green. This drives a `validate_defaults` rule
+    // through the binary, so the gate is pinned to the full check rather than
+    // half of it.
+    //
+    // Overlap is the rule to use, because it is the one this branch tightened:
+    // `overlap < 0.0` accepted NaN, which the saturating cast to `usize` then
+    // turned into a silently ignored setting.
+    let home = tempfile::tempdir().unwrap();
+    seed_config(home.path(), "[defaults]\noverlap = nan\n");
+
+    assert_analysis_rejected(home.path(), "overlap must be a finite non-negative number");
+}
+
+#[test]
+fn test_a_dangling_default_model_does_not_block_the_models_commands() {
     // The one fault `config set` cannot fix by correcting the offending key:
     // `defaults.model` names a model that is not in the file, and installing
     // that model is the natural repair. Gating `models` made the repair

@@ -130,7 +130,7 @@ pub fn validate_range_filter(config: &Config) -> Result<()> {
     // false, so the range does not contain it and the negation rejects it. A
     // hand-rolled `threshold < 0.0` test would let NaN straight through.
     let threshold = config.defaults.range_threshold;
-    if !(0.0..=1.0).contains(&threshold) {
+    if !(confidence::MIN..=confidence::MAX).contains(&threshold) {
         return Err(Error::InvalidRangeThreshold { value: threshold });
     }
 

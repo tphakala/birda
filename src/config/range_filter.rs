@@ -8,7 +8,8 @@
 
 use crate::cli::AnalyzeArgs;
 use crate::config::types::{Config, ModelConfig, ModelType};
-use crate::error::Result;
+use crate::constants::confidence;
+use crate::error::{Error, Result};
 use crate::inference::RangeFilterConfig;
 use crate::registry::InstalledRangeFilter;
 use crate::utils::date::{date_to_week, day_of_year_to_date, week_to_start_day};
@@ -94,6 +95,22 @@ pub fn build_range_filter_config(
     let threshold = args
         .range_threshold
         .unwrap_or(config.defaults.range_threshold);
+
+    // Bounds-check here, at the point of use, and not only in
+    // `validate_range_filter`. `validate_config` has exactly one caller,
+    // `handle_config_set`, so nothing validates a config that was hand-edited
+    // rather than written through the CLI. That hand-edited case is the one the
+    // bug report describes: a negative threshold makes filtering a silent
+    // no-op while the JSON envelope still reports it active, and NaN drops
+    // every mapped species because `score >= NaN` is false for every score.
+    // Validating only where configs are written would have left the path the
+    // defect actually travels wide open.
+    //
+    // The CLI flag reaches here already bounded by `parse_confidence`, so this
+    // fires only for a config-file value.
+    if !(confidence::MIN..=confidence::MAX).contains(&threshold) {
+        return Err(Error::InvalidRangeThreshold { value: threshold });
+    }
     let unmatched = args
         .range_unmatched
         .unwrap_or(config.defaults.range_unmatched);
@@ -143,6 +160,64 @@ mod tests {
             lon: Some(24.9384),
             week: Some(24),
             ..AnalyzeArgs::default()
+        }
+    }
+
+    /// A config as a hand-edit would leave it: coordinates set so range
+    /// filtering is wanted, and a threshold nothing on this path validated.
+    fn config_with_threshold(threshold: f32) -> Config {
+        let mut config = Config::default();
+        config.defaults.range_threshold = threshold;
+        config
+    }
+
+    fn build_with(config: &Config) -> crate::error::Result<Option<RangeFilterConfig>> {
+        build_range_filter_config(
+            &args_at_helsinki_week_24(),
+            config,
+            &model_of(ModelType::BirdnetV24),
+            &geomodel(),
+        )
+    }
+
+    #[test]
+    fn test_hand_edited_nan_threshold_is_rejected_on_the_analyze_path() {
+        // The reported defect in full. `validate_config` has one caller,
+        // `handle_config_set`, so a threshold typed into config.toml by hand
+        // reached analysis unchecked: `score >= NaN` is false for every score,
+        // so every mapped species was dropped and the only symptom was an info
+        // log reading "0 species in range".
+        //
+        // Guarding only `validate_range_filter` would leave this green while
+        // the bug stayed live, because nothing on this path calls it.
+        let err = build_with(&config_with_threshold(f32::NAN)).unwrap_err();
+
+        assert!(
+            matches!(err, crate::error::Error::InvalidRangeThreshold { value } if value.is_nan()),
+            "expected InvalidRangeThreshold(NaN), got {err:?}"
+        );
+    }
+
+    #[test]
+    fn test_hand_edited_negative_threshold_is_rejected_on_the_analyze_path() {
+        // The sibling half: a negative threshold made filtering a silent no-op
+        // while the JSON envelope still reported it active.
+        let err = build_with(&config_with_threshold(-1.0)).unwrap_err();
+
+        assert!(
+            matches!(err, crate::error::Error::InvalidRangeThreshold { .. }),
+            "expected InvalidRangeThreshold, got {err:?}"
+        );
+    }
+
+    #[test]
+    fn test_valid_thresholds_still_build_on_the_analyze_path() {
+        // The normal case must be untouched, including both inclusive bounds.
+        for threshold in [0.0, 0.01, 0.5, 1.0] {
+            assert!(
+                build_with(&config_with_threshold(threshold)).is_ok(),
+                "threshold {threshold} must be accepted"
+            );
         }
     }
 

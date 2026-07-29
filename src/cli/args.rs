@@ -126,13 +126,14 @@ pub enum ConfigAction {
     Set {
         /// Configuration key (dotted path, e.g., "defaults.model").
         key: String,
-        /// Value to set.
-        ///
-        /// `allow_hyphen_values` because plenty of legitimate values start with
-        /// a minus. Without it clap reads `birda config set defaults.latitude
-        /// -33.9` as an unknown short flag and fails with "unexpected argument
-        /// '-3' found", which put every southern and western hemisphere
-        /// coordinate out of reach of this command.
+        // `allow_hyphen_values` because plenty of legitimate values start with a
+        // minus. Without it clap reads `birda config set defaults.latitude
+        // -33.9` as an unknown short flag and fails with "unexpected argument
+        // '-3' found", which put every southern and western hemisphere
+        // coordinate out of reach of this command. Kept as a `//` comment: clap
+        // renders `///` into `--help`, and this is implementation rationale.
+        /// Value to set. Use `--` before a value that begins with a hyphen and
+        /// could be mistaken for a flag.
         #[arg(allow_hyphen_values = true)]
         value: String,
     },
@@ -223,10 +224,11 @@ pub struct AnalyzeArgs {
     #[arg(long, env = "BIRDA_META_MODEL_PATH", hide = true)]
     pub meta_model_path: Option<PathBuf>,
 
+    // Global so `birda species` reaches the same field as `birda analyze`. See
+    // the note on `yes` for why these are not duplicated per subcommand. Kept
+    // as a `//` comment: clap renders `///` into `--help`.
     /// Path to the `BirdNET` Geomodel v3.0.2 ONNX file (overrides config).
-    ///
-    /// Global so `birda species` reaches the same field as `birda analyze`.
-    /// See the note on `yes` for why these are not duplicated per subcommand.
+    /// Must be given together with --geomodel-labels-path.
     #[arg(
         long,
         global = true,
@@ -235,9 +237,9 @@ pub struct AnalyzeArgs {
     )]
     pub geomodel_path: Option<PathBuf>,
 
+    // Global for the same reason as the model path above.
     /// Path to the `BirdNET` Geomodel v3.0.2 labels file (overrides config).
-    ///
-    /// Global for the same reason as `geomodel_path`.
+    /// Must be given together with --geomodel-path.
     #[arg(
         long,
         global = true,
@@ -396,14 +398,22 @@ pub struct AnalyzeArgs {
     #[arg(long, value_enum, env = "BIRDA_RANGE_UNMATCHED")]
     pub range_unmatched: Option<crate::config::UnmatchedPolicy>,
 
-    /// Assume yes for prompts, including the geomodel download offer.
-    ///
-    /// Global so that every spelling reaches this one field. `AnalyzeArgs` is
-    /// flattened onto the root, so without `global` a subcommand could only see
-    /// this flag by declaring its own copy, and the two copies would populate
-    /// different fields: `birda --yes species` would set the root field while
-    /// `species` read its own, still-false one. That is the defect in #286, and
-    /// duplicating the flag would have moved it rather than fixed it.
+    // Global so that every spelling reaches this one field. `AnalyzeArgs` is
+    // flattened onto the root, so without `global` a subcommand could only see
+    // this flag by declaring its own copy, and the two copies would populate
+    // different fields: `birda --yes species` would set the root field while
+    // `species` read its own, still-false one. That is the defect in #286, and
+    // duplicating the flag would have moved it rather than fixed it.
+    //
+    // Kept as a `//` comment on purpose: clap renders `///` into `--help`, and
+    // because this flag is global the text would appear under every subcommand.
+    // Rationale belongs to the code, not to the user.
+    //
+    // Every prompt this flag can reach must read it. See `handle_models_install`
+    // and `handle_models_remove`: a prompt that ignores `--yes`, or answers it
+    // backwards, is the same defect as a flag that does not reach the command.
+    /// Assume yes for prompts: the geomodel download offer, licence acceptance,
+    /// setting an installed model as default, and `models remove --purge`.
     #[arg(short = 'y', long, global = true)]
     pub yes: bool,
 

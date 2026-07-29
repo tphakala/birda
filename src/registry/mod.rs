@@ -47,7 +47,7 @@ pub fn list_available(registry: &Registry, output_mode: crate::config::OutputMod
         let payload = AvailableModelsPayload {
             result_type: ResultType::AvailableModels,
             models,
-            range_filter: registry.range_filter.as_ref().map(available_range_filter),
+            available_range_filter: registry.range_filter.as_ref().map(available_range_filter),
         };
         emit_json_result(&payload);
         return;
@@ -67,12 +67,7 @@ pub fn list_available(registry: &Registry, output_mode: crate::config::OutputMod
         println!("    {} - {}", model.name, model.description);
         println!("    Vendor: {}", model.vendor);
 
-        let license_note = if model.license.commercial_use {
-            &model.license.r#type
-        } else {
-            &format!("{} (non-commercial)", model.license.r#type)
-        };
-        println!("    License: {license_note}");
+        println!("    License: {}", license_line(&model.license));
         println!();
     }
 
@@ -88,17 +83,36 @@ pub fn list_available(registry: &Registry, output_mode: crate::config::OutputMod
         // used above.
         println!("    {}", asset.name);
         println!("    Vendor: {}", asset.vendor);
-        let share_alike = if asset.license.share_alike {
-            " (share-alike)"
-        } else {
-            ""
-        };
-        println!("    License: {}{share_alike}", asset.license.r#type);
+        println!("    License: {}", license_line(&asset.license));
         println!("    Covers {} species", asset.species_count);
         println!();
     }
 
     println!("Run 'birda models info <id>' for details.");
+}
+
+/// Render a licence identifier with the restrictions that apply to it.
+///
+/// One renderer for classifiers and the range filter alike. Listing them
+/// separately taught a falsehood: the classifier loop showed only
+/// `(non-commercial)` and the range filter showed only `(share-alike)`, so
+/// `birdnet-v24` and `bsg-fi-v44` listed without a share-alike note even though
+/// both carry that obligation. Whichever restrictions apply are now named on
+/// every entry.
+fn license_line(license: &LicenseInfo) -> String {
+    let mut notes = Vec::new();
+    if !license.commercial_use {
+        notes.push("non-commercial");
+    }
+    if license.share_alike {
+        notes.push("share-alike");
+    }
+
+    if notes.is_empty() {
+        license.r#type.clone()
+    } else {
+        format!("{} ({})", license.r#type, notes.join(", "))
+    }
 }
 
 /// Project the shared range filter asset into its structured-output shape.
@@ -131,8 +145,12 @@ fn total_download_size(asset: &RangeFilterAsset) -> Option<u64> {
 /// Render the shared range filter asset for `birda models info geomodel`.
 ///
 /// Separate from [`show_info`] because the geomodel is not a [`ModelEntry`]:
-/// it has no per-language labels and no model type, and it carries a species
-/// count and a share-alike obligation that no classifier does.
+/// it has no per-language labels, no model type and no description, and it
+/// carries a species count and a download size that no classifier entry does.
+///
+/// Note that share-alike is NOT what distinguishes it: `birdnet-v24`
+/// (CC BY-NC-SA) and `bsg-fi-v44` (BSG-NC) are share-alike too. What differs is
+/// commercial use, which the geomodel permits and those two do not.
 pub fn show_range_filter_info(asset: &RangeFilterAsset) {
     println!("Range filter: {}", asset.name);
     println!("ID: {GEOMODEL_INSTALL_ID}");
@@ -255,6 +273,49 @@ pub fn show_info(registry: &Registry, id: &str) -> Result<()> {
     println!("To install: birda models install {}", model.id);
 
     Ok(())
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)] // Test setup code - panics are acceptable
+mod tests {
+    use super::*;
+
+    fn license(commercial_use: bool, share_alike: bool) -> LicenseInfo {
+        LicenseInfo {
+            r#type: "TEST-1.0".into(),
+            url: "https://example.com/licence".into(),
+            commercial_use,
+            attribution_required: true,
+            share_alike,
+        }
+    }
+
+    #[test]
+    fn test_license_line_names_every_restriction_that_applies() {
+        // The defect this replaced: the classifier loop showed only
+        // "(non-commercial)" and the range filter only "(share-alike)", so
+        // birdnet-v24 and bsg-fi-v44 listed with no share-alike note despite
+        // carrying that obligation. Both restrictions must show together.
+        let line = license_line(&license(false, true));
+
+        assert!(line.contains("non-commercial"), "got: {line}");
+        assert!(line.contains("share-alike"), "got: {line}");
+    }
+
+    #[test]
+    fn test_license_line_names_share_alike_on_a_commercial_licence() {
+        // The geomodel's shape: CC BY-SA permits commercial use but still binds
+        // share-alike, so the note must not be suppressed by commercial_use.
+        let line = license_line(&license(true, true));
+
+        assert!(!line.contains("non-commercial"), "got: {line}");
+        assert!(line.contains("share-alike"), "got: {line}");
+    }
+
+    #[test]
+    fn test_license_line_adds_nothing_for_an_unrestricted_licence() {
+        assert_eq!(license_line(&license(true, false)), "TEST-1.0");
+    }
 }
 
 /// Show available languages for a model.

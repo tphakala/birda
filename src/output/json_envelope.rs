@@ -495,9 +495,16 @@ pub struct AvailableModelsPayload {
     /// would otherwise offer an entry that fails on use. This also keeps the
     /// change additive, so existing consumers of `models` are unaffected.
     ///
+    /// Named `available_range_filter` rather than `range_filter` because
+    /// `DetectionsPayload` already has a `range_filter` field carrying a
+    /// completely different shape (`RangeFilterInfo`: per-run coverage counts).
+    /// Two disjoint types under one field name collide for any consumer that
+    /// derives one type per field name, which is how the GUI's `types.ts` is
+    /// written.
+    ///
     /// `None` when the registry predates the geomodel.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub range_filter: Option<AvailableRangeFilterEntry>,
+    pub available_range_filter: Option<AvailableRangeFilterEntry>,
 }
 
 /// The shared range filter asset, as offered by `birda models list-available`.
@@ -524,9 +531,9 @@ pub struct AvailableRangeFilterEntry {
     pub species_count: usize,
     /// Combined download size of the model and labels files, in bytes.
     ///
-    /// `None` when the registry declares no size for either file, rather than
-    /// reporting a misleading zero. Both files are required, so a size is only
-    /// meaningful when both are known.
+    /// `None` unless both files declare a size and their sum fits in `u64`.
+    /// Both files are required for the range filter to work, so a partial total
+    /// would read as the whole download and understate it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub size_bytes: Option<u64>,
 }
@@ -894,7 +901,7 @@ mod tests {
                 license: "CC-BY-NC-SA-4.0".to_string(),
                 commercial_use: false,
             }],
-            range_filter: None,
+            available_range_filter: None,
         };
         let json = serde_json::to_string(&payload).expect("serialize");
         let actual: serde_json::Value = serde_json::from_str(&json).expect("deserialize");
@@ -1149,9 +1156,21 @@ mod tests {
 
     #[test]
     fn test_spec_version_is_bumped_for_the_geomodel_envelope() {
+        // 1.1 is the version in which `DetectionsPayload.range_filter` became
+        // `RangeFilterInfo` (geomodel coverage counts), replacing the
+        // cross-model fields. This is a change-detector on that constant, not
+        // evidence that any later change was accompanied by a bump: it can only
+        // fire when someone edits the literal.
+        //
+        // Purely additive optional fields do NOT move it. That is why
+        // `AvailableModelsPayload::available_range_filter` was added under 1.1:
+        // it carries `#[serde(default, skip_serializing_if)]`, so old consumers
+        // deserialize unchanged and the emitted bytes are identical when the
+        // registry has no range filter.
         assert_eq!(
             SPEC_VERSION, "1.1",
-            "range_filter changed shape, so consumers need the bump"
+            "changing this constant is a wire-contract decision; update the \
+             reasoning above along with it"
         );
     }
 

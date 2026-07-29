@@ -1279,8 +1279,9 @@ fn handle_config_set(key: &str, value: &str, output_mode: OutputMode) -> Result<
             };
         }
         // The three keys below are siblings of range_threshold above. They were
-        // missed when the geomodel landed, so users and the GUI had to
-        // hand-edit config.toml to reach them.
+        // missed when the geomodel landed, so reaching them meant hand-editing
+        // config.toml. (Only users: the GUI has no config write path at all, it
+        // shells out to `config show` and `config path` only.)
         "defaults.geomodel" => {
             config.defaults.geomodel = if value.is_empty() {
                 None
@@ -1301,12 +1302,23 @@ fn handle_config_set(key: &str, value: &str, output_mode: OutputMode) -> Result<
             } else {
                 // Parsed through clap's ValueEnum so `config set` accepts
                 // exactly the spellings `--range-unmatched` accepts, rather
-                // than a second, drifting list.
+                // than a second, drifting list. The error message derives its
+                // list the same way, so adding a variant cannot leave the two
+                // out of step.
                 <config::UnmatchedPolicy as clap::ValueEnum>::from_str(value, false).map_err(
-                    |_| Error::ConfigValidation {
-                        message: format!(
-                            "invalid value for '{key}': {value} (expected 'keep' or 'drop')"
-                        ),
+                    |_| {
+                        let accepted =
+                            <config::UnmatchedPolicy as clap::ValueEnum>::value_variants()
+                                .iter()
+                                .filter_map(clap::ValueEnum::to_possible_value)
+                                .map(|v| format!("'{}'", v.get_name()))
+                                .collect::<Vec<_>>()
+                                .join(" or ");
+                        Error::ConfigValidation {
+                            message: format!(
+                                "invalid value for '{key}': {value} (expected {accepted})"
+                            ),
+                        }
                     },
                 )?
             };
@@ -1456,9 +1468,18 @@ fn handle_models_command(
             // birdnet-geomodel-v3` worked while `models install
             // birdnet-geomodel-v3` did not, which is a worse answer than a
             // single canonical handle.
-            if let Some(asset) = registry.range_filter.as_ref()
-                && id == registry::GEOMODEL_INSTALL_ID
-            {
+            // Match the id FIRST, then require the asset. Testing the asset
+            // first meant that a registry predating the geomodel fell through
+            // to `find_model` and died in `config::get_model` with "model
+            // 'geomodel' not found in configuration" -- exactly the message
+            // this branch exists to prevent. `handle_models_install` already
+            // orders it this way and reports `RangeFilterAssetMissing`, so the
+            // two commands disagreed on the same registry state.
+            if id == registry::GEOMODEL_INSTALL_ID {
+                let asset = registry
+                    .range_filter
+                    .as_ref()
+                    .ok_or(Error::RangeFilterAssetMissing)?;
                 if output_mode.is_structured() {
                     let payload = ModelInfoPayload {
                         result_type: ResultType::ModelInfo,
@@ -1542,7 +1563,9 @@ fn handle_models_command(
             }
             Ok(())
         }
-        ModelsAction::Remove { name, purge } => handle_models_remove(&name, purge, output_mode),
+        ModelsAction::Remove { name, purge } => {
+            handle_models_remove(&name, purge, output_mode, assume_yes)
+        }
         ModelsAction::Install {
             id,
             language,
@@ -1660,14 +1683,23 @@ fn referenced_model_paths(config: &Config) -> std::collections::HashSet<PathBuf>
 }
 
 /// Handle the `models remove` command.
-fn handle_models_remove(name: &str, purge: bool, output_mode: OutputMode) -> Result<()> {
+fn handle_models_remove(
+    name: &str,
+    purge: bool,
+    output_mode: OutputMode,
+    assume_yes: bool,
+) -> Result<()> {
     use std::io::Write;
 
     // Load config and verify model exists
     let mut config = load_default_config()?;
 
-    // If purge, confirm before deleting files (skip in structured mode)
-    if purge && !output_mode.is_structured() {
+    // If purge, confirm before deleting files (skip in structured mode).
+    //
+    // `--yes` is honoured here because the flag is global and therefore appears
+    // in this command's `--help`. A prompt that advertises the flag and then
+    // ignores it is the same defect as a flag that never reaches the command.
+    if purge && !output_mode.is_structured() && !assume_yes {
         print!("This will delete model files for '{name}' from disk. Continue? [y/N]: ");
         std::io::stdout().flush()?;
         let mut input = String::new();
@@ -1772,14 +1804,15 @@ fn handle_models_install(
 ) -> Result<()> {
     use std::io::{IsTerminal, Write};
 
-    // `--yes` is documented as "assume yes for prompts", so it has to reach the
-    // prompts. It became reachable here when the flag was made global for
-    // `birda species`; leaving it unread would have made `models install --yes`
-    // parse and do nothing, which is the same defect this change set exists to
-    // remove. Note this grants no new licence exemption: acceptance already
-    // auto-succeeds for any non-interactive run, such as a pipe or JSON mode,
-    // and `--yes` simply lets a user at a terminal opt into the same thing.
-    let interactive = std::io::stdin().is_terminal() && !output_mode.is_structured() && !assume_yes;
+    // `interactive` means "a human is present and can be asked", nothing more.
+    //
+    // `assume_yes` is deliberately NOT folded in here. Doing so collapses three
+    // states (cannot ask / pre-answered yes / must ask) into two, and the two
+    // collapsed states need OPPOSITE answers at the "Set as default model?"
+    // prompt below, whose interactive default is yes: `--yes` would have
+    // answered no. Each prompt reads `assume_yes` for itself, the way
+    // `config::geomodel::acquire` already does.
+    let interactive = std::io::stdin().is_terminal() && !output_mode.is_structured();
 
     // Load registry
     let registry = registry::load_registry()?;
@@ -1787,7 +1820,7 @@ fn handle_models_install(
     // The shared range filter asset is installable under its own id, since it
     // is used by every classifier rather than belonging to any one of them.
     if id == registry::GEOMODEL_INSTALL_ID {
-        return handle_geomodel_install(&registry, interactive, output_mode);
+        return handle_geomodel_install(&registry, interactive, assume_yes, output_mode);
     }
 
     let model = registry::find_model(&registry, id)
@@ -1800,7 +1833,7 @@ fn handle_models_install(
         version: &model.version,
         license: &model.license,
     };
-    if !registry::prompt_license_acceptance(asset, interactive)? {
+    if !registry::prompt_license_acceptance(asset, interactive, assume_yes)? {
         if !output_mode.is_structured() {
             println!("Installation cancelled.");
         }
@@ -1845,8 +1878,13 @@ fn handle_models_install(
         println!();
     }
 
-    // Prompt to set as default
-    let should_set_default = if set_default {
+    // Prompt to set as default.
+    //
+    // `assume_yes` answers yes, matching this prompt's own interactive default
+    // ([Y/n], bare Enter means yes). Folding `--yes` into `interactive` instead
+    // would drop through to the `else` and answer NO, so the flag would mean
+    // "accept" at the licence prompt and "decline" here, inside one command.
+    let should_set_default = if set_default || assume_yes {
         true
     } else if interactive {
         print!("Set as default model? [Y/n]: ");
@@ -1966,6 +2004,7 @@ fn report_geomodel_status(info: &output::GeomodelInfo) {
 fn handle_geomodel_install(
     registry: &registry::Registry,
     interactive: bool,
+    assume_yes: bool,
     output_mode: OutputMode,
 ) -> Result<()> {
     let asset = registry
@@ -1979,7 +2018,7 @@ fn handle_geomodel_install(
         version: &asset.version,
         license: &asset.license,
     };
-    if !registry::prompt_license_acceptance(licensed, interactive)? {
+    if !registry::prompt_license_acceptance(licensed, interactive, assume_yes)? {
         if !output_mode.is_structured() {
             println!("Installation cancelled.");
         }

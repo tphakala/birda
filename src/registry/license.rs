@@ -27,8 +27,19 @@ pub struct LicensedAsset<'a> {
 /// When `interactive` is `false`, skips the user prompt and returns `Ok(true)`
 /// (auto-accept). This is used for non-TTY or structured output modes.
 ///
+/// When `assume_yes` is set the terms are still DISPLAYED and only the question
+/// is skipped. Suppressing the display as well would mean a user at a terminal
+/// accepts a licence they were never shown, which is worse than the non-TTY
+/// case where no human is present to read it. The classifiers are CC BY-NC-SA
+/// (non-commercial) and the geomodel is CC BY-SA (share-alike), so what is
+/// being agreed to differs by asset and is worth printing.
+///
 /// Returns `Ok(true)` if user accepts, `Ok(false)` if user declines.
-pub fn prompt_license_acceptance(asset: LicensedAsset<'_>, interactive: bool) -> Result<bool> {
+pub fn prompt_license_acceptance(
+    asset: LicensedAsset<'_>,
+    interactive: bool,
+    assume_yes: bool,
+) -> Result<bool> {
     if !interactive {
         return Ok(true);
     }
@@ -39,6 +50,11 @@ pub fn prompt_license_acceptance(asset: LicensedAsset<'_>, interactive: bool) ->
     println!();
 
     display_license_summary(asset.license, asset.vendor);
+
+    if assume_yes {
+        println!("Accepted via --yes.");
+        return Ok(true);
+    }
 
     println!();
     print!("Type 'accept' to continue, or anything else to cancel: ");
@@ -143,7 +159,7 @@ mod tests {
             license: &license,
         };
 
-        assert!(prompt_license_acceptance(asset, false).unwrap());
+        assert!(prompt_license_acceptance(asset, false, false).unwrap());
     }
 
     #[test]

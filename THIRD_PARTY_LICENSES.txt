@@ -11,7 +11,7 @@ SECTION 1: RUST DEPENDENCIES
 SUMMARY
 -------
 
-MIT License: 309 crate(s)
+MIT License: 310 crate(s)
 Apache License 2.0: 26 crate(s)
 Unicode License v3: 19 crate(s)
 Mozilla Public License 2.0: 14 crate(s)
@@ -1306,7 +1306,7 @@ Apache License 2.0
 --------------------------------------------------------------------------------
 
 Used by:
-  - aws-lc-sys 0.42.0
+  - aws-lc-sys 0.43.0
   - dunce 1.0.5
   - flatbuffers 25.12.19
   - ryu 1.0.23
@@ -1453,7 +1453,7 @@ BSD 3-Clause "New" or "Revised" License
 
 Used by:
   - alloc-stdlib 0.2.4
-  - aws-lc-sys 0.42.0
+  - aws-lc-sys 0.43.0
 
 Copyright (c) <year> <owner>. 
 
@@ -1674,7 +1674,7 @@ Community Data License Agreement Permissive 2.0
 --------------------------------------------------------------------------------
 
 Used by:
-  - webpki-root-certs 1.0.8
+  - webpki-root-certs 1.0.9
 
 # Community Data License Agreement - Permissive - Version 2.0
 
@@ -1839,8 +1839,8 @@ ISC License
 --------------------------------------------------------------------------------
 
 Used by:
-  - aws-lc-rs 1.17.1
-  - aws-lc-sys 0.42.0
+  - aws-lc-rs 1.17.3
+  - aws-lc-sys 0.43.0
 
 ISC License:
 
@@ -2024,7 +2024,7 @@ MIT License
 --------------------------------------------------------------------------------
 
 Used by:
-  - cc 1.2.67
+  - cc 1.4.0
   - cfg-if 1.0.4
   - cmake 0.1.58
   - filetime 0.2.29
@@ -2310,7 +2310,7 @@ MIT License
 --------------------------------------------------------------------------------
 
 Used by:
-  - hyper 1.10.1
+  - hyper 1.11.0
 
 Copyright (c) 2014-2026 Sean McArthur
 
@@ -2672,14 +2672,14 @@ MIT License
 --------------------------------------------------------------------------------
 
 Used by:
-  - futures-channel 0.3.32
-  - futures-core 0.3.32
-  - futures-executor 0.3.32
-  - futures-io 0.3.32
-  - futures-macro 0.3.32
-  - futures-sink 0.3.32
-  - futures-task 0.3.32
-  - futures-util 0.3.32
+  - futures-channel 0.3.33
+  - futures-core 0.3.33
+  - futures-executor 0.3.33
+  - futures-io 0.3.33
+  - futures-macro 0.3.33
+  - futures-sink 0.3.33
+  - futures-task 0.3.33
+  - futures-util 0.3.33
 
 Copyright (c) 2016 Alex Crichton
 Copyright (c) 2017 The Tokio Authors
@@ -4299,7 +4299,7 @@ MIT License
 --------------------------------------------------------------------------------
 
 Used by:
-  - rustls-pki-types 1.15.0
+  - rustls-pki-types 1.15.1
 
 Copyright (c) 2023 Dirkjan Ochtman <dirkjan@ochtman.nl>
 
@@ -4480,9 +4480,9 @@ Used by:
   - anstyle-wincon 3.0.11
   - anstyle 1.0.14
   - assert_cmd 2.2.2
-  - clap 4.6.2
+  - clap 4.6.4
   - clap_builder 4.6.2
-  - clap_derive 4.6.1
+  - clap_derive 4.6.4
   - clap_lex 1.1.0
   - colorchoice 1.0.5
   - is_terminal_polyfill 1.70.2
@@ -4492,9 +4492,9 @@ Used by:
   - predicates 3.1.4
   - serde_spanned 1.1.1
   - termtree 0.5.1
-  - toml 1.1.3+spec-1.1.0
+  - toml 1.1.4+spec-1.1.0
   - toml_datetime 1.1.1+spec-1.1.0
-  - toml_parser 1.1.2+spec-1.1.0
+  - toml_parser 1.1.3+spec-1.1.0
   - toml_writer 1.1.2+spec-1.1.0
 
 Copyright (c) Individual contributors
@@ -4552,7 +4552,7 @@ MIT License
 
 Used by:
   - time-core 0.1.9
-  - time 0.3.53
+  - time 0.3.54
 
 Copyright (c) Jacob Pratt et al.
 
@@ -4580,7 +4580,7 @@ MIT License
 --------------------------------------------------------------------------------
 
 Used by:
-  - libc 0.2.186
+  - libc 0.2.189
 
 Copyright (c) The Rust Project Developers
 
@@ -4792,8 +4792,8 @@ MIT License
 --------------------------------------------------------------------------------
 
 Used by:
-  - zerocopy-derive 0.8.54
-  - zerocopy 0.8.54
+  - zerocopy-derive 0.8.55
+  - zerocopy 0.8.55
 
 Copyright 2023 The Fuchsia Authors
 
@@ -4984,7 +4984,7 @@ MIT License
 --------------------------------------------------------------------------------
 
 Used by:
-  - bytemuck 1.25.1
+  - bytemuck 1.25.2
 
 MIT License
 
@@ -5032,7 +5032,7 @@ MIT License
 --------------------------------------------------------------------------------
 
 Used by:
-  - tokio-macros 2.7.0
+  - tokio-macros 2.7.1
 
 MIT License
 
@@ -5063,7 +5063,7 @@ MIT License
 --------------------------------------------------------------------------------
 
 Used by:
-  - cfg_aliases 0.2.1
+  - cfg_aliases 0.2.2
 
 MIT License
 
@@ -5385,8 +5385,8 @@ MIT License
 --------------------------------------------------------------------------------
 
 Used by:
-  - tokio-util 0.7.18
-  - tokio 1.52.3
+  - tokio-util 0.7.19
+  - tokio 1.53.1
 
 MIT License
 
@@ -5538,8 +5538,8 @@ Used by:
   - adler2 2.0.1
   - atomic-waker 1.1.2
   - ctrlc 3.5.2
-  - displaydoc 0.2.6
-  - fastrand 2.4.1
+  - displaydoc 0.2.7
+  - fastrand 2.5.0
   - itoa 1.0.18
   - lexical-core 1.0.6
   - lexical-parse-float 1.0.6
@@ -5552,21 +5552,22 @@ Used by:
   - paste 1.0.15
   - pin-project-lite 0.2.17
   - portable-atomic-util 0.2.7
-  - portable-atomic 1.13.1
-  - proc-macro2 1.0.106
-  - quote 1.0.46
+  - portable-atomic 1.14.0
+  - proc-macro2 1.0.107
+  - quote 1.0.47
   - rustix 1.1.4
   - rustversion 1.0.23
   - semver 1.0.28
   - seq-macro 0.3.6
-  - serde 1.0.228
-  - serde_core 1.0.228
-  - serde_derive 1.0.228
-  - serde_json 1.0.150
+  - serde 1.0.229
+  - serde_core 1.0.229
+  - serde_derive 1.0.229
+  - serde_json 1.0.151
   - simd_cesu8 1.2.0
   - syn 2.0.119
-  - thiserror-impl 2.0.18
-  - thiserror 2.0.18
+  - syn 3.0.3
+  - thiserror-impl 2.0.19
+  - thiserror 2.0.19
   - typed-path 0.12.3
   - unicode-ident 1.0.24
   - utf8-zero 0.8.1
@@ -5875,7 +5876,7 @@ MIT License
 --------------------------------------------------------------------------------
 
 Used by:
-  - twox-hash 2.1.2
+  - twox-hash 2.1.3
 
 The MIT License (MIT)
 
@@ -5996,7 +5997,7 @@ MIT License
 --------------------------------------------------------------------------------
 
 Used by:
-  - aws-lc-sys 0.42.0
+  - aws-lc-sys 0.43.0
 
 The MIT License (MIT)
 

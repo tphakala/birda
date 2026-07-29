@@ -10,6 +10,12 @@
 # Claude Code
 .claude/
 
+# Agent tooling caches: symbol indexes and code graphs, rebuilt on demand and
+# specific to one machine. Listed here because the working-document rule below
+# covers .serena/ by name and nothing was enforcing it.
+.serena/
+.codegraph/
+
 # Working documents: design notes, implementation plans, specs, research and
 # review findings. These are drafting aids for whoever is working on a change,
 # not published documentation. They date quickly, they describe intentions

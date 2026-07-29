@@ -34,6 +34,35 @@ pub fn supports_range_filter(args: &AnalyzeArgs, model_type: ModelType) -> bool 
     }
 }
 
+/// Reject a range threshold that the config file put out of bounds.
+///
+/// Separate from `build_range_filter_config` so it can run BEFORE the geomodel
+/// is resolved. Resolution may prompt for and download roughly 15 MB, and
+/// aborting after that spends the user's bandwidth to report something knowable
+/// up front.
+///
+/// Bounds-checked here rather than only in `validate_range_filter` because
+/// `validate_config` has exactly one caller, `handle_config_set`, so nothing
+/// validates a config that was hand-edited rather than written through the CLI.
+/// The hand-edited case is the one the bug report describes: a negative
+/// threshold makes filtering a silent no-op while the JSON envelope still
+/// reports it active, and NaN drops every mapped species because `score >= NaN`
+/// is false for every score.
+///
+/// The CLI flag arrives already bounded by `parse_confidence`, so in practice
+/// this fires only for a config-file value.
+pub fn validate_threshold(args: &AnalyzeArgs, config: &Config) -> Result<()> {
+    let threshold = args
+        .range_threshold
+        .unwrap_or(config.defaults.range_threshold);
+
+    if !(confidence::MIN..=confidence::MAX).contains(&threshold) {
+        return Err(Error::InvalidRangeThreshold { value: threshold });
+    }
+
+    Ok(())
+}
+
 /// Whether range filtering is wanted at all, before the geomodel is resolved.
 ///
 /// Checked ahead of acquisition so birda never prompts for, downloads, or
@@ -96,21 +125,10 @@ pub fn build_range_filter_config(
         .range_threshold
         .unwrap_or(config.defaults.range_threshold);
 
-    // Bounds-check here, at the point of use, and not only in
-    // `validate_range_filter`. `validate_config` has exactly one caller,
-    // `handle_config_set`, so nothing validates a config that was hand-edited
-    // rather than written through the CLI. That hand-edited case is the one the
-    // bug report describes: a negative threshold makes filtering a silent
-    // no-op while the JSON envelope still reports it active, and NaN drops
-    // every mapped species because `score >= NaN` is false for every score.
-    // Validating only where configs are written would have left the path the
-    // defect actually travels wide open.
-    //
-    // The CLI flag reaches here already bounded by `parse_confidence`, so this
-    // fires only for a config-file value.
-    if !(confidence::MIN..=confidence::MAX).contains(&threshold) {
-        return Err(Error::InvalidRangeThreshold { value: threshold });
-    }
+    // Belt and braces: `analyze_files` checks this before resolving the
+    // geomodel so a bad value fails without spending a download, but the check
+    // also belongs at the point of use so no future caller can bypass it.
+    validate_threshold(args, config)?;
     let unmatched = args
         .range_unmatched
         .unwrap_or(config.defaults.range_unmatched);

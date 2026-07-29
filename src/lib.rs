@@ -776,6 +776,24 @@ fn analyze_files(
     // Resolve device from command-line flags or config
     let device = resolve_device(args, config);
 
+    // Reject a malformed threshold BEFORE resolving the geomodel, because
+    // resolution may prompt for and download roughly 15 MB and aborting after
+    // that spends the user's bandwidth to report something knowable up front.
+    //
+    // This is a hard error, unlike the availability failures described below,
+    // and the distinction is deliberate. Those are transient (a network blip, a
+    // stale cached registry, a checksum mismatch) and degrade to unfiltered
+    // analysis so a pipeline survives them. A threshold outside 0.0-1.0 is
+    // neither transient nor safe to continue past: continuing is precisely the
+    // reported bug, where a negative value silently disabled filtering while
+    // the JSON envelope still called it active, and NaN dropped every species.
+    //
+    // Gated on `wants_range_filter` so a stale threshold in a config that is
+    // not doing range filtering at all cannot fail an unrelated run.
+    if config::range_filter::wants_range_filter(args, config, model_config.model_type) {
+        config::range_filter::validate_threshold(args, config)?;
+    }
+
     // Build range filter config, resolving the shared geomodel first.
     //
     // A geomodel that cannot be found or fetched disables range filtering with
@@ -1884,7 +1902,12 @@ fn handle_models_install(
     // ([Y/n], bare Enter means yes). Folding `--yes` into `interactive` instead
     // would drop through to the `else` and answer NO, so the flag would mean
     // "accept" at the licence prompt and "decline" here, inside one command.
-    let should_set_default = if set_default || assume_yes {
+    // `assume_yes && interactive`, not `assume_yes` alone: where no prompt is
+    // printed there is nothing to assume. In a pipe or under --output-mode json
+    // this prompt never appears, so answering it "yes" would silently seize
+    // `defaults.model` from a provisioning script that passed --yes only to
+    // clear the licence gate. That stays at its prior `false`.
+    let should_set_default = if set_default || (assume_yes && interactive) {
         true
     } else if interactive {
         print!("Set as default model? [Y/n]: ");

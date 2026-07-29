@@ -26,11 +26,17 @@ const COMMAND_TIMEOUT: Duration = Duration::from_secs(30);
 /// directory. Without this the suite would mutate the developer's real config.
 fn run(args: &[&str]) -> std::process::Output {
     let home = tempfile::tempdir().expect("create temp home");
+    run_in(home.path(), args)
+}
 
+/// Run birda against a caller-supplied HOME, so several invocations can share
+/// one config directory. Needed to seed a registry file and then observe how a
+/// later command reacts to it.
+fn run_in(home: &std::path::Path, args: &[&str]) -> std::process::Output {
     let mut cmd = cargo_bin_cmd!("birda");
-    cmd.env("HOME", home.path())
-        .env("XDG_CONFIG_HOME", home.path().join("config"))
-        .env("XDG_DATA_HOME", home.path().join("data"))
+    cmd.env("HOME", home)
+        .env("XDG_CONFIG_HOME", home.join("config"))
+        .env("XDG_DATA_HOME", home.join("data"))
         // `--output-mode` reads BIRDA_OUTPUT_MODE. A developer with that
         // exported turns every human-output assertion below into a failure, so
         // the isolation has to cover the environment, not just the filesystem.
@@ -130,6 +136,7 @@ fn test_models_info_geomodel_languages_flag_is_handled() {
 fn assert_rejected_naming(args: &[&str], id: &str) {
     let output = run(args);
     let stderr = String::from_utf8_lossy(&output.stderr);
+    let stdout = String::from_utf8_lossy(&output.stdout);
 
     assert_eq!(
         output.status.code(),
@@ -141,9 +148,14 @@ fn assert_rejected_naming(args: &[&str], id: &str) {
         stderr.contains(id),
         "the error must name the rejected id '{id}', got: {stderr}"
     );
+    // Against STDOUT, not stderr. `show_range_filter_info` prints with
+    // `println!` while errors go to stderr via `eprintln!`, so asserting this
+    // on stderr checked a stream the string can never reach: it passed for an
+    // unrelated reason and would have kept passing if the range filter really
+    // had been rendered for a rejected id.
     assert!(
-        !stderr.contains("Range filter:"),
-        "must not have rendered the range filter for a rejected id, got: {stderr}"
+        !stdout.contains("Range filter:"),
+        "must not have rendered the range filter for a rejected id, got: {stdout}"
     );
 }
 
@@ -190,9 +202,8 @@ fn test_list_available_json_exposes_range_filter_as_a_sibling_field() {
     let payload = &value["payload"];
 
     // Named `available_range_filter`, not `range_filter`: `DetectionsPayload`
-    // already uses `range_filter` for a different shape, and one field name
-    // over two disjoint types collides for a consumer that derives one type per
-    // name.
+    // already uses `range_filter` for a per-run coverage shape, and distinct
+    // names keep the two readable side by side.
     let range_filter = &payload["available_range_filter"];
     assert!(
         !range_filter.is_null(),
@@ -234,5 +245,60 @@ fn test_list_available_json_keeps_models_classifier_only() {
             .iter()
             .any(|m| m["id"] == "geomodel" || m["id"] == "birdnet-geomodel-v3"),
         "the geomodel must not appear in `models`, got: {models:?}"
+    );
+}
+
+#[test]
+fn test_models_info_geomodel_on_a_registry_without_the_asset() {
+    // The case fix 4 exists for, and the only one that can distinguish it.
+    //
+    // The dispatch used to read `if let Some(asset) = registry.range_filter
+    // && id == GEOMODEL_INSTALL_ID`, testing the asset BEFORE the id. With no
+    // asset it fell through to `find_model` (never matches) and then
+    // `config::get_model`, producing "model 'geomodel' not found in
+    // configuration" -- the exact message the branch was written to prevent.
+    // `models install geomodel` already ordered it the other way and reported
+    // the accurate `RangeFilterAssetMissing`, so the two commands disagreed on
+    // one registry state.
+    //
+    // Every other test here passes with the fix reverted, because for any id
+    // that is not the install handle both orderings take the same path. This
+    // one needs a registry that has no `range_filter` at all.
+    let home = tempfile::tempdir().expect("create temp home");
+
+    // Learn where this platform puts the config, rather than assuming a layout.
+    let config_path = String::from_utf8_lossy(&run_in(home.path(), &["config", "path"]).stdout)
+        .trim()
+        .to_string();
+    let config_dir = std::path::Path::new(&config_path)
+        .parent()
+        .expect("config path has a parent")
+        .to_path_buf();
+
+    // `load_registry` keeps the cached copy whenever its `registry_version` is
+    // at least the bundled one, so a high version pins this stripped registry.
+    std::fs::create_dir_all(&config_dir).expect("create config dir");
+    std::fs::write(
+        config_dir.join("registry.json"),
+        r#"{"schema_version":"1.0","registry_version":9999,"models":[]}"#,
+    )
+    .expect("seed a registry with no range_filter");
+
+    let output = run_in(home.path(), &["models", "info", "geomodel"]);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    assert!(
+        !output.status.success(),
+        "a registry with no range filter cannot describe the geomodel"
+    );
+    assert!(
+        !stderr.contains("not found in configuration"),
+        "must not claim the id is an unknown configured model; that is the \
+         misleading fallback this branch exists to avoid. stderr: {stderr}"
+    );
+    assert!(
+        stderr.contains("range filter"),
+        "must report the missing range filter asset, matching what \
+         `models install geomodel` reports for the same state. stderr: {stderr}"
     );
 }

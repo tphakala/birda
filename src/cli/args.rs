@@ -132,8 +132,8 @@ pub enum ConfigAction {
         // '-3' found", which put every southern and western hemisphere
         // coordinate out of reach of this command. Kept as a `//` comment: clap
         // renders `///` into `--help`, and this is implementation rationale.
-        /// Value to set. Use `--` before a value that begins with a hyphen and
-        /// could be mistaken for a flag.
+        /// Value to set. Values beginning with a hyphen are accepted, so
+        /// coordinates such as -33.9 need no escaping.
         #[arg(allow_hyphen_values = true)]
         value: String,
     },

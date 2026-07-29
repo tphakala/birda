@@ -498,9 +498,11 @@ pub struct AvailableModelsPayload {
     /// Named `available_range_filter` rather than `range_filter` because
     /// `DetectionsPayload` already has a `range_filter` field carrying a
     /// completely different shape (`RangeFilterInfo`: per-run coverage counts).
-    /// Two disjoint types under one field name collide for any consumer that
-    /// derives one type per field name, which is how the GUI's `types.ts` is
-    /// written.
+    /// Distinct names keep the two readable side by side in a schema, a doc
+    /// table or a generated client, where one name over two disjoint shapes
+    /// invites the wrong one being reached for. This is a naming-clarity call,
+    /// not a fix for a known consumer: TypeScript scopes field names to their
+    /// interface, so nothing in birda-gui collides today.
     ///
     /// `None` when the registry predates the geomodel.
     #[serde(default, skip_serializing_if = "Option::is_none")]

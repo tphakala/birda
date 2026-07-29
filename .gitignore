@@ -10,8 +10,24 @@
 # Claude Code
 .claude/
 
-# Design documents (not tracked in git)
+# Working documents: design notes, implementation plans, specs, research and
+# review findings. These are drafting aids for whoever is working on a change,
+# not published documentation. They date quickly, they describe intentions
+# rather than the shipped behaviour, and readers of the repository are better
+# served by README.md and the user-facing pages under docs/. Only /docs/plans/
+# was listed here originally, so everything written elsewhere was tracked by
+# default; the directories below close that gap.
 /docs/plans/
+/docs/design/
+/docs/superpowers/
+/docs/research/
+/docs/notes/
+
+# Working documents written directly into docs/ before the layout above
+# existed. Listed by name so they are not re-added by `git add -A`.
+/docs/code-review-findings.md
+/docs/critical-issues-fix-plan-v2.md
+/docs/nsis-evaluation-result.md
 
 # Git worktrees
 /.worktrees/

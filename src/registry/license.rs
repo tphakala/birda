@@ -52,8 +52,24 @@ pub fn prompt_license_acceptance(asset: LicensedAsset<'_>, interactive: bool) ->
 
 /// Display license summary with key restrictions.
 fn display_license_summary(license: &LicenseInfo, vendor: &str) {
-    println!("License: {}", license.r#type);
-    println!(
+    print!("{}", license_summary(license, vendor));
+}
+
+/// Render the license summary.
+///
+/// Split from the printing so it can be asserted on. The tests for this
+/// previously called the printing version and asserted nothing, which meant a
+/// summary that silently dropped the share-alike obligation would still have
+/// passed a green suite (#291).
+fn license_summary(license: &LicenseInfo, vendor: &str) -> String {
+    use std::fmt::Write as _;
+
+    let mut out = String::new();
+    let yes_no = |flag: bool| if flag { "Yes" } else { "No" };
+
+    let _ = writeln!(out, "License: {}", license.r#type);
+    let _ = writeln!(
+        out,
         "  Commercial use: {}",
         if license.commercial_use {
             "Allowed"
@@ -61,44 +77,45 @@ fn display_license_summary(license: &LicenseInfo, vendor: &str) {
             "Not allowed"
         }
     );
-    println!(
+    let _ = writeln!(
+        out,
         "  Attribution required: {}",
-        if license.attribution_required {
-            "Yes"
-        } else {
-            "No"
-        }
+        yes_no(license.attribution_required)
     );
-    println!(
+    let _ = writeln!(
+        out,
         "  Share-alike required: {}",
-        if license.share_alike { "Yes" } else { "No" }
+        yes_no(license.share_alike)
     );
-    println!();
-    println!("Full license text:");
-    println!("{}", license.url);
-    println!();
+    let _ = writeln!(out);
+    let _ = writeln!(out, "Full license text:");
+    let _ = writeln!(out, "{}", license.url);
+    let _ = writeln!(out);
 
     // Display key obligations
     if !license.commercial_use || license.attribution_required || license.share_alike {
-        println!("By using this model, you agree to:");
+        let _ = writeln!(out, "By using this model, you agree to:");
 
         if !license.commercial_use {
-            println!("  • Use for non-commercial purposes only");
+            let _ = writeln!(out, "  • Use for non-commercial purposes only");
         }
 
         if license.attribution_required {
-            println!("  • Provide attribution to {vendor}");
+            let _ = writeln!(out, "  • Provide attribution to {vendor}");
         }
 
         if license.share_alike {
-            println!(
+            let _ = writeln!(
+                out,
                 "  • Share derivatives under the same license ({})",
                 license.r#type
             );
         }
 
-        println!();
+        let _ = writeln!(out);
     }
+
+    out
 }
 
 #[cfg(test)]
@@ -130,14 +147,30 @@ mod tests {
     }
 
     #[test]
-    fn test_display_license_summary_share_alike() {
+    fn test_license_summary_states_the_share_alike_obligation() {
         // The geomodel is CC BY-SA, unlike the CC BY-NC-SA classifier models,
-        // so the share-alike obligation must render.
-        display_license_summary(&geomodel_license(), "Cornell Lab of Ornithology");
+        // so the share-alike obligation must render. This previously called the
+        // printing function and asserted nothing, so a summary that dropped the
+        // obligation entirely would still have passed.
+        let summary = license_summary(&geomodel_license(), "Cornell Lab of Ornithology");
+
+        assert!(
+            summary.contains("Share-alike required: Yes"),
+            "must state the obligation, got:\n{summary}"
+        );
+        assert!(
+            summary.contains("Share derivatives under the same license (CC-BY-SA-4.0)"),
+            "must name the licence in the obligation list, got:\n{summary}"
+        );
+        assert!(
+            summary.contains("Commercial use: Allowed"),
+            "CC BY-SA permits commercial use, unlike the classifiers, and \
+             conflating the two would misinform a commercial user, got:\n{summary}"
+        );
     }
 
     #[test]
-    fn test_display_license_summary_noncommercial() {
+    fn test_license_summary_states_the_non_commercial_restriction() {
         let license = LicenseInfo {
             r#type: "CC-BY-NC-SA-4.0".into(),
             url: "https://creativecommons.org/licenses/by-nc-sa/4.0/".into(),
@@ -146,27 +179,24 @@ mod tests {
             share_alike: true,
         };
 
-        // This test verifies the function exists and can be called
-        // We can't easily capture stdout in unit tests, so we just verify compilation
-        display_license_summary(&license, "Test Vendor");
+        let summary = license_summary(&license, "Test Vendor");
+
+        assert!(
+            summary.contains("Commercial use: Not allowed"),
+            "got:\n{summary}"
+        );
+        assert!(
+            summary.contains("Use for non-commercial purposes only"),
+            "the restriction must appear in the obligation list, got:\n{summary}"
+        );
+        assert!(
+            summary.contains("Provide attribution to Test Vendor"),
+            "got:\n{summary}"
+        );
     }
 
     #[test]
-    fn test_display_license_summary_commercial() {
-        let license = LicenseInfo {
-            r#type: "Apache-2.0".into(),
-            url: "https://www.apache.org/licenses/LICENSE-2.0".into(),
-            commercial_use: true,
-            attribution_required: true,
-            share_alike: false,
-        };
-
-        // Verify function can be called
-        display_license_summary(&license, "Test Vendor");
-    }
-
-    #[test]
-    fn test_display_license_summary_permissive() {
+    fn test_license_summary_reports_a_permissive_licence_without_obligations() {
         let license = LicenseInfo {
             r#type: "MIT".into(),
             url: "https://opensource.org/licenses/MIT".into(),
@@ -175,7 +205,28 @@ mod tests {
             share_alike: false,
         };
 
-        // Verify function can be called
-        display_license_summary(&license, "Test Vendor");
+        let summary = license_summary(&license, "Test Vendor");
+
+        assert!(
+            summary.contains("Commercial use: Allowed"),
+            "got:\n{summary}"
+        );
+        assert!(
+            !summary.contains("By using this model, you agree to:"),
+            "a licence with no obligations must not print an empty obligation \
+             list, got:\n{summary}"
+        );
+    }
+
+    #[test]
+    fn test_license_summary_always_includes_the_full_text_url() {
+        // The summary is a summary; the URL is the only route to the actual
+        // terms, so it must survive regardless of which flags are set.
+        let summary = license_summary(&geomodel_license(), "Cornell Lab of Ornithology");
+
+        assert!(
+            summary.contains("https://creativecommons.org/licenses/by-sa/4.0/"),
+            "got:\n{summary}"
+        );
     }
 }

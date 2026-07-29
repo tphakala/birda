@@ -168,13 +168,14 @@ fn resolve_range_filter_geomodel(
     // or a checksum failure, which is exactly the pipeline break this function
     // exists to prevent. Only `birda species`, where the species list IS the
     // output, treats an unavailable geomodel as fatal.
-    let resolution = match config::resolve_geomodel(args, config, &registry, output_mode) {
-        Ok(resolution) => resolution,
-        Err(e) => {
-            warn!("Range filtering disabled: {e}");
-            return None;
-        }
-    };
+    let resolution =
+        match config::resolve_geomodel(args.geomodel_request(), config, &registry, output_mode) {
+            Ok(resolution) => resolution,
+            Err(e) => {
+                warn!("Range filtering disabled: {e}");
+                return None;
+            }
+        };
 
     match resolution {
         config::GeomodelResolution::Ready(geomodel) => Some(geomodel),
@@ -323,9 +324,15 @@ pub fn run() -> Result<()> {
         inference::ensure_runtime_available()?;
     }
 
-    // Handle subcommands
+    // Handle subcommands.
+    //
+    // The geomodel request is read from the flattened root args rather than
+    // from the subcommand, because the three flags it carries are `global`.
+    // A subcommand that needs the geomodel therefore sees the user's flags
+    // whichever side of the subcommand name they were written on.
     if let Some(command) = cli.command {
-        return handle_command(command, &config, output_mode, &reporter);
+        let geomodel_request = cli.analyze.geomodel_request();
+        return handle_command(command, &config, output_mode, &reporter, geomodel_request);
     }
 
     // Default: analyze files
@@ -937,10 +944,13 @@ fn handle_command(
     config: &config::Config,
     output_mode: OutputMode,
     _reporter: &Arc<dyn ProgressReporter>,
+    geomodel_request: config::GeomodelRequest<'_>,
 ) -> Result<()> {
     match command {
         Command::Config { action } => handle_config_command(action, output_mode),
-        Command::Models { action } => handle_models_command(action, config, output_mode),
+        Command::Models { action } => {
+            handle_models_command(action, config, output_mode, geomodel_request.assume_yes)
+        }
         Command::Providers => {
             handle_providers_command(output_mode);
             Ok(())
@@ -966,6 +976,7 @@ fn handle_command(
             sort,
             model,
             output_mode,
+            geomodel_request,
         ),
         Command::Clip(args) => clipper::command::execute(&args, output_mode),
         Command::Update { check } => handle_update_command(check, output_mode),
@@ -1267,6 +1278,39 @@ fn handle_config_set(key: &str, value: &str, output_mode: OutputMode) -> Result<
                 })?
             };
         }
+        // The three keys below are siblings of range_threshold above. They were
+        // missed when the geomodel landed, so users and the GUI had to
+        // hand-edit config.toml to reach them.
+        "defaults.geomodel" => {
+            config.defaults.geomodel = if value.is_empty() {
+                None
+            } else {
+                Some(PathBuf::from(value))
+            };
+        }
+        "defaults.geomodel_labels" => {
+            config.defaults.geomodel_labels = if value.is_empty() {
+                None
+            } else {
+                Some(PathBuf::from(value))
+            };
+        }
+        "defaults.range_unmatched" => {
+            config.defaults.range_unmatched = if value.is_empty() {
+                config::DefaultsConfig::default().range_unmatched
+            } else {
+                // Parsed through clap's ValueEnum so `config set` accepts
+                // exactly the spellings `--range-unmatched` accepts, rather
+                // than a second, drifting list.
+                <config::UnmatchedPolicy as clap::ValueEnum>::from_str(value, false).map_err(
+                    |_| Error::ConfigValidation {
+                        message: format!(
+                            "invalid value for '{key}': {value} (expected 'keep' or 'drop')"
+                        ),
+                    },
+                )?
+            };
+        }
         _ => {
             return Err(Error::InvalidConfigKey {
                 key: key.to_string(),
@@ -1299,6 +1343,7 @@ fn handle_models_command(
     action: cli::ModelsAction,
     config: &config::Config,
     output_mode: OutputMode,
+    assume_yes: bool,
 ) -> Result<()> {
     use cli::ModelsAction;
 
@@ -1397,6 +1442,54 @@ fn handle_models_command(
         ModelsAction::Info { id, languages } => {
             // Try registry first
             let registry = registry::load_registry()?;
+
+            // The geomodel lives in `registry.range_filter`, not
+            // `registry.models`, so `find_model` below can never match it and
+            // the fallback would die in `config::get_model` with "model not
+            // found" for the exact id every error message and doc page tells
+            // users to install. Handle it before the lookup, not inside
+            // `show_info`, which that lookup would never reach.
+            // Only the install handle, deliberately not `asset.id`. That is the
+            // id `models install` accepts, the one every error message and doc
+            // page names, and the one this command's own JSON reports. Taking
+            // the registry's internal id here as well would mean `models info
+            // birdnet-geomodel-v3` worked while `models install
+            // birdnet-geomodel-v3` did not, which is a worse answer than a
+            // single canonical handle.
+            if let Some(asset) = registry.range_filter.as_ref()
+                && id == registry::GEOMODEL_INSTALL_ID
+            {
+                if output_mode.is_structured() {
+                    let payload = ModelInfoPayload {
+                        result_type: ResultType::ModelInfo,
+                        model: ModelDetails {
+                            id: registry::GEOMODEL_INSTALL_ID.to_string(),
+                            // Distinguishes the shared range filter from a
+                            // classifier, which is what a consumer needs in
+                            // order not to offer it as a selectable model.
+                            model_type: "range-filter".to_string(),
+                            path: None,
+                            labels_path: None,
+                            source: "registry".to_string(),
+                        },
+                    };
+                    emit_json_result(&payload);
+                } else if languages {
+                    // The geomodel ships one English labels file and has no
+                    // language variants, so report that rather than rendering
+                    // an empty language list that looks like a lookup failure.
+                    println!("Range filter: {}", asset.name);
+                    println!();
+                    println!(
+                        "The range filter has no label language variants. Species names in \
+                         output come from the active classifier's own labels."
+                    );
+                } else {
+                    registry::show_range_filter_info(asset);
+                }
+                return Ok(());
+            }
+
             if let Some(reg_model) = registry::find_model(&registry, &id) {
                 // JSON/NDJSON output for registry model
                 if output_mode.is_structured() {
@@ -1454,7 +1547,7 @@ fn handle_models_command(
             id,
             language,
             default,
-        } => handle_models_install(&id, language.as_deref(), default, output_mode),
+        } => handle_models_install(&id, language.as_deref(), default, output_mode, assume_yes),
     }
 }
 
@@ -1675,10 +1768,18 @@ fn handle_models_install(
     language: Option<&str>,
     set_default: bool,
     output_mode: OutputMode,
+    assume_yes: bool,
 ) -> Result<()> {
     use std::io::{IsTerminal, Write};
 
-    let interactive = std::io::stdin().is_terminal() && !output_mode.is_structured();
+    // `--yes` is documented as "assume yes for prompts", so it has to reach the
+    // prompts. It became reachable here when the flag was made global for
+    // `birda species`; leaving it unread would have made `models install --yes`
+    // parse and do nothing, which is the same defect this change set exists to
+    // remove. Note this grants no new licence exemption: acceptance already
+    // auto-succeeds for any non-interactive run, such as a pipe or JSON mode,
+    // and `--yes` simply lets a user at a terminal opt into the same thing.
+    let interactive = std::io::stdin().is_terminal() && !output_mode.is_structured() && !assume_yes;
 
     // Load registry
     let registry = registry::load_registry()?;

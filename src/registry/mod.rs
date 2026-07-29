@@ -47,6 +47,7 @@ pub fn list_available(registry: &Registry, output_mode: crate::config::OutputMod
         let payload = AvailableModelsPayload {
             result_type: ResultType::AvailableModels,
             models,
+            range_filter: registry.range_filter.as_ref().map(available_range_filter),
         };
         emit_json_result(&payload);
         return;
@@ -75,7 +76,117 @@ pub fn list_available(registry: &Registry, output_mode: crate::config::OutputMod
         println!();
     }
 
+    // The geomodel lives in `registry.range_filter`, not `registry.models`, so
+    // every loop over `models` skips it. Listing it here is what makes the
+    // asset every error message tells users to install actually discoverable.
+    if let Some(asset) = registry.range_filter.as_ref() {
+        println!("Range filter (shared by all classifiers):");
+        println!();
+        println!("  {GEOMODEL_INSTALL_ID}");
+        // RangeFilterAsset has no `description` field, unlike ModelEntry, so
+        // this shows the name alone rather than the "name - description" pair
+        // used above.
+        println!("    {}", asset.name);
+        println!("    Vendor: {}", asset.vendor);
+        let share_alike = if asset.license.share_alike {
+            " (share-alike)"
+        } else {
+            ""
+        };
+        println!("    License: {}{share_alike}", asset.license.r#type);
+        println!("    Covers {} species", asset.species_count);
+        println!();
+    }
+
     println!("Run 'birda models info <id>' for details.");
+}
+
+/// Project the shared range filter asset into its structured-output shape.
+fn available_range_filter(asset: &RangeFilterAsset) -> crate::output::AvailableRangeFilterEntry {
+    crate::output::AvailableRangeFilterEntry {
+        // The install handle, not `asset.id`: this is the string a user types.
+        id: GEOMODEL_INSTALL_ID.to_string(),
+        name: asset.name.clone(),
+        version: asset.version.clone(),
+        vendor: asset.vendor.clone(),
+        license: asset.license.r#type.clone(),
+        commercial_use: asset.license.commercial_use,
+        share_alike: asset.license.share_alike,
+        species_count: asset.species_count,
+        size_bytes: total_download_size(asset),
+    }
+}
+
+/// Combined download size of the geomodel's two files.
+///
+/// Both files are required, so the number a user weighing the download cares
+/// about is the total. Returns `None` unless both sizes are declared, rather
+/// than reporting a half-total that reads as the whole.
+fn total_download_size(asset: &RangeFilterAsset) -> Option<u64> {
+    let model = asset.model.size_bytes?;
+    let labels = asset.labels.size_bytes?;
+    model.checked_add(labels)
+}
+
+/// Render the shared range filter asset for `birda models info geomodel`.
+///
+/// Separate from [`show_info`] because the geomodel is not a [`ModelEntry`]:
+/// it has no per-language labels and no model type, and it carries a species
+/// count and a share-alike obligation that no classifier does.
+pub fn show_range_filter_info(asset: &RangeFilterAsset) {
+    println!("Range filter: {}", asset.name);
+    println!("ID: {GEOMODEL_INSTALL_ID}");
+    println!("Version: {}", asset.version);
+    println!("Vendor: {}", asset.vendor);
+    println!();
+
+    println!("Description:");
+    println!(
+        "  Scores {} species by location and time of year. Shared by every",
+        asset.species_count
+    );
+    println!("  classifier; it is not selectable with -m.");
+    println!();
+
+    println!("License:");
+    println!("  Type: {}", asset.license.r#type);
+    println!("  URL: {}", asset.license.url);
+    println!(
+        "  Commercial use: {}",
+        if asset.license.commercial_use {
+            "Yes"
+        } else {
+            "No"
+        }
+    );
+    println!(
+        "  Attribution required: {}",
+        if asset.license.attribution_required {
+            "Yes"
+        } else {
+            "No"
+        }
+    );
+    println!(
+        "  Share-alike required: {}",
+        if asset.license.share_alike {
+            "Yes"
+        } else {
+            "No"
+        }
+    );
+    println!();
+
+    println!("Files:");
+    println!("  Model: {}", asset.model.url);
+    println!("  Labels: {}", asset.labels.url);
+    println!(
+        "  Download size: {}",
+        crate::config::geomodel::human_size(total_download_size(asset))
+    );
+    println!();
+
+    println!("To install: birda models install {GEOMODEL_INSTALL_ID}");
 }
 
 /// Show detailed information about a specific model.

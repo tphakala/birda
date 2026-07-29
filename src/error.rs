@@ -349,6 +349,13 @@ pub enum Error {
         value: f64,
     },
 
+    /// Invalid range filter threshold.
+    #[error("invalid range threshold: {value} (must be 0.0 to 1.0)")]
+    InvalidRangeThreshold {
+        /// Invalid threshold value.
+        value: f32,
+    },
+
     /// Failed to read species list file.
     #[error("failed to read species list file '{path}'")]
     SpeciesListRead {

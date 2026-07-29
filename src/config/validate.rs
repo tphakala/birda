@@ -119,6 +119,21 @@ pub fn validate_range_filter(config: &Config) -> Result<()> {
         return Err(Error::InvalidLongitude { value: lon });
     }
 
+    // `--range-threshold` is bounds-checked by `parse_confidence`, but nothing
+    // checked the config-file path, so a hand-edited value went straight
+    // through. Two states were silently wrong rather than rejected: a negative
+    // threshold made range filtering a no-op while the JSON envelope still
+    // reported it active, and NaN dropped every mapped species because
+    // `score >= NaN` is false, leaving only the unmatched non-species labels.
+    //
+    // `contains` handles NaN without a special case: every NaN comparison is
+    // false, so the range does not contain it and the negation rejects it. A
+    // hand-rolled `threshold < 0.0` test would let NaN straight through.
+    let threshold = config.defaults.range_threshold;
+    if !(0.0..=1.0).contains(&threshold) {
+        return Err(Error::InvalidRangeThreshold { value: threshold });
+    }
+
     // The geomodel is resolved and acquired at analysis time rather than
     // validated here: it is a shared asset that birda can offer to download,
     // so a missing file is not a configuration error.
@@ -127,6 +142,11 @@ pub fn validate_range_filter(config: &Config) -> Result<()> {
 }
 
 #[cfg(test)]
+// Test setup code: unwrapping a known-Err result is how these assert, and the
+// float comparisons check that a literal passed in came back unchanged, so an
+// epsilon would weaken them. Matches the convention used by the other test
+// modules in this crate.
+#[allow(clippy::unwrap_used, clippy::float_cmp)]
 mod tests {
     use super::*;
 
@@ -196,5 +216,72 @@ mod tests {
 
         let result = validate_range_filter(&config);
         assert!(result.is_ok());
+    }
+
+    /// Build a config carrying nothing but the threshold under test, so a
+    /// failure can only be attributed to the threshold.
+    fn config_with_threshold(threshold: f32) -> Config {
+        let mut config = Config::default();
+        config.defaults.range_threshold = threshold;
+        config
+    }
+
+    #[test]
+    fn test_validate_range_filter_rejects_negative_threshold() {
+        // Silently disabled range filtering while the JSON envelope still
+        // reported it as active.
+        let err = validate_range_filter(&config_with_threshold(-1.0)).unwrap_err();
+
+        assert!(
+            matches!(err, Error::InvalidRangeThreshold { value } if value == -1.0),
+            "expected InvalidRangeThreshold(-1.0), got {err:?}"
+        );
+    }
+
+    #[test]
+    fn test_validate_range_filter_rejects_threshold_above_one() {
+        let err = validate_range_filter(&config_with_threshold(1.5)).unwrap_err();
+
+        assert!(
+            matches!(err, Error::InvalidRangeThreshold { value } if value == 1.5),
+            "expected InvalidRangeThreshold(1.5), got {err:?}"
+        );
+    }
+
+    #[test]
+    fn test_validate_range_filter_rejects_nan_threshold() {
+        // The regression guard. NaN dropped every mapped species, because
+        // `score >= NaN` is false for every score, and the only symptom was an
+        // info log reading "0 species in range". It is caught here because
+        // `(0.0..=1.0).contains(&NaN)` is false, not by an explicit is_nan test,
+        // so this asserts the idiom keeps working.
+        let err = validate_range_filter(&config_with_threshold(f32::NAN)).unwrap_err();
+
+        assert!(
+            matches!(err, Error::InvalidRangeThreshold { value } if value.is_nan()),
+            "expected InvalidRangeThreshold(NaN), got {err:?}"
+        );
+    }
+
+    #[test]
+    fn test_validate_range_filter_accepts_threshold_boundaries() {
+        // The range is inclusive at both ends; pin that so a later refactor to
+        // an exclusive comparison is caught.
+        assert!(validate_range_filter(&config_with_threshold(0.0)).is_ok());
+        assert!(validate_range_filter(&config_with_threshold(1.0)).is_ok());
+    }
+
+    #[test]
+    fn test_validate_config_rejects_bad_threshold() {
+        // `handle_config_set` calls `validate_config`, not `validate_range_filter`
+        // directly, so the chain has to hold for `birda config set
+        // defaults.range_threshold -1` to be rejected. Without this, the unit
+        // tests above could pass while the CLI path stayed broken.
+        let err = validate_config(&config_with_threshold(-1.0)).unwrap_err();
+
+        assert!(
+            matches!(err, Error::InvalidRangeThreshold { .. }),
+            "validate_config must reach validate_range_filter, got {err:?}"
+        );
     }
 }

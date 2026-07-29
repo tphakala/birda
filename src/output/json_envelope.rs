@@ -488,6 +488,47 @@ pub struct AvailableModelsPayload {
     pub result_type: ResultType,
     /// List of available models from registry.
     pub models: Vec<AvailableModelEntry>,
+    /// The shared range filter asset, which is not one of `models`.
+    ///
+    /// Kept in its own field rather than folded into `models` because it is not
+    /// selectable with `-m`: a consumer building a model picker from `models`
+    /// would otherwise offer an entry that fails on use. This also keeps the
+    /// change additive, so existing consumers of `models` are unaffected.
+    ///
+    /// `None` when the registry predates the geomodel.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub range_filter: Option<AvailableRangeFilterEntry>,
+}
+
+/// The shared range filter asset, as offered by `birda models list-available`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AvailableRangeFilterEntry {
+    /// The id to pass to `birda models install` and `birda models info`.
+    ///
+    /// This is the install handle ("geomodel"), not the registry asset id
+    /// ("birdnet-geomodel-v3"), because it is the string a user can type.
+    pub id: String,
+    /// Display name.
+    pub name: String,
+    /// Asset version.
+    pub version: String,
+    /// Organization/author.
+    pub vendor: String,
+    /// License type (SPDX identifier).
+    pub license: String,
+    /// Whether commercial use is allowed.
+    pub commercial_use: bool,
+    /// Whether derivatives must be shared under the same license.
+    pub share_alike: bool,
+    /// Number of species the model scores.
+    pub species_count: usize,
+    /// Combined download size of the model and labels files, in bytes.
+    ///
+    /// `None` when the registry declares no size for either file, rather than
+    /// reporting a misleading zero. Both files are required, so a size is only
+    /// meaningful when both are known.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub size_bytes: Option<u64>,
 }
 
 /// A single available model from the registry.
@@ -853,6 +894,7 @@ mod tests {
                 license: "CC-BY-NC-SA-4.0".to_string(),
                 commercial_use: false,
             }],
+            range_filter: None,
         };
         let json = serde_json::to_string(&payload).expect("serialize");
         let actual: serde_json::Value = serde_json::from_str(&json).expect("deserialize");

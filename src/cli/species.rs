@@ -47,6 +47,7 @@ pub fn generate_species_list(
     sort: SortOrder,
     model: Option<String>,
     output_mode: OutputMode,
+    geomodel_request: crate::config::GeomodelRequest<'_>,
 ) -> Result<()> {
     // Load configuration
     let config = load_default_config()?;
@@ -66,13 +67,8 @@ pub fn generate_species_list(
     // a species list is the entire purpose of this command, so there is nothing
     // useful to fall back to.
     let registry = crate::registry::load_registry()?;
-    let geomodel_args = crate::cli::AnalyzeArgs {
-        lat: Some(lat),
-        lon: Some(lon),
-        ..crate::cli::AnalyzeArgs::default()
-    };
     let geomodel =
-        match crate::config::resolve_geomodel(&geomodel_args, &config, &registry, output_mode)? {
+        match crate::config::resolve_geomodel(geomodel_request, &config, &registry, output_mode)? {
             crate::config::GeomodelResolution::Ready(paths) => paths,
             crate::config::GeomodelResolution::Unavailable(hint) => {
                 return Err(Error::GeomodelNotInstalled { hint });

@@ -127,6 +127,13 @@ pub enum ConfigAction {
         /// Configuration key (dotted path, e.g., "defaults.model").
         key: String,
         /// Value to set.
+        ///
+        /// `allow_hyphen_values` because plenty of legitimate values start with
+        /// a minus. Without it clap reads `birda config set defaults.latitude
+        /// -33.9` as an unknown short flag and fails with "unexpected argument
+        /// '-3' found", which put every southern and western hemisphere
+        /// coordinate out of reach of this command.
+        #[arg(allow_hyphen_values = true)]
         value: String,
     },
 }
@@ -217,11 +224,26 @@ pub struct AnalyzeArgs {
     pub meta_model_path: Option<PathBuf>,
 
     /// Path to the `BirdNET` Geomodel v3.0.2 ONNX file (overrides config).
-    #[arg(long, env = "BIRDA_GEOMODEL_PATH", requires = "geomodel_labels_path")]
+    ///
+    /// Global so `birda species` reaches the same field as `birda analyze`.
+    /// See the note on `yes` for why these are not duplicated per subcommand.
+    #[arg(
+        long,
+        global = true,
+        env = "BIRDA_GEOMODEL_PATH",
+        requires = "geomodel_labels_path"
+    )]
     pub geomodel_path: Option<PathBuf>,
 
     /// Path to the `BirdNET` Geomodel v3.0.2 labels file (overrides config).
-    #[arg(long, env = "BIRDA_GEOMODEL_LABELS_PATH", requires = "geomodel_path")]
+    ///
+    /// Global for the same reason as `geomodel_path`.
+    #[arg(
+        long,
+        global = true,
+        env = "BIRDA_GEOMODEL_LABELS_PATH",
+        requires = "geomodel_path"
+    )]
     pub geomodel_labels_path: Option<PathBuf>,
 
     /// Enable bat detection with a regional classifier.
@@ -375,7 +397,14 @@ pub struct AnalyzeArgs {
     pub range_unmatched: Option<crate::config::UnmatchedPolicy>,
 
     /// Assume yes for prompts, including the geomodel download offer.
-    #[arg(short = 'y', long)]
+    ///
+    /// Global so that every spelling reaches this one field. `AnalyzeArgs` is
+    /// flattened onto the root, so without `global` a subcommand could only see
+    /// this flag by declaring its own copy, and the two copies would populate
+    /// different fields: `birda --yes species` would set the root field while
+    /// `species` read its own, still-false one. That is the defect in #286, and
+    /// duplicating the flag would have moved it rather than fixed it.
+    #[arg(short = 'y', long, global = true)]
     pub yes: bool,
 
     /// Path to species list file.
@@ -393,13 +422,38 @@ pub struct AnalyzeArgs {
     pub stdout: bool,
 }
 
+impl AnalyzeArgs {
+    /// The subset of these arguments that geomodel resolution actually reads.
+    ///
+    /// All three source fields are `global = true`, so this returns the same
+    /// values whether the flags were given before the subcommand or after it.
+    /// That is what lets `birda species` share one resolver with `analyze`
+    /// instead of fabricating an `AnalyzeArgs` of its own, which is how #286
+    /// arose.
+    #[must_use]
+    pub fn geomodel_request(&self) -> crate::config::GeomodelRequest<'_> {
+        crate::config::GeomodelRequest {
+            model_path: self.geomodel_path.as_deref(),
+            labels_path: self.geomodel_labels_path.as_deref(),
+            assume_yes: self.yes,
+        }
+    }
+}
+
 // Re-use shared validators
 use super::validators::{parse_batch_size, parse_confidence, parse_latitude, parse_longitude};
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::float_cmp)]
+// Test setup code: panicking on an unexpected parse shape is how these assert.
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::float_cmp
+)]
 mod tests {
     use super::*;
+    use std::path::Path;
 
     #[test]
     fn test_cli_parse_simple() {
@@ -753,5 +807,161 @@ mod tests {
     fn test_cli_stdout_conflicts_with_format() {
         let cli = Cli::try_parse_from(["birda", "--stdout", "--format", "csv", "test.wav"]);
         assert!(cli.is_err());
+    }
+
+    // ---- geomodel flag reach (#286) ----
+    //
+    // The defect was not that `--yes` was missing, but that the value never
+    // reached the resolver. These assert on the resolved
+    // `GeomodelRequest`, which is what the resolver actually consumes, rather
+    // than on a struct field that might again be read by nobody.
+
+    /// `species` requires a time argument, so every case below carries one.
+    /// Without it clap fails with `MissingRequiredArgument` for `--week`, which
+    /// would make the negative test below pass for entirely the wrong reason.
+    fn species_argv(extra: &[&str]) -> Vec<String> {
+        let mut argv: Vec<String> = [
+            "birda", "species", "--lat", "60.2", "--lon", "24.9", "--week", "24",
+        ]
+        .iter()
+        .map(|s| (*s).to_string())
+        .collect();
+        argv.extend(extra.iter().map(|s| (*s).to_string()));
+        argv
+    }
+
+    fn request_from(argv: &[String]) -> crate::config::GeomodelRequest<'static> {
+        // Leaked so the returned request can borrow for 'static, keeping these
+        // tests to a single expression each. Test-only, and bounded by the
+        // number of test cases.
+        let cli = Box::leak(Box::new(
+            Cli::try_parse_from(argv).expect("argv should parse"),
+        ));
+        cli.analyze.geomodel_request()
+    }
+
+    #[test]
+    fn test_species_accepts_yes_after_the_subcommand() {
+        // Rejected by clap before the fix, because `--yes` lived only on the
+        // root and `species` had no such argument.
+        let request = request_from(&species_argv(&["--yes"]));
+
+        assert!(request.assume_yes);
+    }
+
+    #[test]
+    fn test_species_accepts_short_yes_after_the_subcommand() {
+        let request = request_from(&species_argv(&["-y"]));
+
+        assert!(request.assume_yes);
+    }
+
+    #[test]
+    fn test_species_sees_yes_given_before_the_subcommand() {
+        // The regression guard for the shape of the fix. This spelling always
+        // parsed, and always discarded the flag. An implementation that gave
+        // `Species` its own `--yes` would leave this case broken, because the
+        // two flags would populate different fields; `global = true` is what
+        // makes both spellings land on the one field the resolver reads.
+        let argv = [
+            "birda", "--yes", "species", "--lat", "60.2", "--lon", "24.9", "--week", "24",
+        ]
+        .map(String::from);
+        let request = request_from(&argv);
+
+        assert!(
+            request.assume_yes,
+            "root --yes must reach the resolver for `birda --yes species`"
+        );
+    }
+
+    #[test]
+    fn test_species_accepts_the_geomodel_path_pair() {
+        let request = request_from(&species_argv(&[
+            "--geomodel-path",
+            "/opt/g.onnx",
+            "--geomodel-labels-path",
+            "/opt/g.txt",
+        ]));
+
+        assert_eq!(request.model_path, Some(Path::new("/opt/g.onnx")));
+        assert_eq!(request.labels_path, Some(Path::new("/opt/g.txt")));
+    }
+
+    #[test]
+    fn test_species_rejects_a_half_specified_geomodel_pair() {
+        // Making the flags global must not drop the `requires` pairing:
+        // a new model with the previous version's labels fails the label count
+        // check with a confusing message, so it is rejected at parse time.
+        let err = Cli::try_parse_from(species_argv(&["--geomodel-path", "/opt/g.onnx"]))
+            .expect_err("a lone --geomodel-path must be rejected");
+
+        assert_eq!(err.kind(), clap::error::ErrorKind::MissingRequiredArgument);
+        // Assert it failed for the RIGHT missing argument. Without this the
+        // test would also pass if `species` rejected the argv for an unrelated
+        // reason, such as the missing time argument this helper supplies.
+        assert!(
+            err.to_string().contains("--geomodel-labels-path"),
+            "must fail on the missing labels path, got: {err}"
+        );
+    }
+
+    #[test]
+    fn test_config_set_accepts_negative_values() {
+        // `birda config set defaults.latitude -33.9` failed with "unexpected
+        // argument '-3' found", because clap read the value as a short flag
+        // group. That put every southern hemisphere latitude and western
+        // hemisphere longitude out of reach of this command.
+        let cli = Cli::try_parse_from(["birda", "config", "set", "defaults.latitude", "-33.9"])
+            .expect("a negative value must be accepted");
+
+        let Some(Command::Config {
+            action: ConfigAction::Set { key, value },
+        }) = cli.command
+        else {
+            panic!("expected a config set command");
+        };
+
+        assert_eq!(key, "defaults.latitude");
+        assert_eq!(value, "-33.9");
+    }
+
+    #[test]
+    fn test_config_set_accepts_negative_longitude() {
+        let cli = Cli::try_parse_from(["birda", "config", "set", "defaults.longitude", "-74.006"])
+            .expect("a negative longitude must be accepted");
+
+        let Some(Command::Config {
+            action: ConfigAction::Set { value, .. },
+        }) = cli.command
+        else {
+            panic!("expected a config set command");
+        };
+
+        assert_eq!(value, "-74.006");
+    }
+
+    #[test]
+    fn test_models_install_accepts_yes() {
+        // `--yes` became reachable here when it was made global. It must parse
+        // AND be read; the reading is asserted by the resolver-side tests
+        // above sharing the one field this populates.
+        let cli = Cli::try_parse_from(["birda", "models", "install", "birdnet-v24", "--yes"])
+            .expect("models install must accept --yes");
+
+        assert!(
+            cli.analyze.yes,
+            "--yes must reach the one field that is read"
+        );
+    }
+
+    #[test]
+    fn test_analyze_request_defaults_to_no_flags() {
+        let argv = ["birda", "test.wav"].map(String::from);
+        let request = request_from(&argv);
+
+        assert!(!request.assume_yes);
+        assert_eq!(request.model_path, None);
+        assert_eq!(request.labels_path, None);
     }
 }

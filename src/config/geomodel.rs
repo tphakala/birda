@@ -190,12 +190,18 @@ fn acquire(
 
     let installed = runtime.block_on(crate::registry::install_range_filter(asset))?;
 
-    // Deliberately NOT written back to config.toml here. save_config truncates
-    // and rewrites the whole file, dropping comments and any unrecognised keys,
-    // and a failed write leaves an empty config that parses as all-defaults and
-    // silently loses every model the user had configured. An analyze run must
-    // not risk that; the paths resolve from the registry on the next run anyway,
-    // and 'birda models install geomodel' records them explicitly.
+    // Deliberately NOT written back to config.toml here. The destructive half
+    // of this reasoning is gone: save_config now writes to a temporary beside
+    // the target and renames over it, so an interrupted write can no longer
+    // leave an empty config that parses as all-defaults and silently loses
+    // every model the user had configured (#307).
+    //
+    // What remains is enough to keep the decision. save_config re-serialises
+    // the whole file from the struct, so it still drops comments and any
+    // unrecognised keys, and an analyze run rewriting the user's config as a
+    // side effect is surprising in its own right. The paths resolve from the
+    // registry on the next run anyway, and 'birda models install geomodel'
+    // records them explicitly.
     Ok(GeomodelResolution::Ready(installed))
 }
 

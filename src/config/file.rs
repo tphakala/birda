@@ -176,14 +176,23 @@ pub fn save_config(config: &Config, path: &Path) -> Result<()> {
 /// birda second. `fs::write` handled it correctly, because `O_CREAT` follows a
 /// dangling link and creates the target.
 ///
-/// So a failed `canonicalize` falls back to reading the link by hand. Only the
-/// link's own parent has to exist for that to give a usable path; if it does
-/// not, or `path` is simply a file that does not exist yet, `path` is returned
-/// unchanged, which is correct for both.
+/// So a failed `canonicalize` falls back to reading the link by hand, and the
+/// link's target is used whether or not the directory holding it exists yet,
+/// since `save_config` creates that directory anyway. The unresolved path is
+/// returned only when `path` is not a symlink at all, which is the ordinary
+/// case of saving a config that does not exist yet.
 ///
-/// One hop, not a loop. A chain of dangling symlinks is not worth the cycle
-/// detection it would need, and stopping after one hop degrades to the old
-/// fallback rather than to anything worse.
+/// Deliberately no "does the target's parent exist?" guard. An earlier revision
+/// had one, and it reintroduced the exact bug this function exists to prevent,
+/// one directory deeper: linking config.toml into a dotfiles directory that had
+/// not been created yet failed the guard, fell back to the link, and the rename
+/// ate it, silently and with exit 0.
+///
+/// One hop, not a loop. A chain of dangling links is not worth the cycle
+/// detection it would need. Note what that means for `a -> b -> missing`: the
+/// write lands on `b` rather than on `a` or on the end of the chain. `a`
+/// survives as a link and still reads through, which is the property that
+/// matters; a cycle resolves the same way and terminates.
 fn resolve_link(path: &Path) -> std::path::PathBuf {
     if let Ok(resolved) = std::fs::canonicalize(path) {
         return resolved;
@@ -195,22 +204,12 @@ fn resolve_link(path: &Path) -> std::path::PathBuf {
 
     // A relative link resolves against the directory holding the link, not the
     // process's working directory.
-    let target = if link_target.is_absolute() {
+    if link_target.is_absolute() {
         link_target
     } else {
         path.parent()
             .unwrap_or_else(|| Path::new("."))
             .join(link_target)
-    };
-
-    // The temporary is created in the target's directory, so that directory has
-    // to exist for the write to be possible at all. When it does not, the
-    // unresolved path is the better answer: it at least keeps the failure in
-    // the directory the user named.
-    if target.parent().is_some_and(Path::exists) {
-        target
-    } else {
-        path.to_path_buf()
     }
 }
 
@@ -479,17 +478,26 @@ min_confidence = 0.25
         // puts the target on a different filesystem from /tmp, which is what
         // makes this one able to fail.
         //
-        // If /dev/shm is missing or happens to share a device with $TMPDIR the
-        // test still passes rather than failing spuriously; it just stops
-        // proving anything, which is the safe direction for an environment
-        // assumption.
+        // If /dev/shm is missing, or turns out to share a device with $TMPDIR,
+        // this proves nothing. That is the safe direction for an environment
+        // assumption, but a silent vacuous pass and a real pass would be
+        // indistinguishable, so the skip says so on stderr.
+        use std::os::unix::fs::MetadataExt;
+
         let shm = Path::new("/dev/shm");
-        if !shm.is_dir() {
-            return;
-        }
         let Ok(dir) = tempfile::tempdir_in(shm) else {
+            eprintln!("skipped: /dev/shm is unusable, cross-filesystem save not exercised");
             return;
         };
+        let shm_device = std::fs::metadata(dir.path()).unwrap().dev();
+        let tmp_device = std::fs::metadata(std::env::temp_dir()).unwrap().dev();
+        let same_device = shm_device == tmp_device;
+        assert!(
+            !same_device,
+            "/dev/shm and $TMPDIR share a device, so this cannot exercise a \
+             cross-filesystem rename. Unset TMPDIR, or delete this test rather \
+             than leaving it passing vacuously."
+        );
         let path = dir.path().join("config.toml");
 
         let mut config = Config::default();
@@ -626,6 +634,42 @@ min_confidence = 0.25
             load_config_file(&real).unwrap().defaults.min_confidence,
             0.33,
             "the save must create the file the dangling link points at"
+        );
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn test_save_config_writes_through_a_dangling_symlink_into_a_missing_directory() {
+        // The same case one directory deeper, and the one a "does the target's
+        // parent exist?" guard silently broke: the guard rejected, the code
+        // fell back to the link, and the rename ate it with exit 0. Linking
+        // config.toml into a dotfiles directory that does not exist yet is an
+        // ordinary thing to do on a fresh machine.
+        let dir = tempfile::tempdir().unwrap();
+        let real = dir.path().join("dotfiles").join("birda.toml");
+        let link = dir.path().join("config.toml");
+
+        std::os::unix::fs::symlink(&real, &link).unwrap();
+        assert!(
+            !real.parent().unwrap().exists(),
+            "the target's directory must be absent for this to test anything"
+        );
+
+        let mut config = Config::default();
+        config.defaults.min_confidence = 0.29;
+        save_config(&config, &link).unwrap();
+
+        assert!(
+            std::fs::symlink_metadata(&link)
+                .unwrap()
+                .file_type()
+                .is_symlink(),
+            "the link must survive even when its target's directory had to be created"
+        );
+        assert_eq!(
+            load_config_file(&real).unwrap().defaults.min_confidence,
+            0.29,
+            "the save must create the directory and the file the link points at"
         );
     }
 

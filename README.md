@@ -366,7 +366,7 @@ combined_prefix = "BirdNET"
 
 An analysis run validates the configuration file before it starts, so a bad value is reported once, up front, instead of turning into odd results later in the run. The rules cover `min_confidence` and `range_threshold` (both 0.0 to 1.0), `overlap` (finite and non-negative), `batch_size` (at least 1), `latitude` (-90.0 to 90.0), `longitude` (-180.0 to 180.0), and `defaults.model`, which must name a model that exists in the file.
 
-The same rules apply to the command-line flag and the environment variable for each of those settings, not just to the file. `--overlap`, `BIRDA_OVERLAP` and `defaults.overlap` are three routes to one setting, so all three reject a negative, NaN or infinite value; previously only the file did, and the other two silently became zero overlap.
+For `overlap` the rule also applies to the command-line flag and the environment variable, not just to the file: `--overlap`, `BIRDA_OVERLAP` and `defaults.overlap` are three routes to one setting, and all three reject a negative, NaN or infinite value. Previously only the file did, and the other two silently became zero overlap. `min_confidence`, `range_threshold`, `latitude` and `longitude` agree across their routes too.
 
 ```text
 $ birda recording.wav
@@ -389,7 +389,7 @@ Writing is validated too. `config init`, `config set` and the `models` commands 
 
 Writes are also atomic. The new configuration goes to a temporary file beside `config.toml` and is renamed over it, so an interrupted write cannot leave a truncated file. That matters because a truncated `config.toml` still parses: an empty file is valid TOML and loads as all-defaults, which would silently drop every model you had configured. Three consequences:
 
-- A `config.toml` that is a **symlink** is followed, and the file it points at is the one rewritten, so keeping it in a dotfiles repository works.
+- A `config.toml` that is a **symlink** is followed, and the file it points at is the one rewritten, so keeping it in a dotfiles repository works. This holds whether or not the target exists yet, so you can create the link first and let birda create the file.
 - A `config.toml` that is a **hardlink** is not, because a rename gives the path a new inode. The other name keeps the old contents and stops tracking.
 - If you run birda in a container, bind-mount the config **directory** rather than the `config.toml` file itself. Renaming over a bind-mounted file fails with `EBUSY`.
 

@@ -91,8 +91,13 @@ jobs:
           # fork its contents are attacker controlled. The value below is
           # interpolated into a later step's `with:` input, so constrain it to a
           # bare version number here and refuse anything else. Note the read
-          # above goes through a shell variable rather than a ${{ }} expansion,
-          # which keeps the untrusted text out of the command line entirely.
+          # above goes through a shell variable rather than an Actions
+          # expression, which keeps the untrusted text off the command line.
+          #
+          # Do not write a literal expression delimiter anywhere in this block,
+          # not even in a comment. Actions substitutes expressions across the
+          # whole file before the shell runs, so an empty one fails to parse and
+          # takes down the entire workflow, which is how this job first broke.
           case "$version" in
             *[!0-9.]* | "" | .* | *. | *..*)
               echo "::error::rust-version '$version' is not a bare version number"

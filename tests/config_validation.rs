@@ -1,4 +1,5 @@
-//! Integration tests for configuration validation on load (#295).
+//! Integration tests for configuration validation on load (#295), and for the
+//! overlap rule reaching every input channel rather than only the file (#306).
 //!
 //! These drive the real binary rather than calling `validate_config` directly,
 //! and that is the point. Every rule in `src/config/validate.rs` already
@@ -75,6 +76,16 @@ const BIRDA_ENV_VARS: [&str; 19] = [
 /// The isolation has to cover the environment as well as the filesystem, hence
 /// [`BIRDA_ENV_VARS`].
 fn run_in(home: &Path, args: &[&str]) -> std::process::Output {
+    run_in_with_env(home, &[], args)
+}
+
+/// [`run_in`], with `env` applied after the wholesale clearing.
+///
+/// The order matters: [`BIRDA_ENV_VARS`] is removed first so a variable
+/// exported in the developer's shell cannot leak in, and the caller's overrides
+/// go on afterwards. A test that set `BIRDA_OVERLAP` before the loop would have
+/// it removed again and then pass vacuously against the config-file default.
+fn run_in_with_env(home: &Path, env: &[(&str, &str)], args: &[&str]) -> std::process::Output {
     let mut cmd = cargo_bin_cmd!("birda");
     cmd.env("HOME", home)
         .env("XDG_CONFIG_HOME", home.join("config"))
@@ -82,6 +93,9 @@ fn run_in(home: &Path, args: &[&str]) -> std::process::Output {
         .timeout(COMMAND_TIMEOUT);
     for var in BIRDA_ENV_VARS {
         cmd.env_remove(var);
+    }
+    for (key, value) in env {
+        cmd.env(key, value);
     }
     for arg in args {
         cmd.arg(arg);
@@ -207,6 +221,15 @@ const OVERLAP_VIOLATION: &str = "overlap must be a finite non-negative number";
 /// parse failure (2) or a panic (101). Pinned so a rejection test cannot be
 /// satisfied by the wrong kind of failure.
 const APPLICATION_ERROR: i32 = 1;
+
+/// The exit code clap uses when an argument fails its `value_parser`.
+///
+/// The overlap tests below pin this rather than [`APPLICATION_ERROR`], because
+/// the whole point of #306 is that the flag and the environment variable are
+/// rejected by the same mechanism as every sibling option, which is clap. A
+/// rejection that arrived later, as an application error, would mean the value
+/// parser is still not wired.
+const CLAP_USAGE_ERROR: i32 = 2;
 
 /// Assert a command ran to completion, so it was not gated on the config.
 ///
@@ -415,6 +438,105 @@ fn test_a_dangling_default_model_does_not_block_the_models_commands() {
 
     assert_command_succeeds(home.path(), &["models", "list"]);
     assert_command_succeeds(home.path(), &["models", "check"]);
+}
+
+/// Assert clap refused the run, naming the offending overlap value.
+///
+/// Takes the whole invocation rather than just the value, because #306 is about
+/// two input channels agreeing, and the flag and the environment variable reach
+/// clap by different routes.
+fn assert_overlap_rejected(home: &Path, env: &[(&str, &str)], args: &[&str]) {
+    let input = dummy_input(home);
+    let mut full: Vec<&str> = args.to_vec();
+    let input = input.to_str().unwrap();
+    full.push(input);
+
+    let output = run_in_with_env(home, env, &full);
+
+    assert_eq!(
+        output.status.code(),
+        Some(CLAP_USAGE_ERROR),
+        "an invalid overlap must be refused by the value parser, got: {}",
+        stderr_of(&output)
+    );
+    let stderr = stderr_of(&output);
+    assert!(
+        stderr.contains(OVERLAP_VIOLATION),
+        "the flag and the config file should give the same diagnostic \
+         ({OVERLAP_VIOLATION}), got: {stderr}"
+    );
+}
+
+#[test]
+fn test_a_nan_overlap_flag_is_rejected() {
+    // #306. `--overlap` was the one numeric option on `AnalyzeArgs` with no
+    // value parser, so it took whatever `f32::from_str` accepted. NaN reached
+    // `overlap * sample_rate`, Rust saturates that cast rather than trapping,
+    // and the setting became a silent zero: the run completed, produced
+    // non-overlapping segments and said nothing.
+    let home = tempfile::tempdir().unwrap();
+
+    assert_overlap_rejected(home.path(), &[], &["--overlap", "nan"]);
+}
+
+#[test]
+fn test_an_infinite_overlap_flag_is_rejected() {
+    // The worst of the three, because it changed the result rather than
+    // ignoring the setting. The same saturating cast sends infinity to
+    // `usize::MAX`, `chunk_samples.saturating_sub(overlap_samples)` gives a
+    // step of 0, and the run yields no segments at all: exit 0, empty output,
+    // no diagnostic.
+    let home = tempfile::tempdir().unwrap();
+
+    assert_overlap_rejected(home.path(), &[], &["--overlap", "inf"]);
+}
+
+#[test]
+fn test_a_negative_overlap_flag_is_rejected() {
+    // Written as a separate argument rather than `--overlap=-1` to pin
+    // `allow_hyphen_values`. Without it clap consumes the leading `-` as the
+    // start of another flag and fails with "a value is required", which is a
+    // usage error about the wrong thing: the user did supply a value, it was
+    // just not a legal one. `--lat` and `--lon` carry the same attribute for
+    // the same reason.
+    let home = tempfile::tempdir().unwrap();
+
+    assert_overlap_rejected(home.path(), &[], &["--overlap", "-1"]);
+}
+
+#[test]
+fn test_the_overlap_env_var_is_validated() {
+    // The channel the config-file fix did not reach. `BIRDA_OVERLAP` and
+    // `--overlap` both win over the config value, so a rule enforced only on
+    // the file left the two disagreeing: `overlap = -1` in config.toml was a
+    // hard error while `BIRDA_OVERLAP=-1` was accepted and silently became zero
+    // overlap. Driven through the environment because clap applies the value
+    // parser to both sources and only an end-to-end run proves it.
+    let home = tempfile::tempdir().unwrap();
+
+    assert_overlap_rejected(home.path(), &[("BIRDA_OVERLAP", "-1")], &[]);
+}
+
+#[test]
+fn test_a_valid_overlap_flag_is_accepted() {
+    // The control for the four above, which would all pass just as well if the
+    // value parser rejected everything. 1.5 is finite and non-negative, so it
+    // must reach the run; that it exceeds nothing is the point, since no upper
+    // bound is imposed here (an oversized overlap is caught against the segment
+    // length in `AudioDecoder::next_segment`, which is the only place that
+    // knows it).
+    let home = tempfile::tempdir().unwrap();
+    let input = dummy_input(home.path());
+
+    let stderr = stderr_of(&run_in(
+        home.path(),
+        &["--overlap", "1.5", input.to_str().unwrap()],
+    ));
+
+    assert!(
+        !stderr.contains(OVERLAP_VIOLATION),
+        "a finite non-negative overlap must not be rejected, got: {stderr}"
+    );
 }
 
 #[test]

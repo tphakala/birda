@@ -47,8 +47,12 @@ fn validate_defaults(config: &Config) -> Result<()> {
     //
     // So no upper bound is imposed here. One belongs with the segment length
     // rather than in a rule that cannot see it, and adding it would be new
-    // policy rather than a fix. Tracked in #306 along with the matching hole on
-    // the `--overlap` flag, which carries no value parser at all.
+    // policy rather than a fix.
+    //
+    // `--overlap` and `BIRDA_OVERLAP` win over this value and were checked by
+    // nothing at all, so the same rule now lives in `cli::validators::
+    // parse_overlap` (#306). The two are kept identical, wording included, and
+    // a unit test there pins them against the same inputs.
     if !defaults.overlap.is_finite() || defaults.overlap < 0.0 {
         return Err(Error::ConfigValidation {
             message: format!(

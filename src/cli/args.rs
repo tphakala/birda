@@ -266,7 +266,13 @@ pub struct AnalyzeArgs {
     pub min_confidence: Option<f32>,
 
     /// Segment overlap in seconds.
-    #[arg(long, env = "BIRDA_OVERLAP")]
+    ///
+    /// `allow_hyphen_values` so a negative value reaches the parser and gets
+    /// the real diagnostic. Without it clap reads the leading `-` as the start
+    /// of another flag and reports "a value is required", which is a usage
+    /// error about the wrong thing. `--lat` and `--lon` carry it for the same
+    /// reason.
+    #[arg(long, allow_hyphen_values = true, value_parser = parse_overlap, env = "BIRDA_OVERLAP")]
     pub overlap: Option<f32>,
 
     /// Inference batch size (must be at least 1).
@@ -451,7 +457,9 @@ impl AnalyzeArgs {
 }
 
 // Re-use shared validators
-use super::validators::{parse_batch_size, parse_confidence, parse_latitude, parse_longitude};
+use super::validators::{
+    parse_batch_size, parse_confidence, parse_latitude, parse_longitude, parse_overlap,
+};
 
 #[cfg(test)]
 // Test setup code: panicking on an unexpected parse shape is how these assert.

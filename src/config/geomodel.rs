@@ -4,12 +4,32 @@
 //! be absent when a user upgrades from a birda that used the `BirdNET` v2.4
 //! meta model. This module finds it, and offers to fetch it when it is missing.
 
-use crate::cli::AnalyzeArgs;
 use crate::config::types::Config;
 use crate::error::{Error, Result};
 use crate::registry::{InstalledRangeFilter, Registry};
 use std::io::{IsTerminal, Write};
+use std::path::Path;
 use tracing::warn;
+
+/// What geomodel resolution needs from the invoking command.
+///
+/// This exists so the resolver takes exactly what it reads. It previously took
+/// `&AnalyzeArgs` while reading three of its fields, which let `birda species`
+/// build a throwaway `AnalyzeArgs` that set two fields the resolver never reads
+/// and left unset the three it does. That compiled, and shipped as #286.
+///
+/// Deliberately does NOT derive `Default`. `..Default::default()` is exactly
+/// what let the under-specified call typecheck; requiring every field to be
+/// named is the point of this type.
+#[derive(Debug, Clone, Copy)]
+pub struct GeomodelRequest<'a> {
+    /// `--geomodel-path`, if given.
+    pub model_path: Option<&'a Path>,
+    /// `--geomodel-labels-path`, if given.
+    pub labels_path: Option<&'a Path>,
+    /// `--yes`: download without prompting.
+    pub assume_yes: bool,
+}
 
 /// Outcome of looking for the geomodel.
 #[derive(Debug, Clone)]
@@ -28,17 +48,14 @@ pub enum GeomodelResolution {
 /// pairing a new model with the previous version's labels would fail the label
 /// count check with a confusing message, so it is rejected up front.
 pub fn configured_paths(
-    args: &AnalyzeArgs,
+    request: GeomodelRequest<'_>,
     config: &Config,
 ) -> Result<Option<InstalledRangeFilter>> {
-    match (
-        args.geomodel_path.as_ref(),
-        args.geomodel_labels_path.as_ref(),
-    ) {
+    match (request.model_path, request.labels_path) {
         (Some(model), Some(labels)) => {
             return Ok(Some(InstalledRangeFilter {
-                model: model.clone(),
-                labels: labels.clone(),
+                model: model.to_path_buf(),
+                labels: labels.to_path_buf(),
             }));
         }
         (Some(_), None) => {
@@ -77,7 +94,7 @@ pub fn configured_paths(
 /// Resolution order is CLI flags, then the config file, then the path the
 /// registry says the asset installs to.
 pub fn resolve_geomodel(
-    args: &AnalyzeArgs,
+    request: GeomodelRequest<'_>,
     config: &Config,
     registry: &Registry,
     output_mode: crate::config::OutputMode,
@@ -88,7 +105,7 @@ pub fn resolve_geomodel(
         .ok_or(Error::RangeFilterAssetMissing)?;
 
     let registry_paths = crate::registry::geomodel_paths(asset)?;
-    let paths = configured_paths(args, config)?.unwrap_or_else(|| registry_paths.clone());
+    let paths = configured_paths(request, config)?.unwrap_or_else(|| registry_paths.clone());
 
     // "Ours to verify" is decided by which file this is, not by how the path
     // was reached: `birda models install geomodel` records its own install path
@@ -129,7 +146,7 @@ pub fn resolve_geomodel(
     }
 
     let interactive = std::io::stdin().is_terminal() && !output_mode.is_structured();
-    acquire(asset, interactive, args.yes)
+    acquire(asset, interactive, request.assume_yes)
 }
 
 /// Acquire a geomodel that is not on disk.
@@ -247,7 +264,7 @@ fn host_of(url: &str) -> String {
 /// Returns "unknown size" when the registry does not declare one, rather than
 /// printing a misleading zero.
 #[allow(clippy::cast_precision_loss)]
-fn human_size(bytes: Option<u64>) -> String {
+pub(crate) fn human_size(bytes: Option<u64>) -> String {
     const KIB: f64 = 1024.0;
     const MIB: f64 = 1024.0 * 1024.0;
 
@@ -264,22 +281,29 @@ mod tests {
     use super::*;
     use std::path::PathBuf;
 
-    fn args_with_paths(model: Option<&str>, labels: Option<&str>) -> AnalyzeArgs {
-        AnalyzeArgs {
-            geomodel_path: model.map(PathBuf::from),
-            geomodel_labels_path: labels.map(PathBuf::from),
-            ..AnalyzeArgs::default()
+    /// Build a request the way a command line would.
+    ///
+    /// The explicit lifetime is required: with two borrowed parameters, elision
+    /// cannot pick which one the returned `GeomodelRequest` borrows from.
+    fn request_with_paths<'a>(
+        model: Option<&'a str>,
+        labels: Option<&'a str>,
+    ) -> GeomodelRequest<'a> {
+        GeomodelRequest {
+            model_path: model.map(Path::new),
+            labels_path: labels.map(Path::new),
+            assume_yes: false,
         }
     }
 
     #[test]
     fn test_cli_paths_take_precedence_over_config() {
-        let args = args_with_paths(Some("/cli/m.onnx"), Some("/cli/l.txt"));
+        let args = request_with_paths(Some("/cli/m.onnx"), Some("/cli/l.txt"));
         let mut config = Config::default();
         config.defaults.geomodel = Some(PathBuf::from("/cfg/m.onnx"));
         config.defaults.geomodel_labels = Some(PathBuf::from("/cfg/l.txt"));
 
-        let paths = configured_paths(&args, &config).unwrap().unwrap();
+        let paths = configured_paths(args, &config).unwrap().unwrap();
 
         assert_eq!(paths.model, PathBuf::from("/cli/m.onnx"));
         assert_eq!(paths.labels, PathBuf::from("/cli/l.txt"));
@@ -287,19 +311,19 @@ mod tests {
 
     #[test]
     fn test_config_paths_used_when_cli_absent() {
-        let args = args_with_paths(None, None);
+        let args = request_with_paths(None, None);
         let mut config = Config::default();
         config.defaults.geomodel = Some(PathBuf::from("/cfg/m.onnx"));
         config.defaults.geomodel_labels = Some(PathBuf::from("/cfg/l.txt"));
 
-        let paths = configured_paths(&args, &config).unwrap().unwrap();
+        let paths = configured_paths(args, &config).unwrap().unwrap();
 
         assert_eq!(paths.model, PathBuf::from("/cfg/m.onnx"));
     }
 
     #[test]
     fn test_no_configured_paths_yields_none() {
-        let paths = configured_paths(&args_with_paths(None, None), &Config::default()).unwrap();
+        let paths = configured_paths(request_with_paths(None, None), &Config::default()).unwrap();
 
         assert!(paths.is_none(), "falls back to the registry install path");
     }
@@ -308,18 +332,18 @@ mod tests {
     fn test_partial_cli_paths_are_rejected() {
         // Pairing a new model with the previous version's labels would fail the
         // label count check with a confusing message, so reject it up front.
-        let args = args_with_paths(Some("/cli/m.onnx"), None);
+        let args = request_with_paths(Some("/cli/m.onnx"), None);
 
-        let err = configured_paths(&args, &Config::default()).unwrap_err();
+        let err = configured_paths(args, &Config::default()).unwrap_err();
 
         assert!(matches!(err, Error::GeomodelPathsIncomplete { .. }));
     }
 
     #[test]
     fn test_partial_cli_labels_path_is_rejected() {
-        let args = args_with_paths(None, Some("/cli/l.txt"));
+        let args = request_with_paths(None, Some("/cli/l.txt"));
 
-        let err = configured_paths(&args, &Config::default()).unwrap_err();
+        let err = configured_paths(args, &Config::default()).unwrap_err();
 
         assert!(matches!(err, Error::GeomodelPathsIncomplete { .. }));
     }
@@ -329,7 +353,7 @@ mod tests {
         let mut config = Config::default();
         config.defaults.geomodel = Some(PathBuf::from("/cfg/m.onnx"));
 
-        let err = configured_paths(&args_with_paths(None, None), &config).unwrap_err();
+        let err = configured_paths(request_with_paths(None, None), &config).unwrap_err();
 
         assert!(matches!(err, Error::GeomodelPathsIncomplete { .. }));
     }

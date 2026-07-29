@@ -488,6 +488,56 @@ pub struct AvailableModelsPayload {
     pub result_type: ResultType,
     /// List of available models from registry.
     pub models: Vec<AvailableModelEntry>,
+    /// The shared range filter asset, which is not one of `models`.
+    ///
+    /// Kept in its own field rather than folded into `models` because it is not
+    /// selectable with `-m`: a consumer building a model picker from `models`
+    /// would otherwise offer an entry that fails on use. This also keeps the
+    /// change additive, so existing consumers of `models` are unaffected.
+    ///
+    /// Named `available_range_filter` rather than `range_filter` because
+    /// `DetectionsPayload` already has a `range_filter` field carrying a
+    /// completely different shape (`RangeFilterInfo`: per-run coverage counts).
+    /// Distinct names keep the two readable side by side in a schema, a doc
+    /// table or a generated client, where one name over two disjoint shapes
+    /// invites the wrong one being reached for. This is a naming-clarity call,
+    /// not a fix for a known consumer: TypeScript scopes field names to their
+    /// interface, so nothing in birda-gui collides today.
+    ///
+    /// `None` when the registry predates the geomodel.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub available_range_filter: Option<AvailableRangeFilterEntry>,
+}
+
+/// The shared range filter asset, as offered by `birda models list-available`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AvailableRangeFilterEntry {
+    /// The id to pass to `birda models install` and `birda models info`.
+    ///
+    /// This is the install handle ("geomodel"), not the registry asset id
+    /// ("birdnet-geomodel-v3"), because it is the string a user can type.
+    pub id: String,
+    /// Display name.
+    pub name: String,
+    /// Asset version.
+    pub version: String,
+    /// Organization/author.
+    pub vendor: String,
+    /// License type (SPDX identifier).
+    pub license: String,
+    /// Whether commercial use is allowed.
+    pub commercial_use: bool,
+    /// Whether derivatives must be shared under the same license.
+    pub share_alike: bool,
+    /// Number of species the model scores.
+    pub species_count: usize,
+    /// Combined download size of the model and labels files, in bytes.
+    ///
+    /// `None` unless both files declare a size and their sum fits in `u64`.
+    /// Both files are required for the range filter to work, so a partial total
+    /// would read as the whole download and understate it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub size_bytes: Option<u64>,
 }
 
 /// A single available model from the registry.
@@ -853,6 +903,7 @@ mod tests {
                 license: "CC-BY-NC-SA-4.0".to_string(),
                 commercial_use: false,
             }],
+            available_range_filter: None,
         };
         let json = serde_json::to_string(&payload).expect("serialize");
         let actual: serde_json::Value = serde_json::from_str(&json).expect("deserialize");
@@ -1107,9 +1158,21 @@ mod tests {
 
     #[test]
     fn test_spec_version_is_bumped_for_the_geomodel_envelope() {
+        // 1.1 is the version in which `DetectionsPayload.range_filter` became
+        // `RangeFilterInfo` (geomodel coverage counts), replacing the
+        // cross-model fields. This is a change-detector on that constant, not
+        // evidence that any later change was accompanied by a bump: it can only
+        // fire when someone edits the literal.
+        //
+        // Purely additive optional fields do NOT move it. That is why
+        // `AvailableModelsPayload::available_range_filter` was added under 1.1:
+        // it carries `#[serde(default, skip_serializing_if)]`, so old consumers
+        // deserialize unchanged and the emitted bytes are identical when the
+        // registry has no range filter.
         assert_eq!(
             SPEC_VERSION, "1.1",
-            "range_filter changed shape, so consumers need the bump"
+            "changing this constant is a wire-contract decision; update the \
+             reasoning above along with it"
         );
     }
 

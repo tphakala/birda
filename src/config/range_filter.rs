@@ -8,7 +8,8 @@
 
 use crate::cli::AnalyzeArgs;
 use crate::config::types::{Config, ModelConfig, ModelType};
-use crate::error::Result;
+use crate::constants::confidence;
+use crate::error::{Error, Result};
 use crate::inference::RangeFilterConfig;
 use crate::registry::InstalledRangeFilter;
 use crate::utils::date::{date_to_week, day_of_year_to_date, week_to_start_day};
@@ -31,6 +32,35 @@ pub fn supports_range_filter(args: &AnalyzeArgs, model_type: ModelType) -> bool 
         ModelType::BirdnetV24 | ModelType::BirdnetV30 | ModelType::PerchV2 => true,
         ModelType::BsgFinland => false,
     }
+}
+
+/// Reject a range threshold that the config file put out of bounds.
+///
+/// Separate from `build_range_filter_config` so it can run BEFORE the geomodel
+/// is resolved. Resolution may prompt for and download roughly 15 MB, and
+/// aborting after that spends the user's bandwidth to report something knowable
+/// up front.
+///
+/// Bounds-checked here rather than only in `validate_range_filter` because
+/// `validate_config` has exactly one caller, `handle_config_set`, so nothing
+/// validates a config that was hand-edited rather than written through the CLI.
+/// The hand-edited case is the one the bug report describes: a negative
+/// threshold makes filtering a silent no-op while the JSON envelope still
+/// reports it active, and NaN drops every mapped species because `score >= NaN`
+/// is false for every score.
+///
+/// The CLI flag arrives already bounded by `parse_confidence`, so in practice
+/// this fires only for a config-file value.
+pub fn validate_threshold(args: &AnalyzeArgs, config: &Config) -> Result<()> {
+    let threshold = args
+        .range_threshold
+        .unwrap_or(config.defaults.range_threshold);
+
+    if !(confidence::MIN..=confidence::MAX).contains(&threshold) {
+        return Err(Error::InvalidRangeThreshold { value: threshold });
+    }
+
+    Ok(())
 }
 
 /// Whether range filtering is wanted at all, before the geomodel is resolved.
@@ -94,6 +124,11 @@ pub fn build_range_filter_config(
     let threshold = args
         .range_threshold
         .unwrap_or(config.defaults.range_threshold);
+
+    // Belt and braces: `analyze_files` checks this before resolving the
+    // geomodel so a bad value fails without spending a download, but the check
+    // also belongs at the point of use so no future caller can bypass it.
+    validate_threshold(args, config)?;
     let unmatched = args
         .range_unmatched
         .unwrap_or(config.defaults.range_unmatched);
@@ -143,6 +178,64 @@ mod tests {
             lon: Some(24.9384),
             week: Some(24),
             ..AnalyzeArgs::default()
+        }
+    }
+
+    /// A config as a hand-edit would leave it: coordinates set so range
+    /// filtering is wanted, and a threshold nothing on this path validated.
+    fn config_with_threshold(threshold: f32) -> Config {
+        let mut config = Config::default();
+        config.defaults.range_threshold = threshold;
+        config
+    }
+
+    fn build_with(config: &Config) -> crate::error::Result<Option<RangeFilterConfig>> {
+        build_range_filter_config(
+            &args_at_helsinki_week_24(),
+            config,
+            &model_of(ModelType::BirdnetV24),
+            &geomodel(),
+        )
+    }
+
+    #[test]
+    fn test_hand_edited_nan_threshold_is_rejected_on_the_analyze_path() {
+        // The reported defect in full. `validate_config` has one caller,
+        // `handle_config_set`, so a threshold typed into config.toml by hand
+        // reached analysis unchecked: `score >= NaN` is false for every score,
+        // so every mapped species was dropped and the only symptom was an info
+        // log reading "0 species in range".
+        //
+        // Guarding only `validate_range_filter` would leave this green while
+        // the bug stayed live, because nothing on this path calls it.
+        let err = build_with(&config_with_threshold(f32::NAN)).unwrap_err();
+
+        assert!(
+            matches!(err, crate::error::Error::InvalidRangeThreshold { value } if value.is_nan()),
+            "expected InvalidRangeThreshold(NaN), got {err:?}"
+        );
+    }
+
+    #[test]
+    fn test_hand_edited_negative_threshold_is_rejected_on_the_analyze_path() {
+        // The sibling half: a negative threshold made filtering a silent no-op
+        // while the JSON envelope still reported it active.
+        let err = build_with(&config_with_threshold(-1.0)).unwrap_err();
+
+        assert!(
+            matches!(err, crate::error::Error::InvalidRangeThreshold { .. }),
+            "expected InvalidRangeThreshold, got {err:?}"
+        );
+    }
+
+    #[test]
+    fn test_valid_thresholds_still_build_on_the_analyze_path() {
+        // The normal case must be untouched, including both inclusive bounds.
+        for threshold in [0.0, 0.01, 0.5, 1.0] {
+            assert!(
+                build_with(&config_with_threshold(threshold)).is_ok(),
+                "threshold {threshold} must be accepted"
+            );
         }
     }
 

@@ -371,12 +371,15 @@ $ birda recording.wav
 error: invalid latitude: 200 (must be -90.0 to 90.0)
 ```
 
-Only analysis is gated, because it is the only command that turns the whole of `[defaults]` into a result. Everything else keeps working, which matters because those are the commands you need in order to fix the file. `config show` prints a config that fails validation so you can see which value is wrong, `config set` rewrites it, and `models install` still works when `defaults.model` names a model you no longer have.
+Only analysis is gated, because it is the only command that turns the whole of `[defaults]` into a result. Everything else keeps working, which matters because those are the commands you need in order to fix the file. `config show` prints a config that fails validation so you can see which value is wrong, `config set` rewrites it, and `models list`, `models check` and `models install` all stay reachable.
 
 ```bash
 birda config show                          # works, shows the bad value
 birda config set defaults.latitude 60.17   # rewrites it
+birda config set defaults.model ""         # clears a default naming a model you no longer have
 ```
+
+That last one is worth knowing. If `defaults.model` names a model that is not in the file, clearing it is the fix; installing some *other* model will not help, because saving validates the whole configuration and the dangling name is still there.
 
 One limitation worth knowing: `config set` validates the whole file before saving, so it cannot repair a config with two independent bad values one key at a time. Each write is rejected by the other fault. Fix those by editing `config.toml` directly.
 

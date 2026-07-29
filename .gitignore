@@ -34,3 +34,51 @@
 
 # LEANN index
 /.leann/
+
+# Native libraries. birda links ONNX Runtime dynamically, so a working checkout
+# usually has a libonnxruntime next to the binary (and the CUDA and cuDNN set
+# alongside it on GPU machines). Those are fetched per platform by the release
+# workflow, they are tens of megabytes each, and none of them belong in git.
+# Note that *.so does not match a versioned soname such as libonnxruntime.so.1,
+# because the version follows the extension, hence the separate pattern.
+*.so
+*.so.*
+*.dylib
+*.dll
+*.a
+*.lib
+*.pdb
+*.exp
+
+# Audio. Recordings under analysis, and anything birda decodes, are the user's
+# own data: large, often private, and never part of the source tree. Covers the
+# formats symphonia is built with here plus the common neighbours people drop
+# into a checkout while testing.
+*.wav
+*.wave
+*.w64
+*.rf64
+*.flac
+*.mp3
+*.mp2
+*.m4a
+*.m4b
+*.aac
+*.ogg
+*.oga
+*.opus
+*.wma
+*.amr
+*.aif
+*.aiff
+*.aifc
+*.caf
+*.au
+*.wv
+*.ape
+
+# Test fixtures are deliberately tracked, so keep them reachable even when they
+# use one of the extensions above. Without this, adding a small .wav fixture
+# would look like it worked locally and then fail in CI, because git would have
+# silently ignored the new file.
+!tests/fixtures/**

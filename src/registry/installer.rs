@@ -435,6 +435,45 @@ mod tests {
     }
 
     #[test]
+    fn test_verify_rejects_wrong_labels_with_a_correct_model() {
+        // The sibling test above pairs a wrong model with right labels, so the
+        // labels-side checksum block could be deleted outright and every verify
+        // test would still pass. A birda that downloaded the labels and never
+        // checked them would then ship with a green suite. This is the only
+        // test that pins the labels side, so the pair has to stay asymmetric.
+        let dir = tempfile::tempdir().unwrap();
+        let model = dir.path().join("m.onnx");
+        let labels = dir.path().join("l.txt");
+        std::fs::write(&model, b"right").unwrap();
+        std::fs::write(&labels, b"wrong").unwrap();
+        let paths = InstalledRangeFilter { model, labels };
+
+        assert!(
+            paths.verify(&test_asset()).is_err(),
+            "a correct model must not excuse corrupt labels"
+        );
+    }
+
+    #[test]
+    fn test_is_installed_requires_the_model_too() {
+        // The sibling test covers a present model with absent labels. Without
+        // this direction the model-existence check could be dropped and both
+        // would still pass.
+        let dir = tempfile::tempdir().unwrap();
+        let labels = dir.path().join("l.txt");
+        std::fs::write(&labels, b"present").unwrap();
+        let paths = InstalledRangeFilter {
+            model: dir.path().join("absent.onnx"),
+            labels,
+        };
+
+        assert!(
+            !paths.is_installed(),
+            "a missing model must count as not installed"
+        );
+    }
+
+    #[test]
     fn test_verify_skips_files_without_a_declared_checksum() {
         let dir = tempfile::tempdir().unwrap();
         let model = dir.path().join("m.onnx");

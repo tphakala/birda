@@ -27,10 +27,34 @@ fn validate_defaults(config: &Config) -> Result<()> {
         });
     }
 
-    // Validate overlap is non-negative
-    if defaults.overlap < 0.0 {
+    // Validate overlap is a finite, non-negative number.
+    //
+    // The `is_finite` half is what catches NaN, and NaN is the case that
+    // matters: a bare `overlap < 0.0` is the hand-rolled comparison
+    // `validate_range_filter` warns against below, and `NaN < 0.0` is false, so
+    // it was accepted. `overlap * sample_rate` is then cast to `usize`, and Rust
+    // saturates that cast rather than trapping, so NaN became 0 and the setting
+    // was silently ignored. That is the reported bug's signature exactly: a
+    // configured value that changes nothing and says nothing.
+    //
+    // Infinity is also caught, but it was never silent, so the gain there is
+    // only that it now fails as a config error up front instead of as an
+    // `Error::Internal` from `AudioDecoder::next_segment`, which rejects an
+    // overlap at or above the segment length. That reject still catches an
+    // oversized *finite* overlap, which this rule deliberately does not: 5.0
+    // and 1e15 are both finite and both fail there, the latter because the same
+    // saturating cast sends it to `usize::MAX`.
+    //
+    // So no upper bound is imposed here. One belongs with the segment length
+    // rather than in a rule that cannot see it, and adding it would be new
+    // policy rather than a fix. Tracked in #306 along with the matching hole on
+    // the `--overlap` flag, which carries no value parser at all.
+    if !defaults.overlap.is_finite() || defaults.overlap < 0.0 {
         return Err(Error::ConfigValidation {
-            message: format!("overlap must be non-negative, got {}", defaults.overlap),
+            message: format!(
+                "overlap must be a finite non-negative number, got {}",
+                defaults.overlap
+            ),
         });
     }
 
@@ -170,6 +194,43 @@ mod tests {
         assert!(validate_config(&config).is_err());
     }
 
+    /// Build a config carrying nothing but the overlap under test.
+    fn config_with_overlap(overlap: f32) -> Config {
+        let mut config = Config::default();
+        config.defaults.overlap = overlap;
+        config
+    }
+
+    #[test]
+    fn test_validate_rejects_nan_overlap() {
+        // `NaN < 0.0` is false, so the previous bare comparison accepted this.
+        // The cast to `usize` then saturated NaN to 0 and the setting was
+        // silently ignored, which is the same shape as the range-threshold bug.
+        assert!(validate_config(&config_with_overlap(f32::NAN)).is_err());
+    }
+
+    #[test]
+    fn test_validate_rejects_infinite_overlap() {
+        // Positive infinity is the case `is_finite` adds here. It was already
+        // caught deeper in, by `AudioDecoder::next_segment` rejecting an overlap
+        // at or above the segment length, so this only moves the failure to load
+        // time where it reads as a config error rather than an internal one.
+        assert!(validate_config(&config_with_overlap(f32::INFINITY)).is_err());
+
+        // Negative infinity was already rejected by the old `overlap < 0.0`,
+        // which is true for it. Asserted so the tightened rule is not assumed to
+        // have changed this case.
+        assert!(validate_config(&config_with_overlap(f32::NEG_INFINITY)).is_err());
+    }
+
+    #[test]
+    fn test_validate_accepts_ordinary_overlap() {
+        // The control: the tightened rule must not start rejecting the values
+        // it is meant to allow, including the zero default.
+        assert!(validate_config(&config_with_overlap(0.0)).is_ok());
+        assert!(validate_config(&config_with_overlap(1.5)).is_ok());
+    }
+
     #[test]
     fn test_validate_zero_batch_size() {
         let mut config = Config::default();
@@ -273,10 +334,12 @@ mod tests {
 
     #[test]
     fn test_validate_config_rejects_bad_threshold() {
-        // `handle_config_set` calls `validate_config`, not `validate_range_filter`
-        // directly, so the chain has to hold for `birda config set
-        // defaults.range_threshold -1` to be rejected. Without this, the unit
-        // tests above could pass while the CLI path stayed broken.
+        // Every caller reaches this through `validate_config` rather than
+        // calling `validate_range_filter` directly: the load gate in `run()`,
+        // and `save_config` on behalf of every writer. So the chain has to hold
+        // for `birda config set defaults.range_threshold -1` to be rejected.
+        // Without this, the unit tests above could pass while the CLI path
+        // stayed broken.
         let err = validate_config(&config_with_threshold(-1.0)).unwrap_err();
 
         assert!(

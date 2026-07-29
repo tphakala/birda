@@ -270,8 +270,15 @@ pub struct AnalyzeArgs {
     /// `allow_hyphen_values` so a negative value reaches the parser and gets
     /// the real diagnostic. Without it clap reads the leading `-` as the start
     /// of another flag and reports "a value is required", which is a usage
-    /// error about the wrong thing. `--lat` and `--lon` carry it for the same
-    /// reason.
+    /// error about the wrong thing.
+    ///
+    /// `--lat` and `--lon` carry the same attribute for a stronger reason, not
+    /// the same one: a negative coordinate is *valid input*, so without it
+    /// every southern and western hemisphere position is unreachable. Here a
+    /// negative overlap is invalid either way and only the message improves.
+    /// The cost, shared with those two, is that `--overlap --cpu file.wav`
+    /// consumes `--cpu` as the value and reports that it is not a number
+    /// rather than that no value was supplied.
     #[arg(long, allow_hyphen_values = true, value_parser = parse_overlap, env = "BIRDA_OVERLAP")]
     pub overlap: Option<f32>,
 

@@ -52,7 +52,10 @@ fn validate_defaults(config: &Config) -> Result<()> {
     // `--overlap` and `BIRDA_OVERLAP` win over this value and were checked by
     // nothing at all, so the same rule now lives in `cli::validators::
     // parse_overlap` (#306). The two are kept identical, wording included, and
-    // a unit test there pins them against the same inputs.
+    // `test_parse_overlap_matches_the_config_file_rule` drives both and
+    // compares their verdicts, so neither side can be changed alone. Adding an
+    // upper bound here, for instance, fails that test rather than silently
+    // making config.toml stricter than the flag.
     if !defaults.overlap.is_finite() || defaults.overlap < 0.0 {
         return Err(Error::ConfigValidation {
             message: format!(

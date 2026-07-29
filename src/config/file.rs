@@ -90,13 +90,20 @@ fn write_error(path: &Path, source: std::io::Error) -> Error {
 ///
 /// Two consequences of replacing rather than rewriting in place. The temporary
 /// must live in the target's directory, because rename across filesystems is
-/// not atomic (and `$TMPDIR` is routinely a different one), so it is created
-/// there and cleaned up on every path out. And the resulting file takes its
-/// permissions from the temporary rather than from the file it replaced, so an
-/// existing mode is copied across explicitly; see [`preserve_existing_mode`].
+/// not atomic (and `$TMPDIR` is routinely a different one), so it is created in
+/// the user's config directory and removed on every return path, success or
+/// failure. Not on every path out, though: the Ctrl+C handler installed in
+/// `run()` ends the process with `std::process::exit`, which runs no
+/// destructors, so interrupting a save can leave one `.tmp` file behind.
+/// And the resulting file takes its permissions from the temporary rather than
+/// from the file it replaced, so an existing mode is copied across explicitly;
+/// see [`preserve_existing_mode`].
 ///
-/// Still not addressed: the whole file is re-serialised from the struct, so
-/// comments and unrecognised keys are dropped as they always were.
+/// Two things this deliberately does not address. The whole file is
+/// re-serialised from the struct, so comments and unrecognised keys are dropped
+/// as they always were. And every caller is a lock-free load-mutate-save, so
+/// two concurrent saves still lose one of the two edits; the rename makes each
+/// write whole, not the pair of them serialised.
 pub fn save_config(config: &Config, path: &Path) -> Result<()> {
     super::validate_config(config)?;
 
@@ -113,28 +120,44 @@ pub fn save_config(config: &Config, path: &Path) -> Result<()> {
         .parent()
         .filter(|parent| !parent.as_os_str().is_empty())
         .unwrap_or_else(|| Path::new("."));
-    std::fs::create_dir_all(dir).map_err(|e| write_error(target, e))?;
+    std::fs::create_dir_all(dir).map_err(|e| write_error(path, e))?;
 
     let contents =
         toml::to_string_pretty(config).map_err(|e| Error::ConfigSerialize { source: e })?;
 
-    let mut temp = tempfile::NamedTempFile::new_in(dir).map_err(|e| write_error(target, e))?;
+    // Worth knowing when this one fails: creating the temporary needs write and
+    // execute on the DIRECTORY, which a plain write never needed, so a config
+    // file the user can plainly write can now fail to save. The message names
+    // the config file like every other failure here, and the cause carries the
+    // detail, because the io::Error already names the temporary and so the
+    // directory with it.
+    let mut temp = tempfile::NamedTempFile::new_in(dir).map_err(|e| write_error(path, e))?;
     temp.write_all(contents.as_bytes())
-        .map_err(|e| write_error(target, e))?;
+        .map_err(|e| write_error(path, e))?;
+
+    // Mode first, then flush. `sync_all` persists the inode's metadata as well
+    // as its data, so widening the permissions afterwards would leave that one
+    // change unflushed and a crash could publish the file still at the
+    // temporary's private 0600. Writing the contents while it is still 0600 and
+    // widening only at the end is also the right order for a file that may hold
+    // something worth protecting.
+    preserve_existing_mode(target, &temp).map_err(|e| write_error(path, e))?;
 
     // Flush to disk before the rename, not after. Without this the rename can
     // reach the disk while the data behind it has not, which on a crash leaves
     // the config path pointing at a file of zeros: exactly the outcome the
     // rename is here to prevent, just reached by a different route.
+    //
+    // Untested, and untestable from here: deleting this line, or the directory
+    // fsync below, leaves the whole suite green, because the difference only
+    // shows up across a crash. Both are reasoned, not covered.
     temp.as_file()
         .sync_all()
-        .map_err(|e| write_error(target, e))?;
-
-    preserve_existing_mode(target, &temp)?;
+        .map_err(|e| write_error(path, e))?;
 
     // Drops the temporary on failure, so a rejected save leaves nothing behind.
     temp.persist(target)
-        .map_err(|e| write_error(target, e.error))?;
+        .map_err(|e| write_error(path, e.error))?;
 
     sync_directory(dir);
 
@@ -143,12 +166,52 @@ pub fn save_config(config: &Config, path: &Path) -> Result<()> {
 
 /// The real file `path` names, following it if it is a symlink.
 ///
-/// Falls back to `path` unchanged whenever it cannot be resolved, which is the
-/// ordinary case of saving a config that does not exist yet. `canonicalize`
-/// also flattens `.`, `..` and any symlinked parent directory, which is
-/// harmless here: every use of the result is relative to the file itself.
+/// `canonicalize` alone is not enough, and the gap is the case this function
+/// exists for. It requires every component INCLUDING the last to exist, so a
+/// symlink whose target has not been created yet fails with `NotFound`. Falling
+/// back to the unresolved path there would hand `persist` the link itself and
+/// the rename would replace it with a regular file, which is precisely the
+/// regression following the link is meant to prevent. It is also the ordinary
+/// bootstrap order: link config.toml into a dotfiles repository first, run
+/// birda second. `fs::write` handled it correctly, because `O_CREAT` follows a
+/// dangling link and creates the target.
+///
+/// So a failed `canonicalize` falls back to reading the link by hand. Only the
+/// link's own parent has to exist for that to give a usable path; if it does
+/// not, or `path` is simply a file that does not exist yet, `path` is returned
+/// unchanged, which is correct for both.
+///
+/// One hop, not a loop. A chain of dangling symlinks is not worth the cycle
+/// detection it would need, and stopping after one hop degrades to the old
+/// fallback rather than to anything worse.
 fn resolve_link(path: &Path) -> std::path::PathBuf {
-    std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf())
+    if let Ok(resolved) = std::fs::canonicalize(path) {
+        return resolved;
+    }
+
+    let Ok(link_target) = std::fs::read_link(path) else {
+        return path.to_path_buf();
+    };
+
+    // A relative link resolves against the directory holding the link, not the
+    // process's working directory.
+    let target = if link_target.is_absolute() {
+        link_target
+    } else {
+        path.parent()
+            .unwrap_or_else(|| Path::new("."))
+            .join(link_target)
+    };
+
+    // The temporary is created in the target's directory, so that directory has
+    // to exist for the write to be possible at all. When it does not, the
+    // unresolved path is the better answer: it at least keeps the failure in
+    // the directory the user named.
+    if target.parent().is_some_and(Path::exists) {
+        target
+    } else {
+        path.to_path_buf()
+    }
 }
 
 /// Give the temporary the mode of the file it is about to replace.
@@ -164,27 +227,38 @@ fn resolve_link(path: &Path) -> std::path::PathBuf {
 /// user's config over it would trade a cosmetic difference for a lost setting.
 /// The fallback is the restrictive mode, so the failure direction is safe.
 #[cfg(unix)]
-fn preserve_existing_mode(target: &Path, temp: &tempfile::NamedTempFile) -> Result<()> {
+fn preserve_existing_mode(target: &Path, temp: &tempfile::NamedTempFile) -> std::io::Result<()> {
     use std::os::unix::fs::PermissionsExt;
 
     let Ok(existing) = std::fs::metadata(target) else {
         return Ok(());
     };
 
-    let mode = existing.permissions().mode() & 0o777;
+    // `0o7777`, not `0o777`: the mask exists to strip the file-type bits, and a
+    // narrower one would silently drop setuid, setgid and the sticky bit from a
+    // mode the user chose. None of the three is meaningful on a config file,
+    // which is the point: dropping them would be an unannounced change to
+    // something this function claims to preserve.
+    let mode = existing.permissions().mode() & 0o7777;
     temp.as_file()
         .set_permissions(std::fs::Permissions::from_mode(mode))
-        .map_err(|e| write_error(target, e))
 }
 
 /// No-op on platforms without Unix permission bits.
 ///
-/// Windows carries an ACL rather than a mode, and `MoveFileEx` preserves the
-/// ACL of the file being moved rather than of the one being replaced, so there
-/// is nothing to copy across by hand.
+/// Windows carries an ACL rather than a mode, and `MoveFileEx` does NOT carry
+/// the replaced file's security descriptor across; the temporary's own ACL
+/// survives the move. So the Unix hazard exists here too and is simply not
+/// handled: an explicit ACL set on config.toml is lost when it is replaced.
+///
+/// Accepted rather than fixed, because the temporary is created in the config
+/// directory and inherits that directory's inheritable ACEs, which is exactly
+/// what a file freshly created there would get. That is the right answer for a
+/// per-user config directory and the wrong one only for a config someone has
+/// deliberately re-ACLed, which needs `ReplaceFile` rather than `MoveFileEx`.
 #[cfg(not(unix))]
 #[allow(clippy::unnecessary_wraps)]
-fn preserve_existing_mode(_target: &Path, _temp: &tempfile::NamedTempFile) -> Result<()> {
+fn preserve_existing_mode(_target: &Path, _temp: &tempfile::NamedTempFile) -> std::io::Result<()> {
     Ok(())
 }
 
@@ -217,7 +291,7 @@ pub fn save_default_config(config: &Config) -> Result<std::path::PathBuf> {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::float_cmp)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::float_cmp)]
 mod tests {
     use super::*;
     use std::io::Write;
@@ -344,19 +418,24 @@ min_confidence = 0.25
 
     #[test]
     #[cfg(unix)]
-    fn test_save_config_replaces_the_file_by_rename() {
-        // The atomicity guard (#307), and the only one that can fail
-        // deterministically without simulating a crash.
+    fn test_save_config_does_not_truncate_the_target_in_place() {
+        // The #307 guard, and the only one that can fail deterministically
+        // without simulating a crash.
         //
         // A hardlink is a second name for the same inode. `fs::write` truncates
         // and rewrites in place, so the link would show the new contents; a
         // write to a sibling temp file followed by `rename` gives the config
         // path a *different* inode, leaving the old one intact behind the link.
-        // Reading the old contents back through the link is therefore proof
-        // that the target was never truncated, which is what makes an
-        // interrupted write survivable: the reader either sees the whole old
-        // file or the whole new one, never a zero-length file that parses as
-        // all-defaults and silently drops every configured model.
+        // Reading the old contents back through the link is therefore proof the
+        // target was never truncated, which is the specific regression #307 is
+        // about.
+        //
+        // Named for what it proves rather than for atomicity, because it proves
+        // less than that. It shows the config path acquired a new inode; it
+        // cannot see whether a reader had an uninterrupted view throughout.
+        // Unlinking the target immediately before the rename, which opens a
+        // window where the config does not exist at all, leaves this green.
+        // Closing that would need a concurrent reader or a crash harness.
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("config.toml");
 
@@ -386,6 +465,45 @@ min_confidence = 0.25
     }
 
     #[test]
+    #[cfg(target_os = "linux")]
+    fn test_save_config_works_when_the_config_is_not_on_the_temp_filesystem() {
+        // Pins the invariant every other test here is blind to: the temporary
+        // must be created in the TARGET's directory, not in $TMPDIR. Rename is
+        // only atomic within a filesystem and fails outright with EXDEV across
+        // one, so a temporary in $TMPDIR breaks for the ordinary desktop layout
+        // of /tmp on tmpfs and ~/.config on disk.
+        //
+        // Every other test saves into `tempfile::tempdir()`, which is itself
+        // under $TMPDIR, so `persist` never crosses a device and swapping
+        // `new_in(dir)` for `new()` leaves them all green. Saving into /dev/shm
+        // puts the target on a different filesystem from /tmp, which is what
+        // makes this one able to fail.
+        //
+        // If /dev/shm is missing or happens to share a device with $TMPDIR the
+        // test still passes rather than failing spuriously; it just stops
+        // proving anything, which is the safe direction for an environment
+        // assumption.
+        let shm = Path::new("/dev/shm");
+        if !shm.is_dir() {
+            return;
+        }
+        let Ok(dir) = tempfile::tempdir_in(shm) else {
+            return;
+        };
+        let path = dir.path().join("config.toml");
+
+        let mut config = Config::default();
+        config.defaults.min_confidence = 0.37;
+        save_config(&config, &path)
+            .expect("a save must not depend on $TMPDIR sharing a filesystem");
+
+        assert_eq!(
+            load_config_file(&path).unwrap().defaults.min_confidence,
+            0.37
+        );
+    }
+
+    #[test]
     fn test_save_config_leaves_no_temporary_file_behind() {
         // The temporary has to be created beside the target, because `rename`
         // is only atomic within a filesystem and $TMPDIR is routinely a
@@ -396,10 +514,13 @@ min_confidence = 0.25
 
         save_config(&Config::default(), &path).unwrap();
 
+        // Bound once rather than called twice: two `read_dir` calls could in
+        // principle disagree, so the message would explain a different state
+        // from the one the condition rejected.
+        let strays = strays_beside(&path, &["config.toml"]);
         assert!(
-            strays_beside(&path, &["config.toml"]).is_empty(),
-            "a successful save must not litter the config directory, found: {:?}",
-            strays_beside(&path, &["config.toml"])
+            strays.is_empty(),
+            "a successful save must not litter the config directory, found: {strays:?}"
         );
     }
 
@@ -414,10 +535,10 @@ min_confidence = 0.25
 
         assert!(save_config(&invalid_config(), &path).is_err());
 
+        let strays = strays_beside(&path, &[]);
         assert!(
-            strays_beside(&path, &[]).is_empty(),
-            "a rejected save must not leave a partial file behind, found: {:?}",
-            strays_beside(&path, &[])
+            strays.is_empty(),
+            "a rejected save must not leave a partial file behind, found: {strays:?}"
         );
     }
 
@@ -471,6 +592,45 @@ min_confidence = 0.25
 
     #[test]
     #[cfg(unix)]
+    fn test_save_config_writes_through_a_dangling_symlink() {
+        // The twin of the test below, and the one that fails against a
+        // `canonicalize`-only resolve. `canonicalize` needs the final component
+        // to exist, so a link whose target has not been created yet does not
+        // resolve, and falling back to the unresolved path makes the rename eat
+        // the link. This is the ordinary bootstrap order for a dotfiles setup:
+        // create the link, then run birda for the first time.
+        let dir = tempfile::tempdir().unwrap();
+        let real = dir.path().join("dotfiles.toml");
+        let link_dir = dir.path().join("config");
+        std::fs::create_dir(&link_dir).unwrap();
+        let link = link_dir.join("config.toml");
+
+        std::os::unix::fs::symlink(&real, &link).unwrap();
+        assert!(
+            !real.exists(),
+            "the target must be absent for this to test anything"
+        );
+
+        let mut config = Config::default();
+        config.defaults.min_confidence = 0.33;
+        save_config(&config, &link).unwrap();
+
+        assert!(
+            std::fs::symlink_metadata(&link)
+                .unwrap()
+                .file_type()
+                .is_symlink(),
+            "a dangling link must survive the save, not be replaced by a file"
+        );
+        assert_eq!(
+            load_config_file(&real).unwrap().defaults.min_confidence,
+            0.33,
+            "the save must create the file the dangling link points at"
+        );
+    }
+
+    #[test]
+    #[cfg(unix)]
     fn test_save_config_writes_through_a_symlinked_config() {
         // The one behaviour a rename changes for the worse if left alone.
         // `fs::write` follows a symlink; `rename` replaces it. Keeping a
@@ -502,11 +662,10 @@ min_confidence = 0.25
             0.42,
             "the write must land on the file the link points at"
         );
-        let expected = ["dotfiles.toml", "config"];
+        let strays = strays_beside(&real, &["dotfiles.toml", "config"]);
         assert!(
-            strays_beside(&real, &expected).is_empty(),
-            "the temporary belongs beside the resolved file, and must be gone, found: {:?}",
-            strays_beside(&real, &expected)
+            strays.is_empty(),
+            "the temporary belongs beside the resolved file, and must be gone, found: {strays:?}"
         );
     }
 

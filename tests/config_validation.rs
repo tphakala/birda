@@ -525,17 +525,35 @@ fn test_a_valid_overlap_flag_is_accepted() {
     // bound is imposed here (an oversized overlap is caught against the segment
     // length in `AudioDecoder::next_segment`, which is the only place that
     // knows it).
+    //
+    // `seed_config` is called even though the config content is irrelevant,
+    // because it carries the assertion that the temp HOME actually redirected
+    // the config directory. Without it this test reaches config load against
+    // the developer's real config.toml on any platform where the redirection
+    // does not work, and a real `overlap = nan` there would fail it spuriously.
     let home = tempfile::tempdir().unwrap();
+    seed_config(home.path(), "[defaults]\noverlap = 0.0\n");
     let input = dummy_input(home.path());
 
-    let stderr = stderr_of(&run_in(
-        home.path(),
-        &["--overlap", "1.5", input.to_str().unwrap()],
-    ));
+    let output = run_in(home.path(), &["--overlap", "1.5", input.to_str().unwrap()]);
 
+    // Asserted as "not a usage error", not merely as the absence of the
+    // rule message. Absence alone passes when the flag does not exist: renaming
+    // `--overlap` to `--overlapx` kills the four rejection tests above and this
+    // one still passed, so it was a control against the parser being too strict
+    // and not against the flag being unwired at all. Exit code 2 is what clap
+    // returns for both "invalid value" and "unexpected argument", so pinning it
+    // closes both.
+    assert_ne!(
+        output.status.code(),
+        Some(CLAP_USAGE_ERROR),
+        "a finite non-negative overlap must be accepted by the value parser, got: {}",
+        stderr_of(&output)
+    );
     assert!(
-        !stderr.contains(OVERLAP_VIOLATION),
-        "a finite non-negative overlap must not be rejected, got: {stderr}"
+        !stderr_of(&output).contains(OVERLAP_VIOLATION),
+        "a finite non-negative overlap must not be rejected, got: {}",
+        stderr_of(&output)
     );
 }
 

@@ -23,14 +23,31 @@ fn main() {
         // Filtering here rather than rewriting the variant keeps each error's
         // `Display` intact for the JSON envelope, which reports the message on
         // its own and cannot walk a chain.
-        let mut rendered = e.to_string();
+        //
+        // Two properties, each closing one way of getting this wrong.
+        //
+        // `ends_with` rather than `contains`, because appending is the shape
+        // the duplication actually takes: a variant that renders its own source
+        // puts it at the end, as in `#[error("I/O error: {0}")]`. A substring
+        // test would also drop a distinct cause that happened to appear
+        // anywhere in its parent, for instance inside an interpolated path.
+        //
+        // Checked against every line already shown, not just the previous one,
+        // so the guarantee holds at any depth. `AudioOpen` and `AudioDecode`
+        // wrap boxed errors from the decoder libraries, so a chain here can be
+        // deeper than the single `#[from]` hop the rest of the enum uses.
+        //
+        // Where the two pull against each other, this errs toward printing a
+        // line twice rather than hiding a cause: a repeated line is noise, a
+        // suppressed one loses the reason the command failed.
+        let mut shown = vec![e.to_string()];
         let mut cause = std::error::Error::source(&e);
         while let Some(source) = cause {
             let text = source.to_string();
-            if !rendered.contains(&text) {
+            if !shown.iter().any(|seen| seen.ends_with(&text)) {
                 eprintln!("  caused by: {text}");
             }
-            rendered = text;
+            shown.push(text);
             cause = source.source();
         }
 

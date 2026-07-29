@@ -37,6 +37,8 @@ const NAN_RANGE_THRESHOLD: &str = "[defaults]\nrange_threshold = nan\n";
 /// `directories` resolves the config directory from `HOME` on macOS and from
 /// `XDG_CONFIG_HOME` (falling back to `HOME`) on Linux, so both are set. Without
 /// this the suite would read and rewrite the developer's real config.toml.
+/// `seed_config` proves the redirection actually took effect before writing
+/// anything; see the comment there.
 fn run_in(home: &Path, args: &[&str]) -> std::process::Output {
     let mut cmd = cargo_bin_cmd!("birda");
     cmd.env("HOME", home)
@@ -68,15 +70,94 @@ fn config_path_in(home: &Path) -> PathBuf {
 }
 
 /// Write `contents` to the config file the binary will actually load.
+///
+/// The assertion is load-bearing, not a sanity check. `HOME` and `XDG_*`
+/// redirect `directories` on macOS and Linux only: on Windows it resolves
+/// through `SHGetKnownFolderPath`, which consults no environment variable at
+/// all, so the path handed back would be the developer's real
+/// `%APPDATA%\birda\config.toml` and this function would overwrite it with a
+/// two-line stub, destroying every model they had configured. Refusing to write
+/// outside the temp HOME turns that from silent destruction into a failure that
+/// names its own cause, on any platform where the redirection stops working.
 fn seed_config(home: &Path, contents: &str) -> PathBuf {
     let path = config_path_in(home);
+    assert!(
+        path.starts_with(home),
+        "config path {} escaped the test HOME {}; refusing to write. \
+         The environment no longer redirects this platform's config directory, \
+         so writing here would clobber the real user config.",
+        path.display(),
+        home.display()
+    );
+
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
     std::fs::write(&path, contents).unwrap();
     path
 }
 
+/// An input path that makes the run take the analyze branch.
+///
+/// Analysis is the only gated command, so every "must be rejected" assertion
+/// has to go through it. The file only has to exist: validation happens in
+/// `run()` before the runtime is initialised and long before anything tries to
+/// decode audio, so its contents are never read.
+fn dummy_input(home: &Path) -> PathBuf {
+    let path = home.join("input.wav");
+    std::fs::write(&path, b"not really audio").unwrap();
+    path
+}
+
 fn stderr_of(output: &std::process::Output) -> String {
     String::from_utf8_lossy(&output.stderr).into_owned()
+}
+
+/// Assert the analyze path refused to start, naming the offending value.
+fn assert_analysis_rejected(home: &Path, expected: &str) {
+    let input = dummy_input(home);
+    let output = run_in(home, &[input.to_str().unwrap()]);
+
+    assert!(
+        !output.status.success(),
+        "analysis must not run against an invalid config"
+    );
+    let stderr = stderr_of(&output);
+    assert!(
+        stderr.contains(expected),
+        "the error should name the offending value ({expected}), got: {stderr}"
+    );
+}
+
+/// The message each rule in `validate_config` produces, as the user sees it.
+///
+/// Matched individually rather than on the shared `configuration validation
+/// failed:` prefix, because `Error::ConfigValidation` also carries errors that
+/// have nothing to do with the config file. "no model specified" is one, and it
+/// is the expected outcome of an analyze run in a HOME with no model installed,
+/// so keying on the prefix would make the control below assert its own failure.
+const RULE_VIOLATION_MESSAGES: [&str; 6] = [
+    "invalid latitude",
+    "invalid longitude",
+    "invalid range threshold",
+    "min_confidence must be between",
+    "overlap must be",
+    "batch_size must be at least",
+];
+
+/// Assert a command was not gated on the config.
+///
+/// Checks the absence of a rule violation rather than success, because some
+/// exempt commands legitimately fail for their own reasons (a missing CSV, an
+/// unavailable ONNX runtime, no model installed). What must never appear is a
+/// complaint about a config value the command does not read.
+fn assert_not_gated_on_config(home: &Path, args: &[&str]) {
+    let stderr = stderr_of(&run_in(home, args));
+    for message in RULE_VIOLATION_MESSAGES {
+        assert!(
+            !stderr.contains(message),
+            "`birda {}` must not be blocked by config validation ({message}), got: {stderr}",
+            args.join(" ")
+        );
+    }
 }
 
 #[test]
@@ -86,38 +167,18 @@ fn test_out_of_range_latitude_is_rejected_on_load() {
     let home = tempfile::tempdir().unwrap();
     seed_config(home.path(), OUT_OF_RANGE_LATITUDE);
 
-    let output = run_in(home.path(), &["models", "list"]);
-
-    assert!(
-        !output.status.success(),
-        "an out-of-range latitude must not load clean"
-    );
-    let stderr = stderr_of(&output);
-    assert!(
-        stderr.contains("invalid latitude"),
-        "the error should name the offending value, got: {stderr}"
-    );
+    assert_analysis_rejected(home.path(), "invalid latitude");
 }
 
 #[test]
 fn test_nan_range_threshold_is_rejected_on_load() {
     // Reproduced in #295: `birda config show` printed `range_threshold: NaN`
-    // and exited 0, and `models check` reported OK, while an analyze run
-    // returned only the unmatched non-species labels.
+    // and exited 0, while an analyze run returned only the unmatched
+    // non-species labels.
     let home = tempfile::tempdir().unwrap();
     seed_config(home.path(), NAN_RANGE_THRESHOLD);
 
-    let output = run_in(home.path(), &["models", "list"]);
-
-    assert!(
-        !output.status.success(),
-        "a NaN range threshold must not load clean"
-    );
-    let stderr = stderr_of(&output);
-    assert!(
-        stderr.contains("invalid range threshold"),
-        "the error should name the offending value, got: {stderr}"
-    );
+    assert_analysis_rejected(home.path(), "invalid range threshold");
 }
 
 #[test]
@@ -158,12 +219,7 @@ fn test_config_set_repairs_an_invalid_config() {
         stderr_of(&repair)
     );
 
-    let after = run_in(home.path(), &["models", "list"]);
-    assert!(
-        after.status.success(),
-        "the repaired config should load: {}",
-        stderr_of(&after)
-    );
+    assert_not_gated_on_config(home.path(), &["models", "list"]);
 }
 
 #[test]
@@ -205,20 +261,54 @@ fn test_bare_invocation_prints_help_with_an_invalid_config() {
 }
 
 #[test]
+fn test_repair_and_diagnostic_commands_are_not_gated() {
+    // The blast-radius guard. An earlier revision of this change gated every
+    // subcommand, which blocked `models install` (the repair for a
+    // `defaults.model` that names a missing model), and blocked `update`, the
+    // route to a build that would fix the config handling, over a config none
+    // of them reads.
+    let home = tempfile::tempdir().unwrap();
+    seed_config(home.path(), OUT_OF_RANGE_LATITUDE);
+
+    for args in [
+        vec!["models", "list"],
+        vec!["config", "path"],
+        vec!["clip", "no-such-results.csv"],
+    ] {
+        assert_not_gated_on_config(home.path(), &args);
+    }
+}
+
+#[test]
+fn test_a_dangling_default_model_does_not_block_models_install() {
+    // The one fault `config set` cannot fix by correcting the offending key:
+    // `defaults.model` names a model that is not in the file, and installing
+    // that model is the natural repair. Gating `models` made the repair
+    // unreachable, so this pins it open.
+    let home = tempfile::tempdir().unwrap();
+    seed_config(home.path(), "[defaults]\nmodel = \"gone-model\"\n");
+
+    assert_not_gated_on_config(home.path(), &["models", "list"]);
+
+    let stderr = stderr_of(&run_in(home.path(), &["models", "check"]));
+    assert!(
+        !stderr.contains("not found in configuration"),
+        "`models check` must not fail on the dangling default it exists to report, got: {stderr}"
+    );
+}
+
+#[test]
 fn test_a_valid_config_still_loads() {
     // The control. Without it every assertion above would pass just as well if
-    // the new check rejected every config it was handed.
+    // the new check rejected every config it was handed. Analysis may still
+    // fail further on (no model is configured here), so this asserts only that
+    // it got past validation.
     let home = tempfile::tempdir().unwrap();
     seed_config(
         home.path(),
         "[defaults]\nlatitude = 60.17\nlongitude = 24.94\nrange_threshold = 0.03\n",
     );
 
-    let output = run_in(home.path(), &["models", "list"]);
-
-    assert!(
-        output.status.success(),
-        "a valid config must still load: {}",
-        stderr_of(&output)
-    );
+    let input = dummy_input(home.path());
+    assert_not_gated_on_config(home.path(), &[input.to_str().unwrap()]);
 }

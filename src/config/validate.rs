@@ -27,10 +27,26 @@ fn validate_defaults(config: &Config) -> Result<()> {
         });
     }
 
-    // Validate overlap is non-negative
-    if defaults.overlap < 0.0 {
+    // Validate overlap is a finite, non-negative number.
+    //
+    // The `is_finite` half is not decoration. A bare `overlap < 0.0` is the
+    // hand-rolled comparison `validate_range_filter` warns against below, and it
+    // let two values through with the same silent-wrong-result signature as the
+    // reported bug. `overlap * sample_rate` is cast to `usize`, and Rust
+    // saturates that cast rather than trapping: NaN becomes 0, so the setting
+    // was silently ignored, and infinity becomes `usize::MAX`, so
+    // `chunk_samples.saturating_sub(overlap_samples)` gave a step of 0 and
+    // `chunk_audio` returned no chunks at all. Neither reported anything.
+    //
+    // No upper bound is imposed here. One belongs with the chunk duration
+    // rather than in a rule that cannot see it, and adding it would be a new
+    // policy rather than a fix.
+    if !defaults.overlap.is_finite() || defaults.overlap < 0.0 {
         return Err(Error::ConfigValidation {
-            message: format!("overlap must be non-negative, got {}", defaults.overlap),
+            message: format!(
+                "overlap must be a finite non-negative number, got {}",
+                defaults.overlap
+            ),
         });
     }
 
@@ -170,6 +186,39 @@ mod tests {
         assert!(validate_config(&config).is_err());
     }
 
+    /// Build a config carrying nothing but the overlap under test.
+    fn config_with_overlap(overlap: f32) -> Config {
+        let mut config = Config::default();
+        config.defaults.overlap = overlap;
+        config
+    }
+
+    #[test]
+    fn test_validate_rejects_nan_overlap() {
+        // `NaN < 0.0` is false, so the previous bare comparison accepted this.
+        // The cast to `usize` then saturated NaN to 0 and the setting was
+        // silently ignored, which is the same shape as the range-threshold bug.
+        assert!(validate_config(&config_with_overlap(f32::NAN)).is_err());
+    }
+
+    #[test]
+    fn test_validate_rejects_infinite_overlap() {
+        // The worse of the two. `inf as usize` saturates to `usize::MAX`, so
+        // `chunk_samples.saturating_sub(overlap_samples)` produced a step of 0
+        // and `chunk_audio` returned an empty vector: a run that finds nothing
+        // and says nothing about why.
+        assert!(validate_config(&config_with_overlap(f32::INFINITY)).is_err());
+        assert!(validate_config(&config_with_overlap(f32::NEG_INFINITY)).is_err());
+    }
+
+    #[test]
+    fn test_validate_accepts_ordinary_overlap() {
+        // The control: the tightened rule must not start rejecting the values
+        // it is meant to allow, including the zero default.
+        assert!(validate_config(&config_with_overlap(0.0)).is_ok());
+        assert!(validate_config(&config_with_overlap(1.5)).is_ok());
+    }
+
     #[test]
     fn test_validate_zero_batch_size() {
         let mut config = Config::default();
@@ -273,10 +322,12 @@ mod tests {
 
     #[test]
     fn test_validate_config_rejects_bad_threshold() {
-        // `handle_config_set` calls `validate_config`, not `validate_range_filter`
-        // directly, so the chain has to hold for `birda config set
-        // defaults.range_threshold -1` to be rejected. Without this, the unit
-        // tests above could pass while the CLI path stayed broken.
+        // Every caller reaches this through `validate_config` rather than
+        // calling `validate_range_filter` directly: the load gate in `run()`,
+        // and `save_config` on behalf of every writer. So the chain has to hold
+        // for `birda config set defaults.range_threshold -1` to be rejected.
+        // Without this, the unit tests above could pass while the CLI path
+        // stayed broken.
         let err = validate_config(&config_with_threshold(-1.0)).unwrap_err();
 
         assert!(

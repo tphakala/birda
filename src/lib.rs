@@ -357,22 +357,51 @@ pub fn run() -> Result<()> {
 
 /// Whether a command must run against a configuration that passes validation.
 ///
-/// Commands that consume the values in `config.toml` treat an invalid one as an
-/// error rather than something to carry on with. Two paths are exempt, and both
-/// are exempt for the same reason: they are how a user diagnoses a broken file,
-/// so failing them would leave hand-editing as the only way out of a state that
-/// hand-editing caused.
+/// Only the commands that turn `config.toml` values into a result are gated,
+/// because those are the ones an invalid value corrupts. Everything else either
+/// reads no configuration at all or exists to inspect and repair the thing that
+/// is broken, and gating those would leave hand-editing as the only way out of
+/// a state that hand-editing caused.
 ///
-/// - `config`, which is where `show`, `path` and `set` live.
-/// - The bare invocation with no inputs, which prints help and exits.
+/// Enumerated rather than defaulted through a wildcard, deliberately and for
+/// the same reason as [`command_requires_runtime`] below: a new `Command` must
+/// not inherit an answer nobody chose. Adding a variant is a compile error here
+/// until someone decides which side it belongs on.
 ///
-/// The exemption widens what can be read, not what can be persisted: every
+/// The exemption widens what can be read, never what can be persisted: every
 /// writer still validates inside [`config::save_config`].
 fn command_requires_valid_config(command: Option<&Command>, has_no_inputs: bool) -> bool {
     match command {
-        Some(Command::Config { .. }) => false,
+        // Analysis is the only path that turns the whole of `[defaults]` into a
+        // result, and it is the path the reported bug ran down. With no inputs
+        // this falls through to help, which is the least useful moment to
+        // refuse.
         None => !has_no_inputs,
-        Some(_) => true,
+
+        // Every subcommand is exempt, and each for a stated reason.
+        //
+        // `config` and `models` are the repair surfaces: one edits the file,
+        // the other installs the model a dangling `defaults.model` names.
+        // Gating them would leave hand-editing as the only way out of a state
+        // that hand-editing caused, and `models install` is itself a repair.
+        //
+        // `providers`, `clip` and `update` receive no `Config` at all;
+        // `handle_providers_command`, `clipper::command::execute` and
+        // `handle_update_command` each take only an output mode. Refusing to
+        // run the updater over a config it never reads would block the route to
+        // a build that fixes the config handling.
+        //
+        // `species` takes `--lat` and `--lon` as required arguments, so it
+        // never reads the coordinate defaults. Failing it on a stale
+        // `defaults.latitude` would reject a run that could not have used it.
+        Some(
+            Command::Config { .. }
+            | Command::Models { .. }
+            | Command::Species { .. }
+            | Command::Providers
+            | Command::Clip(_)
+            | Command::Update { .. },
+        ) => false,
     }
 }
 
@@ -818,8 +847,13 @@ fn analyze_files(
     // reported bug, where a negative value silently disabled filtering while
     // the JSON envelope still called it active, and NaN dropped every species.
     //
-    // Gated on `wants_range_filter` so a stale threshold in a config that is
-    // not doing range filtering at all cannot fail an unrelated run.
+    // Gated on `wants_range_filter`, which no longer changes the outcome: since
+    // #295 the config-file value is rejected at load and the flag is bounded by
+    // `parse_confidence`, so a threshold reaching here is already in range. The
+    // gate's original promise, that a stale threshold in a config not doing
+    // range filtering cannot fail an unrelated run, does not survive that: an
+    // out-of-range value now fails the run regardless, which is the same answer
+    // `config set` has always given it.
     if config::range_filter::wants_range_filter(args, config, model_config.model_type) {
         config::range_filter::validate_threshold(args, config)?;
     }
@@ -1378,8 +1412,14 @@ fn handle_config_set(key: &str, value: &str, output_mode: OutputMode) -> Result<
         }
     }
 
-    // Validation happens inside `save_default_config`, which every config writer
-    // goes through, so the mutated config is rejected before anything is written.
+    // Validation happens inside `save_config`, which `save_default_config`
+    // delegates to and every config writer reaches, so the mutated config is
+    // rejected before anything is written.
+    //
+    // Note this validates the whole config, not just the key being set, so a
+    // file carrying two independent faults cannot be repaired one key at a time
+    // here. That predates #295 and is tracked separately; the load gate is
+    // scoped to analysis so it does not turn that into a lockout.
     save_default_config(&config)?;
 
     if output_mode.is_structured() {
@@ -2750,71 +2790,107 @@ mod tests {
     /// Which commands run against a validated config (#295).
     ///
     /// The predicate decides whether a hand-edited `config.toml` can reach a
-    /// command at all, so both answers need pinning: an exemption that spreads
-    /// silently reopens the bug, and one that shrinks locks a user out of the
-    /// commands that repair the file.
+    /// command at all, so both answers need pinning. An exemption that shrinks
+    /// locks a user out of the commands that repair the file; one that spreads
+    /// starts rejecting runs over values they never read.
+    // A test command line that fails to parse is a broken test, not a runtime
+    // condition to handle, so `expect` is the right call here. Matches the
+    // convention the other test modules in this crate use.
+    #[allow(clippy::expect_used)]
     mod requires_valid_config {
         use super::*;
-        use cli::{ConfigAction, ModelsAction};
 
-        /// Analysis with input files, the path that consumes every default.
-        const HAS_INPUTS: bool = false;
-        /// No input files, which is how the bare invocation reaches help.
-        const NO_INPUTS: bool = true;
+        /// Answer the predicate for a real command line.
+        ///
+        /// Parsing through clap rather than building `Command` variants by hand
+        /// keeps the test honest about two things a hand-built variant hides:
+        /// which arguments are actually required on a subcommand, and that
+        /// `inputs` is empty whenever a subcommand is present, since clap routes
+        /// positionals to the subcommand.
+        fn gated(argv: &[&str]) -> bool {
+            let cli = Cli::try_parse_from(argv).expect("test command line should parse");
+            command_requires_valid_config(cli.command.as_ref(), cli.inputs.is_empty())
+        }
 
         #[test]
-        fn test_config_subcommand_is_exempt() {
-            // The repair surface. `config show` diagnoses the bad value and
-            // `config set` replaces it, so validating here would mean the only
-            // way out of a broken file is the hand-editing that broke it.
-            for action in [
-                ConfigAction::Show,
-                ConfigAction::Path,
-                ConfigAction::Init,
-                ConfigAction::Set {
-                    key: "defaults.latitude".to_string(),
-                    value: "60.1".to_string(),
-                },
-            ] {
-                let command = Command::Config { action };
-                assert!(
-                    !command_requires_valid_config(Some(&command), NO_INPUTS),
-                    "config subcommand must stay reachable with an invalid config"
-                );
-            }
+        fn test_analysis_requires_a_valid_config() {
+            // The reported case, and the only gated path. `range_threshold =
+            // nan` dropped every mapped species here and the only symptom was
+            // an info log reading "0 species in range".
+            assert!(gated(&["birda", "recording.wav"]));
         }
 
         #[test]
         fn test_bare_invocation_without_inputs_is_exempt() {
             // Falls through to `print_smart_help`. Refusing to print help
             // because the config is wrong is the least useful moment to refuse.
-            assert!(!command_requires_valid_config(None, NO_INPUTS));
+            assert!(!gated(&["birda"]));
         }
 
         #[test]
-        fn test_analysis_requires_a_valid_config() {
-            // The reported case: `range_threshold = nan` dropped every mapped
-            // species and the only symptom was an info log reading "0 species
-            // in range".
-            assert!(command_requires_valid_config(None, HAS_INPUTS));
-        }
-
-        #[test]
-        fn test_other_subcommands_require_a_valid_config() {
-            let commands = [
-                Command::Models {
-                    action: ModelsAction::List,
-                },
-                Command::Providers,
-                Command::Update { check: true },
-            ];
-
-            for command in &commands {
+        fn test_config_subcommand_is_exempt() {
+            // The repair surface. `config show` diagnoses the bad value and
+            // `config set` replaces it, so validating here would mean the only
+            // way out of a broken file is the hand-editing that broke it.
+            for argv in [
+                vec!["birda", "config", "show"],
+                vec!["birda", "config", "path"],
+                vec!["birda", "config", "init"],
+                vec!["birda", "config", "set", "defaults.latitude", "60.17"],
+            ] {
                 assert!(
-                    command_requires_valid_config(Some(command), NO_INPUTS),
-                    "{command:?} reads config values and must validate them"
+                    !gated(&argv),
+                    "{argv:?} must stay reachable with an invalid config"
                 );
             }
+        }
+
+        #[test]
+        fn test_models_subcommand_is_exempt() {
+            // `defaults.model` naming a model that is not in the file is the
+            // one fault `config set` cannot fix by setting the offending key,
+            // and `models install` is its natural repair. Gating this arm made
+            // that repair unreachable.
+            for argv in [
+                vec!["birda", "models", "list"],
+                vec!["birda", "models", "check"],
+                vec!["birda", "models", "install", "birdnet-v24"],
+                vec!["birda", "models", "remove", "birdnet-v24"],
+            ] {
+                assert!(
+                    !gated(&argv),
+                    "{argv:?} must stay reachable so a dangling default can be repaired"
+                );
+            }
+        }
+
+        #[test]
+        fn test_commands_that_receive_no_config_are_exempt() {
+            // `handle_providers_command`, `clipper::command::execute` and
+            // `handle_update_command` each take only an output mode, so an
+            // invalid value cannot reach them. `update` matters most: it is how
+            // a user installs a build that fixes the config handling, and
+            // gating it on the config would block that route.
+            for argv in [
+                vec!["birda", "providers"],
+                vec!["birda", "clip", "results.csv"],
+                vec!["birda", "update", "--check"],
+            ] {
+                assert!(
+                    !gated(&argv),
+                    "{argv:?} receives no Config and must not be gated on one"
+                );
+            }
+        }
+
+        #[test]
+        fn test_species_is_exempt_because_its_coordinates_are_required_args() {
+            // `--lat` and `--lon` are required here, so `species` never reads
+            // `defaults.latitude` or `defaults.longitude`. Failing it on a stale
+            // coordinate would reject a run that could not have used it.
+            assert!(!gated(&[
+                "birda", "species", "--lat", "60.17", "--lon", "24.94", "--week", "24"
+            ]));
         }
     }
 }

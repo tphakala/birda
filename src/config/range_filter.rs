@@ -41,16 +41,18 @@ pub fn supports_range_filter(args: &AnalyzeArgs, model_type: ModelType) -> bool 
 /// aborting after that spends the user's bandwidth to report something knowable
 /// up front.
 ///
-/// Bounds-checked here rather than only in `validate_range_filter` because
-/// `validate_config` has exactly one caller, `handle_config_set`, so nothing
-/// validates a config that was hand-edited rather than written through the CLI.
-/// The hand-edited case is the one the bug report describes: a negative
-/// threshold makes filtering a silent no-op while the JSON envelope still
-/// reports it active, and NaN drops every mapped species because `score >= NaN`
-/// is false for every score.
+/// Kept as a point-of-use check even though both of its inputs are now bounded
+/// before they arrive: the CLI flag by `parse_confidence`, and the config value
+/// by the load-time `validate_config` in `run()`. It exists so a future caller
+/// of this module cannot reach the threshold without one.
 ///
-/// The CLI flag arrives already bounded by `parse_confidence`, so in practice
-/// this fires only for a config-file value.
+/// The original reason was narrower and no longer holds. `validate_config` used
+/// to have exactly one caller, `handle_config_set`, so a threshold hand-edited
+/// into config.toml reached analysis unchecked: a negative value made filtering
+/// a silent no-op while the JSON envelope still reported it active, and NaN
+/// dropped every mapped species because `score >= NaN` is false for every
+/// score. #295 wired validation into the load path, which closed that hole at
+/// the source.
 pub fn validate_threshold(args: &AnalyzeArgs, config: &Config) -> Result<()> {
     let threshold = args
         .range_threshold
@@ -200,14 +202,15 @@ mod tests {
 
     #[test]
     fn test_hand_edited_nan_threshold_is_rejected_on_the_analyze_path() {
-        // The reported defect in full. `validate_config` has one caller,
+        // The reported defect in full. `validate_config` had one caller,
         // `handle_config_set`, so a threshold typed into config.toml by hand
         // reached analysis unchecked: `score >= NaN` is false for every score,
         // so every mapped species was dropped and the only symptom was an info
         // log reading "0 species in range".
         //
-        // Guarding only `validate_range_filter` would leave this green while
-        // the bug stayed live, because nothing on this path calls it.
+        // #295 closed that at the load path, so this now guards the same value
+        // one layer further in. Kept because it asserts the property this
+        // module depends on rather than the wiring that currently supplies it.
         let err = build_with(&config_with_threshold(f32::NAN)).unwrap_err();
 
         assert!(

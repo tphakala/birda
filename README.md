@@ -364,21 +364,23 @@ combined_prefix = "BirdNET"
 
 ### Configuration Validation
 
-The configuration file is validated when it is loaded, so a bad value is reported once, up front, instead of turning into odd behaviour later in a run. The rules cover `min_confidence` and `range_threshold` (both 0.0 to 1.0), `overlap` (non-negative), `batch_size` (at least 1), `latitude` (-90.0 to 90.0), `longitude` (-180.0 to 180.0), and `defaults.model`, which must name a model that exists in the file.
+An analysis run validates the configuration file before it starts, so a bad value is reported once, up front, instead of turning into odd results later in the run. The rules cover `min_confidence` and `range_threshold` (both 0.0 to 1.0), `overlap` (finite and non-negative), `batch_size` (at least 1), `latitude` (-90.0 to 90.0), `longitude` (-180.0 to 180.0), and `defaults.model`, which must name a model that exists in the file.
 
 ```
-$ birda analyze recording.wav
+$ birda recording.wav
 error: invalid latitude: 200 (must be -90.0 to 90.0)
 ```
 
-The `config` commands are deliberately exempt, because they are how you fix the problem. `birda config show` still prints a config that fails validation, so you can see which value is wrong, and `birda config set` still repairs it:
+Only analysis is gated, because it is the only command that turns the whole of `[defaults]` into a result. Everything else keeps working, which matters because those are the commands you need in order to fix the file. `config show` prints a config that fails validation so you can see which value is wrong, `config set` rewrites it, and `models install` still works when `defaults.model` names a model you no longer have.
 
 ```
 $ birda config show                          # works, shows the bad value
-$ birda config set defaults.latitude 60.17   # repairs it
+$ birda config set defaults.latitude 60.17   # rewrites it
 ```
 
-Writing is validated too. `birda config set` and the `birda models` commands all refuse to save a configuration that would not load, and they refuse before touching the file, so a rejected write leaves the existing configuration intact.
+One limitation worth knowing: `config set` validates the whole file before saving, so it cannot repair a config with two independent bad values one key at a time. Each write is rejected by the other fault. Fix those by editing `config.toml` directly.
+
+Writing is validated too. `config init`, `config set` and the `models` commands all refuse to save a configuration that would not load, and they refuse before touching the file, so a rejected write leaves the existing configuration intact.
 
 ### Environment Variables
 
@@ -424,13 +426,13 @@ Apache Parquet columnar format for efficient data storage and analysis. Provides
 
 ```bash
 # Single format
-birda analyze -f parquet recording.wav
+birda -f parquet recording.wav
 
 # Multiple formats
-birda analyze -f csv,parquet recording.wav
+birda -f csv,parquet recording.wav
 
 # With metadata columns
-birda analyze -f parquet --lat 45.0 --lon -73.0 --week 24 recording.wav
+birda -f parquet --lat 45.0 --lon -73.0 --week 24 recording.wav
 ```
 
 **Column Schema:**
@@ -552,11 +554,11 @@ Bat echolocation calls are ultrasonic (20-120 kHz). BattyBirdNET exploits a "slo
 
 ```bash
 # Analyze bat recordings with the Bavaria classifier
-birda analyze -m birdnet-v24-embeddings --bat bavaria bat_recording.wav
+birda -m birdnet-v24-embeddings --bat bavaria bat_recording.wav
 
 # Other available regions
-birda analyze -m birdnet-v24-embeddings --bat uk bat_recording.wav
-birda analyze -m birdnet-v24-embeddings --bat eu bat_recording.wav
+birda -m birdnet-v24-embeddings --bat uk bat_recording.wav
+birda -m birdnet-v24-embeddings --bat eu bat_recording.wav
 ```
 
 ### Available Regions

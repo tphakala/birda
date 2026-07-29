@@ -143,7 +143,7 @@ birda clip results.csv -a /recordings/2024-06-15_dawn.flac
 
 ```bash
 # Analyze recordings, then extract best clips
-birda analyze recordings/ -o detections/
+birda recordings/ -o detections/
 birda clip detections/*.csv -c 0.85 -o best_clips/
 ```
 

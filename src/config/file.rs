@@ -66,8 +66,11 @@ pub fn load_default_config() -> Result<Config> {
 /// install) and reached this function without validating.
 ///
 /// Validating before the write also matters because this function truncates and
-/// rewrites the whole file: refusing early means a bad config cannot destroy a
-/// good one on disk.
+/// rewrites the whole file: refusing early means an invalid config cannot
+/// destroy a good one on disk. That covers the validation failure mode only.
+/// The write itself is not atomic, so an interrupted or short write can still
+/// leave a truncated config.toml, which parses as all-defaults and loses every
+/// configured model.
 pub fn save_config(config: &Config, path: &Path) -> Result<()> {
     super::validate_config(config)?;
 

@@ -11,6 +11,27 @@ updates:
       - "dependencies"
       - "rust"
     open-pull-requests-limit: 10
+    ignore:
+      # ort must never be bumped automatically. It is pinned in lockstep with
+      # ONNXRUNTIME_VERSION in release.yml, which decides the native ONNX
+      # Runtime that ships with every binary. The `load-dynamic` feature
+      # resolves that library at run time, so a binding that expects a
+      # different ABI produces no compile error and no test failure; it fails
+      # only when a released binary tries to load the library, which nothing in
+      # CI exercises. An automatic bump would therefore go green and still ship
+      # something that cannot start.
+      #
+      # The gap is real rather than theoretical: the current pin, rc.12,
+      # targets ONNX Runtime 1.24 and matches release.yml. The next candidate,
+      # rc.13, targets 1.28. Dependabot would offer it because the current
+      # version is itself a pre-release, which is the one case where it does
+      # propose pre-release updates.
+      #
+      # Upgrading is a coordinated change: check which runtime the new binding
+      # targets, move ONNXRUNTIME_VERSION and the CUDA and cuDNN set in
+      # release.yml to match, then run real inference before merging.
+      - dependency-name: "ort"
+      - dependency-name: "ort-sys"
 
   # GitHub Actions
   - package-ecosystem: "github-actions"

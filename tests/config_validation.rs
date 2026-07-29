@@ -32,6 +32,38 @@ const OUT_OF_RANGE_LATITUDE: &str = "[defaults]\nlatitude = 200.0\n";
 /// "0 species in range".
 const NAN_RANGE_THRESHOLD: &str = "[defaults]\nrange_threshold = nan\n";
 
+/// Every `BIRDA_*` variable clap binds to an argument.
+///
+/// All of them are cleared per run. These tests assert on what the config file
+/// produces, and each of these overrides a config value, so any one of them
+/// exported in a developer's shell would silently change what is being tested
+/// rather than failing outright. Enumerated rather than cleared wholesale
+/// because the child still needs `HOME`, `PATH` and the rest of its
+/// environment.
+///
+/// Kept in sync with `grep -rhoE 'env = "BIRDA_[A-Z_]+"' src/`.
+const BIRDA_ENV_VARS: [&str; 19] = [
+    "BIRDA_BATCH_SIZE",
+    "BIRDA_DAY_OF_YEAR",
+    "BIRDA_FORMAT",
+    "BIRDA_GEOMODEL_LABELS_PATH",
+    "BIRDA_GEOMODEL_PATH",
+    "BIRDA_LABELS_PATH",
+    "BIRDA_LATITUDE",
+    "BIRDA_LONGITUDE",
+    "BIRDA_META_MODEL_PATH",
+    "BIRDA_MIN_CONFIDENCE",
+    "BIRDA_MODEL",
+    "BIRDA_MODEL_PATH",
+    "BIRDA_MODEL_TYPE",
+    "BIRDA_OUTPUT_DIR",
+    "BIRDA_OUTPUT_MODE",
+    "BIRDA_OVERLAP",
+    "BIRDA_RANGE_THRESHOLD",
+    "BIRDA_RANGE_UNMATCHED",
+    "BIRDA_SPECIES_LIST",
+];
+
 /// Run birda against a caller-supplied HOME.
 ///
 /// `directories` resolves the config directory from `HOME` on macOS and from
@@ -39,16 +71,18 @@ const NAN_RANGE_THRESHOLD: &str = "[defaults]\nrange_threshold = nan\n";
 /// this the suite would read and rewrite the developer's real config.toml.
 /// `seed_config` proves the redirection actually took effect before writing
 /// anything; see the comment there.
+///
+/// The isolation has to cover the environment as well as the filesystem, hence
+/// [`BIRDA_ENV_VARS`].
 fn run_in(home: &Path, args: &[&str]) -> std::process::Output {
     let mut cmd = cargo_bin_cmd!("birda");
     cmd.env("HOME", home)
         .env("XDG_CONFIG_HOME", home.join("config"))
         .env("XDG_DATA_HOME", home.join("data"))
-        // `--output-mode` reads BIRDA_OUTPUT_MODE. A developer with that
-        // exported would turn the human-output assertions into failures, so the
-        // isolation has to cover the environment, not just the filesystem.
-        .env_remove("BIRDA_OUTPUT_MODE")
         .timeout(COMMAND_TIMEOUT);
+    for var in BIRDA_ENV_VARS {
+        cmd.env_remove(var);
+    }
     for arg in args {
         cmd.arg(arg);
     }
@@ -134,25 +168,40 @@ fn assert_analysis_rejected(home: &Path, expected: &str) {
     );
 }
 
-/// Assert an analyze run cleared config validation and failed further in.
-fn assert_analysis_passes_validation(home: &Path) {
+/// Assert config validation did not stop an analyze run.
+///
+/// Stated as the absence of every rule message rather than as a positive
+/// assertion on whatever comes next, because what comes next is not invariant.
+/// `run()` initialises the ONNX runtime after validation but before it resolves
+/// a model, so on a machine with the shared library present the run reaches "no
+/// model specified", and on one without it stops at the runtime instead. CI is
+/// the second kind, so pinning the later stage made this environment-dependent.
+///
+/// Absence is only safe here because each message is a shared constant that a
+/// rejection test asserts positively. A reword therefore fails loudly there
+/// instead of silently switching this check off, which is the trap an earlier
+/// revision fell into with a list nothing positively pinned.
+fn assert_validation_did_not_reject(home: &Path) {
     let input = dummy_input(home);
     let stderr = stderr_of(&run_in(home, &[input.to_str().unwrap()]));
 
-    assert!(
-        stderr.contains(PAST_VALIDATION_ERROR),
-        "analysis should have reached model resolution, meaning it cleared \
-         validation; expected {PAST_VALIDATION_ERROR:?}, got: {stderr}"
-    );
+    for message in [LATITUDE_VIOLATION, THRESHOLD_VIOLATION, OVERLAP_VIOLATION] {
+        assert!(
+            !stderr.contains(message),
+            "a valid config must not be rejected ({message}), got: {stderr}"
+        );
+    }
 }
 
-/// The error an analyze run reaches once it is past config validation.
+/// The rule messages this suite drives, exactly as the user sees them.
 ///
-/// These tests install no model, so this is where a run that cleared the gate
-/// lands. Asserting it positively is what makes the control meaningful: an
-/// assertion that merely failed to find a validation error would also pass if
-/// the binary died for any other reason, or if the error text drifted.
-const PAST_VALIDATION_ERROR: &str = "no model specified";
+/// Each is used twice: asserted positively by the rejection test for its rule,
+/// and asserted absent by the control. That pairing is what keeps the control
+/// honest, since a reworded message breaks its rejection test loudly rather
+/// than quietly ceasing to match.
+const LATITUDE_VIOLATION: &str = "invalid latitude";
+const THRESHOLD_VIOLATION: &str = "invalid range threshold";
+const OVERLAP_VIOLATION: &str = "overlap must be a finite non-negative number";
 
 /// The exit code birda uses for an application error, as opposed to a clap
 /// parse failure (2) or a panic (101). Pinned so a rejection test cannot be
@@ -183,7 +232,7 @@ fn test_out_of_range_latitude_is_rejected_on_load() {
     let home = tempfile::tempdir().unwrap();
     seed_config(home.path(), OUT_OF_RANGE_LATITUDE);
 
-    assert_analysis_rejected(home.path(), "invalid latitude");
+    assert_analysis_rejected(home.path(), LATITUDE_VIOLATION);
 }
 
 #[test]
@@ -194,7 +243,7 @@ fn test_nan_range_threshold_is_rejected_on_load() {
     let home = tempfile::tempdir().unwrap();
     seed_config(home.path(), NAN_RANGE_THRESHOLD);
 
-    assert_analysis_rejected(home.path(), "invalid range threshold");
+    assert_analysis_rejected(home.path(), THRESHOLD_VIOLATION);
 }
 
 #[test]
@@ -255,7 +304,7 @@ fn test_config_set_repairs_an_invalid_config() {
         "the repaired value should be the one that was set"
     );
 
-    assert_analysis_passes_validation(home.path());
+    assert_validation_did_not_reject(home.path());
 }
 
 #[test]
@@ -352,7 +401,7 @@ fn test_an_overlap_rule_violation_is_rejected_on_load() {
     let home = tempfile::tempdir().unwrap();
     seed_config(home.path(), "[defaults]\noverlap = nan\n");
 
-    assert_analysis_rejected(home.path(), "overlap must be a finite non-negative number");
+    assert_analysis_rejected(home.path(), OVERLAP_VIOLATION);
 }
 
 #[test]
@@ -380,5 +429,5 @@ fn test_a_valid_config_still_loads() {
         "[defaults]\nlatitude = 60.17\nlongitude = 24.94\nrange_threshold = 0.03\n",
     );
 
-    assert_analysis_passes_validation(home.path());
+    assert_validation_did_not_reject(home.path());
 }

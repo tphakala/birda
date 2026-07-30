@@ -416,7 +416,7 @@ mod tests {
         assert!(result.is_ok(), "Bundled registry should parse successfully");
 
         let registry = result.unwrap();
-        assert_eq!(registry.schema_version, "1.1");
+        assert_eq!(registry.schema_version, "2.0");
         assert!(
             !registry.models.is_empty(),
             "Registry should contain models"
@@ -424,6 +424,7 @@ mod tests {
 
         // Verify we have expected models
         assert!(find_model(&registry, "birdnet-v24").is_some());
+        assert!(find_model(&registry, "birdnet-v30").is_some());
         assert!(find_model(&registry, "perch-v2").is_some());
         assert!(find_model(&registry, "bsg-fi-v44").is_some());
     }

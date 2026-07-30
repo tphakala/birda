@@ -1,0 +1,1194 @@
+{
+ "amazonia": {
+  "breakdown": {
+   "cosmopolitan_core_added": 3,
+   "fsd50k_sound_events": 198,
+   "range_filtered_species": 3187
+  },
+  "classes": 3388,
+  "countries": {
+   "core": [
+    "Brazil",
+    "Colombia",
+    "Ecuador",
+    "Guyana",
+    "Peru",
+    "Suriname",
+    "Trinidad and Tobago",
+    "Venezuela"
+   ],
+   "partial": [
+    "Bolivia",
+    "Panama"
+   ]
+  },
+  "country_count": {
+   "core": 8,
+   "partial": 2
+  },
+  "group": "south-america",
+  "group_display": "South America",
+  "group_order": 3,
+  "name": "Amazonia",
+  "realm": "neotropic",
+  "region": "amazonia",
+  "species": 3190
+ },
+ "andes": {
+  "breakdown": {
+   "cosmopolitan_core_added": 2,
+   "fsd50k_sound_events": 198,
+   "range_filtered_species": 3335
+  },
+  "classes": 3535,
+  "countries": {
+   "core": [
+    "Argentina",
+    "Aruba",
+    "Bolivia",
+    "Brazil",
+    "Chile",
+    "Colombia",
+    "Cura\u00e7ao",
+    "Ecuador",
+    "Grenada",
+    "Panama",
+    "Peru",
+    "Venezuela"
+   ],
+   "partial": []
+  },
+  "country_count": {
+   "core": 12,
+   "partial": 0
+  },
+  "group": "south-america",
+  "group_display": "South America",
+  "group_order": 3,
+  "name": "Andes",
+  "realm": "neotropic",
+  "region": "andes",
+  "species": 3337
+ },
+ "australia-east": {
+  "breakdown": {
+   "cosmopolitan_core_added": 6,
+   "fsd50k_sound_events": 198,
+   "range_filtered_species": 742
+  },
+  "classes": 946,
+  "countries": {
+   "core": [
+    "Australia"
+   ],
+   "partial": []
+  },
+  "country_count": {
+   "core": 1,
+   "partial": 0
+  },
+  "group": "oceania",
+  "group_display": "Oceania",
+  "group_order": 5,
+  "name": "Australia (Southeast)",
+  "realm": "australasian",
+  "region": "australia-east",
+  "species": 748
+ },
+ "azores": {
+  "breakdown": {
+   "cosmopolitan_core_added": 4,
+   "fsd50k_sound_events": 198,
+   "range_filtered_species": 224
+  },
+  "classes": 426,
+  "countries": {
+   "core": [
+    "Portugal"
+   ],
+   "partial": []
+  },
+  "country_count": {
+   "core": 1,
+   "partial": 0
+  },
+  "group": "europe",
+  "group_display": "Europe",
+  "group_order": 0,
+  "name": "Azores",
+  "realm": "palearctic",
+  "region": "azores",
+  "species": 228
+ },
+ "baltics": {
+  "breakdown": {
+   "cosmopolitan_core_added": 4,
+   "fsd50k_sound_events": 198,
+   "range_filtered_species": 453
+  },
+  "classes": 655,
+  "countries": {
+   "core": [
+    "Belarus",
+    "Estonia",
+    "Latvia",
+    "Lithuania",
+    "Russia"
+   ],
+   "partial": []
+  },
+  "country_count": {
+   "core": 5,
+   "partial": 0
+  },
+  "group": "europe",
+  "group_display": "Europe",
+  "group_order": 0,
+  "name": "Baltics",
+  "realm": "palearctic",
+  "region": "baltics",
+  "species": 457
+ },
+ "british-isles": {
+  "breakdown": {
+   "cosmopolitan_core_added": 1,
+   "fsd50k_sound_events": 198,
+   "range_filtered_species": 577
+  },
+  "classes": 776,
+  "countries": {
+   "core": [
+    "Ireland",
+    "Isle of Man",
+    "United Kingdom"
+   ],
+   "partial": [
+    "Guernsey"
+   ]
+  },
+  "country_count": {
+   "core": 3,
+   "partial": 1
+  },
+  "group": "europe",
+  "group_display": "Europe",
+  "group_order": 0,
+  "name": "British Isles",
+  "realm": "palearctic",
+  "region": "british-isles",
+  "species": 578
+ },
+ "canary-islands": {
+  "breakdown": {
+   "cosmopolitan_core_added": 1,
+   "fsd50k_sound_events": 198,
+   "range_filtered_species": 399
+  },
+  "classes": 598,
+  "countries": {
+   "core": [
+    "Morocco",
+    "Spain"
+   ],
+   "partial": []
+  },
+  "country_count": {
+   "core": 2,
+   "partial": 0
+  },
+  "group": "europe",
+  "group_display": "Europe",
+  "group_order": 0,
+  "name": "Canary Islands",
+  "realm": "palearctic",
+  "region": "canary-islands",
+  "species": 400
+ },
+ "cape-verde": {
+  "breakdown": {
+   "cosmopolitan_core_added": 14,
+   "fsd50k_sound_events": 198,
+   "range_filtered_species": 134
+  },
+  "classes": 346,
+  "countries": {
+   "core": [
+    "Cabo Verde"
+   ],
+   "partial": []
+  },
+  "country_count": {
+   "core": 1,
+   "partial": 0
+  },
+  "group": "africa",
+  "group_display": "Africa",
+  "group_order": 4,
+  "name": "Cape Verde",
+  "realm": "afrotropic",
+  "region": "cape-verde",
+  "species": 148
+ },
+ "central-europe": {
+  "breakdown": {
+   "cosmopolitan_core_added": 1,
+   "fsd50k_sound_events": 198,
+   "range_filtered_species": 674
+  },
+  "classes": 873,
+  "countries": {
+   "core": [
+    "Austria",
+    "Belgium",
+    "Croatia",
+    "Czechia",
+    "France",
+    "Germany",
+    "Hungary",
+    "Liechtenstein",
+    "Luxembourg",
+    "Netherlands",
+    "Poland",
+    "Slovakia",
+    "Slovenia",
+    "Switzerland"
+   ],
+   "partial": [
+    "Bosnia and Herzegovina",
+    "Denmark",
+    "Italy",
+    "Lithuania",
+    "Republic of Serbia",
+    "Romania"
+   ]
+  },
+  "country_count": {
+   "core": 14,
+   "partial": 6
+  },
+  "group": "europe",
+  "group_display": "Europe",
+  "group_order": 0,
+  "name": "Central Europe",
+  "realm": "palearctic",
+  "region": "central-europe",
+  "species": 675
+ },
+ "china-north-central": {
+  "breakdown": {
+   "cosmopolitan_core_added": 6,
+   "fsd50k_sound_events": 198,
+   "range_filtered_species": 772
+  },
+  "classes": 976,
+  "countries": {
+   "core": [
+    "China"
+   ],
+   "partial": []
+  },
+  "country_count": {
+   "core": 1,
+   "partial": 0
+  },
+  "group": "asia",
+  "group_display": "Asia",
+  "group_order": 1,
+  "name": "China (North-Central)",
+  "realm": "palearctic",
+  "region": "china-north-central",
+  "species": 778
+ },
+ "china-northeast": {
+  "breakdown": {
+   "cosmopolitan_core_added": 4,
+   "fsd50k_sound_events": 198,
+   "range_filtered_species": 675
+  },
+  "classes": 877,
+  "countries": {
+   "core": [
+    "China",
+    "North Korea",
+    "Russia"
+   ],
+   "partial": [
+    "Mongolia"
+   ]
+  },
+  "country_count": {
+   "core": 3,
+   "partial": 1
+  },
+  "group": "asia",
+  "group_display": "Asia",
+  "group_order": 1,
+  "name": "China (Northeast)",
+  "realm": "palearctic",
+  "region": "china-northeast",
+  "species": 679
+ },
+ "china-southeast": {
+  "breakdown": {
+   "cosmopolitan_core_added": 5,
+   "fsd50k_sound_events": 198,
+   "range_filtered_species": 1170
+  },
+  "classes": 1373,
+  "countries": {
+   "core": [
+    "China",
+    "Hong Kong S.A.R.",
+    "Macao S.A.R",
+    "Taiwan"
+   ],
+   "partial": []
+  },
+  "country_count": {
+   "core": 4,
+   "partial": 0
+  },
+  "group": "asia",
+  "group_display": "Asia",
+  "group_order": 1,
+  "name": "China (Southeast)",
+  "realm": "indomalayan",
+  "region": "china-southeast",
+  "species": 1175
+ },
+ "china-southwest": {
+  "breakdown": {
+   "cosmopolitan_core_added": 11,
+   "fsd50k_sound_events": 198,
+   "range_filtered_species": 1200
+  },
+  "classes": 1409,
+  "countries": {
+   "core": [
+    "China"
+   ],
+   "partial": [
+    "Myanmar",
+    "Vietnam"
+   ]
+  },
+  "country_count": {
+   "core": 1,
+   "partial": 2
+  },
+  "group": "asia",
+  "group_display": "Asia",
+  "group_order": 1,
+  "name": "China (Southwest)",
+  "realm": "palearctic",
+  "region": "china-southwest",
+  "species": 1211
+ },
+ "eastern-brazil": {
+  "breakdown": {
+   "cosmopolitan_core_added": 4,
+   "fsd50k_sound_events": 198,
+   "range_filtered_species": 1982
+  },
+  "classes": 2184,
+  "countries": {
+   "core": [
+    "Brazil",
+    "Paraguay",
+    "Uruguay"
+   ],
+   "partial": [
+    "Argentina"
+   ]
+  },
+  "country_count": {
+   "core": 3,
+   "partial": 1
+  },
+  "group": "south-america",
+  "group_display": "South America",
+  "group_order": 3,
+  "name": "Eastern Brazil",
+  "realm": "neotropic",
+  "region": "eastern-brazil",
+  "species": 1986
+ },
+ "eastern-europe": {
+  "breakdown": {
+   "cosmopolitan_core_added": 7,
+   "fsd50k_sound_events": 198,
+   "range_filtered_species": 534
+  },
+  "classes": 739,
+  "countries": {
+   "core": [
+    "Moldova",
+    "Romania",
+    "Russia",
+    "Ukraine"
+   ],
+   "partial": [
+    "Belarus",
+    "Poland"
+   ]
+  },
+  "country_count": {
+   "core": 4,
+   "partial": 2
+  },
+  "group": "europe",
+  "group_display": "Europe",
+  "group_order": 0,
+  "name": "Eastern Europe",
+  "realm": "palearctic",
+  "region": "eastern-europe",
+  "species": 541
+ },
+ "galapagos": {
+  "breakdown": {
+   "cosmopolitan_core_added": 8,
+   "fsd50k_sound_events": 198,
+   "range_filtered_species": 130
+  },
+  "classes": 336,
+  "countries": {
+   "core": [
+    "Ecuador"
+   ],
+   "partial": []
+  },
+  "country_count": {
+   "core": 1,
+   "partial": 0
+  },
+  "group": "south-america",
+  "group_display": "South America",
+  "group_order": 3,
+  "name": "Galapagos",
+  "realm": "neotropic",
+  "region": "galapagos",
+  "species": 138
+ },
+ "hawaii": {
+  "breakdown": {
+   "cosmopolitan_core_added": 5,
+   "fsd50k_sound_events": 198,
+   "range_filtered_species": 275
+  },
+  "classes": 478,
+  "countries": {
+   "core": [
+    "United States of America"
+   ],
+   "partial": []
+  },
+  "country_count": {
+   "core": 1,
+   "partial": 0
+  },
+  "group": "oceania",
+  "group_display": "Oceania",
+  "group_order": 5,
+  "name": "Hawaii",
+  "realm": "oceanian",
+  "region": "hawaii",
+  "species": 280
+ },
+ "himalaya": {
+  "breakdown": {
+   "cosmopolitan_core_added": 9,
+   "fsd50k_sound_events": 198,
+   "range_filtered_species": 1200
+  },
+  "classes": 1407,
+  "countries": {
+   "core": [
+    "Bhutan",
+    "China",
+    "India",
+    "Nepal",
+    "Siachen Glacier"
+   ],
+   "partial": [
+    "Pakistan"
+   ]
+  },
+  "country_count": {
+   "core": 5,
+   "partial": 1
+  },
+  "group": "asia",
+  "group_display": "Asia",
+  "group_order": 1,
+  "name": "Himalaya",
+  "realm": "indomalayan",
+  "region": "himalaya",
+  "species": 1209
+ },
+ "iberia": {
+  "breakdown": {
+   "cosmopolitan_core_added": 1,
+   "fsd50k_sound_events": 198,
+   "range_filtered_species": 657
+  },
+  "classes": 856,
+  "countries": {
+   "core": [
+    "Andorra",
+    "Portugal",
+    "Spain"
+   ],
+   "partial": [
+    "France"
+   ]
+  },
+  "country_count": {
+   "core": 3,
+   "partial": 1
+  },
+  "group": "europe",
+  "group_display": "Europe",
+  "group_order": 0,
+  "name": "Iberia",
+  "realm": "palearctic",
+  "region": "iberia",
+  "species": 658
+ },
+ "iceland": {
+  "breakdown": {
+   "cosmopolitan_core_added": 2,
+   "fsd50k_sound_events": 198,
+   "range_filtered_species": 391
+  },
+  "classes": 591,
+  "countries": {
+   "core": [
+    "Iceland"
+   ],
+   "partial": []
+  },
+  "country_count": {
+   "core": 1,
+   "partial": 0
+  },
+  "group": "europe",
+  "group_display": "Europe",
+  "group_order": 0,
+  "name": "Iceland",
+  "realm": "palearctic",
+  "region": "iceland",
+  "species": 393
+ },
+ "indo-gangetic": {
+  "breakdown": {
+   "cosmopolitan_core_added": 8,
+   "fsd50k_sound_events": 198,
+   "range_filtered_species": 1200
+  },
+  "classes": 1406,
+  "countries": {
+   "core": [
+    "Bangladesh",
+    "Bhutan",
+    "India",
+    "Nepal",
+    "Pakistan"
+   ],
+   "partial": [
+    "China"
+   ]
+  },
+  "country_count": {
+   "core": 5,
+   "partial": 1
+  },
+  "group": "asia",
+  "group_display": "Asia",
+  "group_order": 1,
+  "name": "Indo-Gangetic Plain",
+  "realm": "indomalayan",
+  "region": "indo-gangetic",
+  "species": 1208
+ },
+ "japan": {
+  "breakdown": {
+   "cosmopolitan_core_added": 4,
+   "fsd50k_sound_events": 198,
+   "range_filtered_species": 597
+  },
+  "classes": 799,
+  "countries": {
+   "core": [
+    "Japan",
+    "South Korea"
+   ],
+   "partial": [
+    "China",
+    "North Korea",
+    "Russia"
+   ]
+  },
+  "country_count": {
+   "core": 2,
+   "partial": 3
+  },
+  "group": "asia",
+  "group_display": "Asia",
+  "group_order": 1,
+  "name": "Japan",
+  "realm": "palearctic",
+  "region": "japan",
+  "species": 601
+ },
+ "madeira": {
+  "breakdown": {
+   "cosmopolitan_core_added": 1,
+   "fsd50k_sound_events": 198,
+   "range_filtered_species": 260
+  },
+  "classes": 459,
+  "countries": {
+   "core": [
+    "Portugal"
+   ],
+   "partial": []
+  },
+  "country_count": {
+   "core": 1,
+   "partial": 0
+  },
+  "group": "europe",
+  "group_display": "Europe",
+  "group_order": 0,
+  "name": "Madeira",
+  "realm": "palearctic",
+  "region": "madeira",
+  "species": 261
+ },
+ "mauritius": {
+  "breakdown": {
+   "cosmopolitan_core_added": 22,
+   "fsd50k_sound_events": 198,
+   "range_filtered_species": 52
+  },
+  "classes": 272,
+  "countries": {
+   "core": [
+    "Mauritius"
+   ],
+   "partial": []
+  },
+  "country_count": {
+   "core": 1,
+   "partial": 0
+  },
+  "group": "africa",
+  "group_display": "Africa",
+  "group_order": 4,
+  "name": "Mauritius",
+  "realm": "afrotropic",
+  "region": "mauritius",
+  "species": 74
+ },
+ "new-caledonia": {
+  "breakdown": {
+   "cosmopolitan_core_added": 12,
+   "fsd50k_sound_events": 198,
+   "range_filtered_species": 167
+  },
+  "classes": 377,
+  "countries": {
+   "core": [
+    "New Caledonia"
+   ],
+   "partial": []
+  },
+  "country_count": {
+   "core": 1,
+   "partial": 0
+  },
+  "group": "oceania",
+  "group_display": "Oceania",
+  "group_order": 5,
+  "name": "New Caledonia",
+  "realm": "australasian",
+  "region": "new-caledonia",
+  "species": 179
+ },
+ "new-zealand": {
+  "breakdown": {
+   "cosmopolitan_core_added": 4,
+   "fsd50k_sound_events": 198,
+   "range_filtered_species": 284
+  },
+  "classes": 486,
+  "countries": {
+   "core": [
+    "New Zealand"
+   ],
+   "partial": []
+  },
+  "country_count": {
+   "core": 1,
+   "partial": 0
+  },
+  "group": "oceania",
+  "group_display": "Oceania",
+  "group_order": 5,
+  "name": "New Zealand",
+  "realm": "australasian",
+  "region": "new-zealand",
+  "species": 288
+ },
+ "nordic": {
+  "breakdown": {
+   "cosmopolitan_core_added": 3,
+   "fsd50k_sound_events": 198,
+   "range_filtered_species": 437
+  },
+  "classes": 638,
+  "countries": {
+   "core": [
+    "Aland",
+    "Denmark",
+    "Finland",
+    "Norway",
+    "Sweden"
+   ],
+   "partial": []
+  },
+  "country_count": {
+   "core": 5,
+   "partial": 0
+  },
+  "group": "europe",
+  "group_display": "Europe",
+  "group_order": 0,
+  "name": "Nordic",
+  "realm": "palearctic",
+  "region": "nordic",
+  "species": 440
+ },
+ "north-america-east": {
+  "breakdown": {
+   "cosmopolitan_core_added": 1,
+   "fsd50k_sound_events": 198,
+   "range_filtered_species": 800
+  },
+  "classes": 999,
+  "countries": {
+   "core": [
+    "Bermuda",
+    "Canada",
+    "United States of America"
+   ],
+   "partial": []
+  },
+  "country_count": {
+   "core": 3,
+   "partial": 0
+  },
+  "group": "north-america",
+  "group_display": "North America",
+  "group_order": 2,
+  "name": "North America (East)",
+  "realm": "nearctic",
+  "region": "north-america-east",
+  "species": 801
+ },
+ "north-america-west": {
+  "breakdown": {
+   "cosmopolitan_core_added": 4,
+   "fsd50k_sound_events": 198,
+   "range_filtered_species": 800
+  },
+  "classes": 1002,
+  "countries": {
+   "core": [
+    "Canada",
+    "United States of America"
+   ],
+   "partial": []
+  },
+  "country_count": {
+   "core": 2,
+   "partial": 0
+  },
+  "group": "north-america",
+  "group_display": "North America",
+  "group_order": 2,
+  "name": "North America (West)",
+  "realm": "nearctic",
+  "region": "north-america-west",
+  "species": 804
+ },
+ "reunion": {
+  "breakdown": {
+   "cosmopolitan_core_added": 19,
+   "fsd50k_sound_events": 198,
+   "range_filtered_species": 57
+  },
+  "classes": 274,
+  "countries": {
+   "core": [
+    "France"
+   ],
+   "partial": []
+  },
+  "country_count": {
+   "core": 1,
+   "partial": 0
+  },
+  "group": "africa",
+  "group_display": "Africa",
+  "group_order": 4,
+  "name": "Reunion",
+  "realm": "afrotropic",
+  "region": "reunion",
+  "species": 76
+ },
+ "sao-tome-principe": {
+  "breakdown": {
+   "cosmopolitan_core_added": 17,
+   "fsd50k_sound_events": 198,
+   "range_filtered_species": 109
+  },
+  "classes": 324,
+  "countries": {
+   "core": [
+    "S\u00e3o Tom\u00e9 and Principe"
+   ],
+   "partial": []
+  },
+  "country_count": {
+   "core": 1,
+   "partial": 0
+  },
+  "group": "africa",
+  "group_display": "Africa",
+  "group_order": 4,
+  "name": "Sao Tome & Principe",
+  "realm": "afrotropic",
+  "region": "sao-tome-principe",
+  "species": 126
+ },
+ "seychelles": {
+  "breakdown": {
+   "cosmopolitan_core_added": 12,
+   "fsd50k_sound_events": 198,
+   "range_filtered_species": 108
+  },
+  "classes": 318,
+  "countries": {
+   "core": [
+    "Seychelles"
+   ],
+   "partial": []
+  },
+  "country_count": {
+   "core": 1,
+   "partial": 0
+  },
+  "group": "africa",
+  "group_display": "Africa",
+  "group_order": 4,
+  "name": "Seychelles",
+  "realm": "afrotropic",
+  "region": "seychelles",
+  "species": 120
+ },
+ "south-asia-peninsular": {
+  "breakdown": {
+   "cosmopolitan_core_added": 8,
+   "fsd50k_sound_events": 198,
+   "range_filtered_species": 673
+  },
+  "classes": 879,
+  "countries": {
+   "core": [
+    "India",
+    "Sri Lanka"
+   ],
+   "partial": []
+  },
+  "country_count": {
+   "core": 2,
+   "partial": 0
+  },
+  "group": "asia",
+  "group_display": "Asia",
+  "group_order": 1,
+  "name": "South India & Sri Lanka",
+  "realm": "indomalayan",
+  "region": "south-asia-peninsular",
+  "species": 681
+ },
+ "southern-africa": {
+  "breakdown": {
+   "cosmopolitan_core_added": 4,
+   "fsd50k_sound_events": 198,
+   "range_filtered_species": 800
+  },
+  "classes": 1002,
+  "countries": {
+   "core": [
+    "Botswana",
+    "Lesotho",
+    "Namibia",
+    "South Africa",
+    "Zimbabwe",
+    "eSwatini"
+   ],
+   "partial": []
+  },
+  "country_count": {
+   "core": 6,
+   "partial": 0
+  },
+  "group": "africa",
+  "group_display": "Africa",
+  "group_order": 4,
+  "name": "Southern Africa",
+  "realm": "afrotropic",
+  "region": "southern-africa",
+  "species": 804
+ },
+ "southern-cone": {
+  "breakdown": {
+   "cosmopolitan_core_added": 2,
+   "fsd50k_sound_events": 198,
+   "range_filtered_species": 1655
+  },
+  "classes": 1855,
+  "countries": {
+   "core": [
+    "Argentina",
+    "Chile",
+    "Falkland Islands",
+    "Paraguay",
+    "Uruguay"
+   ],
+   "partial": [
+    "Bolivia",
+    "Brazil"
+   ]
+  },
+  "country_count": {
+   "core": 5,
+   "partial": 2
+  },
+  "group": "south-america",
+  "group_display": "South America",
+  "group_order": 3,
+  "name": "Southern Cone",
+  "realm": "neotropic",
+  "region": "southern-cone",
+  "species": 1657
+ },
+ "southern-europe": {
+  "breakdown": {
+   "cosmopolitan_core_added": 1,
+   "fsd50k_sound_events": 198,
+   "range_filtered_species": 640
+  },
+  "classes": 839,
+  "countries": {
+   "core": [
+    "Albania",
+    "Bosnia and Herzegovina",
+    "Bulgaria",
+    "Croatia",
+    "Greece",
+    "Italy",
+    "Kosovo",
+    "Malta",
+    "Monaco",
+    "Montenegro",
+    "North Macedonia",
+    "Republic of Serbia",
+    "Romania",
+    "San Marino",
+    "Slovenia",
+    "Vatican"
+   ],
+   "partial": [
+    "Hungary",
+    "Switzerland",
+    "Tunisia",
+    "Turkey"
+   ]
+  },
+  "country_count": {
+   "core": 16,
+   "partial": 4
+  },
+  "group": "europe",
+  "group_display": "Europe",
+  "group_order": 0,
+  "name": "Southern Europe",
+  "realm": "palearctic",
+  "region": "southern-europe",
+  "species": 641
+ },
+ "svalbard": {
+  "breakdown": {
+   "cosmopolitan_core_added": 5,
+   "fsd50k_sound_events": 198,
+   "range_filtered_species": 277
+  },
+  "classes": 480,
+  "countries": {
+   "core": [
+    "Norway"
+   ],
+   "partial": []
+  },
+  "country_count": {
+   "core": 1,
+   "partial": 0
+  },
+  "group": "europe",
+  "group_display": "Europe",
+  "group_order": 0,
+  "name": "Svalbard",
+  "realm": "palearctic",
+  "region": "svalbard",
+  "species": 282
+ },
+ "tibet": {
+  "breakdown": {
+   "cosmopolitan_core_added": 9,
+   "fsd50k_sound_events": 198,
+   "range_filtered_species": 1200
+  },
+  "classes": 1407,
+  "countries": {
+   "core": [
+    "China"
+   ],
+   "partial": [
+    "Nepal"
+   ]
+  },
+  "country_count": {
+   "core": 1,
+   "partial": 1
+  },
+  "group": "asia",
+  "group_display": "Asia",
+  "group_order": 1,
+  "name": "Tibetan Plateau",
+  "realm": "palearctic",
+  "region": "tibet",
+  "species": 1209
+ },
+ "western-palearctic": {
+  "breakdown": {
+   "cosmopolitan_core_added": 1,
+   "fsd50k_sound_events": 198,
+   "range_filtered_species": 1400
+  },
+  "classes": 1599,
+  "countries": {
+   "core": [
+    "Aland",
+    "Albania",
+    "Algeria",
+    "Andorra",
+    "Armenia",
+    "Austria",
+    "Azerbaijan",
+    "Bahrain",
+    "Belarus",
+    "Belgium",
+    "Bosnia and Herzegovina",
+    "Bulgaria",
+    "Chad",
+    "Croatia",
+    "Cyprus",
+    "Czechia",
+    "Denmark",
+    "Egypt",
+    "Eritrea",
+    "Estonia",
+    "Faroe Islands",
+    "Finland",
+    "France",
+    "Georgia",
+    "Germany",
+    "Greece",
+    "Guernsey",
+    "Hungary",
+    "Iran",
+    "Iraq",
+    "Ireland",
+    "Isle of Man",
+    "Israel",
+    "Italy",
+    "Jersey",
+    "Jordan",
+    "Kosovo",
+    "Kuwait",
+    "Latvia",
+    "Lebanon",
+    "Libya",
+    "Liechtenstein",
+    "Lithuania",
+    "Luxembourg",
+    "Malta",
+    "Mauritania",
+    "Moldova",
+    "Monaco",
+    "Montenegro",
+    "Morocco",
+    "Netherlands",
+    "Niger",
+    "North Macedonia",
+    "Northern Cyprus",
+    "Norway",
+    "Oman",
+    "Palestine",
+    "Poland",
+    "Portugal",
+    "Qatar",
+    "Republic of Serbia",
+    "Romania",
+    "San Marino",
+    "Saudi Arabia",
+    "Slovakia",
+    "Slovenia",
+    "Spain",
+    "Sudan",
+    "Sweden",
+    "Switzerland",
+    "Syria",
+    "Tunisia",
+    "Turkey",
+    "Ukraine",
+    "United Arab Emirates",
+    "United Kingdom",
+    "Vatican",
+    "Western Sahara",
+    "Yemen"
+   ],
+   "partial": [
+    "Djibouti",
+    "Ethiopia",
+    "Mali",
+    "Russia",
+    "Turkmenistan"
+   ]
+  },
+  "country_count": {
+   "core": 79,
+   "partial": 5
+  },
+  "group": "europe",
+  "group_display": "Europe",
+  "group_order": 0,
+  "name": "Western Palearctic",
+  "realm": "palearctic",
+  "region": "western-palearctic",
+  "species": 1401
+ }
+}

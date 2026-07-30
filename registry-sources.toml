@@ -1,0 +1,60 @@
+# Curation for the generated registry.json.
+#
+# The manifests under manifests/ describe published files: paths, checksums,
+# sizes, regions, variants, backends. They carry nothing about presentation,
+# because that is the consumer's business. This file supplies the rest: display
+# name, description, vendor, licence, model type, and which variant to install
+# when nothing better is known.
+#
+# Regenerate after editing:
+#   cargo run --features gen-registry --bin gen-registry
+#
+# Entries not listed here are carried through from the existing registry.json
+# untouched, which is how the frozen legacy entries survive regeneration.
+
+schema_version = "2.0"
+registry_version = 5
+
+[[model]]
+id = "birdnet-v30"
+manifest = "BirdNET-v3.0-Models.models.json"
+regions = "BirdNET-v3.0-Models.regions.json"
+name = "BirdNET v3.0"
+description = "11,560 species worldwide. 5 second window at 32 kHz"
+vendor = "Cornell Lab of Ornithology & Chemnitz University of Technology"
+model_type = "birdnet-v30"
+recommended = false
+# fp32 rather than fp16: supported on every backend the manifest lists, and on
+# a CPU host fp16 is not a memory saving.
+default_variant = "fp32"
+
+# CC BY-SA 4.0, per TERMS_OF_USE.txt in the model repository. Note this differs
+# from BirdNET v2.4, which is CC BY-NC-SA: the v3.0 preview permits commercial
+# use. The developer preview terms add prohibitions beyond the licence; they
+# are in the repository, not restated here.
+[model.license]
+type = "CC-BY-SA-4.0"
+url = "https://creativecommons.org/licenses/by-sa/4.0/"
+commercial_use = true
+attribution_required = true
+share_alike = true
+
+[[model]]
+id = "perch-v2"
+manifest = "Perch-v2-Models.models.json"
+regions = "Perch-v2-Models.regions.json"
+name = "Google Perch v2"
+description = "General bird sound classification model"
+vendor = "Google Research"
+model_type = "perch-v2"
+recommended = false
+# The Perch export with the in-graph DFT removed. The plain fp32 file keeps an
+# STFT op that OpenVINO cannot translate, so it is not a safe default.
+default_variant = "no-dft-fp32"
+
+[model.license]
+type = "Apache-2.0"
+url = "https://www.apache.org/licenses/LICENSE-2.0"
+commercial_use = true
+attribution_required = true
+share_alike = false

@@ -10,6 +10,9 @@ pub mod clipper;
 pub mod config;
 pub mod constants;
 pub mod error;
+/// Maintenance tool that regenerates `registry.json` from the vendored manifests.
+#[cfg(feature = "gen-registry")]
+pub mod gen_registry;
 pub mod gpu;
 pub mod inference;
 pub mod locking;

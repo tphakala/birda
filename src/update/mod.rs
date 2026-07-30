@@ -371,12 +371,37 @@ fn extract_tar_gz(archive_path: &Path, dest: &Path) -> Result<()> {
             std::io::copy(&mut entry, &mut output).map_err(|e| Error::UpdateExtractFailed {
                 reason: format!("failed to extract binary: {e}"),
             })?;
+            flush_extracted_binary(&output, dest)?;
             return Ok(());
         }
     }
 
     Err(Error::UpdateExtractFailed {
         reason: format!("binary '{binary_name}' not found in archive"),
+    })
+}
+
+/// Flush a freshly extracted binary to disk before anything renames it into place.
+///
+/// `replace_binary` publishes this file with a rename and then fsyncs the
+/// directory, which makes the NAME durable. Without this the data behind that name
+/// need not be, so a power loss shortly after a reportedly successful update can
+/// leave the executable's own path pointing at a file of zeros. That is worse than
+/// the update not having happened, and it is silent: the recovery copy sits at
+/// `birda.old` and the tool cannot run to say so.
+///
+/// The ext4 heuristic that usually rescues a write-then-rename does not apply
+/// here, because `replace_unix` renames the old binary out of the way first, so the
+/// destination does not exist when the second rename lands.
+///
+/// The sibling download path has always done this: `stream_to_file` flushes and
+/// `sync_all`s the part file before `finalize_download` renames it.
+fn flush_extracted_binary(output: &std::fs::File, dest: &Path) -> Result<()> {
+    output.sync_all().map_err(|e| Error::UpdateExtractFailed {
+        reason: format!(
+            "failed to flush the extracted binary to '{}': {e}",
+            dest.display()
+        ),
     })
 }
 
@@ -417,6 +442,7 @@ fn extract_zip(archive_path: &Path, dest: &Path) -> Result<()> {
             std::io::copy(&mut entry, &mut output).map_err(|e| Error::UpdateExtractFailed {
                 reason: format!("failed to extract binary: {e}"),
             })?;
+            flush_extracted_binary(&output, dest)?;
             return Ok(());
         }
     }

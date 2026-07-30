@@ -16,7 +16,7 @@ pub fn load_registry() -> Result<Registry> {
 
     // If user registry doesn't exist, bootstrap and return
     if !registry_path.exists() {
-        return bootstrap_registry(&registry_path, &bundled_registry);
+        return Ok(bootstrap_registry(&registry_path, &bundled_registry));
     }
 
     // Load user registry, falling back to bundled on error
@@ -29,7 +29,7 @@ pub fn load_registry() -> Result<Registry> {
                 e
             );
             // Overwrite corrupted file with bundled registry
-            write_registry_file(&registry_path, &bundled_registry)?;
+            persist_registry(&registry_path, &bundled_registry);
             return Ok(bundled_registry);
         }
     };
@@ -41,10 +41,35 @@ pub fn load_registry() -> Result<Registry> {
             user_registry.registry_version,
             bundled_registry.registry_version
         );
-        write_registry_file(&registry_path, &bundled_registry)?;
+        persist_registry(&registry_path, &bundled_registry);
         Ok(bundled_registry)
     } else {
         Ok(user_registry)
+    }
+}
+
+/// Write the registry to disk, warning rather than failing if it cannot be.
+///
+/// Persisting the registry is a cache side effect: `load_registry` already holds a
+/// usable one in memory by the time this runs, so a failure to write it must not
+/// abort the command that asked for it. Every birda command loads the registry,
+/// so propagating this would take down `analyze`, `species` and `models list`
+/// alike, for a file the caller no longer needs.
+///
+/// Not a hypothetical. Replacing the file by rename needs write and execute on
+/// the DIRECTORY, where the previous plain write needed only the write bit on the
+/// file itself, so two ordinary layouts started failing here: a read-only config
+/// directory holding a writable registry.json, and a registry.json bind-mounted
+/// into a container as a FILE, where the rename fails with EBUSY. Both would
+/// otherwise fail every invocation, and the version-bump branch above retries on
+/// every single run because the file on disk never gets updated.
+fn persist_registry(path: &std::path::Path, registry: &Registry) {
+    if let Err(e) = write_registry_file(path, registry) {
+        tracing::warn!(
+            "Could not save the model registry to {}: {e}. Continuing with the bundled \
+             registry; this will be retried on the next run.",
+            path.display()
+        );
     }
 }
 
@@ -94,19 +119,28 @@ fn load_bundled_registry() -> Result<Registry> {
 ///
 /// Parent directories are created by the helper, so a missing config directory
 /// now fails as a `RegistryWrite` naming the file rather than as a bare
-/// `Error::Io`.
+/// `Error::Io`. Callers route through [`persist_registry`] rather than calling
+/// this directly, because a failure to persist must not abort the command.
+///
+/// One behaviour change from the plain write, and it is not compensated for here:
+/// a `registry.json` that is a **symlink whose target exists** is followed, but a
+/// *dangling* one is replaced by a regular file rather than being written through.
+/// Only `config.toml` resolves a dangling link, via `config::file::resolve_link`.
 fn write_registry_file(path: &std::path::Path, registry: &Registry) -> Result<()> {
     let content = serde_json::to_string_pretty(registry)
         .map_err(|e| Error::RegistrySerialize { source: e })?;
 
-    // `OwnerOnly` for a file that does not exist yet: registry.json lives in the
-    // per-user config directory beside config.toml and is created by the tool
-    // rather than by the user. A file that already exists keeps its own mode, so
-    // a registry someone widened for a shared birda-gui install stays that way.
+    // `Umask` rather than `OwnerOnly`, which is what the `fs::write` this replaced
+    // produced. registry.json holds the model catalogue, which ships bundled in
+    // the binary and is not private, and it has an external reader: birda-gui
+    // reads it straight off disk. Creating it 0600 would break a shared install
+    // on first run and never recover, because nothing widens it afterwards.
+    // config.toml is the file in this directory that is created private, and it
+    // is private because it can name paths the user would rather not advertise.
     crate::utils::fs::write_atomic(
         path,
         content.as_bytes(),
-        crate::utils::fs::NewFileMode::OwnerOnly,
+        crate::utils::fs::NewFileMode::Umask,
     )
     .map_err(|e| Error::RegistryWrite {
         path: path.to_path_buf(),
@@ -115,9 +149,12 @@ fn write_registry_file(path: &std::path::Path, registry: &Registry) -> Result<()
 }
 
 /// Bootstrap registry from bundled default.
-fn bootstrap_registry(dest: &std::path::Path, registry: &Registry) -> Result<Registry> {
-    write_registry_file(dest, registry)?;
-    Ok(registry.clone())
+fn bootstrap_registry(dest: &std::path::Path, registry: &Registry) -> Registry {
+    // Infallible, and that is the point: the bundled registry this persists is
+    // already in hand, so a first run on a read-only config directory should work
+    // rather than refuse to start. See [`persist_registry`].
+    persist_registry(dest, registry);
+    registry.clone()
 }
 
 /// Find model entry by ID.
@@ -193,6 +230,37 @@ mod tests {
             version_at(&path),
             2,
             "the registry path must carry the new contents"
+        );
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn test_a_new_registry_is_not_narrowed_to_its_owner() {
+        // The `fs::write` this replaced created registry.json at whatever the
+        // umask allowed, usually 0644. Publishing by rename hands the path the
+        // temporary's inode, and a temporary is owner-only, so without an explicit
+        // policy a fresh install would get a 0600 registry and never recover:
+        // nothing widens it afterwards, and birda-gui reads this file straight off
+        // disk, so a shared install would break on first run.
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("registry.json");
+
+        write_registry_file(&path, &versioned_registry(1)).unwrap();
+
+        // Compared against a file `File::create` made under the same umask rather
+        // than against a literal 0o644, which would fail for anyone whose umask is
+        // 0o077 or 0o002.
+        let reference = dir.path().join("reference");
+        drop(std::fs::File::create(&reference).unwrap());
+
+        let mode_of =
+            |p: &std::path::Path| std::fs::metadata(p).unwrap().permissions().mode() & 0o777;
+        assert_eq!(
+            mode_of(&path),
+            mode_of(&reference),
+            "the registry must keep the mode File::create would have given it"
         );
     }
 

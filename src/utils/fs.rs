@@ -1,9 +1,17 @@
 //! Durable file writes.
 //!
-//! Four places in the tree replace a file the user would miss if it were lost
-//! halfway through: the config file, the model registry, a downloaded model and
-//! an extracted clip. They all want the same sequence, which is why it lives
-//! here rather than being derived a fourth time.
+//! The rule, rather than a list that goes stale: anything that replaces a file
+//! the user would miss if it were lost halfway through goes through
+//! [`write_atomic`] or [`write_atomic_with`]. A caller that performs a rename of
+//! its own, because it streams or extracts the file rather than writing it in
+//! one pass, uses [`sync_parent_directory`] to finish the job.
+//!
+//! Deliberately NOT here: the analysis-result writers in `crate::output`. They
+//! write straight to their final path, so an interrupted run leaves a truncated
+//! results file. Whether they should be published atomically is a product
+//! question rather than an oversight, because atomic publication means the file
+//! does not appear until the run ends, and a long analysis is exactly the case
+//! where watching it matters.
 //!
 //! The sequence, and what each step is for:
 //!
@@ -20,9 +28,11 @@
 //!    new one, never a truncated one.
 //! 4. `fsync` the target's directory, so the rename itself survives a crash.
 //!
-//! What this does not do is serialise concurrent writers. Every caller is a
-//! lock-free load-mutate-save, so two overlapping saves still lose one of the
-//! two edits. The rename makes each write whole, not the pair of them ordered.
+//! What this does not do is serialise concurrent writers. The config and
+//! registry callers are lock-free load-mutate-save, so two overlapping saves
+//! still lose one of the two edits. The rename makes each write whole, not the
+//! pair of them ordered. (The clip and species-list callers build their contents
+//! from memory and never read the file they replace, so they have no such pair.)
 
 use std::fs::File;
 use std::io::Write;
@@ -78,62 +88,144 @@ pub fn write_atomic(path: &Path, contents: &[u8], mode: NewFileMode) -> std::io:
 ///
 /// The temporary is created beside `path`, handed to `fill`, then flushed and
 /// renamed over `path`. It is removed on every return path, so a failed write
-/// leaves neither a partial file at `path` nor litter beside it. Not on every
-/// path out, though: the Ctrl+C handler installed in `run()` ends the process
-/// with `std::process::exit`, which runs no destructors, so interrupting a write
-/// can leave one temporary behind.
+/// leaves no partial file at `path` and no temporary beside it. Two caveats on
+/// that: the Ctrl+C handler installed in `run()` ends the process with
+/// `std::process::exit`, which runs no destructors, so interrupting a write can
+/// leave one temporary behind; and the parent directories created below are not
+/// removed if a later step fails.
+///
+/// `fill` must flush any buffered writer it wraps around the handle, and
+/// propagate that flush's error. The handle is fsynced, not flushed, so a
+/// `BufWriter` left to flush in its `Drop` discards the error and publishes a
+/// truncated file: the outcome this function exists to prevent, reached by
+/// another route.
 ///
 /// Missing parent directories of `path` are created.
+///
+/// # What `path` resolves to
+///
+/// A rename replaces the *name* it is given, where writing a file follows it. Two
+/// consequences are handled here so that routing an existing writer through this
+/// function does not change where its bytes land:
+///
+/// - a symlink whose target exists is followed, and the target is replaced. A
+///   *dangling* symlink is not followed, because resolving one means creating the
+///   directories leading to a target that may not be the caller's own path;
+///   `config::file::resolve_link` does that deliberately for the config file,
+///   where the link is always one the user placed at their own config path.
+/// - a target that exists and is not a regular file (a device, a FIFO, a socket)
+///   is written IN PLACE, with no temporary and no rename. `--output /dev/stdout`
+///   is a reasonable thing to ask for, a device node cannot be atomically
+///   replaced, and renaming over one would destroy it.
 ///
 /// # The mode of the published file
 ///
 /// Replacing a file by rename gives the target the temporary's inode, so the
 /// published file would take the temporary's mode rather than the mode it
-/// replaced. An existing target's mode is therefore copied onto the temporary
-/// first, which is what stops a write silently narrowing a file the user or
-/// their umask had widened. `mode` applies only when there is nothing to copy.
+/// replaced. The replaced file's mode is therefore applied to the temporary, which
+/// is what stops a write silently narrowing a file the user or their umask had
+/// widened. `mode` applies only when there is no file to take a mode from.
 ///
-/// The copy happens before the flush, not after. `fsync` persists the inode's
-/// metadata as well as its data, so widening the permissions afterwards would
-/// leave that one change unflushed, and a crash could publish the file still at
-/// the temporary's private mode.
+/// While `fill` runs, the temporary is no more permissive than owner-only, and
+/// the published mode is applied afterwards. Both halves matter and in opposite
+/// directions: writing at the final mode first would expose a config file's
+/// contents to anyone the mode allows for the whole duration of the write, and
+/// applying the final mode after the `fsync` would leave that metadata change
+/// unflushed, so a crash could publish the file still at the private mode.
+///
+/// Only the permission bits are carried across. setuid, setgid and the sticky bit
+/// are not, deliberately: none is meaningful on the files written here, a temporary
+/// takes its group from its directory rather than from the file being replaced, so
+/// restoring setgid can fail with EPERM outright, and macOS strips setgid from a
+/// regular file anyway. POSIX ACLs and extended attributes set on the replaced
+/// file are lost too, because the published file is a new inode; a default ACL on
+/// the containing directory is inherited as it would be for any new file.
 ///
 /// # Errors
 ///
-/// Returns whatever `fill` returned, or the first I/O failure among creating the
-/// directory, creating the temporary, flushing it and renaming it. `E` is the
-/// caller's error type so it can name the file it was asked to write; the
-/// `From<std::io::Error>` bound is what lets this function's own failures reach
-/// it.
+/// Returns whatever `fill` returned, or the first I/O failure in the sequence:
+/// creating the directory, creating the temporary, applying either mode, flushing
+/// or renaming. `E` is the caller's error type so it can name the file it was
+/// asked to write; the `From<std::io::Error>` bound is what lets this function's
+/// own failures reach it.
 pub fn write_atomic_with<E, F>(path: &Path, mode: NewFileMode, fill: F) -> Result<(), E>
 where
     F: FnOnce(&File) -> Result<(), E>,
     E: From<std::io::Error>,
 {
-    let dir = parent_dir(path);
+    let target = resolve_existing_link(path);
+    let target = target.as_path();
+
+    if let Some(irreplaceable) = open_in_place(target)? {
+        // No temporary, so no atomicity: a device or a FIFO has no contents to
+        // replace, and the caller asked for this exact node rather than for a
+        // file at its path.
+        return fill(&irreplaceable);
+    }
+
+    let dir = parent_dir(target);
     std::fs::create_dir_all(dir)?;
 
     // Worth knowing when the next line fails: creating the temporary needs write
-    // and execute on the DIRECTORY, which writing the file in place never did,
-    // so a file the user can plainly write can now fail to be written. The
-    // `io::Error` names the temporary, and so the directory with it.
+    // and execute on the DIRECTORY, where writing the file in place needed only
+    // the write bit on the file itself, so a file the user can plainly write can
+    // now fail to be written. The `io::Error` names the temporary, and so the
+    // directory with it.
     let temp = new_temp_in(dir, mode)?;
+
+    // Read once, before `fill`, because both mode steps need it and the target is
+    // replaced in between.
+    let published = published_mode(target, temp.as_file())?;
+
+    restrict_while_writing(temp.as_file(), published)?;
 
     fill(temp.as_file())?;
 
-    copy_existing_mode(path, temp.as_file())?;
+    apply_mode(temp.as_file(), published)?;
 
     // Untested, and untestable from here: deleting this line, or the directory
-    // fsync below, leaves the whole suite green, because the difference only
-    // shows up across a crash. Both are reasoned, not covered.
+    // fsync below, or either `sync_parent_directory` call site, leaves the whole
+    // suite green, because the difference only shows up across a crash. All of
+    // them are reasoned, not covered.
     temp.as_file().sync_all()?;
 
     // Drops the temporary on failure, so a rejected write leaves nothing behind.
-    temp.persist(path).map_err(|e| e.error)?;
+    temp.persist(target).map_err(|e| e.error)?;
 
     sync_directory(dir);
 
     Ok(())
+}
+
+/// `path` with a resolvable symlink followed, or `path` itself.
+///
+/// `canonicalize` requires every component including the last to exist, so it
+/// fails for a dangling link and for a file that does not exist yet. Both fall
+/// back to `path`, which is the right answer for the second and a deliberate
+/// choice for the first; see [`write_atomic_with`].
+fn resolve_existing_link(path: &Path) -> std::path::PathBuf {
+    let is_link = std::fs::symlink_metadata(path).is_ok_and(|meta| meta.file_type().is_symlink());
+    if !is_link {
+        return path.to_path_buf();
+    }
+
+    std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf())
+}
+
+/// An open handle to `target` when it exists and cannot be replaced by a rename.
+///
+/// `Ok(None)` means the ordinary case: `target` is absent, or is a regular file.
+fn open_in_place(target: &Path) -> std::io::Result<Option<File>> {
+    match std::fs::metadata(target) {
+        Ok(meta) if !meta.is_file() => std::fs::OpenOptions::new()
+            .write(true)
+            .truncate(true)
+            .open(target)
+            .map(Some),
+        // Anything unstattable is treated as absent, which lands on the ordinary
+        // path where creating the temporary reports the real reason.
+        _ => Ok(None),
+    }
 }
 
 /// The directory a file lives in.
@@ -148,10 +240,12 @@ fn parent_dir(path: &Path) -> &Path {
 
 /// Create a uniquely named temporary in `dir` with the requested mode.
 ///
-/// The name has to be unique rather than fixed: clip extraction writes many
-/// files into one directory and two concurrent processes write into the user's
-/// config directory, and with a shared temporary name their writes interleave
-/// and the loser's rename fails with ENOENT, losing its file entirely.
+/// The uniqueness is `tempfile`'s random suffix rather than anything this module
+/// computes, and it is load-bearing rather than incidental: two concurrent birda
+/// processes write into the same config directory, and clip extraction and the
+/// species-list export both write into a directory the user may be running a
+/// second birda against. With a shared temporary name their writes interleave and
+/// the loser's rename fails with ENOENT, losing its file entirely.
 #[cfg(unix)]
 fn new_temp_in(dir: &Path, mode: NewFileMode) -> std::io::Result<tempfile::NamedTempFile> {
     use std::os::unix::fs::PermissionsExt;
@@ -170,36 +264,58 @@ fn new_temp_in(dir: &Path, _mode: NewFileMode) -> std::io::Result<tempfile::Name
     tempfile::Builder::new().tempfile_in(dir)
 }
 
-/// Give the temporary the mode of the file it is about to replace.
+/// The permission bits the published file must end up with.
 ///
-/// A missing target is the ordinary case of creating a file for the first time
-/// and leaves the temporary's own mode in place. An unreadable one is treated
-/// the same way rather than failing the write: refusing to write a file whose
-/// old permissions could not be read would trade a lost setting for a cosmetic
-/// difference.
+/// The mode of the file being replaced, so a rename cannot silently change it;
+/// the temporary's own mode when there is no file to take one from, which is
+/// where the caller's [`NewFileMode`] has already been applied by the kernel with
+/// the umask.
+///
+/// `0o777`, so setuid, setgid and the sticky bit are dropped rather than carried.
+/// See [`write_atomic_with`] for why that is deliberate.
+///
+/// A `NotFound` target is the ordinary case of creating a file for the first
+/// time. Any other `metadata` failure is propagated rather than folded into it:
+/// with two mode policies, guessing "there was nothing there" can silently widen
+/// a file the user had restricted, which is the direction that matters.
 #[cfg(unix)]
-fn copy_existing_mode(target: &Path, temp: &File) -> std::io::Result<()> {
+fn published_mode(target: &Path, temp: &File) -> std::io::Result<u32> {
     use std::os::unix::fs::PermissionsExt;
 
-    let Ok(existing) = std::fs::metadata(target) else {
-        return Ok(());
-    };
+    match std::fs::metadata(target) {
+        Ok(existing) => Ok(existing.permissions().mode() & 0o777),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            Ok(temp.metadata()?.permissions().mode() & 0o777)
+        }
+        Err(e) => Err(e),
+    }
+}
 
-    // `0o7777`, not `0o777`: the mask exists to strip the file-type bits, and a
-    // narrower one would silently drop setuid, setgid and the sticky bit from a
-    // mode the user chose. None of the three is meaningful on the files written
-    // here, which is the point: dropping them would be an unannounced change to
-    // something this function claims to preserve.
-    let bits = existing.permissions().mode() & 0o7777;
+/// Keep the temporary owner-only while `fill` writes into it.
+///
+/// Narrowing only, never widening: the published mode is applied afterwards, so
+/// the contents are never readable by anyone the final file would not admit, and
+/// a file whose published mode is *narrower* than owner-only stays that way. The
+/// handle is already open, so restricting it cannot stop `fill` writing.
+#[cfg(unix)]
+fn restrict_while_writing(temp: &File, published: u32) -> std::io::Result<()> {
+    apply_mode(temp, published & 0o600)
+}
+
+/// Set the temporary's permission bits.
+#[cfg(unix)]
+fn apply_mode(temp: &File, bits: u32) -> std::io::Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+
     temp.set_permissions(std::fs::Permissions::from_mode(bits))
 }
 
-/// No-op on platforms without Unix permission bits.
+/// Platforms without Unix permission bits have nothing to read.
 ///
 /// Windows carries an ACL rather than a mode, and `MoveFileEx` does NOT carry
 /// the replaced file's security descriptor across; the temporary's own ACL
-/// survives the move. So the hazard above exists here too and is simply not
-/// handled: an explicit ACL set on the target is lost when it is replaced.
+/// survives the move. So the hazard exists here too and is simply not handled:
+/// an explicit ACL set on the target is lost when it is replaced.
 ///
 /// Accepted rather than fixed, because the temporary is created in the target's
 /// own directory and inherits that directory's inheritable ACEs, which is
@@ -209,18 +325,40 @@ fn copy_existing_mode(target: &Path, temp: &File) -> std::io::Result<()> {
 /// `ReplaceFile` rather than `MoveFileEx`.
 #[cfg(not(unix))]
 #[allow(clippy::unnecessary_wraps)]
-fn copy_existing_mode(_target: &Path, _temp: &File) -> std::io::Result<()> {
+fn published_mode(_target: &Path, _temp: &File) -> std::io::Result<u32> {
+    Ok(0)
+}
+
+/// No-op on platforms without Unix permission bits.
+#[cfg(not(unix))]
+#[allow(clippy::unnecessary_wraps)]
+fn restrict_while_writing(_temp: &File, _published: u32) -> std::io::Result<()> {
+    Ok(())
+}
+
+/// No-op on platforms without Unix permission bits.
+#[cfg(not(unix))]
+#[allow(clippy::unnecessary_wraps)]
+fn apply_mode(_temp: &File, _bits: u32) -> std::io::Result<()> {
     Ok(())
 }
 
 /// Flush the directory entry a rename onto `path` has just created.
 ///
 /// Call this after any `rename` that publishes a file, not only the ones this
-/// module performs: a rename is atomic with respect to a reader, but the
-/// *record* of it can still be lost in a crash. For a config file that means
-/// the old contents come back, which is survivable. For a downloaded model it
-/// means a directory entry pointing at nothing, while the existence check that
-/// decides whether to download it again has already been satisfied.
+/// module performs: a rename is atomic with respect to a reader, but the *record*
+/// of it can still be lost in a crash, and the old name comes back.
+///
+/// What that costs depends entirely on whether the file's own data was fsynced
+/// first, which is why this is only ever half of the job:
+///
+/// - **With** the file fsync, losing the rename costs only work. A downloaded
+///   model reverts to absent, `is_installed` correctly reports it missing, and
+///   the next run downloads it again. Annoying for a large model, never wrong.
+/// - **Without** it, the rename can reach the disk while the data behind it has
+///   not, and the published name points at a file of zeros. That is worse than
+///   losing the rename, so a caller that renames a file it never fsynced is
+///   better off calling neither than calling only this.
 ///
 /// Failures are deliberately ignored, and the direction of the tradeoff is why:
 /// the rename has already happened, and reporting a durability failure for a
@@ -285,22 +423,18 @@ mod tests {
     }
 
     #[test]
-    fn test_write_atomic_accepts_a_bare_relative_filename() {
+    fn test_parent_dir_of_a_bare_relative_filename_is_the_current_directory() {
         // `Path::parent` is `Some("")` for a bare filename, not `None`, so a
         // naive `parent().unwrap_or(".")` would try to create a directory named
-        // "" and fail. Run inside a temporary directory rather than the crate
-        // root, since the test writes a real file.
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("bare.txt");
-        let relative = Path::new("bare.txt");
-
-        // `write_atomic` resolves relative paths against the process working
-        // directory, which is shared by every test in the binary, so the call is
-        // made with an absolute path and the *parent* handling is asserted
-        // directly instead of by chdir-ing.
-        assert_eq!(parent_dir(relative), Path::new("."));
-        write_atomic(&path, b"ok", NewFileMode::OwnerOnly).unwrap();
-        assert_eq!(std::fs::read(&path).unwrap(), b"ok");
+        // "" and fail.
+        //
+        // Asserted on `parent_dir` directly rather than by writing through a
+        // relative path, because a relative path resolves against the process
+        // working directory, which is shared by all 450-odd tests in this binary,
+        // and no test here calls `set_current_dir`. Named for what it checks, so
+        // it does not read as an end-to-end guarantee it cannot give.
+        assert_eq!(parent_dir(Path::new("bare.txt")), Path::new("."));
+        assert_eq!(parent_dir(Path::new("dir/bare.txt")), Path::new("dir"));
     }
 
     #[test]
@@ -373,18 +507,28 @@ mod tests {
     fn test_a_failed_fill_leaves_an_existing_target_untouched() {
         // The regression that matters most for the config file and the registry:
         // a write that gives up halfway must not have destroyed what was there.
+        //
+        // The fill returns `FillError::Refused`, which the helper's own failures
+        // cannot produce, so the assertions below cannot be satisfied by the fill
+        // never running. Without that, a pre-flight guard rejecting the path
+        // before the fill would leave this green while proving nothing about a
+        // partial write.
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("file.txt");
         write_atomic(&path, b"original", NewFileMode::OwnerOnly).unwrap();
 
-        let result: Result<(), std::io::Error> =
+        let result: Result<(), FillError> =
             write_atomic_with(&path, NewFileMode::OwnerOnly, |file| {
                 let mut sink = file;
                 sink.write_all(b"partial")?;
-                Err(std::io::Error::other("gave up after writing"))
+                Err(FillError::Refused)
             });
 
-        assert!(result.is_err());
+        assert_eq!(
+            result,
+            Err(FillError::Refused),
+            "the fill must have run and its own error must be what came back"
+        );
         assert_eq!(
             std::fs::read(&path).unwrap(),
             b"original",
@@ -456,6 +600,181 @@ mod tests {
             mode_of(&shared),
             mode_of(&reference),
             "a Umask file must match what File::create would have produced"
+        );
+
+        // The positive control, and the reason this test is not the whole story.
+        // Under a umask of 0o077 the kernel masks 0o666 and 0o600 to the same
+        // 0o600, so the two policies become indistinguishable and every assertion
+        // above holds no matter which one production passes. Measured: setting
+        // `Umask => 0o600` in `requested_bits` leaves this test green under that
+        // umask. Say so out loud rather than reporting a pass that proves nothing.
+        if mode_of(&reference) & 0o066 == 0 {
+            eprintln!(
+                "skipped the OwnerOnly-vs-Umask distinction: this umask masks both \
+                 policies to {:o}, so a wrong policy would not be detected here",
+                mode_of(&reference)
+            );
+            return;
+        }
+        assert_ne!(
+            mode_of(&shared),
+            mode_of(&private),
+            "the two policies must produce different modes, or this test cannot \
+             tell a caller passing the wrong one"
+        );
+    }
+
+    #[test]
+    fn test_concurrent_writers_to_one_path_all_succeed() {
+        // The unique temporary name is documented as load-bearing, so it needs a
+        // test rather than a promise. With a fixed name the writers share one
+        // temporary, their writes interleave, and the loser's rename fails with
+        // ENOENT, losing its file entirely.
+        //
+        // Each thread writes DISTINCT contents, because identical payloads cannot
+        // detect shared state: interleaved writes of the same bytes still produce
+        // those bytes.
+        const WRITERS: usize = 8;
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("contended.txt");
+
+        let payloads: Vec<String> = (0..WRITERS).map(|i| format!("writer-{i}")).collect();
+
+        std::thread::scope(|scope| {
+            for payload in &payloads {
+                let path = path.as_path();
+                scope.spawn(move || {
+                    write_atomic(path, payload.as_bytes(), NewFileMode::OwnerOnly)
+                        .expect("a contended write must not fail");
+                });
+            }
+        });
+
+        // The winner is whichever renamed last, which is deliberately not asserted.
+        // What must hold is that the file is exactly one writer's payload and not a
+        // blend of several, and that nobody left a temporary behind.
+        let published = std::fs::read_to_string(&path).unwrap();
+        assert!(
+            payloads.contains(&published),
+            "the published file must be exactly one writer's payload, got {published:?}"
+        );
+        let strays = strays_in(dir.path(), &["contended.txt"]);
+        assert!(
+            strays.is_empty(),
+            "no writer may leave a temporary behind, found: {strays:?}"
+        );
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn test_a_symlink_whose_target_exists_is_written_through() {
+        // `fs::write` and `File::create` both follow a symlink; a rename replaces
+        // it. Three of the callers routed through this helper were converted from
+        // one of those, so following an existing link is what stops the change
+        // silently redirecting their writes to a new local file and leaving the
+        // real one stale.
+        let dir = tempfile::tempdir().unwrap();
+        let real = dir.path().join("real.txt");
+        let link = dir.path().join("link.txt");
+        write_atomic(&real, b"first", NewFileMode::OwnerOnly).unwrap();
+        std::os::unix::fs::symlink(&real, &link).unwrap();
+
+        write_atomic(&link, b"second", NewFileMode::OwnerOnly).unwrap();
+
+        assert!(
+            std::fs::symlink_metadata(&link)
+                .unwrap()
+                .file_type()
+                .is_symlink(),
+            "the link must survive the write rather than be replaced by a file"
+        );
+        assert_eq!(
+            std::fs::read(&real).unwrap(),
+            b"second",
+            "the write must land on the file the link points at"
+        );
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn test_a_target_that_is_not_a_regular_file_is_written_in_place() {
+        // `--output /dev/stdout` is a reasonable thing to ask for and worked
+        // before these paths were made atomic. A device or FIFO has no contents to
+        // replace, cannot be atomically replaced, and renaming over one destroys
+        // it: as root that would turn /dev/null into a regular file.
+        //
+        // Uses a FIFO rather than a device node, because creating a device needs
+        // root while `mkfifo` does not, and both take the same branch.
+        use std::os::unix::fs::FileTypeExt;
+
+        let dir = tempfile::tempdir().unwrap();
+        let fifo = dir.path().join("sink.fifo");
+        let status = std::process::Command::new("mkfifo")
+            .arg(&fifo)
+            .status()
+            .expect("mkfifo must be runnable");
+        assert!(status.success(), "mkfifo failed");
+
+        // A reader has to be waiting, or opening the FIFO for writing blocks.
+        let reader = {
+            let fifo = fifo.clone();
+            std::thread::spawn(move || std::fs::read_to_string(&fifo).unwrap())
+        };
+
+        write_atomic(&fifo, b"through the pipe", NewFileMode::Umask).unwrap();
+
+        assert_eq!(reader.join().unwrap(), "through the pipe");
+        assert!(
+            std::fs::metadata(&fifo).unwrap().file_type().is_fifo(),
+            "the FIFO must still be a FIFO, not a regular file that replaced it"
+        );
+        let strays = strays_in(dir.path(), &["sink.fifo"]);
+        assert!(
+            strays.is_empty(),
+            "the in-place path must create no temporary, found: {strays:?}"
+        );
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn test_the_temporary_is_never_wider_than_the_file_it_replaces() {
+        // Observed from INSIDE the fill closure, because that is the whole
+        // duration of the exposure and it is invisible from outside: by the time
+        // the write returns, the published mode has been applied and the
+        // temporary is gone.
+        //
+        // The case that bites is a `Umask` caller replacing a file the user
+        // deliberately restricted: the temporary would be created at the umask
+        // default and only narrowed afterwards, so the new contents would sit in a
+        // world-readable file for as long as the write took. A clip can be several
+        // megabytes.
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("restricted.txt");
+        write_atomic(&path, b"first", NewFileMode::Umask).unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).unwrap();
+
+        let observed = std::cell::Cell::new(0o777);
+        write_atomic_with(&path, NewFileMode::Umask, |file| {
+            observed.set(file.metadata()?.permissions().mode() & 0o777);
+            let mut sink = file;
+            sink.write_all(b"second")
+        })
+        .unwrap();
+
+        assert_eq!(
+            observed.get() & 0o077,
+            0,
+            "while the contents were being written the temporary was mode {:o}, \
+             wider than the 0o600 file it replaces",
+            observed.get()
+        );
+        assert_eq!(
+            std::fs::metadata(&path).unwrap().permissions().mode() & 0o777,
+            0o600,
+            "the published file must still carry the mode it had"
         );
     }
 

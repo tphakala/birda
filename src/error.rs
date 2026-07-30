@@ -366,6 +366,16 @@ pub enum Error {
         source: std::io::Error,
     },
 
+    /// Failed to write a species list file.
+    #[error("failed to write species list '{path}'")]
+    SpeciesListWrite {
+        /// Path to the species list file.
+        path: std::path::PathBuf,
+        /// Underlying I/O error.
+        #[source]
+        source: std::io::Error,
+    },
+
     // Clipper errors
     /// Failed to parse detection file.
     #[error("failed to parse detection file '{path}'")]

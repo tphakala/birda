@@ -53,7 +53,12 @@ impl WavWriter {
         // Sanitize species name for filesystem
         let safe_species = sanitize_filename(species);
 
-        // Create species subdirectory
+        // Create species subdirectory. Redundant for creating it, since the write
+        // helper creates missing parents too, but load-bearing for the error: this
+        // is the only thing that reports a failure here as
+        // `OutputDirCreateFailed` naming the DIRECTORY. Without it a permission
+        // problem on the species directory surfaces as `WavWriteFailed` naming a
+        // .wav file, pointing the user at the wrong object.
         let species_dir = self.output_dir.join(&safe_species);
         fs::create_dir_all(&species_dir).map_err(|e| Error::OutputDirCreateFailed {
             path: species_dir.clone(),
@@ -107,6 +112,19 @@ fn generate_filename(species: &str, confidence: f32, start_time: f64, end_time: 
 /// **zero data bytes**: structurally valid, silently empty, and indistinguishable
 /// from a legitimately empty clip. Writing to a temporary and renaming means the
 /// clip appears at its path complete or not at all.
+///
+/// Only half of that ambiguity closes here. Nothing checks the decoded result
+/// before writing it, so a range that decodes no audio still produces a valid
+/// 0-frame WAV and is still reported as an extracted clip; that is #319. Until
+/// both land, an empty clip and a crash-truncated one remain byte-identical.
+///
+/// The cost, stated because it is paid per clip rather than once: this adds an
+/// fsync of the clip and an fsync of the species directory to every extraction,
+/// which is under a millisecond on an SSD and a few milliseconds on spinning
+/// media. A long recording producing hundreds of clips pays it hundreds of times,
+/// for durability a clip does not strictly need, since it can be regenerated from
+/// the source audio and the detections file. Accepted rather than split into a
+/// rename-only mode, because one publish path is easier to reason about than two.
 ///
 /// The temporary's name is unique rather than fixed, which matters more here than
 /// anywhere else this helper is used: clip extraction writes many files into one

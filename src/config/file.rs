@@ -283,10 +283,11 @@ min_confidence = 0.25
 
     #[test]
     fn test_save_config_does_not_truncate_an_existing_config() {
-        // The regression guard that matters most. This function truncates and
-        // rewrites the whole file, and a half-written config parses as
-        // all-defaults, silently losing every model the user had. Validating
-        // before the write is what stops a bad config destroying a good one.
+        // The regression guard that matters most. This function re-serialises the
+        // whole file, and a half-written config parses as all-defaults, silently
+        // losing every model the user had. Validating before the write is what
+        // stops a bad config destroying a good one; the sibling test below covers
+        // the other half, that an interrupted write cannot do it either.
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("config.toml");
 
@@ -378,10 +379,10 @@ min_confidence = 0.25
         // of /tmp on tmpfs and ~/.config on disk.
         //
         // Every other test saves into `tempfile::tempdir()`, which is itself
-        // under $TMPDIR, so `persist` never crosses a device and swapping
-        // `new_in(dir)` for `new()` leaves them all green. Saving into /dev/shm
-        // puts the target on a different filesystem from /tmp, which is what
-        // makes this one able to fail.
+        // under $TMPDIR, so `persist` never crosses a device and swapping the
+        // helper's `tempfile_in(dir)` for a plain `tempfile()` leaves them all
+        // green. Saving into /dev/shm puts the target on a different filesystem
+        // from /tmp, which is what makes this one able to fail.
         //
         // Two environments make this inert: /dev/shm missing, and $TMPDIR
         // pointed at /dev/shm so both ends share a device. It skips rather than
@@ -469,9 +470,11 @@ min_confidence = 0.25
     fn test_save_config_preserves_the_file_mode() {
         // Replacing by rename means the new file's permissions come from the
         // temporary, not from the file being replaced, so a rewrite would
-        // silently reset whatever mode the user had chosen. `NamedTempFile`
-        // creates at 0600, so without this the first `config set` after the
-        // upgrade would quietly narrow a shared 0644 config.
+        // silently reset whatever mode the user had chosen. A temporary is created
+        // owner-only, so without the mode being carried across the first
+        // `config set` after the upgrade would quietly narrow a shared 0644
+        // config. The mechanism lives in `crate::utils::fs::write_atomic_with`;
+        // this pins the contract at the config route.
         use std::os::unix::fs::PermissionsExt;
 
         let dir = tempfile::tempdir().unwrap();
@@ -496,8 +499,16 @@ min_confidence = 0.25
     fn test_a_new_config_is_created_private() {
         // The other half of the rule above. There is no previous mode to carry
         // over for a file that does not exist yet, and a config directory is
-        // per-user, so the restrictive default `NamedTempFile` gives is kept
-        // rather than widened to match what `fs::write` used to produce.
+        // per-user, so the file is created restrictively rather than at whatever
+        // the umask allows.
+        //
+        // What this guards changed with the extraction: the privacy used to be
+        // structural, because a temporary is created owner-only and there was no
+        // way to ask for anything else. It is now the `NewFileMode::OwnerOnly`
+        // argument in `save_config`, so this test is what catches that argument
+        // being changed to `Umask`. It only catches it under a umask that admits
+        // group or world bits, since a umask of 0o077 masks both policies to the
+        // same 0o600; the helper's own mode test says so out loud when it happens.
         use std::os::unix::fs::PermissionsExt;
 
         let dir = tempfile::tempdir().unwrap();

@@ -131,6 +131,17 @@ Turdus merula_Eurasian Blackbird
 - Blank lines are ignored
 - Case-sensitive (must match labels file exactly)
 
+### How a generated list is written
+
+`birda species` writes its `--output` file to a temporary beside it and renames it into place, so the list appears complete or not at all. That matters because a truncated species list is silently valid: every line in it is well formed, so a list cut short by an interrupted write reads as a shorter range and quietly filters a later analysis run down to whatever survived.
+
+Consequences of writing it that way:
+
+- The file keeps the permissions your umask gives it, as before.
+- An output path that is a **hardlink** stops tracking, since a rename gives the path a new inode. An output path that is a **dangling symlink** is replaced by a regular file; an existing symlink is followed.
+- Missing directories in the output path are created, where the write used to fail. `birda species -o reports/2026/list.txt` now creates `reports/2026/`, so a mistyped path produces directories rather than an error.
+- Writing to a device or pipe (`-o /dev/stdout`, `-o /dev/null`, or a process substitution) still works: birda writes through those directly rather than trying to replace them.
+
 ### Usage Examples
 
 **Use species list during analysis:**

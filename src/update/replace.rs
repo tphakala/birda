@@ -137,6 +137,14 @@ fn replace_unix(exe_path: &Path, new_binary_path: &Path) -> Result<bool> {
                 ),
             });
         }
+
+        // The rollback needs the flush more than the success path does. It has
+        // just told the user the update failed and their binary is intact, and
+        // the first rename (exe -> exe.old) is still unflushed: a crash that
+        // persists that one without the restore leaves NOTHING at the
+        // executable's path, contradicting what the user was told.
+        crate::utils::fs::sync_parent_directory(exe_path);
+
         return Err(Error::UpdateReplaceFailed {
             reason: format!(
                 "failed to rename '{}' to '{}': {e}",
@@ -146,13 +154,19 @@ fn replace_unix(exe_path: &Path, new_binary_path: &Path) -> Result<bool> {
         });
     }
 
-    // Both renames, then one directory fsync. The same gap the model installer
-    // had, and worse here, because the file being published is birda itself: a
-    // rename is atomic for a reader, but the *record* of it is not durable until
-    // the directory is flushed, so a power loss can persist the first rename
-    // without the second and leave nothing at the executable's path. One fsync
-    // covers both, since they are in the same directory and the flush orders
-    // everything before it.
+    // Both renames, then one directory fsync. A rename is atomic for a reader,
+    // but the *record* of it is not durable until the directory is flushed, so a
+    // power loss can persist the first rename without the second and leave
+    // nothing at the executable's path. One fsync covers both, because
+    // `perform_update` builds the new binary's path inside `exe_path`'s own
+    // directory and `exe_path` is canonicalized, so every entry either rename
+    // touched is in the directory being flushed.
+    //
+    // This is only half of the durability, and the other half is in
+    // `flush_extracted_binary`: the extracted binary is fsynced before it gets
+    // here, because a durable name over non-durable data would leave the
+    // executable's path pointing at a file of zeros, which is worse than the
+    // update simply not having happened.
     crate::utils::fs::sync_parent_directory(exe_path);
 
     Ok(true) // backup kept

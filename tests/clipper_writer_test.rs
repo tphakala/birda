@@ -19,6 +19,12 @@ const FIRST_SAMPLES: usize = 48_000;
 /// Number of samples in the clip written second, distinguishable from the first.
 const SECOND_SAMPLES: usize = 96_000;
 
+/// The two clips must differ in length, or the in-place test proves nothing: an
+/// in-place writer would satisfy every assertion in it. Enforced rather than left
+/// as prose, since the sibling precondition (both writes resolving to one path) is
+/// asserted at runtime and this one deserves the same.
+const _: () = assert!(FIRST_SAMPLES != SECOND_SAMPLES);
+
 /// Sample rate the test clips are written at.
 const SAMPLE_RATE: u32 = 48_000;
 

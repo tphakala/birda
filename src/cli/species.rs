@@ -287,12 +287,22 @@ fn write_species_list(path: &std::path::Path, species: &[(String, f32)]) -> Resu
         contents.push('\n');
     }
 
+    // Named rather than a bare `Error::Io`, which is what this used to return and
+    // which renders as "I/O error: Permission denied (os error 13)" with no path.
+    // This is the one write path here whose destination the USER chose, via
+    // `--output`, and the write now has three more places to fail than the single
+    // `File::create` it replaced (the directory, the temporary, the rename), so
+    // the failure message has to say which file it was about. Its three siblings
+    // (`ConfigWrite`, `RegistryWrite`, `WavWriteFailed`) all name their file.
     crate::utils::fs::write_atomic(
         path,
         contents.as_bytes(),
         crate::utils::fs::NewFileMode::Umask,
     )
-    .map_err(Error::Io)
+    .map_err(|source| Error::SpeciesListWrite {
+        path: path.to_path_buf(),
+        source,
+    })
 }
 
 #[cfg(test)]

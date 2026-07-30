@@ -139,12 +139,18 @@ fn part_path(dest: &Path) -> Result<PathBuf> {
 
 /// Move a completed download onto its destination, consuming the part file.
 ///
-/// The directory fsync is not decoration. Without it a power loss right after a
-/// download can leave a directory entry pointing at nothing, while the
-/// `is_installed` check that decides whether to download the model again has
-/// already been satisfied by the same rename. That leaves the install looking
-/// complete and the model unusable, which is worse than not having downloaded it
-/// at all.
+/// What the directory fsync buys here, stated precisely because it is easy to
+/// overclaim: it stops a crash costing the user the download again. `stream_to_file`
+/// has already `sync_all`ed the part file, so the data behind the new name is
+/// durable when the name appears; without the directory fsync a crash can lose only
+/// the name, `is_installed` then correctly reports the model missing (it stats the
+/// file), and the next run re-downloads it. Wasted bandwidth on a large model, never
+/// a corrupt install.
+///
+/// The order matters and is the reason this is not the same as the self-update
+/// swap: fsync the FILE first, then rename, then fsync the directory. A directory
+/// fsync over a file that was never flushed publishes a durable name over
+/// non-durable data, which is worse than losing the rename.
 fn finalize_download(part: &Path, dest: &Path) -> Result<()> {
     std::fs::rename(part, dest).map_err(Error::Io)?;
     crate::utils::fs::sync_parent_directory(dest);

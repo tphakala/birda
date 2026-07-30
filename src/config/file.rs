@@ -168,10 +168,13 @@ pub fn save_config(config: &Config, path: &Path) -> Result<()> {
 /// link that points at itself cannot be read either.
 ///
 /// Note where that guarantee lives: the ELOOP comes from the write helper reading
-/// the target's mode, not from anything here. `resolve_link` itself hands back the
-/// unresolved path for a cycle, exactly as it does for a path that does not exist
-/// yet. If `utils::fs::existing_mode` is ever relaxed to fold non-`NotFound`
-/// failures into "no file there", cycles start being eaten again, silently.
+/// the target's mode, not from anything here. `resolve_link` itself just hands back
+/// a path for a cycle, the same as it does for a path that does not exist yet (the
+/// link itself for `a -> a`, the first hop for `a -> b -> a`). Two consequences. If
+/// `utils::fs::existing_mode` is ever relaxed to fold non-`NotFound` failures into
+/// "no file there", cycles start being eaten again, silently. And the guarantee is
+/// Unix-only: the non-unix `existing_mode` has no mode to read and returns `None`
+/// unconditionally, so there a cycle is replaced by a regular file.
 fn resolve_link(path: &Path) -> std::path::PathBuf {
     if let Ok(resolved) = std::fs::canonicalize(path) {
         return resolved;

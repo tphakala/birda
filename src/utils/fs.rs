@@ -325,12 +325,12 @@ fn existing_mode(target: &Path) -> std::io::Result<Option<u32>> {
 /// already open, so restricting it cannot stop `fill` writing.
 ///
 /// Best effort, and that is the important part. **Do not make this fallible.**
-/// Linux vfat and exFAT return EPERM for a `chmod` whose bits differ from the
-/// mount's `fmask`, and with the ordinary `fmask` a temporary is created 0o644 or
-/// 0o755, so this call is ATTEMPTED and REJECTED on every write to such a
-/// filesystem. Propagating that failed clip extraction to an SD card entirely,
-/// which is how a field recorder's card is formatted. macOS msdosfs ignores the
-/// same call silently, so no test on a Mac can reproduce it.
+/// Linux vfat and exFAT reject a `chmod` whose bits differ from the ones the mount
+/// options dictate, and those options routinely give a temporary a mode wider than
+/// owner-only, so this call is attempted and rejected rather than skipped.
+/// Propagating that failed clip extraction to an SD card entirely, which is how a
+/// field recorder's card is formatted. macOS msdosfs ignores the same call
+/// silently, measured, so no test on a Mac can reproduce it.
 ///
 /// Ignoring the failure costs nothing that matters: this is hardening rather than
 /// correctness. The published mode is applied afterwards either way by
@@ -340,9 +340,11 @@ fn existing_mode(target: &Path) -> std::io::Result<Option<u32>> {
 /// final mode admits anyway, because the temporary and the file it replaces both
 /// take their mode from the mount.
 ///
-/// The skip below fires when the temporary is already no wider, which is the
-/// ordinary config write (created 0o600, published 0o600). It does NOT fire for a
-/// umask-mode write, which is the case the paragraph above is about.
+/// The skip below fires when the temporary is already no wider, which is always the
+/// ordinary config write (created 0o600, published 0o600) and is also a umask-mode
+/// write under a umask that masks the group and other bits away. It is a umask-mode
+/// write under a permissive umask that reaches the `chmod`, which is the case the
+/// paragraph above is about.
 #[cfg(unix)]
 fn restrict_while_writing(temp: &File, created: u32, published: u32) {
     let while_writing = published & 0o600;
@@ -788,8 +790,8 @@ mod tests {
         // KEEP THE PAYLOAD SMALL. The write end is blocking and nothing drains the
         // pipe while the write is in progress, so a payload larger than the pipe's
         // capacity would block the writer and reintroduce exactly the wedge the
-        // paragraph above is about. Sixteen bytes is safe everywhere, since a pipe
-        // holds at least one page.
+        // paragraph above is about. Sixteen bytes is far below the capacity of every
+        // platform this builds for.
         use std::io::Read;
         use std::os::unix::fs::{FileTypeExt, OpenOptionsExt};
 

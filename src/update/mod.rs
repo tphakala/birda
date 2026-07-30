@@ -410,9 +410,9 @@ fn extract_tar_gz(archive_path: &Path, dest: &Path) -> Result<()> {
 fn flush_extracted_binary(dest: &Path) -> Result<()> {
     // Opened for READ AND WRITE, not read-only, and that is not incidental. On
     // Unix `fsync` acts on the inode and a read-only handle would do, but on
-    // Windows `File::sync_all` is `FlushFileBuffers`, which is documented to
-    // require `GENERIC_WRITE` and returns ERROR_ACCESS_DENIED without it, and
-    // `File::open` asks for `GENERIC_READ` alone. A read-only handle here would
+    // Windows `File::sync_all` is `FlushFileBuffers`, which Microsoft documents as
+    // requiring `GENERIC_WRITE`, and `File::open` asks for `GENERIC_READ` alone
+    // (std `sys/fs/windows.rs`, `get_access_mode` and `fsync`). A read-only handle
     // fail every `birda update` on Windows, after the download, the checksum and
     // the extraction had all succeeded. Windows is a shipped target that CI never
     // exercises, so nothing else would have caught it.

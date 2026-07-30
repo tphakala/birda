@@ -140,7 +140,8 @@ Consequences of writing it that way:
 - The file keeps the permissions your umask gives it, as before.
 - An output path that is a **hardlink** stops tracking, since a rename gives the path a new inode. An output path that is a **dangling symlink** is replaced by a regular file; an existing symlink is followed.
 - Missing directories in the output path are created, where the write used to fail. `birda species -o reports/2026/list.txt` now creates `reports/2026/`, so a mistyped path produces directories rather than an error.
-- Writing to a device or pipe still works: birda writes through those directly rather than trying to replace them. So `-o /dev/null`, or `-o /dev/stdout` with stdout on a terminal or a pipe, behave as they always did. Note that `-o /dev/stdout` **redirected to a regular file** resolves to that file, so birda replaces it, exactly as `>` would; if you want the list appended to something, write it to a real path and append that.
+- Writing to a device or pipe still works: birda writes through those directly rather than trying to replace them. So `-o /dev/null`, or `-o /dev/stdout` with stdout on a terminal or a pipe, behave as they always did.
+- `-o /dev/stdout` **redirected to a regular file** is the one case not worth relying on, and it differs by platform: on Linux it resolves to the redirect target and replaces it, and on macOS it fails with a permission error, because the temporary would have to be created in `/dev`. Neither is useful. Write the list to a real path instead.
 
 ### Usage Examples
 

@@ -164,11 +164,14 @@ pub fn save_config(config: &Config, path: &Path) -> Result<()> {
 /// property that matters. A link cycle no longer reaches the write at all: the
 /// helper reads the target's mode and `metadata` on a cycle returns ELOOP, which
 /// is propagated, so the save fails with "Too many levels of symbolic links". That
-/// is what a plain write did too. The reasoning below is kept because it is why
-/// resolving one hop is safe, not because a cycle is now written anywhere:
-/// `a -> a` resolves to `a` itself and is replaced by a regular file. That
-/// costs nothing in practice, since a self-referential config link cannot be
-/// read either.
+/// is what a plain write did too, and it costs nothing in practice, since a config
+/// link that points at itself cannot be read either.
+///
+/// Note where that guarantee lives: the ELOOP comes from the write helper reading
+/// the target's mode, not from anything here. `resolve_link` itself hands back the
+/// unresolved path for a cycle, exactly as it does for a path that does not exist
+/// yet. If `utils::fs::existing_mode` is ever relaxed to fold non-`NotFound`
+/// failures into "no file there", cycles start being eaten again, silently.
 fn resolve_link(path: &Path) -> std::path::PathBuf {
     if let Ok(resolved) = std::fs::canonicalize(path) {
         return resolved;

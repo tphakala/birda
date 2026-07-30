@@ -408,9 +408,18 @@ fn extract_tar_gz(archive_path: &Path, dest: &Path) -> Result<()> {
 /// The sibling download path has always done this: `stream_to_file` flushes and
 /// `sync_all`s the part file before `finalize_download` renames it.
 fn flush_extracted_binary(dest: &Path) -> Result<()> {
-    // `sync_all` on a read-only handle flushes the same inode; the file is not
-    // written again after this point, only renamed.
-    std::fs::File::open(dest)
+    // Opened for READ AND WRITE, not read-only, and that is not incidental. On
+    // Unix `fsync` acts on the inode and a read-only handle would do, but on
+    // Windows `File::sync_all` is `FlushFileBuffers`, which is documented to
+    // require `GENERIC_WRITE` and returns ERROR_ACCESS_DENIED without it, and
+    // `File::open` asks for `GENERIC_READ` alone. A read-only handle here would
+    // fail every `birda update` on Windows, after the download, the checksum and
+    // the extraction had all succeeded. Windows is a shipped target that CI never
+    // exercises, so nothing else would have caught it.
+    std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(dest)
         .and_then(|file| file.sync_all())
         .map_err(|e| Error::UpdateExtractFailed {
             reason: format!(

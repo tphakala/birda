@@ -117,8 +117,9 @@ pub fn write_atomic(path: &Path, contents: &[u8], mode: NewFileMode) -> std::io:
 ///   temporary and no rename. A device or a FIFO has no contents to replace,
 ///   `--output /dev/stdout` is a reasonable thing to ask for, and renaming over a
 ///   device node would destroy it. Not every such target can be opened for
-///   writing: a Unix socket gives ENXIO and a directory gives EISDIR, both of
-///   which surface as the caller's write error, as they did for a plain write.
+///   writing: a directory gives EISDIR, and a Unix socket is refused with an errno
+///   that differs by platform (ENXIO on Linux, EOPNOTSUPP on macOS). All of them
+///   surface as the caller's write error, as they did for a plain write.
 ///   Note this branch has no temporary, so a failure part way through leaves the
 ///   node partly written; there is nothing else it could do.
 ///
@@ -141,14 +142,12 @@ pub fn write_atomic(path: &Path, contents: &[u8], mode: NewFileMode) -> std::io:
 ///
 /// Only the permission bits are carried across. setuid, setgid and the sticky bit
 /// are dropped, because none of them is meaningful on a config file, a registry, a
-/// clip or a species list, and a temporary is a different inode with a group taken
-/// from its directory rather than from the file being replaced, so carrying them
-/// would mean reasoning about a bit whose meaning did not survive the copy anyway.
-/// Both platforms would in fact tolerate the attempt (Linux `chmod` silently
-/// clears setgid for an unprivileged caller whose group does not match rather than
-/// failing, and macOS returns EPERM only on an owner mismatch, which cannot happen
-/// for a temporary this process created), so this is a choice about meaning rather
-/// than a workaround for an error.
+/// clip or a species list, and a temporary is a different inode whose group comes
+/// from its directory rather than from the file being replaced, so carrying such a
+/// bit would mean preserving a permission whose meaning did not survive the copy.
+/// That argument stands on its own; no claim is made here about how either platform
+/// would respond to the attempt, because two previous attempts to state one were
+/// wrong in opposite directions.
 ///
 /// POSIX ACLs and extended attributes set on the replaced file are lost, because
 /// the published file is a new inode; a default ACL on the containing directory is
@@ -157,7 +156,8 @@ pub fn write_atomic(path: &Path, contents: &[u8], mode: NewFileMode) -> std::io:
 /// # Errors
 ///
 /// Returns whatever `fill` returned, or the first I/O failure in the sequence:
-/// creating the directory, creating the temporary, applying either mode, flushing
+/// creating the directory, creating the temporary, reading either mode, applying
+/// the published one (narrowing cannot fail, by design), flushing
 /// or renaming. `E` is the caller's error type so it can name the file it was
 /// asked to write; the `From<std::io::Error>` bound is what lets this function's
 /// own failures reach it.
@@ -235,9 +235,10 @@ fn resolve_existing_link(path: &Path) -> std::path::PathBuf {
 /// could leave a regular file truncated if the target's type changed between the
 /// `metadata` call and the `open`.
 ///
-/// Not every non-regular target can actually be opened for writing. A Unix socket
-/// gives ENXIO and a directory gives EISDIR; both surface as the caller's write
-/// error, which is what a plain write did too.
+/// Not every non-regular target can actually be opened for writing. A directory
+/// gives EISDIR, and a Unix socket is refused with a platform-dependent errno
+/// (ENXIO on Linux, EOPNOTSUPP on macOS); both surface as the caller's write error,
+/// which is what a plain write did too.
 fn open_in_place(target: &Path) -> std::io::Result<Option<File>> {
     match std::fs::metadata(target) {
         Ok(meta) if !meta.is_file() => std::fs::OpenOptions::new()
@@ -323,14 +324,25 @@ fn existing_mode(target: &Path) -> std::io::Result<Option<u32>> {
 /// a published mode *narrower* than owner-only is left alone. The handle is
 /// already open, so restricting it cannot stop `fill` writing.
 ///
-/// Best effort, and that is the important part. This is hardening rather than
-/// correctness: the published mode is applied either way, and the contents are
-/// about to be readable by whoever that mode admits. Filesystems without per-file
-/// modes reject the change outright, and Linux vfat and exFAT return EPERM for a
-/// `chmod` whose bits differ from the mount's `fmask`, so failing here would stop
-/// clip extraction to an SD card working at all. Skipped entirely when the
-/// temporary is already no wider, which is both the common config write and every
-/// write to such a filesystem, so the ignored failure is rarer still.
+/// Best effort, and that is the important part. **Do not make this fallible.**
+/// Linux vfat and exFAT return EPERM for a `chmod` whose bits differ from the
+/// mount's `fmask`, and with the ordinary `fmask` a temporary is created 0o644 or
+/// 0o755, so this call is ATTEMPTED and REJECTED on every write to such a
+/// filesystem. Propagating that failed clip extraction to an SD card entirely,
+/// which is how a field recorder's card is formatted. macOS msdosfs ignores the
+/// same call silently, so no test on a Mac can reproduce it.
+///
+/// Ignoring the failure costs nothing that matters: this is hardening rather than
+/// correctness. The published mode is applied afterwards either way by
+/// [`apply_published_mode`], which does propagate, so a swallowed `chmod` can only
+/// widen the exposure window *during* `fill`, never the published file. On the very
+/// filesystems that reject it, the audience during the write is the audience the
+/// final mode admits anyway, because the temporary and the file it replaces both
+/// take their mode from the mount.
+///
+/// The skip below fires when the temporary is already no wider, which is the
+/// ordinary config write (created 0o600, published 0o600). It does NOT fire for a
+/// umask-mode write, which is the case the paragraph above is about.
 #[cfg(unix)]
 fn restrict_while_writing(temp: &File, created: u32, published: u32) {
     let while_writing = published & 0o600;
@@ -772,6 +784,12 @@ mod tests {
         // a future regression into a CI timeout. Here the guard's absence shows up
         // as an empty read plus a target that stopped being a FIFO, both of which
         // are ordinary failed assertions.
+        //
+        // KEEP THE PAYLOAD SMALL. The write end is blocking and nothing drains the
+        // pipe while the write is in progress, so a payload larger than the pipe's
+        // capacity would block the writer and reintroduce exactly the wedge the
+        // paragraph above is about. Sixteen bytes is safe everywhere, since a pipe
+        // holds at least one page.
         use std::io::Read;
         use std::os::unix::fs::{FileTypeExt, OpenOptionsExt};
 

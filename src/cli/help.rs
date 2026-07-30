@@ -76,6 +76,11 @@ mod tests {
         models.insert(
             "test-model".to_string(),
             ModelConfig {
+                registry_id: None,
+                installed_version: None,
+                installed_build: None,
+                region: None,
+                variant: None,
                 path: PathBuf::from("/tmp/model.onnx"),
                 labels: PathBuf::from("/tmp/labels.txt"),
                 model_type: ModelType::BirdnetV24,

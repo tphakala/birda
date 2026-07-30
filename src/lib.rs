@@ -86,6 +86,11 @@ fn resolve_model_config(args: &AnalyzeArgs, config: &Config) -> Result<(ModelCon
             })?;
 
         let model_config = ModelConfig {
+            registry_id: None,
+            installed_version: None,
+            installed_build: None,
+            region: None,
+            variant: None,
             path: path.clone(),
             labels,
             model_type,
@@ -1696,6 +1701,11 @@ fn handle_models_add(
     config.models.insert(
         name.clone(),
         ModelConfig {
+            registry_id: None,
+            installed_version: None,
+            installed_build: None,
+            region: None,
+            variant: None,
             path: path.clone(),
             labels: labels.clone(),
             model_type,
@@ -2012,6 +2022,11 @@ fn handle_models_install(
     config.models.insert(
         id.to_string(),
         ModelConfig {
+            registry_id: None,
+            installed_version: None,
+            installed_build: None,
+            region: None,
+            variant: None,
             path: installed.model,
             labels: installed.labels,
             model_type,
@@ -2158,6 +2173,11 @@ mod tests {
         models.insert(
             name.to_string(),
             ModelConfig {
+                registry_id: None,
+                installed_version: None,
+                installed_build: None,
+                region: None,
+                variant: None,
                 path: PathBuf::from("/path/to/model.onnx"),
                 labels: PathBuf::from("/path/to/labels.txt"),
                 model_type: ModelType::BirdnetV24,
@@ -2392,6 +2412,11 @@ mod tests {
         std::fs::write(&labels_path, "labels").unwrap();
 
         let config = ModelConfig {
+            registry_id: None,
+            installed_version: None,
+            installed_build: None,
+            region: None,
+            variant: None,
             path: model_path,
             labels: labels_path,
             model_type: ModelType::BirdnetV24,
@@ -2412,6 +2437,11 @@ mod tests {
         std::fs::write(&labels_path, "labels").unwrap();
 
         let config = ModelConfig {
+            registry_id: None,
+            installed_version: None,
+            installed_build: None,
+            region: None,
+            variant: None,
             path: model_path,
             labels: labels_path,
             model_type: ModelType::BirdnetV24,
@@ -2433,6 +2463,11 @@ mod tests {
         std::fs::write(&model_path, "model").unwrap();
 
         let config = ModelConfig {
+            registry_id: None,
+            installed_version: None,
+            installed_build: None,
+            region: None,
+            variant: None,
             path: model_path,
             labels: labels_path,
             model_type: ModelType::BirdnetV24,
@@ -2457,6 +2492,11 @@ mod tests {
         std::fs::write(&labels_path, "labels").unwrap();
 
         let config = ModelConfig {
+            registry_id: None,
+            installed_version: None,
+            installed_build: None,
+            region: None,
+            variant: None,
             path: model_path,
             labels: labels_path,
             model_type: ModelType::BirdnetV24,

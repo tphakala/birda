@@ -164,6 +164,11 @@ mod tests {
 
     fn model_of(model_type: ModelType) -> ModelConfig {
         ModelConfig {
+            registry_id: None,
+            installed_version: None,
+            installed_build: None,
+            region: None,
+            variant: None,
             path: PathBuf::from("model.onnx"),
             labels: PathBuf::from("labels.txt"),
             model_type,

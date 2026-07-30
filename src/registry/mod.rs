@@ -2,6 +2,7 @@
 
 #![allow(clippy::print_stdout)]
 
+pub mod cleanup;
 pub mod installer;
 pub mod license;
 pub mod loader;

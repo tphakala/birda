@@ -166,6 +166,12 @@ pub async fn perform_update(
         return Err(e);
     }
 
+    // 9b. Flush it, data and mode together, before step 10 publishes the name.
+    if let Err(e) = flush_extracted_binary(&temp_binary) {
+        let _ = std::fs::remove_file(&temp_binary);
+        return Err(e);
+    }
+
     // 10. Replace binary
     let backup_kept = match replace::replace_binary(&exe_path, &temp_binary) {
         Ok(kept) => kept,
@@ -371,7 +377,6 @@ fn extract_tar_gz(archive_path: &Path, dest: &Path) -> Result<()> {
             std::io::copy(&mut entry, &mut output).map_err(|e| Error::UpdateExtractFailed {
                 reason: format!("failed to extract binary: {e}"),
             })?;
-            flush_extracted_binary(&output, dest)?;
             return Ok(());
         }
     }
@@ -381,7 +386,7 @@ fn extract_tar_gz(archive_path: &Path, dest: &Path) -> Result<()> {
     })
 }
 
-/// Flush a freshly extracted binary to disk before anything renames it into place.
+/// Flush the extracted binary, and the mode set on it, before it is published.
 ///
 /// `replace_binary` publishes this file with a rename and then fsyncs the
 /// directory, which makes the NAME durable. Without this the data behind that name
@@ -394,15 +399,25 @@ fn extract_tar_gz(archive_path: &Path, dest: &Path) -> Result<()> {
 /// here, because `replace_unix` renames the old binary out of the way first, so the
 /// destination does not exist when the second rename lands.
 ///
+/// Called after `set_executable` rather than at the end of extraction, and the
+/// ordering is the same one the write helper documents: `fsync` persists the
+/// inode's metadata along with its data, so flushing before the chmod would leave
+/// that one change unflushed and a crash could publish a durable, correct, but
+/// non-executable binary.
+///
 /// The sibling download path has always done this: `stream_to_file` flushes and
 /// `sync_all`s the part file before `finalize_download` renames it.
-fn flush_extracted_binary(output: &std::fs::File, dest: &Path) -> Result<()> {
-    output.sync_all().map_err(|e| Error::UpdateExtractFailed {
-        reason: format!(
-            "failed to flush the extracted binary to '{}': {e}",
-            dest.display()
-        ),
-    })
+fn flush_extracted_binary(dest: &Path) -> Result<()> {
+    // `sync_all` on a read-only handle flushes the same inode; the file is not
+    // written again after this point, only renamed.
+    std::fs::File::open(dest)
+        .and_then(|file| file.sync_all())
+        .map_err(|e| Error::UpdateExtractFailed {
+            reason: format!(
+                "failed to flush the extracted binary at '{}': {e}",
+                dest.display()
+            ),
+        })
 }
 
 /// Extract the binary from a `.zip` archive.
@@ -442,7 +457,6 @@ fn extract_zip(archive_path: &Path, dest: &Path) -> Result<()> {
             std::io::copy(&mut entry, &mut output).map_err(|e| Error::UpdateExtractFailed {
                 reason: format!("failed to extract binary: {e}"),
             })?;
-            flush_extracted_binary(&output, dest)?;
             return Ok(());
         }
     }

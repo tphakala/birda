@@ -375,6 +375,18 @@ mod tests {
             mode_of(&reference),
             "a species list must keep the mode File::create would have given it"
         );
+
+        // What this cannot see, said out loud rather than left as a silent pass:
+        // under a umask that masks the group and world bits away, `Umask` and
+        // `OwnerOnly` both yield 0o600, so the assertion above holds whichever
+        // policy production passes.
+        if mode_of(&reference) & 0o066 == 0 {
+            eprintln!(
+                "skipped the policy distinction: this umask masks both policies to \
+                 {:o}, so a wrong one would not be detected here",
+                mode_of(&reference)
+            );
+        }
     }
 
     fn labels_of(values: &[&str]) -> Vec<String> {

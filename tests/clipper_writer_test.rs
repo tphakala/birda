@@ -230,4 +230,15 @@ fn test_a_clip_is_not_narrowed_to_its_owner() {
         mode_of(&reference),
         "a clip must keep the mode File::create would have given it"
     );
+
+    // What this cannot see, said out loud rather than left as a silent pass: under
+    // a umask that masks the group and world bits away, the two mode policies both
+    // yield 0o600, so the assertion above holds whichever one production passes.
+    if mode_of(&reference) & 0o066 == 0 {
+        eprintln!(
+            "skipped the policy distinction: this umask masks both policies to {:o}, \
+             so a wrong one would not be detected here",
+            mode_of(&reference)
+        );
+    }
 }

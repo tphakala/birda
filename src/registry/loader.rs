@@ -52,9 +52,11 @@ pub fn load_registry() -> Result<Registry> {
 ///
 /// Persisting the registry is a cache side effect: `load_registry` already holds a
 /// usable one in memory by the time this runs, so a failure to write it must not
-/// abort the command that asked for it. Every birda command loads the registry,
-/// so propagating this would take down `analyze`, `species` and `models list`
-/// alike, for a file the caller no longer needs.
+/// abort the command that asked for it. Propagating it took down `species` and
+/// every `models` subcommand, for a file the caller no longer needs. (`analyze`
+/// already survived, because it matches on the error and continues without range
+/// filtering, which is a different degradation and a worse one than not writing a
+/// cache.)
 ///
 /// Not a hypothetical. Replacing the file by rename needs write and execute on
 /// the DIRECTORY, where the previous plain write needed only the write bit on the
@@ -262,6 +264,19 @@ mod tests {
             mode_of(&reference),
             "the registry must keep the mode File::create would have given it"
         );
+
+        // What this cannot see, said out loud rather than left as a silent pass:
+        // under a umask that masks the group and world bits away, `Umask` and
+        // `OwnerOnly` both yield 0o600, so the assertion above holds whichever
+        // policy production passes and the regression it guards could return
+        // undetected.
+        if mode_of(&reference) & 0o066 == 0 {
+            eprintln!(
+                "skipped the policy distinction: this umask masks both policies to \
+                 {:o}, so a wrong one would not be detected here",
+                mode_of(&reference)
+            );
+        }
     }
 
     #[test]

@@ -113,10 +113,14 @@ pub fn write_atomic(path: &Path, contents: &[u8], mode: NewFileMode) -> std::io:
 ///   directories leading to a target that may not be the caller's own path;
 ///   `config::file::resolve_link` does that deliberately for the config file,
 ///   where the link is always one the user placed at their own config path.
-/// - a target that exists and is not a regular file (a device, a FIFO, a socket)
-///   is written IN PLACE, with no temporary and no rename. `--output /dev/stdout`
-///   is a reasonable thing to ask for, a device node cannot be atomically
-///   replaced, and renaming over one would destroy it.
+/// - a target that exists and is not a regular file is written IN PLACE, with no
+///   temporary and no rename. A device or a FIFO has no contents to replace,
+///   `--output /dev/stdout` is a reasonable thing to ask for, and renaming over a
+///   device node would destroy it. Not every such target can be opened for
+///   writing: a Unix socket gives ENXIO and a directory gives EISDIR, both of
+///   which surface as the caller's write error, as they did for a plain write.
+///   Note this branch has no temporary, so a failure part way through leaves the
+///   node partly written; there is nothing else it could do.
 ///
 /// # The mode of the published file
 ///
@@ -131,15 +135,24 @@ pub fn write_atomic(path: &Path, contents: &[u8], mode: NewFileMode) -> std::io:
 /// directions: writing at the final mode first would expose a config file's
 /// contents to anyone the mode allows for the whole duration of the write, and
 /// applying the final mode after the `fsync` would leave that metadata change
-/// unflushed, so a crash could publish the file still at the private mode.
+/// unflushed, so a crash could publish the file still at the private mode. The
+/// narrowing half is best effort; see [`restrict_while_writing`] for why it has
+/// to be.
 ///
 /// Only the permission bits are carried across. setuid, setgid and the sticky bit
-/// are not, deliberately: none is meaningful on the files written here, a temporary
-/// takes its group from its directory rather than from the file being replaced, so
-/// restoring setgid can fail with EPERM outright, and macOS strips setgid from a
-/// regular file anyway. POSIX ACLs and extended attributes set on the replaced
-/// file are lost too, because the published file is a new inode; a default ACL on
-/// the containing directory is inherited as it would be for any new file.
+/// are dropped, because none of them is meaningful on a config file, a registry, a
+/// clip or a species list, and a temporary is a different inode with a group taken
+/// from its directory rather than from the file being replaced, so carrying them
+/// would mean reasoning about a bit whose meaning did not survive the copy anyway.
+/// Both platforms would in fact tolerate the attempt (Linux `chmod` silently
+/// clears setgid for an unprivileged caller whose group does not match rather than
+/// failing, and macOS returns EPERM only on an owner mismatch, which cannot happen
+/// for a temporary this process created), so this is a choice about meaning rather
+/// than a workaround for an error.
+///
+/// POSIX ACLs and extended attributes set on the replaced file are lost, because
+/// the published file is a new inode; a default ACL on the containing directory is
+/// inherited as it would be for any new file.
 ///
 /// # Errors
 ///
@@ -173,15 +186,16 @@ where
     // directory with it.
     let temp = new_temp_in(dir, mode)?;
 
-    // Read once, before `fill`, because both mode steps need it and the target is
-    // replaced in between.
-    let published = published_mode(target, temp.as_file())?;
+    // Both modes are read once, here, because `fill` runs in between and the
+    // target may be replaced by the time it returns.
+    let created = current_mode(temp.as_file())?;
+    let published = existing_mode(target)?.unwrap_or(created);
 
-    restrict_while_writing(temp.as_file(), published)?;
+    restrict_while_writing(temp.as_file(), created, published);
 
     fill(temp.as_file())?;
 
-    apply_mode(temp.as_file(), published)?;
+    apply_published_mode(temp.as_file(), published)?;
 
     // Untested, and untestable from here: deleting this line, or the directory
     // fsync below, or either `sync_parent_directory` call site, leaves the whole
@@ -215,11 +229,19 @@ fn resolve_existing_link(path: &Path) -> std::path::PathBuf {
 /// An open handle to `target` when it exists and cannot be replaced by a rename.
 ///
 /// `Ok(None)` means the ordinary case: `target` is absent, or is a regular file.
+///
+/// No `truncate`: only a regular file has a length to truncate, `O_TRUNC` on a
+/// FIFO is undefined by POSIX, and passing it would mean a failed in-place write
+/// could leave a regular file truncated if the target's type changed between the
+/// `metadata` call and the `open`.
+///
+/// Not every non-regular target can actually be opened for writing. A Unix socket
+/// gives ENXIO and a directory gives EISDIR; both surface as the caller's write
+/// error, which is what a plain write did too.
 fn open_in_place(target: &Path) -> std::io::Result<Option<File>> {
     match std::fs::metadata(target) {
         Ok(meta) if !meta.is_file() => std::fs::OpenOptions::new()
             .write(true)
-            .truncate(true)
             .open(target)
             .map(Some),
         // Anything unstattable is treated as absent, which lands on the ordinary
@@ -264,12 +286,15 @@ fn new_temp_in(dir: &Path, _mode: NewFileMode) -> std::io::Result<tempfile::Name
     tempfile::Builder::new().tempfile_in(dir)
 }
 
-/// The permission bits the published file must end up with.
-///
-/// The mode of the file being replaced, so a rename cannot silently change it;
-/// the temporary's own mode when there is no file to take one from, which is
-/// where the caller's [`NewFileMode`] has already been applied by the kernel with
-/// the umask.
+/// The permission bits `file` currently carries.
+#[cfg(unix)]
+fn current_mode(file: &File) -> std::io::Result<u32> {
+    use std::os::unix::fs::PermissionsExt;
+
+    Ok(file.metadata()?.permissions().mode() & 0o777)
+}
+
+/// The permission bits of the file at `target`, if there is one.
 ///
 /// `0o777`, so setuid, setgid and the sticky bit are dropped rather than carried.
 /// See [`write_atomic_with`] for why that is deliberate.
@@ -277,29 +302,57 @@ fn new_temp_in(dir: &Path, _mode: NewFileMode) -> std::io::Result<tempfile::Name
 /// A `NotFound` target is the ordinary case of creating a file for the first
 /// time. Any other `metadata` failure is propagated rather than folded into it:
 /// with two mode policies, guessing "there was nothing there" can silently widen
-/// a file the user had restricted, which is the direction that matters.
+/// a file the user had restricted, which is the direction that matters. A symlink
+/// cycle at `target` therefore surfaces as ELOOP, which is what a plain write did
+/// too.
 #[cfg(unix)]
-fn published_mode(target: &Path, temp: &File) -> std::io::Result<u32> {
+fn existing_mode(target: &Path) -> std::io::Result<Option<u32>> {
     use std::os::unix::fs::PermissionsExt;
 
     match std::fs::metadata(target) {
-        Ok(existing) => Ok(existing.permissions().mode() & 0o777),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            Ok(temp.metadata()?.permissions().mode() & 0o777)
-        }
+        Ok(existing) => Ok(Some(existing.permissions().mode() & 0o777)),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
         Err(e) => Err(e),
     }
 }
 
-/// Keep the temporary owner-only while `fill` writes into it.
+/// Narrow the temporary to owner-only while `fill` writes into it.
 ///
 /// Narrowing only, never widening: the published mode is applied afterwards, so
 /// the contents are never readable by anyone the final file would not admit, and
-/// a file whose published mode is *narrower* than owner-only stays that way. The
-/// handle is already open, so restricting it cannot stop `fill` writing.
+/// a published mode *narrower* than owner-only is left alone. The handle is
+/// already open, so restricting it cannot stop `fill` writing.
+///
+/// Best effort, and that is the important part. This is hardening rather than
+/// correctness: the published mode is applied either way, and the contents are
+/// about to be readable by whoever that mode admits. Filesystems without per-file
+/// modes reject the change outright, and Linux vfat and exFAT return EPERM for a
+/// `chmod` whose bits differ from the mount's `fmask`, so failing here would stop
+/// clip extraction to an SD card working at all. Skipped entirely when the
+/// temporary is already no wider, which is both the common config write and every
+/// write to such a filesystem, so the ignored failure is rarer still.
 #[cfg(unix)]
-fn restrict_while_writing(temp: &File, published: u32) -> std::io::Result<()> {
-    apply_mode(temp, published & 0o600)
+fn restrict_while_writing(temp: &File, created: u32, published: u32) {
+    let while_writing = published & 0o600;
+    if created & !while_writing == 0 {
+        return;
+    }
+
+    drop(apply_mode(temp, while_writing));
+}
+
+/// Give the temporary the mode its published form must have.
+///
+/// Skipped when it already has it, which is what keeps this from failing on a
+/// filesystem that refuses `chmod`: there, the temporary and the file it replaces
+/// both take their mode from the mount, so they already agree.
+#[cfg(unix)]
+fn apply_published_mode(temp: &File, published: u32) -> std::io::Result<()> {
+    if current_mode(temp)? == published {
+        return Ok(());
+    }
+
+    apply_mode(temp, published)
 }
 
 /// Set the temporary's permission bits.
@@ -325,21 +378,25 @@ fn apply_mode(temp: &File, bits: u32) -> std::io::Result<()> {
 /// `ReplaceFile` rather than `MoveFileEx`.
 #[cfg(not(unix))]
 #[allow(clippy::unnecessary_wraps)]
-fn published_mode(_target: &Path, _temp: &File) -> std::io::Result<u32> {
+fn current_mode(_file: &File) -> std::io::Result<u32> {
     Ok(0)
 }
 
-/// No-op on platforms without Unix permission bits.
+/// Platforms without Unix permission bits have nothing to read.
 #[cfg(not(unix))]
 #[allow(clippy::unnecessary_wraps)]
-fn restrict_while_writing(_temp: &File, _published: u32) -> std::io::Result<()> {
-    Ok(())
+fn existing_mode(_target: &Path) -> std::io::Result<Option<u32>> {
+    Ok(None)
 }
 
 /// No-op on platforms without Unix permission bits.
 #[cfg(not(unix))]
+fn restrict_while_writing(_temp: &File, _created: u32, _published: u32) {}
+
+/// No-op on platforms without Unix permission bits.
+#[cfg(not(unix))]
 #[allow(clippy::unnecessary_wraps)]
-fn apply_mode(_temp: &File, _bits: u32) -> std::io::Result<()> {
+fn apply_published_mode(_temp: &File, _published: u32) -> std::io::Result<()> {
     Ok(())
 }
 
@@ -706,7 +763,17 @@ mod tests {
         //
         // Uses a FIFO rather than a device node, because creating a device needs
         // root while `mkfifo` does not, and both take the same branch.
-        use std::os::unix::fs::FileTypeExt;
+        //
+        // The read end is opened NON-BLOCKING and up front, by this thread, rather
+        // than by a reader thread that blocks in `open`. That is not tidiness: with
+        // a blocking reader, removing the guard under test means no writer ever
+        // opens the FIFO, so the reader never returns and the test WEDGES instead
+        // of failing. A mutation that can only hang is not evidence, and it turns
+        // a future regression into a CI timeout. Here the guard's absence shows up
+        // as an empty read plus a target that stopped being a FIFO, both of which
+        // are ordinary failed assertions.
+        use std::io::Read;
+        use std::os::unix::fs::{FileTypeExt, OpenOptionsExt};
 
         let dir = tempfile::tempdir().unwrap();
         let fifo = dir.path().join("sink.fifo");
@@ -716,15 +783,27 @@ mod tests {
             .expect("mkfifo must be runnable");
         assert!(status.success(), "mkfifo failed");
 
-        // A reader has to be waiting, or opening the FIFO for writing blocks.
-        let reader = {
-            let fifo = fifo.clone();
-            std::thread::spawn(move || std::fs::read_to_string(&fifo).unwrap())
-        };
+        // O_NONBLOCK so this open returns immediately with no writer attached, and
+        // so the read below cannot block either.
+        let mut read_end = std::fs::OpenOptions::new()
+            .read(true)
+            .custom_flags(libc::O_NONBLOCK)
+            .open(&fifo)
+            .expect("opening a FIFO read end non-blocking must not block");
 
         write_atomic(&fifo, b"through the pipe", NewFileMode::Umask).unwrap();
 
-        assert_eq!(reader.join().unwrap(), "through the pipe");
+        let mut received = Vec::new();
+        // A non-blocking read on an empty FIFO whose writer has closed returns 0
+        // rather than EAGAIN, so a missing writer reads as empty rather than
+        // erroring. Either way this returns.
+        drop(read_end.read_to_end(&mut received));
+        assert_eq!(
+            String::from_utf8_lossy(&received),
+            "through the pipe",
+            "the write must have gone through the FIFO rather than around it"
+        );
+
         assert!(
             std::fs::metadata(&fifo).unwrap().file_type().is_fifo(),
             "the FIFO must still be a FIFO, not a regular file that replaced it"
@@ -755,6 +834,24 @@ mod tests {
         let path = dir.path().join("restricted.txt");
         write_atomic(&path, b"first", NewFileMode::Umask).unwrap();
         std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).unwrap();
+
+        // The temporary is created at the umask-masked `Umask` mode, so under a
+        // umask that already masks the group and world bits away it starts at
+        // 0o600 and the narrowing step has nothing to do: deleting that step would
+        // leave this green. Say so rather than reporting a pass that proves
+        // nothing. Checked against a reference file, since the umask is not
+        // readable from safe Rust.
+        let reference = dir.path().join("reference");
+        drop(File::create(&reference).unwrap());
+        let reference_mode = std::fs::metadata(&reference).unwrap().permissions().mode();
+        if reference_mode & 0o066 == 0 {
+            eprintln!(
+                "skipped: this umask creates temporaries at {:o} already, so the \
+                 narrowing step is not exercised",
+                reference_mode & 0o777
+            );
+            return;
+        }
 
         let observed = std::cell::Cell::new(0o777);
         write_atomic_with(&path, NewFileMode::Umask, |file| {

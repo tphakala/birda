@@ -157,11 +157,15 @@ pub fn save_config(config: &Config, path: &Path) -> Result<()> {
 /// crosses a privilege boundary, and this is still the better failure mode than
 /// eating the link.
 ///
-/// One hop, not a loop. A chain of dangling links is not worth the cycle
-/// detection it would need. For `a -> b -> missing` the write lands on `b`
-/// rather than on `a` or on the end of the chain, so `a` survives as a link and
-/// still reads through, which is the property that matters. Every cycle
-/// terminates, but only a cycle of length two or more preserves that property:
+/// One hop, not a loop, and only for a link this function has to resolve by hand.
+/// A chain of dangling links is not worth the cycle detection it would need. For
+/// `a -> b -> missing` the write lands on `b` rather than on `a` or on the end of
+/// the chain, so `a` survives as a link and still reads through, which is the
+/// property that matters. A link cycle no longer reaches the write at all: the
+/// helper reads the target's mode and `metadata` on a cycle returns ELOOP, which
+/// is propagated, so the save fails with "Too many levels of symbolic links". That
+/// is what a plain write did too. The reasoning below is kept because it is why
+/// resolving one hop is safe, not because a cycle is now written anywhere:
 /// `a -> a` resolves to `a` itself and is replaced by a regular file. That
 /// costs nothing in practice, since a self-referential config link cannot be
 /// read either.

@@ -199,7 +199,12 @@ impl OutputWriter for JsonResultWriter {
         // returned Ok with truncated JSON on disk and a completion event beside it.
         // birda-gui reads that file and its retry wraps only the read, not the
         // parse, so the run's detections went missing with no error anywhere.
-        writer.flush()?;
+        writer
+            .flush()
+            .map_err(|source| crate::error::Error::JsonFlush {
+                path: self.output_path.clone(),
+                source,
+            })?;
 
         Ok(())
     }

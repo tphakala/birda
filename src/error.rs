@@ -435,6 +435,20 @@ pub enum Error {
         source: serde_json::Error,
     },
 
+    /// Failed to flush a JSON output file to disk.
+    ///
+    /// Separate from [`Self::JsonWrite`] because that one carries a serialization
+    /// error, and the final flush fails with an I/O error instead. It is the
+    /// failure that used to be discarded entirely.
+    #[error("failed to flush JSON output file '{path}'")]
+    JsonFlush {
+        /// Path to the JSON file.
+        path: std::path::PathBuf,
+        /// Underlying I/O error.
+        #[source]
+        source: std::io::Error,
+    },
+
     /// Invalid output format string.
     #[error("invalid output format: {value}")]
     InvalidOutputFormat {

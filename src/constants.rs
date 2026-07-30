@@ -203,6 +203,57 @@ pub mod clipper {
 
     /// Supported audio file extensions for source audio resolution.
     pub const AUDIO_EXTENSIONS: &[&str] = &["wav", "flac", "mp3", "m4a", "aac"];
+
+    /// Upper bound, in seconds of audio, on what an extracted clip reserves up
+    /// front.
+    ///
+    /// Denominated in seconds rather than samples on purpose: the extractor
+    /// multiplies by the file's own sample rate. A flat sample count would
+    /// mean 60 seconds at 48 kHz but only 11.25 at `bat::SAMPLE_RATE`, which
+    /// is short enough that the default bat clip (a 3-second detection plus
+    /// the default padding) would exceed it before anything unusual happened.
+    ///
+    /// The reservation is only a sizing hint: the decode loop pushes the
+    /// samples it actually finds and the buffer grows on demand, so a longer
+    /// clip costs geometric reallocations, the last of which holds both
+    /// buffers and so peaks around 1.5 times the final size. Below the cap
+    /// that costs nothing at all, and above it a modest fraction of the
+    /// extraction.
+    ///
+    /// The cap exists because the requested range is caller-supplied and its
+    /// length is not otherwise bounded. `--end 1e12` is finite, non-negative
+    /// and passes every range check, yet at 48 kHz it asks for 4.8e16 samples,
+    /// and a reservation that large aborts the process rather than returning
+    /// an error.
+    ///
+    /// Clips longer than this exist and are fine: `MAX_PADDING` alone allows a
+    /// 603-second clip around a 3-second detection, and `group_detections`
+    /// merges overlapping padded ranges without limit, so a species calling
+    /// through a dawn recording routinely produces one much longer group.
+    pub const MAX_CLIP_PREALLOC_SECS: usize = 60;
+
+    /// Absolute ceiling on an extracted clip's reservation, whatever the file
+    /// claims its sample rate to be.
+    ///
+    /// `MAX_CLIP_PREALLOC_SECS` is scaled by the rate read out of the
+    /// container, and that rate is not validated anywhere: a hand-built WAV
+    /// can declare `u32::MAX`, which scales the ceiling to 257 billion samples
+    /// and asks for a terabyte. That is the reservation #310 was filed about,
+    /// reintroduced through the mechanism added to prevent it, so the
+    /// rate-scaled term needs a term beside it that no input can move.
+    ///
+    /// 60 seconds at the highest rate the tool actually handles, so it binds
+    /// only when a file is lying.
+    pub const MAX_CLIP_PREALLOC_SAMPLES: usize =
+        MAX_CLIP_PREALLOC_SECS * super::bat::SAMPLE_RATE as usize;
+
+    /// Malformed detection rows reported individually before the rest are
+    /// summarised.
+    ///
+    /// The row count is caller-supplied, so a file of nothing but malformed
+    /// rows would otherwise emit one formatted warning per row, which costs
+    /// several times what parsing the rows costs.
+    pub const MAX_SKIPPED_ROW_WARNINGS: usize = 10;
 }
 
 /// Bat detection constants.

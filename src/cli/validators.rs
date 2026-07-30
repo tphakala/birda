@@ -2,7 +2,7 @@
 //!
 //! Shared validation functions for CLI argument parsing.
 
-use crate::constants::MAX_BATCH_SIZE;
+use crate::constants::{MAX_BATCH_SIZE, confidence};
 
 /// Parse and validate confidence value (0.0-1.0).
 pub fn parse_confidence(s: &str) -> Result<f32, String> {
@@ -19,9 +19,15 @@ pub fn parse_confidence(s: &str) -> Result<f32, String> {
         .parse()
         .map_err(|_| format!("'{s}' is not a valid number"))?;
 
-    if !(0.0..=1.0).contains(&value) {
+    // The bounds come from the constants rather than literals so that
+    // `clipper::command::validate_float_args`, which re-applies this rule at
+    // the library boundary, reads the same two values instead of a second copy
+    // of them.
+    if !(confidence::MIN..=confidence::MAX).contains(&value) {
         return Err(format!(
-            "confidence must be between 0.0 and 1.0, got {value}"
+            "confidence must be between {:.1} and {:.1}, got {value}",
+            confidence::MIN,
+            confidence::MAX
         ));
     }
 

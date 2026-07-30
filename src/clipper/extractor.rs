@@ -15,9 +15,32 @@ use symphonia::core::units::Time;
 use tracing::trace;
 
 use crate::Error;
-use crate::constants::clipper::SEEK_THRESHOLD_SECS;
+use crate::constants::clipper::{
+    MAX_CLIP_PREALLOC_SAMPLES, MAX_CLIP_PREALLOC_SECS, SEEK_THRESHOLD_SECS,
+};
 
-use super::DetectionGroup;
+use super::{DetectionGroup, validate_time_range};
+
+/// How many samples an extracted clip may reserve up front, for a file at
+/// `sample_rate`.
+///
+/// Two terms, because each covers the other's blind spot.
+///
+/// The rate-scaled one keeps the cap meaning the same duration whatever the
+/// recording is: a flat sample count would be a full minute at 48 kHz but a
+/// fifth of that on ultrasonic material, short enough that the default bat
+/// clip would exceed it before anything unusual happened.
+///
+/// The absolute one is not belt and braces. `sample_rate` is read straight out
+/// of the container and validated nowhere, so a hand-built WAV declaring
+/// `u32::MAX` scales the first term to 257 billion samples and asks for a
+/// terabyte, which is #310 again by another road. `unwrap_or(0)` fails towards
+/// no reservation rather than an unbounded one, for the same reason.
+fn prealloc_cap(sample_rate: u32) -> usize {
+    MAX_CLIP_PREALLOC_SECS
+        .saturating_mul(usize::try_from(sample_rate).unwrap_or(0))
+        .min(MAX_CLIP_PREALLOC_SAMPLES)
+}
 
 /// Result of clip extraction.
 pub struct ExtractedClip {
@@ -58,12 +81,18 @@ impl ClipExtractor {
     ///
     /// # Errors
     ///
-    /// Returns an error if the audio file cannot be read or decoded.
+    /// Returns [`Error::InvalidTimeRange`] if `group`'s bounds are not finite
+    /// or do not increase, and an error if the audio file cannot be read or
+    /// decoded.
     pub fn extract_clip(
         &self,
         source_path: &Path,
         group: &DetectionGroup,
     ) -> Result<ExtractedClip, Error> {
+        // `ClipExtractor` is public and the range reaches an allocation below,
+        // so validate here instead of trusting every path in.
+        validate_time_range(group.start, group.end)?;
+
         // Open the audio file
         let file = std::fs::File::open(source_path).map_err(|e| Error::AudioOpen {
             path: source_path.to_path_buf(),
@@ -112,8 +141,25 @@ impl ClipExtractor {
         let start_sample = (group.start * f64::from(sample_rate)) as u64;
         #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
         let end_sample = (group.end * f64::from(sample_rate)) as u64;
-        #[allow(clippy::cast_possible_truncation)]
-        let expected_samples = (end_sample - start_sample) as usize;
+
+        // Capped, because a range that passes validation can still be
+        // enormous: an end of 1e12 seconds is finite and non-negative, and at
+        // 48 kHz it works out to 4.8e16 samples, which `Vec::with_capacity`
+        // answers by aborting the process. Undersizing only costs
+        // reallocations, since the buffer grows to whatever the decode loop
+        // actually produces.
+        //
+        // `saturating_sub` cannot trigger given the check above (the cast is
+        // monotonic, so a validated `end > start` gives `end_sample >=
+        // start_sample`); it is here so the expression stays correct on its
+        // own terms rather than depending on a check twenty lines away.
+        // `usize::MAX` is likewise unreachable on a 64-bit target and is the
+        // honest fallback on a 32-bit one, where the `.min` then applies the
+        // real bound.
+        //
+        let expected_samples = usize::try_from(end_sample.saturating_sub(start_sample))
+            .unwrap_or(usize::MAX)
+            .min(prealloc_cap(sample_rate));
 
         // Create decoder
         let decoder_opts = DecoderOptions::default();
@@ -217,5 +263,91 @@ impl ClipExtractor {
             samples,
             sample_rate,
         })
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+mod tests {
+    use super::*;
+
+    fn group(start: f64, end: f64) -> DetectionGroup {
+        DetectionGroup {
+            scientific_name: "Parus major".to_string(),
+            common_name: "Great Tit".to_string(),
+            start,
+            end,
+            max_confidence: 1.0,
+            detection_count: 1,
+        }
+    }
+
+    /// A path that cannot exist, so a validation error proves the range is
+    /// rejected before any I/O rather than deep in the decode loop, where the
+    /// bad value has already been cast to a sample count.
+    fn missing_path() -> &'static Path {
+        Path::new("/nonexistent/birda-extractor-test-fixture.wav")
+    }
+
+    #[test]
+    fn test_prealloc_cap_scales_with_the_rate_but_never_past_the_ceiling() {
+        // The ordinary case: a full minute of audio, whatever the rate.
+        assert_eq!(prealloc_cap(48_000), MAX_CLIP_PREALLOC_SECS * 48_000);
+        assert_eq!(
+            prealloc_cap(crate::constants::bat::SAMPLE_RATE),
+            MAX_CLIP_PREALLOC_SAMPLES,
+            "the ceiling is set at the highest rate the tool handles, so it \
+             should bind exactly there and not below"
+        );
+
+        // The reason the ceiling exists. Nothing validates the rate a
+        // container declares, and 60 seconds at `u32::MAX` is 257 billion
+        // samples, a terabyte of reservation from a hand-built header.
+        assert_eq!(prealloc_cap(u32::MAX), MAX_CLIP_PREALLOC_SAMPLES);
+        assert!(
+            MAX_CLIP_PREALLOC_SAMPLES < MAX_CLIP_PREALLOC_SECS.saturating_mul(u32::MAX as usize)
+        );
+
+        // A rate of zero reserves nothing rather than everything.
+        assert_eq!(prealloc_cap(0), 0);
+    }
+
+    #[test]
+    fn test_extract_clip_rejects_non_finite_range_before_touching_the_file() {
+        for (start, end) in [
+            (0.0, f64::INFINITY),
+            (f64::NAN, 5.0),
+            (0.0, f64::NAN),
+            (f64::NEG_INFINITY, 5.0),
+            (f64::NAN, f64::NAN),
+        ] {
+            let result = ClipExtractor::new().extract_clip(missing_path(), &group(start, end));
+            assert!(
+                matches!(result, Err(Error::InvalidTimeRange { .. })),
+                "start={start} end={end} was not rejected as an invalid range"
+            );
+        }
+    }
+
+    #[test]
+    fn test_extract_clip_rejects_empty_and_inverted_ranges() {
+        for (start, end) in [(5.0, 5.0), (5.0, 1.0)] {
+            let result = ClipExtractor::new().extract_clip(missing_path(), &group(start, end));
+            assert!(
+                matches!(result, Err(Error::InvalidTimeRange { .. })),
+                "start={start} end={end} was not rejected as an invalid range"
+            );
+        }
+    }
+
+    #[test]
+    fn test_a_valid_range_gets_past_validation() {
+        // The counterpart to the cases above: a sane range must reach the file
+        // open and fail there, not in the range check.
+        let result = ClipExtractor::new().extract_clip(missing_path(), &group(1.0, 3.0));
+        assert!(
+            matches!(result, Err(Error::AudioOpen { .. })),
+            "a valid range should have reached the file open and failed there"
+        );
     }
 }

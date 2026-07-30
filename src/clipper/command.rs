@@ -8,26 +8,69 @@ use tracing::{info, warn};
 use crate::Error;
 use crate::cli::ClipArgs;
 use crate::config::OutputMode;
-use crate::constants::{clipper, output_extensions};
+use crate::constants::{clipper, confidence, output_extensions};
 use crate::output::{ClipExtractionEntry, ClipExtractionPayload, ResultType, emit_json_result};
 
 use super::{
     ClipExtractor, DetectionGroup, ParsedDetection, WavWriter, group_detections,
-    parse_detection_file,
+    parse_detection_file, validate_time_range,
 };
 
 /// Execute the clip command.
 ///
 /// # Errors
 ///
-/// Returns an error if clip extraction fails.
+/// Returns [`Error::InvalidPadding`] or [`Error::InvalidConfidence`] if the
+/// caller built `args` outside clap with a value the CLI would have refused,
+/// [`Error::InvalidTimeRange`] for a bad direct-extraction range, and an error
+/// if clip extraction fails.
 pub fn execute(args: &ClipArgs, output_mode: OutputMode) -> Result<(), Error> {
+    validate_float_args(args)?;
+
     // Detect mode based on presence of --start/--end
     if let (Some(start), Some(end)) = (args.start, args.end) {
         execute_direct_extraction(args, start, end, output_mode)
     } else {
         execute_csv_mode(args, output_mode)
     }
+}
+
+/// Re-check the float arguments at the library boundary.
+///
+/// `ClipArgs` is public and so is this module, so a caller can build one
+/// without going through clap's `value_parser`s. Every value checked here
+/// fails quietly rather than loudly when it is not finite, which is why the
+/// check is worth repeating rather than delegated to the CLI:
+///
+/// - a NaN `pre` collapses the start bound to 0.0, because `f64::max` returns
+///   the other operand for a NaN receiver, so `(start - pre).max(0.0)` yields
+///   the beginning of the file however late the detection was;
+/// - a NaN `post` leaves the end bound NaN, which the seconds-to-samples cast
+///   turns into 0;
+/// - every comparison against a NaN `confidence` is false, so the filter in
+///   `process_detection_file` discards every detection and the run reports
+///   success over an empty result.
+///
+/// The bounds are deliberately the same ones `cli::clip`'s parsers and
+/// `cli::validators::parse_confidence` enforce. #306 was filed because a rule
+/// held on one route and not on another, and this is the other route.
+fn validate_float_args(args: &ClipArgs) -> Result<(), Error> {
+    // The negated `contains` is what rejects NaN and infinity, and it has to
+    // be spelled this way round: a bare `value < 0.0 || value > MAX` is false
+    // for NaN on both halves. Same spelling as `cli::validators`.
+    for value in [args.pre, args.post] {
+        if !(0.0..=clipper::MAX_PADDING).contains(&value) {
+            return Err(Error::InvalidPadding { value });
+        }
+    }
+
+    if !(confidence::MIN..=confidence::MAX).contains(&args.confidence) {
+        return Err(Error::InvalidConfidence {
+            value: args.confidence,
+        });
+    }
+
+    Ok(())
 }
 
 /// Execute clip extraction from CSV detection files.
@@ -83,10 +126,7 @@ fn execute_direct_extraction(
     end: f64,
     output_mode: OutputMode,
 ) -> Result<(), Error> {
-    // Validation
-    if end <= start {
-        return Err(Error::InvalidTimeRange { start, end });
-    }
+    validate_time_range(start, end)?;
 
     // audio is guaranteed by clap constraints
     let audio_path = args.audio.as_ref().ok_or_else(|| Error::Internal {
@@ -369,4 +409,174 @@ fn find_source_audio(
         detection_path: detection_file.to_path_buf(),
         audio_path: search_dir.join(base_stem),
     })
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+mod tests {
+    use super::*;
+
+    /// A `ClipArgs` with every value in range, for the library-boundary tests
+    /// to perturb one field at a time. Built by hand rather than through clap
+    /// on purpose: the check under test exists precisely for callers that skip
+    /// clap.
+    fn valid_args() -> ClipArgs {
+        ClipArgs {
+            files: Vec::new(),
+            output: PathBuf::from("clips"),
+            confidence: 0.0,
+            pre: clipper::DEFAULT_PRE_PADDING,
+            post: clipper::DEFAULT_POST_PADDING,
+            audio: None,
+            base_dir: None,
+            start: None,
+            end: None,
+        }
+    }
+
+    #[test]
+    fn test_validate_float_args_accepts_the_defaults() {
+        assert!(validate_float_args(&valid_args()).is_ok());
+    }
+
+    #[test]
+    fn test_validate_float_args_rejects_non_finite_padding() {
+        // Not reachable through clap, which rejects these in its
+        // `value_parser`. Reachable through the library, which is the point.
+        for value in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY, -1.0] {
+            for mutate in [
+                (|a: &mut ClipArgs, v: f64| a.pre = v) as fn(&mut ClipArgs, f64),
+                |a: &mut ClipArgs, v: f64| a.post = v,
+            ] {
+                let mut args = valid_args();
+                mutate(&mut args, value);
+                assert!(
+                    matches!(
+                        validate_float_args(&args),
+                        Err(Error::InvalidPadding { .. })
+                    ),
+                    "padding {value} was not rejected"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_validate_float_args_applies_the_same_padding_ceiling_as_the_cli() {
+        // The CLI parser caps padding at `MAX_PADDING`. A library caller that
+        // skipped clap used to get no ceiling at all, which is the #306 shape:
+        // one rule, two routes, two answers.
+        let mut args = valid_args();
+        args.pre = clipper::MAX_PADDING;
+        assert!(
+            validate_float_args(&args).is_ok(),
+            "the ceiling is inclusive"
+        );
+
+        args.pre = clipper::MAX_PADDING + 1.0;
+        assert!(matches!(
+            validate_float_args(&args),
+            Err(Error::InvalidPadding { .. })
+        ));
+    }
+
+    #[test]
+    fn test_validate_float_args_rejects_an_out_of_range_confidence() {
+        // A NaN confidence makes `d.confidence >= args.confidence` false for
+        // every detection, so the run discards them all and still exits 0.
+        for value in [f32::NAN, f32::INFINITY, -0.1, 1.1] {
+            let mut args = valid_args();
+            args.confidence = value;
+            assert!(
+                matches!(
+                    validate_float_args(&args),
+                    Err(Error::InvalidConfidence { .. })
+                ),
+                "confidence {value} was not rejected"
+            );
+        }
+    }
+
+    /// Both guards run before any I/O, so `execute` can be driven with no
+    /// fixture at all. These exist because the five tests around them call
+    /// `validate_float_args` directly, which covers the rule and says nothing
+    /// about whether anything calls it: deleting either `?` in `execute` left
+    /// the whole suite green.
+    #[test]
+    fn test_execute_applies_the_float_guard() {
+        let mut args = valid_args();
+        args.pre = f64::NAN;
+        assert!(matches!(
+            execute(&args, OutputMode::Human),
+            Err(Error::InvalidPadding { .. })
+        ));
+
+        let mut args = valid_args();
+        args.confidence = f32::NAN;
+        assert!(matches!(
+            execute(&args, OutputMode::Human),
+            Err(Error::InvalidConfidence { .. })
+        ));
+    }
+
+    #[test]
+    fn test_execute_applies_the_range_guard() {
+        // An inverted range, which is also the CLI-route case no test drove:
+        // clap accepts each bound on its own and only the command sees the
+        // pair.
+        let mut args = valid_args();
+        args.audio = Some(PathBuf::from("/nonexistent/birda-command-test.wav"));
+        args.start = Some(5.0);
+        args.end = Some(1.0);
+        assert!(matches!(
+            execute(&args, OutputMode::Human),
+            Err(Error::InvalidTimeRange { .. })
+        ));
+
+        args.end = Some(f64::INFINITY);
+        assert!(matches!(
+            execute(&args, OutputMode::Human),
+            Err(Error::InvalidTimeRange { .. })
+        ));
+
+        // Finite and increasing, and still wrong. `parse_time` refuses a
+        // negative start, and until the same rule reached the shared helper a
+        // library caller with this got seconds 0 to 4 back, under a name
+        // claiming -100 to -1, because `(start - pre).max(0.0)` clamps.
+        args.start = Some(-100.0);
+        args.end = Some(-1.0);
+        assert!(matches!(
+            execute(&args, OutputMode::Human),
+            Err(Error::InvalidTimeRange { .. })
+        ));
+    }
+
+    /// The rule `validate_float_args` claims to share with the CLI, enforced
+    /// rather than asserted in prose. The two spell it differently
+    /// (`confidence::MIN..=MAX` here, the literals `0.0..=1.0` in
+    /// `parse_confidence`), so only a differential test keeps them together.
+    #[test]
+    fn test_the_confidence_rule_matches_the_cli_parser() {
+        for value in ["-0.1", "0.0", "0.5", "1.0", "1.1", "nan", "inf", "-inf"] {
+            let cli_ok = crate::cli::validators::parse_confidence(value).is_ok();
+
+            let mut args = valid_args();
+            args.confidence = value.parse().unwrap_or(f32::NAN);
+            let library_ok = validate_float_args(&args).is_ok();
+
+            assert_eq!(cli_ok, library_ok, "the two routes disagree on {value}");
+        }
+    }
+
+    #[test]
+    fn test_validate_float_args_accepts_the_confidence_bounds() {
+        for value in [confidence::MIN, confidence::MAX] {
+            let mut args = valid_args();
+            args.confidence = value;
+            assert!(
+                validate_float_args(&args).is_ok(),
+                "{value} should be legal"
+            );
+        }
+    }
 }

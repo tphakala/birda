@@ -59,6 +59,29 @@ pub struct ModelConfig {
     /// BSG distribution maps binary file (required for BSG models).
     #[serde(default)]
     pub bsg_distribution_maps: Option<PathBuf>,
+
+    /// Registry id these files were installed from.
+    ///
+    /// Absent on models added by hand with `models add`, which birda knows
+    /// nothing about beyond the paths it was given.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub registry_id: Option<String>,
+
+    /// Exact upstream version installed, used to detect updates.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub installed_version: Option<String>,
+
+    /// Conversion revision installed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub installed_build: Option<u32>,
+
+    /// Region slug for a regional install.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub region: Option<String>,
+
+    /// Variant id installed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub variant: Option<String>,
 }
 
 /// Default analysis settings.

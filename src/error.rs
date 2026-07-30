@@ -255,6 +255,42 @@ pub enum Error {
         id: String,
     },
 
+    /// Model publishes no translated label sets.
+    #[error("model '{model_id}' has no label language variants")]
+    ModelHasNoLanguages {
+        /// Registry id of the model.
+        model_id: String,
+    },
+
+    /// Region not published for this model.
+    #[error("model '{model_id}' has no region '{region}'. Available: {available}")]
+    RegionNotFound {
+        /// Registry id of the model.
+        model_id: String,
+        /// Region slug the user asked for.
+        region: String,
+        /// Comma-separated list of valid region slugs.
+        available: String,
+    },
+
+    /// Variant not published for this model and region.
+    #[error("model '{model_id}' has no variant '{variant}'. Available: {available}")]
+    VariantNotFound {
+        /// Registry id of the model.
+        model_id: String,
+        /// Variant id the user asked for.
+        variant: String,
+        /// Comma-separated list of valid variant ids.
+        available: String,
+    },
+
+    /// Model publishes no regional variants.
+    #[error("model '{model_id}' has no regional variants")]
+    RegionsNotSupported {
+        /// Registry id of the model.
+        model_id: String,
+    },
+
     /// Language not available for model.
     #[error("language '{code}' not available for model '{model_id}'")]
     LanguageNotFound {

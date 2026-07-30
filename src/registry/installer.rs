@@ -1,6 +1,6 @@
 //! Model download and installation logic.
 
-use super::types::{ModelEntry, RangeFilterAsset};
+use super::types::{ModelEntry, ModelVariant, RangeFilterAsset};
 use crate::error::{Error, Result};
 use futures_util::StreamExt;
 use indicatif::{ProgressBar, ProgressStyle};
@@ -55,10 +55,98 @@ pub struct InstalledModel {
     pub bsg_migration: Option<PathBuf>,
     /// Path to downloaded BSG distribution maps file (if available).
     pub bsg_distribution_maps: Option<PathBuf>,
+    /// What was installed, for variant-based entries.
+    pub provenance: Option<InstallProvenance>,
+}
+
+/// What was installed, recorded in `config.toml`.
+///
+/// Two jobs: telling the user an update is available, and knowing exactly which
+/// files an install owns so an upgrade can delete the ones it replaces. Model
+/// filenames are immutable by the publishing policy, so without this a
+/// preview-to-GA upgrade would leave the old files on disk forever, at roughly
+/// 150 MB per regional slice and 557 MB for a global fp32.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InstallProvenance {
+    /// Registry id the files came from.
+    pub registry_id: String,
+    /// Exact upstream version installed.
+    pub version: String,
+    /// Our conversion revision.
+    pub build: Option<u32>,
+    /// Region slug, `None` for the global model.
+    pub region: Option<String>,
+    /// Variant id.
+    pub variant: Option<String>,
+}
+
+impl InstallProvenance {
+    /// Key this install occupies in `config.models`.
+    ///
+    /// Regional installs get an `<id>-<region>` key so a global and a regional
+    /// model coexist and both stay reachable with `-m`. Derived, never
+    /// user-supplied, so it cannot collide with a registry id.
+    #[must_use]
+    pub fn config_key(&self) -> String {
+        self.region.as_ref().map_or_else(
+            || self.registry_id.clone(),
+            |region| format!("{}-{region}", self.registry_id),
+        )
+    }
+}
+
+/// Rewrite a Hugging Face URL to the mirror named by `HF_ENDPOINT`.
+///
+/// Users on networks that block huggingface.co set `HF_ENDPOINT` to a mirror.
+/// Applied at request time rather than baked into `registry.json`, so it also
+/// covers entries whose URLs were pinned before mirrors were supported, and so
+/// changing the mirror needs no registry rewrite.
+#[must_use]
+pub fn resolve_url(url: &str) -> String {
+    let Ok(endpoint) = std::env::var(crate::constants::download::HF_ENDPOINT_ENV) else {
+        return url.to_string();
+    };
+
+    // An exported-but-empty HF_ENDPOINT is a common shell accident. Treating it
+    // as an endpoint would rewrite every URL into a relative path.
+    let endpoint = endpoint.trim().trim_end_matches('/');
+    if endpoint.is_empty() {
+        return url.to_string();
+    }
+
+    url.strip_prefix(crate::constants::download::HUGGING_FACE_ENDPOINT)
+        .map_or_else(|| url.to_string(), |rest| format!("{endpoint}{rest}"))
 }
 
 /// Download a file with progress bar.
 pub async fn download_file(client: &Client, url: &str, dest: &Path) -> Result<()> {
+    download_verified(client, url, dest, None).await
+}
+
+/// Download a file and check it against a checksum before it replaces `dest`.
+///
+/// The check happens on the part file, while the destination is still whatever
+/// was there before. Verifying after the rename would mean a corrupt download
+/// had already replaced a good file, and deleting it then would take the good
+/// file with it: a failed reinstall would destroy the working install it was
+/// meant to upgrade, and every other config entry naming that file with it.
+///
+/// A file whose registry entry declares no checksum is accepted, matching
+/// [`InstalledRangeFilter::verify`]. The registry is the authority on whether a
+/// checksum exists, and refusing to install without one would break every entry
+/// that predates checksums.
+pub async fn download_verified(
+    client: &Client,
+    url: &str,
+    dest: &Path,
+    expected_sha256: Option<&str>,
+) -> Result<()> {
+    // Resolved once, and every message below reports the resolved URL, so a
+    // mirror failure names the host actually contacted rather than the one the
+    // registry happens to record.
+    let resolved = resolve_url(url);
+    let url: &str = &resolved;
+
     let response = client
         .get(url)
         .send()
@@ -106,6 +194,15 @@ pub async fn download_file(client: &Client, url: &str, dest: &Path) -> Result<()
     if let Err(e) = result {
         // Best effort cleanup: the part file is useless without the rename,
         // and leaving it behind would waste disk on a retry loop.
+        drop(tokio::fs::remove_file(&part).await);
+        return Err(e);
+    }
+
+    // Before the rename, so a bad download is discarded rather than published
+    // over a file that was fine.
+    if let Some(sum) = expected_sha256
+        && let Err(e) = crate::update::checksum::verify_sha256(&part, sum)
+    {
         drop(tokio::fs::remove_file(&part).await);
         return Err(e);
     }
@@ -285,12 +382,22 @@ pub async fn install_model(model: &ModelEntry, language: Option<&str>) -> Result
     let models_dir = models_dir()?;
     std::fs::create_dir_all(&models_dir).map_err(Error::Io)?;
 
+    // Legacy entries carry `files`; variant-based ones are installed through
+    // `install_variant` instead. Reaching here without `files` means the caller
+    // did not branch on `ModelEntry::is_variant_based`, which is a bug rather
+    // than a user error.
+    let files = model.files.as_ref().ok_or_else(|| Error::Internal {
+        message: format!(
+            "model '{}' publishes variants and must be installed with install_variant",
+            model.id
+        ),
+    })?;
+
     // Determine which language to use as default
-    let language_code = language.unwrap_or(&model.files.labels.default_language);
+    let language_code = language.unwrap_or(&files.labels.default_language);
 
     // Validate the requested language exists before downloading anything
-    let default_language_variant = model
-        .files
+    let default_language_variant = files
         .labels
         .languages
         .iter()
@@ -304,11 +411,11 @@ pub async fn install_model(model: &ModelEntry, language: Option<&str>) -> Result
     let client = http_client()?;
 
     // Download model file
-    let model_dest = models_dir.join(&model.files.model.filename);
-    download_file(&client, &model.files.model.url, &model_dest).await?;
+    let model_dest = models_dir.join(&files.model.filename);
+    download_file(&client, &files.model.url, &model_dest).await?;
 
     // Download ALL language label files
-    for language_variant in &model.files.labels.languages {
+    for language_variant in &files.labels.languages {
         let labels_dest = models_dir.join(&language_variant.filename);
         download_file(&client, &language_variant.url, &labels_dest).await?;
     }
@@ -317,7 +424,7 @@ pub async fn install_model(model: &ModelEntry, language: Option<&str>) -> Result
     let labels_dest = models_dir.join(&default_language_variant.filename);
 
     // Download BSG calibration file if available
-    let bsg_calibration_path = if let Some(cal_info) = &model.files.bsg_calibration {
+    let bsg_calibration_path = if let Some(cal_info) = &files.bsg_calibration {
         let cal_dest = models_dir.join(&cal_info.filename);
         download_file(&client, &cal_info.url, &cal_dest).await?;
         Some(cal_dest)
@@ -326,7 +433,7 @@ pub async fn install_model(model: &ModelEntry, language: Option<&str>) -> Result
     };
 
     // Download BSG migration file if available
-    let bsg_migration_path = if let Some(mig_info) = &model.files.bsg_migration {
+    let bsg_migration_path = if let Some(mig_info) = &files.bsg_migration {
         let mig_dest = models_dir.join(&mig_info.filename);
         download_file(&client, &mig_info.url, &mig_dest).await?;
         Some(mig_dest)
@@ -335,7 +442,7 @@ pub async fn install_model(model: &ModelEntry, language: Option<&str>) -> Result
     };
 
     // Download BSG distribution maps file if available
-    let bsg_maps_path = if let Some(maps_info) = &model.files.bsg_distribution_maps {
+    let bsg_maps_path = if let Some(maps_info) = &files.bsg_distribution_maps {
         let maps_dest = models_dir.join(&maps_info.filename);
         download_file(&client, &maps_info.url, &maps_dest).await?;
         Some(maps_dest)
@@ -349,7 +456,87 @@ pub async fn install_model(model: &ModelEntry, language: Option<&str>) -> Result
         bsg_calibration: bsg_calibration_path,
         bsg_migration: bsg_migration_path,
         bsg_distribution_maps: bsg_maps_path,
+        // Legacy entries predate provenance. Their filenames are stable across
+        // versions, so there is nothing for cleanup to reclaim either.
+        provenance: None,
     })
+}
+
+/// Download one variant's model and labels.
+///
+/// A file is checked against its declared checksum before it replaces anything
+/// at its destination, so a bad download is discarded rather than published.
+/// Only the model file carries one today: the published manifests record a
+/// checksum per model but reference their labels by path alone, so the labels
+/// file is accepted on the transport's word. `download_verified` will start
+/// checking it the moment the registry declares one.
+///
+/// If the labels step fails after the model file landed, the model file is
+/// removed, but only when this install is what created it. The install never
+/// reaches `config.toml`, so nothing would record that a half-installed 557 MB
+/// file exists and cleanup could not reclaim it. Removing a file that was
+/// already there would be the opposite error: published filenames are shared
+/// between variants of the same region, so deleting one can break a working
+/// install that this one never touched.
+pub async fn install_variant(entry: &ModelEntry, variant: &ModelVariant) -> Result<InstalledModel> {
+    let models_dir = models_dir()?;
+    std::fs::create_dir_all(&models_dir).map_err(Error::Io)?;
+
+    let client = http_client()?;
+
+    let model_dest = models_dir.join(&variant.model.filename);
+    let model_existed = model_dest.exists();
+    download_verified(
+        &client,
+        &variant.model.url,
+        &model_dest,
+        variant.model.sha256.as_deref(),
+    )
+    .await?;
+
+    let labels_dest = models_dir.join(&variant.labels.filename);
+    if let Err(e) = download_verified(
+        &client,
+        &variant.labels.url,
+        &labels_dest,
+        variant.labels.sha256.as_deref(),
+    )
+    .await
+    {
+        if !model_existed {
+            roll_back(&[&model_dest]);
+        }
+        return Err(e);
+    }
+
+    Ok(InstalledModel {
+        model: model_dest,
+        labels: labels_dest,
+        bsg_calibration: None,
+        bsg_migration: None,
+        bsg_distribution_maps: None,
+        provenance: Some(InstallProvenance {
+            registry_id: entry.id.clone(),
+            version: entry.version.clone(),
+            build: entry.build,
+            region: variant.region.clone(),
+            variant: Some(variant.id.clone()),
+        }),
+    })
+}
+
+/// Best-effort removal of files from a failed install.
+fn roll_back(paths: &[&Path]) {
+    for path in paths {
+        if let Err(e) = std::fs::remove_file(path)
+            && e.kind() != std::io::ErrorKind::NotFound
+        {
+            tracing::warn!(
+                "Could not remove {} after a failed install: {e}",
+                path.display()
+            );
+        }
+    }
 }
 
 #[cfg(test)]
@@ -358,6 +545,147 @@ mod tests {
     use super::*;
 
     use crate::registry::types::{FileInfo, LicenseInfo};
+    use serial_test::serial;
+
+    #[test]
+    fn test_install_provenance_config_key_appends_the_region() {
+        let provenance = InstallProvenance {
+            registry_id: "birdnet-v30".to_string(),
+            version: "3.0-preview3.1".to_string(),
+            build: Some(1),
+            region: Some("nordic".to_string()),
+            variant: Some("fp32".to_string()),
+        };
+        assert_eq!(provenance.config_key(), "birdnet-v30-nordic");
+    }
+
+    #[test]
+    fn test_install_provenance_config_key_is_the_bare_id_for_a_global_install() {
+        // A global and a regional install must not fight over one config key,
+        // and the global one keeps the name a user would type.
+        let provenance = InstallProvenance {
+            registry_id: "birdnet-v30".to_string(),
+            version: "3.0-preview3.1".to_string(),
+            build: Some(1),
+            region: None,
+            variant: Some("fp16".to_string()),
+        };
+        assert_eq!(provenance.config_key(), "birdnet-v30");
+    }
+
+    #[test]
+    fn test_a_bad_download_never_replaces_the_file_already_there() {
+        // The failure this guards: a reinstall whose download is corrupt used
+        // to overwrite the destination and then delete it on verification
+        // failure, destroying the working install it was meant to upgrade,
+        // plus every other config entry naming that same file.
+        let dir = tempfile::tempdir().unwrap();
+        let dest = dir.path().join("m.onnx");
+        std::fs::write(&dest, b"right").unwrap();
+
+        // Stand in for the streamed download: a part file holding bad bytes.
+        let part = part_path(&dest).unwrap();
+        std::fs::write(&part, b"wrong").unwrap();
+
+        let verdict = crate::update::checksum::verify_sha256(&part, RIGHT_SHA256);
+        assert!(verdict.is_err(), "the part file must fail verification");
+
+        // The destination is untouched because the rename never happened.
+        assert_eq!(std::fs::read(&dest).unwrap(), b"right");
+    }
+
+    #[test]
+    fn test_finalize_only_publishes_bytes_that_verified() {
+        let dir = tempfile::tempdir().unwrap();
+        let dest = dir.path().join("m.onnx");
+        std::fs::write(&dest, b"stale").unwrap();
+
+        let part = part_path(&dest).unwrap();
+        std::fs::write(&part, b"right").unwrap();
+
+        crate::update::checksum::verify_sha256(&part, RIGHT_SHA256).unwrap();
+        finalize_download(&part, &dest).unwrap();
+
+        assert_eq!(std::fs::read(&dest).unwrap(), b"right");
+        assert!(!part.exists(), "the part file must be consumed");
+    }
+
+    #[test]
+    fn test_roll_back_tolerates_a_file_that_is_already_gone() {
+        let dir = tempfile::tempdir().unwrap();
+        let missing = dir.path().join("never-existed.onnx");
+
+        // A download that failed before creating its destination leaves nothing
+        // to remove. That is the desired state, not an error to report.
+        roll_back(&[&missing]);
+    }
+
+    #[test]
+    fn test_roll_back_removes_a_file_this_install_created() {
+        let dir = tempfile::tempdir().unwrap();
+        let created = dir.path().join("m.onnx");
+        std::fs::write(&created, b"right").unwrap();
+
+        roll_back(&[&created]);
+
+        assert!(!created.exists());
+    }
+
+    // HF_ENDPOINT is process-global, so these run serially against every other
+    // test that reads the environment.
+
+    #[test]
+    #[serial]
+    fn test_resolve_url_is_identity_without_an_endpoint_override() {
+        temp_env::with_var_unset("HF_ENDPOINT", || {
+            let url = "https://huggingface.co/tphakala/X/resolve/main/m.onnx";
+            assert_eq!(resolve_url(url), url);
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn test_resolve_url_rewrites_the_hugging_face_prefix() {
+        temp_env::with_var("HF_ENDPOINT", Some("https://hf-mirror.com"), || {
+            assert_eq!(
+                resolve_url("https://huggingface.co/tphakala/X/resolve/main/m.onnx"),
+                "https://hf-mirror.com/tphakala/X/resolve/main/m.onnx"
+            );
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn test_resolve_url_tolerates_a_trailing_slash_on_the_endpoint() {
+        // Without trimming, the rewrite produces a double slash after the host,
+        // which some mirrors serve and others 404.
+        temp_env::with_var("HF_ENDPOINT", Some("https://hf-mirror.com/"), || {
+            assert_eq!(
+                resolve_url("https://huggingface.co/a/b"),
+                "https://hf-mirror.com/a/b"
+            );
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn test_resolve_url_leaves_non_hugging_face_urls_alone() {
+        temp_env::with_var("HF_ENDPOINT", Some("https://hf-mirror.com"), || {
+            let url = "https://zenodo.org/records/1/files/m.onnx";
+            assert_eq!(resolve_url(url), url);
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn test_resolve_url_ignores_a_blank_endpoint() {
+        // An exported-but-empty HF_ENDPOINT is a common shell accident.
+        // Treating it as an endpoint would rewrite every URL to a bare path.
+        temp_env::with_var("HF_ENDPOINT", Some("   "), || {
+            let url = "https://huggingface.co/a/b";
+            assert_eq!(resolve_url(url), url);
+        });
+    }
 
     /// SHA256 of the byte string `b"right"`, used by the checksum tests.
     const RIGHT_SHA256: &str = "27042f4e6eca7d0b2a7ee4026df2ecfa51d3339e6d122aa099118ecd8563bad9";
@@ -628,6 +956,7 @@ mod tests {
             bsg_calibration: None,
             bsg_migration: None,
             bsg_distribution_maps: None,
+            provenance: None,
         };
 
         assert_eq!(

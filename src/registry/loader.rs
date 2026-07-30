@@ -322,7 +322,7 @@ mod tests {
                         attribution_required: false,
                         share_alike: false,
                     },
-                    files: ModelFiles {
+                    files: Some(ModelFiles {
                         model: FileInfo {
                             url: "https://example.com/model.onnx".into(),
                             filename: "model.onnx".into(),
@@ -341,7 +341,11 @@ mod tests {
                         bsg_calibration: None,
                         bsg_migration: None,
                         bsg_distribution_maps: None,
-                    },
+                    }),
+                    build: None,
+                    default_variant: None,
+                    selection: std::collections::BTreeMap::new(),
+                    variants: Vec::new(),
                     recommended: false,
                 },
                 ModelEntry {
@@ -358,7 +362,7 @@ mod tests {
                         attribution_required: true,
                         share_alike: false,
                     },
-                    files: ModelFiles {
+                    files: Some(ModelFiles {
                         model: FileInfo {
                             url: "https://example.com/model2.onnx".into(),
                             filename: "model2.onnx".into(),
@@ -377,7 +381,11 @@ mod tests {
                         bsg_calibration: None,
                         bsg_migration: None,
                         bsg_distribution_maps: None,
-                    },
+                    }),
+                    build: None,
+                    default_variant: None,
+                    selection: std::collections::BTreeMap::new(),
+                    variants: Vec::new(),
                     recommended: true,
                 },
             ],
@@ -408,7 +416,7 @@ mod tests {
         assert!(result.is_ok(), "Bundled registry should parse successfully");
 
         let registry = result.unwrap();
-        assert_eq!(registry.schema_version, "1.1");
+        assert_eq!(registry.schema_version, "2.0");
         assert!(
             !registry.models.is_empty(),
             "Registry should contain models"
@@ -416,6 +424,7 @@ mod tests {
 
         // Verify we have expected models
         assert!(find_model(&registry, "birdnet-v24").is_some());
+        assert!(find_model(&registry, "birdnet-v30").is_some());
         assert!(find_model(&registry, "perch-v2").is_some());
         assert!(find_model(&registry, "bsg-fi-v44").is_some());
     }

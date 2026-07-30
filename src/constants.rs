@@ -154,6 +154,16 @@ pub mod download {
     ///
     /// Short, because its only job is to tell "offline" apart from "slow".
     pub const CONNECTIVITY_PROBE_TIMEOUT_SECS: u64 = 5;
+
+    /// Canonical Hugging Face origin, the prefix a mirror endpoint replaces.
+    pub const HUGGING_FACE_ENDPOINT: &str = "https://huggingface.co";
+
+    /// Environment variable naming a Hugging Face mirror.
+    ///
+    /// Named `HF_ENDPOINT` because that is what the Hugging Face client
+    /// libraries already read, so a user who has set it for `huggingface-cli`
+    /// does not have to learn a birda-specific spelling.
+    pub const HF_ENDPOINT_ENV: &str = "HF_ENDPOINT";
 }
 
 /// Files left behind by earlier birda versions that are no longer used.

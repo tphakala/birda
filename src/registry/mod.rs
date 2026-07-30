@@ -2,21 +2,30 @@
 
 #![allow(clippy::print_stdout)]
 
+pub mod cleanup;
 pub mod installer;
 pub mod license;
 pub mod loader;
+pub mod selection;
 pub mod types;
 
 // Re-export commonly used types and functions
+pub use cleanup::{orphaned_files, remove_orphans};
 pub use installer::{
-    GEOMODEL_INSTALL_ID, InstalledRangeFilter, download_file, find_obsolete_files, geomodel_paths,
-    install_model, install_range_filter, models_dir,
+    GEOMODEL_INSTALL_ID, InstallProvenance, InstalledRangeFilter, download_file,
+    find_obsolete_files, geomodel_paths, install_model, install_range_filter, install_variant,
+    models_dir,
 };
 pub use license::{LicensedAsset, prompt_license_acceptance};
 pub use loader::{find_model, load_registry};
+// Only what callers outside this module actually name. `HardwareProbe`,
+// `VariantChoice` and `SelectionReason` stay reachable as
+// `registry::selection::*` rather than crowding the root: they are the shape of
+// how a variant is chosen, not part of the gallery's surface.
+pub use selection::{SystemProbe, select_variant};
 pub use types::{
-    FileInfo, LabelsInfo, LanguageVariant, LicenseInfo, ModelEntry, ModelFiles, RangeFilterAsset,
-    Registry,
+    FileInfo, LabelsInfo, LanguageVariant, LicenseInfo, ModelEntry, ModelFiles, ModelVariant,
+    RangeFilterAsset, Registry,
 };
 
 use crate::error::{Error, Result};
@@ -89,6 +98,20 @@ pub fn list_available(registry: &Registry, output_mode: crate::config::OutputMod
     }
 
     println!("Run 'birda models info <id>' for details.");
+}
+
+/// Render a variant's class count, or say the publisher did not state one.
+///
+/// Perch declares class counts only in its per-region metadata and not at all
+/// for its global model, so the count is genuinely unknown for some entries.
+/// Printing "0 species" there would be a lie about the model rather than an
+/// admission about the manifest.
+#[must_use]
+pub fn species_count_label(classes: Option<usize>) -> String {
+    classes.map_or_else(
+        || "species count not published".to_string(),
+        |count| format!("{count} species"),
+    )
 }
 
 /// Render a licence identifier with the restrictions that apply to it.
@@ -214,7 +237,14 @@ pub fn show_info(registry: &Registry, id: &str) -> Result<()> {
 
     println!("Model: {}", model.name);
     println!("ID: {}", model.id);
-    println!("Version: {}", model.version);
+    // The version is the exact upstream identity, preview status included, and
+    // the build is our conversion revision of those same weights. Showing only
+    // the first would let two different files answer to one version string.
+    if let Some(build) = model.build {
+        println!("Version: {} (build {build})", model.version);
+    } else {
+        println!("Version: {}", model.version);
+    }
     println!("Vendor: {}", model.vendor);
     println!();
 
@@ -251,24 +281,48 @@ pub fn show_info(registry: &Registry, id: &str) -> Result<()> {
     );
     println!();
 
-    println!("Files:");
-    println!("  Model: {}", model.files.model.url);
+    if let Some(files) = model.files.as_ref() {
+        println!("Files:");
+        println!("  Model: {}", files.model.url);
 
-    let lang_count = model.files.labels.languages.len();
-    let default_lang = model
-        .files
-        .labels
-        .languages
-        .iter()
-        .find(|l| l.code == model.files.labels.default_language)
-        .map_or("Unknown", |l| l.name.as_str());
+        let lang_count = files.labels.languages.len();
+        let default_lang = files
+            .labels
+            .languages
+            .iter()
+            .find(|l| l.code == files.labels.default_language)
+            .map_or("Unknown", |l| l.name.as_str());
 
-    if lang_count == 1 {
-        println!("  Labels: {default_lang} only");
-    } else {
-        println!("  Labels: {lang_count} languages available (default: {default_lang})");
+        if lang_count == 1 {
+            println!("  Labels: {default_lang} only");
+        } else {
+            println!("  Labels: {lang_count} languages available (default: {default_lang})");
+        }
+        println!();
     }
-    println!();
+
+    if model.is_variant_based() {
+        let variant_ids = model.variant_ids_for(None).join(", ");
+        let global = model
+            .default_variant
+            .as_deref()
+            .and_then(|id| model.find_variant(None, id));
+
+        println!("Variants: {variant_ids}");
+        if let Some(global) = global {
+            println!(
+                "  Global model: {}, {}",
+                species_count_label(global.classes),
+                crate::config::geomodel::human_size(global.model.size_bytes)
+            );
+        }
+        println!(
+            "  Regional models: {} (birda models regions {})",
+            model.regions().len(),
+            model.id
+        );
+        println!();
+    }
 
     println!("To install: birda models install {}", model.id);
 
@@ -318,18 +372,73 @@ mod tests {
     }
 }
 
+/// List the regional tiles a model publishes, grouped by continent.
+///
+/// Regions are what a user picks; the variant is picked for them, so this lists
+/// each tile once rather than once per hardware variant.
+pub fn show_regions(registry: &Registry, id: &str) -> Result<()> {
+    let model = find_model(registry, id)
+        .ok_or_else(|| Error::ModelNotFoundInRegistry { id: id.to_string() })?;
+
+    let regions = model.regions();
+    if regions.is_empty() {
+        return Err(Error::RegionsNotSupported {
+            model_id: id.to_string(),
+        });
+    }
+
+    println!("Regional variants of {}:", model.name);
+    println!();
+
+    let mut current_group: Option<&str> = None;
+    for variant in regions {
+        let group = variant.group_name.as_deref().unwrap_or("Other");
+        if current_group != Some(group) {
+            if current_group.is_some() {
+                println!();
+            }
+            println!("{group}:");
+            current_group = Some(group);
+        }
+        println!(
+            "  {:<24} {:>28}   {}",
+            variant.region.as_deref().unwrap_or("global"),
+            species_count_label(variant.classes),
+            crate::config::geomodel::human_size(variant.model.size_bytes),
+        );
+    }
+
+    println!();
+    println!("A regional model scores only the species of that region, which cuts");
+    println!("memory use and latency. It is otherwise the same model.");
+    println!();
+    println!("To install: birda models install {id} --region <slug>");
+
+    Ok(())
+}
+
 /// Show available languages for a model.
 pub fn show_languages(registry: &Registry, id: &str) -> Result<()> {
     let model = find_model(registry, id)
         .ok_or_else(|| Error::ModelNotFoundInRegistry { id: id.to_string() })?;
+
+    // Variant-based families publish a labels file per region, all English, so
+    // there are no translations to list. Saying that is more use than printing
+    // an empty list.
+    let files = model
+        .files
+        .as_ref()
+        .ok_or_else(|| Error::ModelHasNoLanguages {
+            model_id: id.to_string(),
+        })?;
 
     println!("Model: {}", model.name);
     println!();
     println!("Available label languages:");
     println!();
 
-    for lang in &model.files.labels.languages {
-        let default_marker = if lang.code == model.files.labels.default_language {
+    for lang in &files.labels.languages {
+        let default_marker = if lang.code == files.labels.default_language {
             " (default)"
         } else {
             ""

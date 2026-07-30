@@ -294,9 +294,16 @@ fn file_url(repo: &str, path: &str) -> String {
 /// and build, and are immutable by the publishing policy, so they cannot
 /// collide across versions and need no flattening.
 fn basename(path: &str) -> Result<&str> {
-    path.rsplit('/').next().ok_or_else(|| Error::Internal {
-        message: format!("manifest path has no file name: {path}"),
-    })
+    // `rsplit` always yields at least one item, so the interesting failure is
+    // an empty final component: a manifest path ending in `/` would otherwise
+    // produce an empty filename and be downloaded to the models directory
+    // itself.
+    path.rsplit('/')
+        .next()
+        .filter(|name| !name.is_empty())
+        .ok_or_else(|| Error::Internal {
+            message: format!("manifest path has no file name: {path}"),
+        })
 }
 
 /// Write the generated registry to `registry.json` under `root`.

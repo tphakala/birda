@@ -1949,7 +1949,7 @@ fn handle_models_install(
     let model = registry::find_model(&registry, id)
         .ok_or_else(|| Error::ModelNotFoundInRegistry { id: id.to_string() })?;
 
-    let mut config = load_default_config()?;
+    let config = load_default_config()?;
 
     // Resolve the variant before the licence prompt, so a typo in --region
     // fails immediately rather than after the user has accepted a licence for a
@@ -2095,14 +2095,23 @@ fn handle_models_install(
         .as_ref()
         .map_or_else(|| id.to_string(), registry::InstallProvenance::config_key);
 
+    // Re-read the config now rather than reusing the copy loaded before the
+    // download. The load above exists only to read the inference device for
+    // variant selection, and the download between them can take minutes on a
+    // 557 MB model: saving the stale copy would silently discard any `config
+    // set` or second install that landed in the meantime. This keeps the
+    // load/mutate/save window as narrow as it was before selection needed the
+    // device.
+    let mut config = load_default_config()?;
+
     // Collected before the insert overwrites the entry that names them, and
     // deleted only after the config is saved: a crash in between leaves a
     // config that points exclusively at files which exist.
-    let orphans = registry::orphaned_files(
-        &config,
-        &config_key,
-        &[model_path.clone(), labels_path.clone()],
-    );
+    let mut keeping = vec![model_path.clone(), labels_path.clone()];
+    keeping.extend(installed.bsg_calibration.clone());
+    keeping.extend(installed.bsg_migration.clone());
+    keeping.extend(installed.bsg_distribution_maps.clone());
+    let orphans = registry::orphaned_files(&config, &config_key, &keeping);
 
     let provenance = installed.provenance;
     config.models.insert(

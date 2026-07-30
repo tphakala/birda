@@ -166,9 +166,22 @@ pub fn select_variant<'a>(
 ) -> Result<VariantChoice<'a>> {
     let available = entry.variant_ids_for(region);
     if available.is_empty() {
+        // Two different failures share this branch, and they need different
+        // words. A named region that does not exist is a user typo, answered
+        // with the list of regions. No global variant at all is a broken
+        // registry, and reporting it as "no region 'global'" would send the
+        // user hunting for a region name that was never the problem.
+        let Some(region) = region else {
+            return Err(Error::VariantNotFound {
+                model_id: entry.id.clone(),
+                variant: "global".to_string(),
+                available: "none, this model publishes regional variants only".to_string(),
+            });
+        };
+
         return Err(Error::RegionNotFound {
             model_id: entry.id.clone(),
-            region: region.unwrap_or("global").to_string(),
+            region: region.to_string(),
             available: entry
                 .regions()
                 .iter()
@@ -192,19 +205,28 @@ pub fn select_variant<'a>(
         });
     }
 
+    // A configured device is an instruction, not a hint, so it is the only rung
+    // consulted when it is set. Falling through to the detected-library or
+    // architecture rungs would answer a different question than the user asked:
+    // on aarch64 with OpenVINO configured, the manifest key `aarch64/openvino-cpu`
+    // can miss (Perch publishes `aarch64-a76/openvino`), and the architecture
+    // rung would then hand back `int8-arm`, which that same manifest marks
+    // unsupported on OpenVINO. Better to fall straight through to the family
+    // default, which every backend supports.
     let mut candidates: Vec<(String, SelectionReason)> = Vec::new();
     if let Some(key) = device_key(device, probe) {
         candidates.push((key, SelectionReason::ConfiguredDevice));
+    } else {
+        candidates.extend(
+            detected_keys(probe)
+                .into_iter()
+                .map(|key| (key, SelectionReason::DetectedLibrary)),
+        );
+        candidates.push((
+            format!("{}/onnxruntime", arch_key(probe.arch())),
+            SelectionReason::ArchDefault,
+        ));
     }
-    candidates.extend(
-        detected_keys(probe)
-            .into_iter()
-            .map(|key| (key, SelectionReason::DetectedLibrary)),
-    );
-    candidates.push((
-        format!("{}/onnxruntime", arch_key(probe.arch())),
-        SelectionReason::ArchDefault,
-    ));
 
     for (key, reason) in candidates {
         if let Some(variant) = entry
@@ -506,6 +528,54 @@ mod tests {
     }
 
     #[test]
+    fn test_a_configured_device_never_falls_through_to_the_architecture_rung() {
+        // The Perch shape on an aarch64 host with OpenVINO configured. The
+        // configured key misses, because the manifest publishes
+        // aarch64-a76/openvino. Falling through to aarch64/onnxruntime would
+        // hand back int8-arm, which the same manifest marks unsupported on
+        // OpenVINO, so the install would succeed and then fail at inference.
+        let e = entry(
+            "no-dft-fp32",
+            &[
+                ("aarch64-a76/openvino", "no-dft-fp32"),
+                ("aarch64/onnxruntime", "int8-arm"),
+            ],
+            vec![variant("no-dft-fp32", None), variant("int8-arm", None)],
+        );
+        let probe = FakeProbe {
+            cuda: false,
+            tensorrt: false,
+            arch: "aarch64",
+        };
+
+        let choice = select_variant(&e, None, None, InferenceDevice::OpenVino, &probe).unwrap();
+
+        assert_eq!(choice.variant.id, "no-dft-fp32");
+        assert_eq!(choice.reason, SelectionReason::FamilyDefault);
+    }
+
+    #[test]
+    fn test_a_configured_device_is_not_overridden_by_detected_libraries() {
+        // Someone who configured OpenVINO does not want the CUDA variant just
+        // because the CUDA libraries happen to be installed.
+        let e = entry(
+            "fp32",
+            &[("cuda", "fp16")],
+            vec![variant("fp32", None), variant("fp16", None)],
+        );
+        let probe = FakeProbe {
+            cuda: true,
+            tensorrt: false,
+            arch: "x86_64",
+        };
+
+        let choice = select_variant(&e, None, None, InferenceDevice::OpenVino, &probe).unwrap();
+
+        assert_eq!(choice.variant.id, "fp32");
+        assert_eq!(choice.reason, SelectionReason::FamilyDefault);
+    }
+
+    #[test]
     fn test_a_device_with_no_manifest_vocabulary_falls_through_to_detection() {
         // ROCm has no manifest key. It must not suppress the CUDA libraries
         // this host actually has.
@@ -518,6 +588,23 @@ mod tests {
         let choice = select_variant(&e, None, None, InferenceDevice::Rocm, &probe).unwrap();
         assert_eq!(choice.variant.id, "fp16");
         assert_eq!(choice.reason, SelectionReason::DetectedLibrary);
+    }
+
+    #[test]
+    fn test_a_missing_global_variant_is_not_reported_as_a_missing_region() {
+        // A registry with regional variants but no global one is broken, not a
+        // user typo. Saying "has no region 'global'" would send someone hunting
+        // for a region name that was never the problem.
+        let e = entry("fp32", &[], vec![variant("fp32", Some("nordic"))]);
+
+        let err = select_variant(&e, None, None, InferenceDevice::Auto, &cpu_probe()).unwrap_err();
+        let message = err.to_string();
+
+        assert!(
+            !message.contains("has no region"),
+            "must not blame a region: {message}"
+        );
+        assert!(message.contains("global"), "got: {message}");
     }
 
     #[test]

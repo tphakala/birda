@@ -462,10 +462,14 @@ pub async fn install_model(model: &ModelEntry, language: Option<&str>) -> Result
     })
 }
 
-/// Download one variant's model and labels, verifying both checksums.
+/// Download one variant's model and labels.
 ///
-/// Each file is checked before it replaces anything at its destination, so a
-/// bad download is discarded rather than published.
+/// A file is checked against its declared checksum before it replaces anything
+/// at its destination, so a bad download is discarded rather than published.
+/// Only the model file carries one today: the published manifests record a
+/// checksum per model but reference their labels by path alone, so the labels
+/// file is accepted on the transport's word. `download_verified` will start
+/// checking it the moment the registry declares one.
 ///
 /// If the labels step fails after the model file landed, the model file is
 /// removed, but only when this install is what created it. The install never

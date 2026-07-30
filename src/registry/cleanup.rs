@@ -12,8 +12,23 @@
 //! another entry still points at. Nothing is matched by filename pattern, and
 //! nothing is deleted that a config entry still references.
 
-use crate::config::Config;
+use crate::config::{Config, ModelConfig};
 use std::path::PathBuf;
+
+/// Every file a config entry owns.
+///
+/// Not just the model and its labels: a BSG entry also owns its calibration,
+/// migration and distribution-map files. Both halves of the cleanup decision
+/// need the full set. Missing them on the left leaks those assets forever, and
+/// missing them on the right lets cleanup delete a file another entry is still
+/// using as one.
+fn owned_paths(model: &ModelConfig) -> Vec<&PathBuf> {
+    let mut paths = vec![&model.path, &model.labels];
+    paths.extend(model.bsg_calibration.iter());
+    paths.extend(model.bsg_migration.iter());
+    paths.extend(model.bsg_distribution_maps.iter());
+    paths
+}
 
 /// Files owned by `key` before this install that nothing references now.
 ///
@@ -28,11 +43,11 @@ pub fn orphaned_files(config: &Config, key: &str, keeping: &[PathBuf]) -> Vec<Pa
         .models
         .iter()
         .filter(|(other_key, _)| other_key.as_str() != key)
-        .flat_map(|(_, model)| [&model.path, &model.labels])
+        .flat_map(|(_, model)| owned_paths(model))
         .collect();
 
     let mut orphans: Vec<PathBuf> = Vec::new();
-    for path in [&previous.path, &previous.labels] {
+    for path in owned_paths(previous) {
         if keeping.contains(path) {
             continue;
         }
@@ -169,6 +184,43 @@ mod tests {
         );
 
         assert_eq!(orphans, vec![PathBuf::from("/m/nordic-fp32.onnx")]);
+    }
+
+    #[test]
+    fn test_orphaned_files_reclaims_the_bsg_assets_an_entry_owned() {
+        // A BSG entry owns three files beyond the model and labels. Ignoring
+        // them leaves them on disk forever after an upgrade.
+        let mut config = Config::default();
+        let mut bsg = model("/m/old.onnx", "/m/old.txt");
+        bsg.bsg_calibration = Some(PathBuf::from("/m/old-cal.csv"));
+        bsg.bsg_migration = Some(PathBuf::from("/m/old-mig.csv"));
+        bsg.bsg_distribution_maps = Some(PathBuf::from("/m/old-maps.bin"));
+        config.models.insert("bsg".to_string(), bsg);
+
+        let orphans = orphaned_files(&config, "bsg", &[PathBuf::from("/m/new.onnx")]);
+
+        assert!(orphans.contains(&PathBuf::from("/m/old-cal.csv")));
+        assert!(orphans.contains(&PathBuf::from("/m/old-mig.csv")));
+        assert!(orphans.contains(&PathBuf::from("/m/old-maps.bin")));
+    }
+
+    #[test]
+    fn test_orphaned_files_spares_a_bsg_asset_another_entry_still_owns() {
+        // The mirror of the case above: cleanup must not delete a file another
+        // entry references, whichever slot each of them holds it in.
+        let mut config = Config::default();
+        let mut replaced = model("/m/old.onnx", "/m/old.txt");
+        replaced.bsg_calibration = Some(PathBuf::from("/m/shared-cal.csv"));
+        config.models.insert("bsg".to_string(), replaced);
+
+        let mut other = model("/m/other.onnx", "/m/other.txt");
+        other.bsg_calibration = Some(PathBuf::from("/m/shared-cal.csv"));
+        config.models.insert("bsg-other".to_string(), other);
+
+        let orphans = orphaned_files(&config, "bsg", &[]);
+
+        assert!(!orphans.contains(&PathBuf::from("/m/shared-cal.csv")));
+        assert!(orphans.contains(&PathBuf::from("/m/old.onnx")));
     }
 
     #[test]

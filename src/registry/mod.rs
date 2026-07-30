@@ -422,9 +422,9 @@ pub fn show_languages(registry: &Registry, id: &str) -> Result<()> {
     let model = find_model(registry, id)
         .ok_or_else(|| Error::ModelNotFoundInRegistry { id: id.to_string() })?;
 
-    // Variant-based families publish one labels file per region, in English
-    // only, so there are no language variants to list. Saying that is more use
-    // than printing an empty list.
+    // Variant-based families publish a labels file per region, all English, so
+    // there are no translations to list. Saying that is more use than printing
+    // an empty list.
     let files = model
         .files
         .as_ref()

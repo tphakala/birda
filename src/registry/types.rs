@@ -1,7 +1,7 @@
 //! Data structures for model registry.
 
 use serde::{Deserialize, Serialize};
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 
 /// Registry schema version and model entries.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
@@ -168,15 +168,27 @@ impl ModelEntry {
     /// Regions are what a user chooses; variant ids are chosen for them, so
     /// listing every combination would show each tile once per hardware
     /// variant. The global model is not a region and is excluded.
+    ///
+    /// The representative is the default variant wherever the region publishes
+    /// one, not simply the first in manifest order. Those differ: Perch lists
+    /// `int8-arm` before `no-dft-fp32` for every region while the default is
+    /// `no-dft-fp32`, so taking the first would advertise a 41 MB download for
+    /// a tile whose default install actually fetches 57 MB.
     #[must_use]
     pub fn regions(&self) -> Vec<&ModelVariant> {
-        let mut seen = BTreeSet::new();
-        let mut out: Vec<&ModelVariant> = self
-            .variants
-            .iter()
-            .filter(|v| v.region.is_some())
-            .filter(|v| seen.insert(v.region.as_deref()))
-            .collect();
+        let default = self.default_variant.as_deref();
+        let mut by_region: BTreeMap<&str, &ModelVariant> = BTreeMap::new();
+        for variant in &self.variants {
+            let Some(region) = variant.region.as_deref() else {
+                continue;
+            };
+            let slot = by_region.entry(region).or_insert(variant);
+            if default == Some(variant.id.as_str()) {
+                *slot = variant;
+            }
+        }
+
+        let mut out: Vec<&ModelVariant> = by_region.into_values().collect();
         out.sort_by(|a, b| {
             a.group_order
                 .cmp(&b.group_order)
@@ -390,6 +402,39 @@ mod tests {
         // Europe (group_order 0) before Asia (1), and inside Europe the display
         // names IBERIA and NORDIC sort alphabetically.
         assert_eq!(slugs, vec!["iberia", "nordic", "japan"]);
+    }
+
+    #[test]
+    fn test_regions_represents_each_tile_with_the_variant_an_install_would_pick() {
+        // Perch lists int8-arm before no-dft-fp32 for every region while the
+        // default is no-dft-fp32, so taking the first in manifest order made
+        // `models regions` advertise a 41 MB download for a tile whose default
+        // install actually fetches 57 MB.
+        let mut entry = variant_entry();
+        entry.default_variant = Some("fp16".to_string());
+
+        let regions = entry.regions();
+
+        assert_eq!(regions.len(), 1);
+        assert_eq!(
+            regions[0].id, "fp16",
+            "the listing must quote the variant an install without --variant gets"
+        );
+    }
+
+    #[test]
+    fn test_regions_falls_back_when_a_tile_lacks_the_default_variant() {
+        let mut entry = variant_entry();
+        entry.default_variant = Some("fp16".to_string());
+        entry.variants.push(variant("fp32", Some("iberia"), 600));
+
+        let iberia = entry
+            .regions()
+            .into_iter()
+            .find(|v| v.region.as_deref() == Some("iberia"))
+            .expect("iberia is listed");
+
+        assert_eq!(iberia.id, "fp32");
     }
 
     #[test]

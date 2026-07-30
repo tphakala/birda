@@ -255,8 +255,8 @@ pub enum Error {
         id: String,
     },
 
-    /// Model publishes a single labels file rather than language variants.
-    #[error("model '{model_id}' publishes one labels file and has no language variants")]
+    /// Model publishes no translated label sets.
+    #[error("model '{model_id}' has no label language variants")]
     ModelHasNoLanguages {
         /// Registry id of the model.
         model_id: String,

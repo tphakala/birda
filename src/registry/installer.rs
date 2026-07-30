@@ -1,6 +1,6 @@
 //! Model download and installation logic.
 
-use super::types::{ModelEntry, RangeFilterAsset};
+use super::types::{ModelEntry, ModelVariant, RangeFilterAsset};
 use crate::error::{Error, Result};
 use futures_util::StreamExt;
 use indicatif::{ProgressBar, ProgressStyle};
@@ -55,6 +55,44 @@ pub struct InstalledModel {
     pub bsg_migration: Option<PathBuf>,
     /// Path to downloaded BSG distribution maps file (if available).
     pub bsg_distribution_maps: Option<PathBuf>,
+    /// What was installed, for variant-based entries.
+    pub provenance: Option<InstallProvenance>,
+}
+
+/// What was installed, recorded in `config.toml`.
+///
+/// Two jobs: telling the user an update is available, and knowing exactly which
+/// files an install owns so an upgrade can delete the ones it replaces. Model
+/// filenames are immutable by the publishing policy, so without this a
+/// preview-to-GA upgrade would leave the old files on disk forever, at roughly
+/// 150 MB per regional slice and 557 MB for a global fp32.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InstallProvenance {
+    /// Registry id the files came from.
+    pub registry_id: String,
+    /// Exact upstream version installed.
+    pub version: String,
+    /// Our conversion revision.
+    pub build: Option<u32>,
+    /// Region slug, `None` for the global model.
+    pub region: Option<String>,
+    /// Variant id.
+    pub variant: Option<String>,
+}
+
+impl InstallProvenance {
+    /// Key this install occupies in `config.models`.
+    ///
+    /// Regional installs get an `<id>-<region>` key so a global and a regional
+    /// model coexist and both stay reachable with `-m`. Derived, never
+    /// user-supplied, so it cannot collide with a registry id.
+    #[must_use]
+    pub fn config_key(&self) -> String {
+        self.region.as_ref().map_or_else(
+            || self.registry_id.clone(),
+            |region| format!("{}-{region}", self.registry_id),
+        )
+    }
 }
 
 /// Rewrite a Hugging Face URL to the mirror named by `HF_ENDPOINT`.
@@ -388,7 +426,96 @@ pub async fn install_model(model: &ModelEntry, language: Option<&str>) -> Result
         bsg_calibration: bsg_calibration_path,
         bsg_migration: bsg_migration_path,
         bsg_distribution_maps: bsg_maps_path,
+        // Legacy entries predate provenance. Their filenames are stable across
+        // versions, so there is nothing for cleanup to reclaim either.
+        provenance: None,
     })
+}
+
+/// Download one variant's model and labels, verifying both checksums.
+///
+/// On any failure after the model file lands, the model file is removed too.
+/// The install never reaches `config.toml`, so nothing would ever record that
+/// the half-installed 557 MB file exists and cleanup could not reclaim it.
+pub async fn install_variant(entry: &ModelEntry, variant: &ModelVariant) -> Result<InstalledModel> {
+    let models_dir = models_dir()?;
+    std::fs::create_dir_all(&models_dir).map_err(Error::Io)?;
+
+    let client = http_client()?;
+
+    let model_dest = models_dir.join(&variant.model.filename);
+    download_file(&client, &variant.model.url, &model_dest).await?;
+
+    verify_or_roll_back(&model_dest, variant.model.sha256.as_deref(), &[])?;
+
+    let labels_dest = models_dir.join(&variant.labels.filename);
+    if let Err(e) = download_file(&client, &variant.labels.url, &labels_dest).await {
+        roll_back(&[&model_dest]);
+        return Err(e);
+    }
+
+    verify_or_roll_back(
+        &labels_dest,
+        variant.labels.sha256.as_deref(),
+        &[&model_dest],
+    )?;
+
+    Ok(InstalledModel {
+        model: model_dest,
+        labels: labels_dest,
+        bsg_calibration: None,
+        bsg_migration: None,
+        bsg_distribution_maps: None,
+        provenance: Some(InstallProvenance {
+            registry_id: entry.id.clone(),
+            version: entry.version.clone(),
+            build: entry.build,
+            region: variant.region.clone(),
+            variant: Some(variant.id.clone()),
+        }),
+    })
+}
+
+/// Verify a downloaded file when the registry declares a checksum for it.
+///
+/// A file with no declared checksum is accepted, matching what
+/// [`InstalledRangeFilter::verify`] already does: the registry is the authority
+/// on whether a checksum exists, and refusing to install without one would
+/// break every entry that predates checksums.
+fn verify_downloaded(path: &Path, expected: Option<&str>) -> Result<()> {
+    expected.map_or_else(
+        || Ok(()),
+        |sum| crate::update::checksum::verify_sha256(path, sum),
+    )
+}
+
+/// Verify a download, removing it and everything installed alongside it on failure.
+///
+/// A failed install must leave nothing behind. It never reaches `config.toml`,
+/// so no later run can know the files exist, and cleanup keyed on config
+/// entries could not reclaim them. A bad checksum also has to take the file
+/// with it so a retry re-downloads rather than resuming onto corrupt bytes.
+fn verify_or_roll_back(path: &Path, expected: Option<&str>, also: &[&Path]) -> Result<()> {
+    if let Err(e) = verify_downloaded(path, expected) {
+        roll_back(&[path]);
+        roll_back(also);
+        return Err(e);
+    }
+    Ok(())
+}
+
+/// Best-effort removal of files from a failed install.
+fn roll_back(paths: &[&Path]) {
+    for path in paths {
+        if let Err(e) = std::fs::remove_file(path)
+            && e.kind() != std::io::ErrorKind::NotFound
+        {
+            tracing::warn!(
+                "Could not remove {} after a failed install: {e}",
+                path.display()
+            );
+        }
+    }
 }
 
 #[cfg(test)]
@@ -398,6 +525,106 @@ mod tests {
 
     use crate::registry::types::{FileInfo, LicenseInfo};
     use serial_test::serial;
+
+    #[test]
+    fn test_install_provenance_config_key_appends_the_region() {
+        let provenance = InstallProvenance {
+            registry_id: "birdnet-v30".to_string(),
+            version: "3.0-preview3.1".to_string(),
+            build: Some(1),
+            region: Some("nordic".to_string()),
+            variant: Some("fp32".to_string()),
+        };
+        assert_eq!(provenance.config_key(), "birdnet-v30-nordic");
+    }
+
+    #[test]
+    fn test_install_provenance_config_key_is_the_bare_id_for_a_global_install() {
+        // A global and a regional install must not fight over one config key,
+        // and the global one keeps the name a user would type.
+        let provenance = InstallProvenance {
+            registry_id: "birdnet-v30".to_string(),
+            version: "3.0-preview3.1".to_string(),
+            build: Some(1),
+            region: None,
+            variant: Some("fp16".to_string()),
+        };
+        assert_eq!(provenance.config_key(), "birdnet-v30");
+    }
+
+    #[test]
+    fn test_verify_downloaded_accepts_a_file_with_no_declared_checksum() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("m.onnx");
+        std::fs::write(&path, b"right").unwrap();
+
+        assert!(verify_downloaded(&path, None).is_ok());
+    }
+
+    #[test]
+    fn test_verify_downloaded_accepts_a_matching_checksum() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("m.onnx");
+        std::fs::write(&path, b"right").unwrap();
+
+        assert!(verify_downloaded(&path, Some(RIGHT_SHA256)).is_ok());
+    }
+
+    #[test]
+    fn test_verify_downloaded_rejects_a_wrong_checksum() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("m.onnx");
+        std::fs::write(&path, b"wrong").unwrap();
+
+        let err = verify_downloaded(&path, Some(RIGHT_SHA256)).unwrap_err();
+        assert!(
+            matches!(err, Error::UpdateChecksumMismatch { .. }),
+            "got: {err}"
+        );
+    }
+
+    #[test]
+    fn test_a_bad_labels_checksum_takes_the_model_file_with_it() {
+        // The failure this guards: a 557 MB model file that verified fine,
+        // stranded on disk because the labels file beside it did not. The
+        // install never reaches config.toml, so nothing would ever record that
+        // the file exists and cleanup could not reclaim it.
+        let dir = tempfile::tempdir().unwrap();
+        let model = dir.path().join("m.onnx");
+        let labels = dir.path().join("l.txt");
+        std::fs::write(&model, b"right").unwrap();
+        std::fs::write(&labels, b"wrong").unwrap();
+
+        let err = verify_or_roll_back(&labels, Some(RIGHT_SHA256), &[&model]).unwrap_err();
+
+        assert!(matches!(err, Error::UpdateChecksumMismatch { .. }));
+        assert!(!labels.exists(), "the bad labels file must be removed");
+        assert!(!model.exists(), "the model beside it must be removed too");
+    }
+
+    #[test]
+    fn test_a_good_checksum_leaves_every_file_in_place() {
+        let dir = tempfile::tempdir().unwrap();
+        let model = dir.path().join("m.onnx");
+        let labels = dir.path().join("l.txt");
+        std::fs::write(&model, b"right").unwrap();
+        std::fs::write(&labels, b"right").unwrap();
+
+        verify_or_roll_back(&labels, Some(RIGHT_SHA256), &[&model]).unwrap();
+
+        assert!(labels.exists());
+        assert!(model.exists());
+    }
+
+    #[test]
+    fn test_roll_back_tolerates_a_file_that_is_already_gone() {
+        let dir = tempfile::tempdir().unwrap();
+        let missing = dir.path().join("never-existed.onnx");
+
+        // A download that failed before creating its destination leaves nothing
+        // to remove. That is the desired state, not an error to report.
+        roll_back(&[&missing]);
+    }
 
     // HF_ENDPOINT is process-global, so these run serially against every other
     // test that reads the environment.
@@ -724,6 +951,7 @@ mod tests {
             bsg_calibration: None,
             bsg_migration: None,
             bsg_distribution_maps: None,
+            provenance: None,
         };
 
         assert_eq!(

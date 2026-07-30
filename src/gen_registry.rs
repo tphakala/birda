@@ -236,33 +236,51 @@ fn build_entry(root: &Path, source: &SourceModel) -> Result<ModelEntry> {
         files: None,
         build: Some(build),
         default_variant: Some(source.default_variant.clone()),
-        selection: translate_selection(&manifest, &publishable),
+        selection: translate_selection(&manifest, &publishable)?,
         variants,
         recommended: source.recommended,
     })
 }
 
+/// Marker for a manifest selection value that is a template, not a file.
+///
+/// Perch's `low-ram` key resolves to `regional/<region>/perch_v2_<region>_...`,
+/// which names a shape rather than a download.
+const SELECTION_TEMPLATE_MARKER: char = '<';
+
 /// Turn the manifest's `hardware key -> path` map into `hardware key -> variant id`.
 ///
-/// A key whose path is not among the installable files is dropped. Perch's
-/// `low-ram` key is exactly that: its value is the template
-/// `regional/<region>/...`, a placeholder rather than a file. A selection
-/// pointing at something the gallery cannot offer is worse than no selection,
-/// because it would silently resolve to nothing at install time.
+/// Template values are skipped deliberately. `low-ram` says "use a regional
+/// model", which is a choice along the region axis, not the variant axis, and
+/// birda must not pick a region for the user: a region is geographic, and
+/// guessing one from available memory would hand someone the wrong continent's
+/// species list. The regional models it points at are reachable through
+/// `--region`, which is where that choice belongs.
+///
+/// A non-template value that matches no installable file is an error rather
+/// than a silent drop. That means the manifest and the file list disagree, and
+/// carrying on would leave a hardware key quietly missing from the gallery.
 fn translate_selection(
     manifest: &Manifest,
     publishable: &[&ManifestModel],
-) -> BTreeMap<String, String> {
-    manifest
-        .selection
-        .iter()
-        .filter_map(|(key, path)| {
-            publishable
-                .iter()
-                .find(|m| &m.path == path)
-                .map(|m| (key.clone(), m.variant.clone()))
-        })
-        .collect()
+) -> Result<BTreeMap<String, String>> {
+    let mut selection = BTreeMap::new();
+    for (key, path) in &manifest.selection {
+        if path.contains(SELECTION_TEMPLATE_MARKER) {
+            continue;
+        }
+        let model = publishable
+            .iter()
+            .find(|m| &m.path == path)
+            .ok_or_else(|| Error::Internal {
+                message: format!(
+                    "{} maps {key} to {path}, which is not an installable file in that manifest",
+                    manifest.repo
+                ),
+            })?;
+        selection.insert(key.clone(), model.variant.clone());
+    }
+    Ok(selection)
 }
 
 /// Download URL for a path inside a Hugging Face repository.

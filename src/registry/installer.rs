@@ -120,6 +120,27 @@ pub fn resolve_url(url: &str) -> String {
 
 /// Download a file with progress bar.
 pub async fn download_file(client: &Client, url: &str, dest: &Path) -> Result<()> {
+    download_verified(client, url, dest, None).await
+}
+
+/// Download a file and check it against a checksum before it replaces `dest`.
+///
+/// The check happens on the part file, while the destination is still whatever
+/// was there before. Verifying after the rename would mean a corrupt download
+/// had already replaced a good file, and deleting it then would take the good
+/// file with it: a failed reinstall would destroy the working install it was
+/// meant to upgrade, and every other config entry naming that file with it.
+///
+/// A file whose registry entry declares no checksum is accepted, matching
+/// [`InstalledRangeFilter::verify`]. The registry is the authority on whether a
+/// checksum exists, and refusing to install without one would break every entry
+/// that predates checksums.
+pub async fn download_verified(
+    client: &Client,
+    url: &str,
+    dest: &Path,
+    expected_sha256: Option<&str>,
+) -> Result<()> {
     // Resolved once, and every message below reports the resolved URL, so a
     // mirror failure names the host actually contacted rather than the one the
     // registry happens to record.
@@ -173,6 +194,15 @@ pub async fn download_file(client: &Client, url: &str, dest: &Path) -> Result<()
     if let Err(e) = result {
         // Best effort cleanup: the part file is useless without the rename,
         // and leaving it behind would waste disk on a retry loop.
+        drop(tokio::fs::remove_file(&part).await);
+        return Err(e);
+    }
+
+    // Before the rename, so a bad download is discarded rather than published
+    // over a file that was fine.
+    if let Some(sum) = expected_sha256
+        && let Err(e) = crate::update::checksum::verify_sha256(&part, sum)
+    {
         drop(tokio::fs::remove_file(&part).await);
         return Err(e);
     }
@@ -434,9 +464,16 @@ pub async fn install_model(model: &ModelEntry, language: Option<&str>) -> Result
 
 /// Download one variant's model and labels, verifying both checksums.
 ///
-/// On any failure after the model file lands, the model file is removed too.
-/// The install never reaches `config.toml`, so nothing would ever record that
-/// the half-installed 557 MB file exists and cleanup could not reclaim it.
+/// Each file is checked before it replaces anything at its destination, so a
+/// bad download is discarded rather than published.
+///
+/// If the labels step fails after the model file landed, the model file is
+/// removed, but only when this install is what created it. The install never
+/// reaches `config.toml`, so nothing would record that a half-installed 557 MB
+/// file exists and cleanup could not reclaim it. Removing a file that was
+/// already there would be the opposite error: published filenames are shared
+/// between variants of the same region, so deleting one can break a working
+/// install that this one never touched.
 pub async fn install_variant(entry: &ModelEntry, variant: &ModelVariant) -> Result<InstalledModel> {
     let models_dir = models_dir()?;
     std::fs::create_dir_all(&models_dir).map_err(Error::Io)?;
@@ -444,21 +481,29 @@ pub async fn install_variant(entry: &ModelEntry, variant: &ModelVariant) -> Resu
     let client = http_client()?;
 
     let model_dest = models_dir.join(&variant.model.filename);
-    download_file(&client, &variant.model.url, &model_dest).await?;
-
-    verify_or_roll_back(&model_dest, variant.model.sha256.as_deref(), &[])?;
+    let model_existed = model_dest.exists();
+    download_verified(
+        &client,
+        &variant.model.url,
+        &model_dest,
+        variant.model.sha256.as_deref(),
+    )
+    .await?;
 
     let labels_dest = models_dir.join(&variant.labels.filename);
-    if let Err(e) = download_file(&client, &variant.labels.url, &labels_dest).await {
-        roll_back(&[&model_dest]);
-        return Err(e);
-    }
-
-    verify_or_roll_back(
+    if let Err(e) = download_verified(
+        &client,
+        &variant.labels.url,
         &labels_dest,
         variant.labels.sha256.as_deref(),
-        &[&model_dest],
-    )?;
+    )
+    .await
+    {
+        if !model_existed {
+            roll_back(&[&model_dest]);
+        }
+        return Err(e);
+    }
 
     Ok(InstalledModel {
         model: model_dest,
@@ -474,34 +519,6 @@ pub async fn install_variant(entry: &ModelEntry, variant: &ModelVariant) -> Resu
             variant: Some(variant.id.clone()),
         }),
     })
-}
-
-/// Verify a downloaded file when the registry declares a checksum for it.
-///
-/// A file with no declared checksum is accepted, matching what
-/// [`InstalledRangeFilter::verify`] already does: the registry is the authority
-/// on whether a checksum exists, and refusing to install without one would
-/// break every entry that predates checksums.
-fn verify_downloaded(path: &Path, expected: Option<&str>) -> Result<()> {
-    expected.map_or_else(
-        || Ok(()),
-        |sum| crate::update::checksum::verify_sha256(path, sum),
-    )
-}
-
-/// Verify a download, removing it and everything installed alongside it on failure.
-///
-/// A failed install must leave nothing behind. It never reaches `config.toml`,
-/// so no later run can know the files exist, and cleanup keyed on config
-/// entries could not reclaim them. A bad checksum also has to take the file
-/// with it so a retry re-downloads rather than resuming onto corrupt bytes.
-fn verify_or_roll_back(path: &Path, expected: Option<&str>, also: &[&Path]) -> Result<()> {
-    if let Err(e) = verify_downloaded(path, expected) {
-        roll_back(&[path]);
-        roll_back(also);
-        return Err(e);
-    }
-    Ok(())
 }
 
 /// Best-effort removal of files from a failed install.
@@ -553,67 +570,40 @@ mod tests {
     }
 
     #[test]
-    fn test_verify_downloaded_accepts_a_file_with_no_declared_checksum() {
+    fn test_a_bad_download_never_replaces_the_file_already_there() {
+        // The failure this guards: a reinstall whose download is corrupt used
+        // to overwrite the destination and then delete it on verification
+        // failure, destroying the working install it was meant to upgrade,
+        // plus every other config entry naming that same file.
         let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("m.onnx");
-        std::fs::write(&path, b"right").unwrap();
+        let dest = dir.path().join("m.onnx");
+        std::fs::write(&dest, b"right").unwrap();
 
-        assert!(verify_downloaded(&path, None).is_ok());
+        // Stand in for the streamed download: a part file holding bad bytes.
+        let part = part_path(&dest).unwrap();
+        std::fs::write(&part, b"wrong").unwrap();
+
+        let verdict = crate::update::checksum::verify_sha256(&part, RIGHT_SHA256);
+        assert!(verdict.is_err(), "the part file must fail verification");
+
+        // The destination is untouched because the rename never happened.
+        assert_eq!(std::fs::read(&dest).unwrap(), b"right");
     }
 
     #[test]
-    fn test_verify_downloaded_accepts_a_matching_checksum() {
+    fn test_finalize_only_publishes_bytes_that_verified() {
         let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("m.onnx");
-        std::fs::write(&path, b"right").unwrap();
+        let dest = dir.path().join("m.onnx");
+        std::fs::write(&dest, b"stale").unwrap();
 
-        assert!(verify_downloaded(&path, Some(RIGHT_SHA256)).is_ok());
-    }
+        let part = part_path(&dest).unwrap();
+        std::fs::write(&part, b"right").unwrap();
 
-    #[test]
-    fn test_verify_downloaded_rejects_a_wrong_checksum() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("m.onnx");
-        std::fs::write(&path, b"wrong").unwrap();
+        crate::update::checksum::verify_sha256(&part, RIGHT_SHA256).unwrap();
+        finalize_download(&part, &dest).unwrap();
 
-        let err = verify_downloaded(&path, Some(RIGHT_SHA256)).unwrap_err();
-        assert!(
-            matches!(err, Error::UpdateChecksumMismatch { .. }),
-            "got: {err}"
-        );
-    }
-
-    #[test]
-    fn test_a_bad_labels_checksum_takes_the_model_file_with_it() {
-        // The failure this guards: a 557 MB model file that verified fine,
-        // stranded on disk because the labels file beside it did not. The
-        // install never reaches config.toml, so nothing would ever record that
-        // the file exists and cleanup could not reclaim it.
-        let dir = tempfile::tempdir().unwrap();
-        let model = dir.path().join("m.onnx");
-        let labels = dir.path().join("l.txt");
-        std::fs::write(&model, b"right").unwrap();
-        std::fs::write(&labels, b"wrong").unwrap();
-
-        let err = verify_or_roll_back(&labels, Some(RIGHT_SHA256), &[&model]).unwrap_err();
-
-        assert!(matches!(err, Error::UpdateChecksumMismatch { .. }));
-        assert!(!labels.exists(), "the bad labels file must be removed");
-        assert!(!model.exists(), "the model beside it must be removed too");
-    }
-
-    #[test]
-    fn test_a_good_checksum_leaves_every_file_in_place() {
-        let dir = tempfile::tempdir().unwrap();
-        let model = dir.path().join("m.onnx");
-        let labels = dir.path().join("l.txt");
-        std::fs::write(&model, b"right").unwrap();
-        std::fs::write(&labels, b"right").unwrap();
-
-        verify_or_roll_back(&labels, Some(RIGHT_SHA256), &[&model]).unwrap();
-
-        assert!(labels.exists());
-        assert!(model.exists());
+        assert_eq!(std::fs::read(&dest).unwrap(), b"right");
+        assert!(!part.exists(), "the part file must be consumed");
     }
 
     #[test]
@@ -624,6 +614,17 @@ mod tests {
         // A download that failed before creating its destination leaves nothing
         // to remove. That is the desired state, not an error to report.
         roll_back(&[&missing]);
+    }
+
+    #[test]
+    fn test_roll_back_removes_a_file_this_install_created() {
+        let dir = tempfile::tempdir().unwrap();
+        let created = dir.path().join("m.onnx");
+        std::fs::write(&created, b"right").unwrap();
+
+        roll_back(&[&created]);
+
+        assert!(!created.exists());
     }
 
     // HF_ENDPOINT is process-global, so these run serially against every other

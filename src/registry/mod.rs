@@ -18,7 +18,11 @@ pub use installer::{
 };
 pub use license::{LicensedAsset, prompt_license_acceptance};
 pub use loader::{find_model, load_registry};
-pub use selection::{HardwareProbe, SelectionReason, SystemProbe, VariantChoice, select_variant};
+// Only what callers outside this module actually name. `HardwareProbe`,
+// `VariantChoice` and `SelectionReason` stay reachable as
+// `registry::selection::*` rather than crowding the root: they are the shape of
+// how a variant is chosen, not part of the gallery's surface.
+pub use selection::{SystemProbe, select_variant};
 pub use types::{
     FileInfo, LabelsInfo, LanguageVariant, LicenseInfo, ModelEntry, ModelFiles, ModelVariant,
     RangeFilterAsset, Registry,

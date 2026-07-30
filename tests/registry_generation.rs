@@ -182,13 +182,22 @@ fn test_the_frozen_legacy_entries_survive_regeneration() {
 }
 
 #[test]
-fn test_every_url_points_at_the_repository_the_manifest_names() {
+fn test_every_variant_of_an_entry_points_at_one_repository() {
+    // Not a hardcoded owner: the assertion is that the generator kept every
+    // file of an entry inside the single repository its manifest names, which
+    // stays true if a manifest for a different owner is added later.
     for model in parsed().models.iter().filter(|m| m.is_variant_based()) {
+        let first = &model.variants[0].model.url;
+        let repo_prefix = first
+            .split("/resolve/")
+            .next()
+            .expect("a resolve URL has a prefix");
+
         for variant in &model.variants {
             for url in [&variant.model.url, &variant.labels.url] {
                 assert!(
-                    url.starts_with("https://huggingface.co/tphakala/"),
-                    "{} variant {} points outside the published repositories: {url}",
+                    url.starts_with(repo_prefix),
+                    "{} variant {} points outside {repo_prefix}: {url}",
                     model.id,
                     variant.id
                 );
@@ -225,6 +234,73 @@ fn test_the_selection_map_names_only_variants_that_exist() {
             assert!(
                 model.find_variant(None, id).is_some(),
                 "{} maps {key} to variant {id}, which it does not publish globally",
+                model.id
+            );
+        }
+    }
+}
+
+/// Every hardware key each source manifest declares, minus template values.
+///
+/// Read from the manifest rather than from the generated registry, so this is a
+/// statement about what the publisher asked for rather than a restatement of
+/// what the generator did.
+fn manifest_selection_keys() -> Vec<(String, Vec<String>)> {
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("manifests");
+    let mut out = Vec::new();
+    for entry in std::fs::read_dir(&dir).expect("manifests directory is readable") {
+        let path = entry.expect("directory entry is readable").path();
+        let name = path.file_name().unwrap_or_default().to_string_lossy();
+        if !name.ends_with(".models.json") {
+            continue;
+        }
+        let manifest: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&path).expect("manifest is readable"))
+                .expect("manifest is valid JSON");
+        let repo = manifest["repo"].as_str().unwrap_or_default().to_string();
+        let keys = manifest["selection"]
+            .as_object()
+            .map(|map| {
+                map.iter()
+                    // A template value names a shape, not a file. Perch's
+                    // low-ram key is `regional/<region>/...`, which says "use a
+                    // regional model": a choice along the region axis, which the
+                    // gallery exposes through --region rather than by guessing a
+                    // continent for the user.
+                    .filter(|(_, value)| !value.as_str().unwrap_or_default().contains('<'))
+                    .map(|(key, _)| key.clone())
+                    .collect()
+            })
+            .unwrap_or_default();
+        out.push((repo, keys));
+    }
+    assert!(!out.is_empty(), "no manifests were found to check against");
+    out
+}
+
+#[test]
+fn test_no_hardware_key_from_a_manifest_is_silently_dropped() {
+    // The earlier version of this test compared the generated selection against
+    // the generated variants, which is the generator agreeing with itself. It
+    // could not have noticed a hardware key vanishing in translation. This
+    // compares against the source instead.
+    let registry = parsed();
+
+    for (repo, keys) in manifest_selection_keys() {
+        let model = registry
+            .models
+            .iter()
+            .find(|m| {
+                m.variants
+                    .first()
+                    .is_some_and(|v| v.model.url.contains(&repo))
+            })
+            .unwrap_or_else(|| panic!("no generated entry sources its files from {repo}"));
+
+        for key in keys {
+            assert!(
+                model.selection.contains_key(&key),
+                "{} lost hardware key {key} from {repo}'s manifest",
                 model.id
             );
         }

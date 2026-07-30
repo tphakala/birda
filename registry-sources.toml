@@ -13,7 +13,11 @@
 # untouched, which is how the frozen legacy entries survive regeneration.
 
 schema_version = "2.0"
-registry_version = 5
+# Bump on every content change, not only when a model is added. The loader
+# replaces a user's cached registry only when the bundled version is higher, so
+# a corrected checksum or class count that ships without a bump is invisible to
+# everyone who already has a cache.
+registry_version = 6
 
 [[model]]
 id = "birdnet-v30"

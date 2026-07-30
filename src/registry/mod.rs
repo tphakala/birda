@@ -5,6 +5,7 @@
 pub mod installer;
 pub mod license;
 pub mod loader;
+pub mod selection;
 pub mod types;
 
 // Re-export commonly used types and functions
@@ -14,9 +15,10 @@ pub use installer::{
 };
 pub use license::{LicensedAsset, prompt_license_acceptance};
 pub use loader::{find_model, load_registry};
+pub use selection::{HardwareProbe, SelectionReason, SystemProbe, VariantChoice, select_variant};
 pub use types::{
-    FileInfo, LabelsInfo, LanguageVariant, LicenseInfo, ModelEntry, ModelFiles, RangeFilterAsset,
-    Registry,
+    FileInfo, LabelsInfo, LanguageVariant, LicenseInfo, ModelEntry, ModelFiles, ModelVariant,
+    RangeFilterAsset, Registry,
 };
 
 use crate::error::{Error, Result};

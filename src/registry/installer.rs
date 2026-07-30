@@ -285,12 +285,22 @@ pub async fn install_model(model: &ModelEntry, language: Option<&str>) -> Result
     let models_dir = models_dir()?;
     std::fs::create_dir_all(&models_dir).map_err(Error::Io)?;
 
+    // Legacy entries carry `files`; variant-based ones are installed through
+    // `install_variant` instead. Reaching here without `files` means the caller
+    // did not branch on `ModelEntry::is_variant_based`, which is a bug rather
+    // than a user error.
+    let files = model.files.as_ref().ok_or_else(|| Error::Internal {
+        message: format!(
+            "model '{}' publishes variants and must be installed with install_variant",
+            model.id
+        ),
+    })?;
+
     // Determine which language to use as default
-    let language_code = language.unwrap_or(&model.files.labels.default_language);
+    let language_code = language.unwrap_or(&files.labels.default_language);
 
     // Validate the requested language exists before downloading anything
-    let default_language_variant = model
-        .files
+    let default_language_variant = files
         .labels
         .languages
         .iter()
@@ -304,11 +314,11 @@ pub async fn install_model(model: &ModelEntry, language: Option<&str>) -> Result
     let client = http_client()?;
 
     // Download model file
-    let model_dest = models_dir.join(&model.files.model.filename);
-    download_file(&client, &model.files.model.url, &model_dest).await?;
+    let model_dest = models_dir.join(&files.model.filename);
+    download_file(&client, &files.model.url, &model_dest).await?;
 
     // Download ALL language label files
-    for language_variant in &model.files.labels.languages {
+    for language_variant in &files.labels.languages {
         let labels_dest = models_dir.join(&language_variant.filename);
         download_file(&client, &language_variant.url, &labels_dest).await?;
     }
@@ -317,7 +327,7 @@ pub async fn install_model(model: &ModelEntry, language: Option<&str>) -> Result
     let labels_dest = models_dir.join(&default_language_variant.filename);
 
     // Download BSG calibration file if available
-    let bsg_calibration_path = if let Some(cal_info) = &model.files.bsg_calibration {
+    let bsg_calibration_path = if let Some(cal_info) = &files.bsg_calibration {
         let cal_dest = models_dir.join(&cal_info.filename);
         download_file(&client, &cal_info.url, &cal_dest).await?;
         Some(cal_dest)
@@ -326,7 +336,7 @@ pub async fn install_model(model: &ModelEntry, language: Option<&str>) -> Result
     };
 
     // Download BSG migration file if available
-    let bsg_migration_path = if let Some(mig_info) = &model.files.bsg_migration {
+    let bsg_migration_path = if let Some(mig_info) = &files.bsg_migration {
         let mig_dest = models_dir.join(&mig_info.filename);
         download_file(&client, &mig_info.url, &mig_dest).await?;
         Some(mig_dest)
@@ -335,7 +345,7 @@ pub async fn install_model(model: &ModelEntry, language: Option<&str>) -> Result
     };
 
     // Download BSG distribution maps file if available
-    let bsg_maps_path = if let Some(maps_info) = &model.files.bsg_distribution_maps {
+    let bsg_maps_path = if let Some(maps_info) = &files.bsg_distribution_maps {
         let maps_dest = models_dir.join(&maps_info.filename);
         download_file(&client, &maps_info.url, &maps_dest).await?;
         Some(maps_dest)

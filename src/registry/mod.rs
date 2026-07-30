@@ -214,7 +214,14 @@ pub fn show_info(registry: &Registry, id: &str) -> Result<()> {
 
     println!("Model: {}", model.name);
     println!("ID: {}", model.id);
-    println!("Version: {}", model.version);
+    // The version is the exact upstream identity, preview status included, and
+    // the build is our conversion revision of those same weights. Showing only
+    // the first would let two different files answer to one version string.
+    if let Some(build) = model.build {
+        println!("Version: {} (build {build})", model.version);
+    } else {
+        println!("Version: {}", model.version);
+    }
     println!("Vendor: {}", model.vendor);
     println!();
 
@@ -251,24 +258,48 @@ pub fn show_info(registry: &Registry, id: &str) -> Result<()> {
     );
     println!();
 
-    println!("Files:");
-    println!("  Model: {}", model.files.model.url);
+    if let Some(files) = model.files.as_ref() {
+        println!("Files:");
+        println!("  Model: {}", files.model.url);
 
-    let lang_count = model.files.labels.languages.len();
-    let default_lang = model
-        .files
-        .labels
-        .languages
-        .iter()
-        .find(|l| l.code == model.files.labels.default_language)
-        .map_or("Unknown", |l| l.name.as_str());
+        let lang_count = files.labels.languages.len();
+        let default_lang = files
+            .labels
+            .languages
+            .iter()
+            .find(|l| l.code == files.labels.default_language)
+            .map_or("Unknown", |l| l.name.as_str());
 
-    if lang_count == 1 {
-        println!("  Labels: {default_lang} only");
-    } else {
-        println!("  Labels: {lang_count} languages available (default: {default_lang})");
+        if lang_count == 1 {
+            println!("  Labels: {default_lang} only");
+        } else {
+            println!("  Labels: {lang_count} languages available (default: {default_lang})");
+        }
+        println!();
     }
-    println!();
+
+    if model.is_variant_based() {
+        let variant_ids = model.variant_ids_for(None).join(", ");
+        let global = model
+            .default_variant
+            .as_deref()
+            .and_then(|id| model.find_variant(None, id));
+
+        println!("Variants: {variant_ids}");
+        if let Some(global) = global {
+            println!(
+                "  Global model: {} species, {}",
+                global.classes,
+                crate::config::geomodel::human_size(global.model.size_bytes)
+            );
+        }
+        println!(
+            "  Regional models: {} (birda models regions {})",
+            model.regions().len(),
+            model.id
+        );
+        println!();
+    }
 
     println!("To install: birda models install {}", model.id);
 
@@ -323,13 +354,23 @@ pub fn show_languages(registry: &Registry, id: &str) -> Result<()> {
     let model = find_model(registry, id)
         .ok_or_else(|| Error::ModelNotFoundInRegistry { id: id.to_string() })?;
 
+    // Variant-based families publish one labels file per region, in English
+    // only, so there are no language variants to list. Saying that is more use
+    // than printing an empty list.
+    let files = model
+        .files
+        .as_ref()
+        .ok_or_else(|| Error::ModelHasNoLanguages {
+            model_id: id.to_string(),
+        })?;
+
     println!("Model: {}", model.name);
     println!();
     println!("Available label languages:");
     println!();
 
-    for lang in &model.files.labels.languages {
-        let default_marker = if lang.code == model.files.labels.default_language {
+    for lang in &files.labels.languages {
+        let default_marker = if lang.code == files.labels.default_language {
             " (default)"
         } else {
             ""

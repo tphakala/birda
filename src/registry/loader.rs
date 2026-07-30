@@ -322,7 +322,7 @@ mod tests {
                         attribution_required: false,
                         share_alike: false,
                     },
-                    files: ModelFiles {
+                    files: Some(ModelFiles {
                         model: FileInfo {
                             url: "https://example.com/model.onnx".into(),
                             filename: "model.onnx".into(),
@@ -341,7 +341,11 @@ mod tests {
                         bsg_calibration: None,
                         bsg_migration: None,
                         bsg_distribution_maps: None,
-                    },
+                    }),
+                    build: None,
+                    default_variant: None,
+                    selection: std::collections::BTreeMap::new(),
+                    variants: Vec::new(),
                     recommended: false,
                 },
                 ModelEntry {
@@ -358,7 +362,7 @@ mod tests {
                         attribution_required: true,
                         share_alike: false,
                     },
-                    files: ModelFiles {
+                    files: Some(ModelFiles {
                         model: FileInfo {
                             url: "https://example.com/model2.onnx".into(),
                             filename: "model2.onnx".into(),
@@ -377,7 +381,11 @@ mod tests {
                         bsg_calibration: None,
                         bsg_migration: None,
                         bsg_distribution_maps: None,
-                    },
+                    }),
+                    build: None,
+                    default_variant: None,
+                    selection: std::collections::BTreeMap::new(),
+                    variants: Vec::new(),
                     recommended: true,
                 },
             ],

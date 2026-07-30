@@ -395,6 +395,8 @@ Writes are also atomic. The new configuration goes to a temporary file beside `c
 
 A configuration file birda creates for the first time is readable only by you (mode 0600 on Unix). An existing file keeps whatever mode you gave it.
 
+`registry.json`, in the same directory, is written the same way, so the hardlink and bind-mount notes above apply to it too. One difference: a `registry.json` that is a **symlink** is replaced by a regular file rather than followed, because only `config.toml` resolves its link before writing. It is also rewritten whenever an upgrade ships a newer bundled registry, so any local edits to it are replaced at that point rather than merged.
+
 ### Environment Variables
 
 All options can be set via environment variables:

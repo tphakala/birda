@@ -138,8 +138,17 @@ fn part_path(dest: &Path) -> Result<PathBuf> {
 }
 
 /// Move a completed download onto its destination, consuming the part file.
+///
+/// The directory fsync is not decoration. Without it a power loss right after a
+/// download can leave a directory entry pointing at nothing, while the
+/// `is_installed` check that decides whether to download the model again has
+/// already been satisfied by the same rename. That leaves the install looking
+/// complete and the model unusable, which is worse than not having downloaded it
+/// at all.
 fn finalize_download(part: &Path, dest: &Path) -> Result<()> {
-    std::fs::rename(part, dest).map_err(Error::Io)
+    std::fs::rename(part, dest).map_err(Error::Io)?;
+    crate::utils::fs::sync_parent_directory(dest);
+    Ok(())
 }
 
 /// Stream a response body into `dest`, updating the progress bar as it goes.

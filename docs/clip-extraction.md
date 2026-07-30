@@ -102,6 +102,8 @@ Output files are:
 - **Bit depth**: 16-bit signed integer
 - **Sample rate**: Same as source audio
 
+Each clip is written to a temporary file in its species directory and renamed into place, so a clip appears at its final path complete or not at all. Without that, interrupting an extraction leaves a WAV whose header says it holds no audio, because the length fields are only filled in once the clip has been written. Two things follow. A clip file that is a **hardlink** stops tracking after a re-extraction, since a rename gives the path a new inode. And a clip keeps the permissions your umask asks for, exactly as before, so a clip directory served by a web server or read by another account keeps working.
+
 ## Examples
 
 ### Basic Extraction

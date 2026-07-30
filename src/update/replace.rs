@@ -146,6 +146,15 @@ fn replace_unix(exe_path: &Path, new_binary_path: &Path) -> Result<bool> {
         });
     }
 
+    // Both renames, then one directory fsync. The same gap the model installer
+    // had, and worse here, because the file being published is birda itself: a
+    // rename is atomic for a reader, but the *record* of it is not durable until
+    // the directory is flushed, so a power loss can persist the first rename
+    // without the second and leave nothing at the executable's path. One fsync
+    // covers both, since they are in the same directory and the flush orders
+    // everything before it.
+    crate::utils::fs::sync_parent_directory(exe_path);
+
     Ok(true) // backup kept
 }
 

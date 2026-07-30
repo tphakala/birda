@@ -116,8 +116,14 @@ pub struct ModelVariant {
     /// Display order of the continental group.
     #[serde(default)]
     pub group_order: u32,
-    /// Number of species this variant scores.
-    pub classes: usize,
+    /// Number of classes this variant scores, when the publisher states it.
+    ///
+    /// `Option` rather than a plain count because not every manifest carries
+    /// it: Perch declares class counts only in its per-region metadata, and not
+    /// at all for its global model. Defaulting a missing count to zero would
+    /// print "0 species" next to a perfectly good model.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub classes: Option<usize>,
     /// ONNX model file.
     pub model: FileInfo,
     /// Labels file matching this variant's class list.
@@ -265,7 +271,7 @@ mod tests {
             group: region.map(|_| "europe".to_string()),
             group_name: region.map(|_| "Europe".to_string()),
             group_order: 0,
-            classes,
+            classes: Some(classes),
             model: FileInfo {
                 url: format!("https://huggingface.co/x/m-{id}.onnx"),
                 filename: format!("m-{id}.onnx"),
@@ -339,9 +345,9 @@ mod tests {
     fn test_find_variant_matches_region_and_id() {
         let entry = variant_entry();
         let found = entry.find_variant(Some("nordic"), "fp32").unwrap();
-        assert_eq!(found.classes, 422);
+        assert_eq!(found.classes, Some(422));
         let global = entry.find_variant(None, "fp32").unwrap();
-        assert_eq!(global.classes, 11560);
+        assert_eq!(global.classes, Some(11560));
     }
 
     #[test]

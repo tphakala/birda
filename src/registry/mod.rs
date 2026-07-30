@@ -96,6 +96,20 @@ pub fn list_available(registry: &Registry, output_mode: crate::config::OutputMod
     println!("Run 'birda models info <id>' for details.");
 }
 
+/// Render a variant's class count, or say the publisher did not state one.
+///
+/// Perch declares class counts only in its per-region metadata and not at all
+/// for its global model, so the count is genuinely unknown for some entries.
+/// Printing "0 species" there would be a lie about the model rather than an
+/// admission about the manifest.
+#[must_use]
+pub fn species_count_label(classes: Option<usize>) -> String {
+    classes.map_or_else(
+        || "species count not published".to_string(),
+        |count| format!("{count} species"),
+    )
+}
+
 /// Render a licence identifier with the restrictions that apply to it.
 ///
 /// One renderer for classifiers and the range filter alike. Listing them
@@ -293,8 +307,8 @@ pub fn show_info(registry: &Registry, id: &str) -> Result<()> {
         println!("Variants: {variant_ids}");
         if let Some(global) = global {
             println!(
-                "  Global model: {} species, {}",
-                global.classes,
+                "  Global model: {}, {}",
+                species_count_label(global.classes),
                 crate::config::geomodel::human_size(global.model.size_bytes)
             );
         }
@@ -383,9 +397,9 @@ pub fn show_regions(registry: &Registry, id: &str) -> Result<()> {
             current_group = Some(group);
         }
         println!(
-            "  {:<24} {:>6} species   {}",
+            "  {:<24} {:>28}   {}",
             variant.region.as_deref().unwrap_or("global"),
-            variant.classes,
+            species_count_label(variant.classes),
             crate::config::geomodel::human_size(variant.model.size_bytes),
         );
     }

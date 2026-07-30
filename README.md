@@ -794,10 +794,49 @@ birda models install perch-v2
 
 ### BirdNET v3.0
 
-> **Note**: BirdNET v3.0 is currently in **developer preview** and not yet available for production use.
+```bash
+birda models install birdnet-v30
+```
 
+> **Note**: these are **developer preview** weights (`3.0-preview3.1`), not a GA release. The repository's `TERMS_OF_USE.txt` adds restrictions beyond the licence.
+
+- **License**: CC BY-SA 4.0 (commercial use permitted, unlike v2.4)
+- **Vendor**: Cornell Lab of Ornithology & Chemnitz University of Technology
+- **Sample rate**: 32kHz
+- **Segment duration**: 5 seconds
+- **Species**: 11,560 classes globally, fewer per region
 - **Model type**: `birdnet-v30`
-- **Status**: Developer preview only
+- **Source**: [BirdNET-v3.0-Models on Hugging Face](https://huggingface.co/tphakala/BirdNET-v3.0-Models)
+
+### Regional models
+
+BirdNET v3.0 and Perch v2 both publish 39 region-sliced models alongside the global one. A regional model scores only the species of that region, which cuts peak memory by roughly two thirds and latency by 15 to 30 percent. It is numerically identical to the global model on the species it keeps, so accuracy is unchanged for those species.
+
+```bash
+birda models regions birdnet-v30              # browse the tiles, grouped by continent
+birda models install birdnet-v30 --region nordic
+birda -m birdnet-v30-nordic recording.wav
+```
+
+A regional install is registered under `<model-id>-<region>`, so a global and a regional model coexist and both stay selectable with `-m`.
+
+### Choosing a variant
+
+Each model publishes several files for different hardware: `fp32` and `fp16` for BirdNET v3.0, `no-dft-fp32` and `int8-arm` for Perch v2. birda picks one at install time from the configured inference device and the GPU libraries present on the system, prints which it chose and why, and accepts an override:
+
+```bash
+birda models install birdnet-v30 --variant fp16
+```
+
+Auto-selection is deliberately conservative. It picks a narrow variant only on a definite signal, and otherwise installs the family default, which every backend supports. On a memory-constrained CPU device prefer a regional `fp32` over a global `fp16`: fp16 is not a CPU memory saving.
+
+### Downloading through a mirror
+
+Set `HF_ENDPOINT` to use a Hugging Face mirror, for networks where huggingface.co is unreachable:
+
+```bash
+HF_ENDPOINT=https://hf-mirror.com birda models install birdnet-v30
+```
 
 ### BirdNET Geomodel v3.0.2
 

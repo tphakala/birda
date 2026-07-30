@@ -286,7 +286,7 @@ mod tests {
             group: None,
             group_name: None,
             group_order: 0,
-            classes: 10,
+            classes: Some(10),
             model: file(&format!("{id}.onnx")),
             labels: file("labels.txt"),
         }

@@ -59,6 +59,56 @@ fn test_every_generated_variant_has_a_checksum_and_a_size() {
 }
 
 #[test]
+fn test_no_variant_claims_zero_classes() {
+    // A missing class count must stay missing rather than defaulting to zero.
+    // Perch declares counts only in its per-region metadata, so an unwrap_or_default
+    // in the generator printed "0 species" next to a working 62 MB model.
+    for model in parsed().models.iter().filter(|m| m.is_variant_based()) {
+        for variant in &model.variants {
+            assert_ne!(
+                variant.classes,
+                Some(0),
+                "{} variant {} claims zero classes",
+                model.id,
+                variant.id
+            );
+        }
+    }
+}
+
+#[test]
+fn test_every_regional_variant_states_its_class_count() {
+    // The count is the whole point of choosing a region, so a regional tile
+    // without one means the metadata vendoring missed that region.
+    for model in parsed().models.iter().filter(|m| m.is_variant_based()) {
+        for variant in model.variants.iter().filter(|v| v.region.is_some()) {
+            assert!(
+                variant.classes.is_some(),
+                "{} region {:?} has no class count",
+                model.id,
+                variant.region
+            );
+        }
+    }
+}
+
+#[test]
+fn test_every_regional_variant_has_display_metadata() {
+    // Without a group the region falls into an "Other" bucket in the listing,
+    // which is what a missing metadata.json looks like from the outside.
+    for model in parsed().models.iter().filter(|m| m.is_variant_based()) {
+        for variant in model.variants.iter().filter(|v| v.region.is_some()) {
+            assert!(
+                variant.region_name.is_some() && variant.group_name.is_some(),
+                "{} region {:?} has no display metadata",
+                model.id,
+                variant.region
+            );
+        }
+    }
+}
+
+#[test]
 fn test_every_variant_entry_declares_a_default_variant_that_exists() {
     // Selection falls back to this, so an entry naming a variant it does not
     // publish would fail at install time on exactly the hosts with no better

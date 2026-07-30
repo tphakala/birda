@@ -1864,7 +1864,6 @@
         {
           "id": "fp32",
           "group_order": 0,
-          "classes": 0,
           "model": {
             "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/full/perch_v2_fp32.onnx",
             "filename": "perch_v2_fp32.onnx",
@@ -1879,7 +1878,6 @@
         {
           "id": "int8-arm",
           "group_order": 0,
-          "classes": 0,
           "model": {
             "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/full/perch_v2_int8_arm.onnx",
             "filename": "perch_v2_int8_arm.onnx",
@@ -1894,7 +1892,6 @@
         {
           "id": "no-dft-fp32",
           "group_order": 0,
-          "classes": 0,
           "model": {
             "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/full/perch_v2_no_dft_fp32.onnx",
             "filename": "perch_v2_no_dft_fp32.onnx",
@@ -1913,7 +1910,7 @@
           "group": "south-america",
           "group_name": "South America",
           "group_order": 3,
-          "classes": 0,
+          "classes": 3388,
           "model": {
             "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/amazonia/perch_v2_amazonia_int8_arm.onnx",
             "filename": "perch_v2_amazonia_int8_arm.onnx",
@@ -1932,7 +1929,7 @@
           "group": "south-america",
           "group_name": "South America",
           "group_order": 3,
-          "classes": 0,
+          "classes": 3388,
           "model": {
             "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/amazonia/perch_v2_amazonia_no_dft_fp32.onnx",
             "filename": "perch_v2_amazonia_no_dft_fp32.onnx",
@@ -1951,7 +1948,7 @@
           "group": "south-america",
           "group_name": "South America",
           "group_order": 3,
-          "classes": 0,
+          "classes": 3535,
           "model": {
             "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/andes/perch_v2_andes_int8_arm.onnx",
             "filename": "perch_v2_andes_int8_arm.onnx",
@@ -1970,7 +1967,7 @@
           "group": "south-america",
           "group_name": "South America",
           "group_order": 3,
-          "classes": 0,
+          "classes": 3535,
           "model": {
             "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/andes/perch_v2_andes_no_dft_fp32.onnx",
             "filename": "perch_v2_andes_no_dft_fp32.onnx",
@@ -1989,7 +1986,7 @@
           "group": "oceania",
           "group_name": "Oceania",
           "group_order": 5,
-          "classes": 0,
+          "classes": 946,
           "model": {
             "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/australia-east/perch_v2_australia-east_int8_arm.onnx",
             "filename": "perch_v2_australia-east_int8_arm.onnx",
@@ -2008,7 +2005,7 @@
           "group": "oceania",
           "group_name": "Oceania",
           "group_order": 5,
-          "classes": 0,
+          "classes": 946,
           "model": {
             "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/australia-east/perch_v2_australia-east_no_dft_fp32.onnx",
             "filename": "perch_v2_australia-east_no_dft_fp32.onnx",
@@ -2027,7 +2024,7 @@
           "group": "europe",
           "group_name": "Europe",
           "group_order": 0,
-          "classes": 0,
+          "classes": 426,
           "model": {
             "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/azores/perch_v2_azores_int8_arm.onnx",
             "filename": "perch_v2_azores_int8_arm.onnx",
@@ -2046,7 +2043,7 @@
           "group": "europe",
           "group_name": "Europe",
           "group_order": 0,
-          "classes": 0,
+          "classes": 426,
           "model": {
             "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/azores/perch_v2_azores_no_dft_fp32.onnx",
             "filename": "perch_v2_azores_no_dft_fp32.onnx",
@@ -2065,7 +2062,7 @@
           "group": "europe",
           "group_name": "Europe",
           "group_order": 0,
-          "classes": 0,
+          "classes": 655,
           "model": {
             "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/baltics/perch_v2_baltics_int8_arm.onnx",
             "filename": "perch_v2_baltics_int8_arm.onnx",
@@ -2084,7 +2081,7 @@
           "group": "europe",
           "group_name": "Europe",
           "group_order": 0,
-          "classes": 0,
+          "classes": 655,
           "model": {
             "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/baltics/perch_v2_baltics_no_dft_fp32.onnx",
             "filename": "perch_v2_baltics_no_dft_fp32.onnx",
@@ -2103,7 +2100,7 @@
           "group": "europe",
           "group_name": "Europe",
           "group_order": 0,
-          "classes": 0,
+          "classes": 776,
           "model": {
             "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/british-isles/perch_v2_british-isles_int8_arm.onnx",
             "filename": "perch_v2_british-isles_int8_arm.onnx",
@@ -2122,7 +2119,7 @@
           "group": "europe",
           "group_name": "Europe",
           "group_order": 0,
-          "classes": 0,
+          "classes": 776,
           "model": {
             "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/british-isles/perch_v2_british-isles_no_dft_fp32.onnx",
             "filename": "perch_v2_british-isles_no_dft_fp32.onnx",
@@ -2141,7 +2138,7 @@
           "group": "europe",
           "group_name": "Europe",
           "group_order": 0,
-          "classes": 0,
+          "classes": 598,
           "model": {
             "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/canary-islands/perch_v2_canary-islands_int8_arm.onnx",
             "filename": "perch_v2_canary-islands_int8_arm.onnx",
@@ -2160,7 +2157,7 @@
           "group": "europe",
           "group_name": "Europe",
           "group_order": 0,
-          "classes": 0,
+          "classes": 598,
           "model": {
             "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/canary-islands/perch_v2_canary-islands_no_dft_fp32.onnx",
             "filename": "perch_v2_canary-islands_no_dft_fp32.onnx",
@@ -2179,7 +2176,7 @@
           "group": "africa",
           "group_name": "Africa",
           "group_order": 4,
-          "classes": 0,
+          "classes": 346,
           "model": {
             "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/cape-verde/perch_v2_cape-verde_int8_arm.onnx",
             "filename": "perch_v2_cape-verde_int8_arm.onnx",
@@ -2198,7 +2195,7 @@
           "group": "africa",
           "group_name": "Africa",
           "group_order": 4,
-          "classes": 0,
+          "classes": 346,
           "model": {
             "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/cape-verde/perch_v2_cape-verde_no_dft_fp32.onnx",
             "filename": "perch_v2_cape-verde_no_dft_fp32.onnx",
@@ -2217,7 +2214,7 @@
           "group": "europe",
           "group_name": "Europe",
           "group_order": 0,
-          "classes": 0,
+          "classes": 873,
           "model": {
             "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/central-europe/perch_v2_central-europe_int8_arm.onnx",
             "filename": "perch_v2_central-europe_int8_arm.onnx",
@@ -2236,7 +2233,7 @@
           "group": "europe",
           "group_name": "Europe",
           "group_order": 0,
-          "classes": 0,
+          "classes": 873,
           "model": {
             "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/central-europe/perch_v2_central-europe_no_dft_fp32.onnx",
             "filename": "perch_v2_central-europe_no_dft_fp32.onnx",
@@ -2255,7 +2252,7 @@
           "group": "asia",
           "group_name": "Asia",
           "group_order": 1,
-          "classes": 0,
+          "classes": 976,
           "model": {
             "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/china-north-central/perch_v2_china-north-central_int8_arm.onnx",
             "filename": "perch_v2_china-north-central_int8_arm.onnx",
@@ -2274,7 +2271,7 @@
           "group": "asia",
           "group_name": "Asia",
           "group_order": 1,
-          "classes": 0,
+          "classes": 976,
           "model": {
             "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/china-north-central/perch_v2_china-north-central_no_dft_fp32.onnx",
             "filename": "perch_v2_china-north-central_no_dft_fp32.onnx",
@@ -2293,7 +2290,7 @@
           "group": "asia",
           "group_name": "Asia",
           "group_order": 1,
-          "classes": 0,
+          "classes": 877,
           "model": {
             "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/china-northeast/perch_v2_china-northeast_int8_arm.onnx",
             "filename": "perch_v2_china-northeast_int8_arm.onnx",
@@ -2312,7 +2309,7 @@
           "group": "asia",
           "group_name": "Asia",
           "group_order": 1,
-          "classes": 0,
+          "classes": 877,
           "model": {
             "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/china-northeast/perch_v2_china-northeast_no_dft_fp32.onnx",
             "filename": "perch_v2_china-northeast_no_dft_fp32.onnx",
@@ -2331,7 +2328,7 @@
           "group": "asia",
           "group_name": "Asia",
           "group_order": 1,
-          "classes": 0,
+          "classes": 1373,
           "model": {
             "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/china-southeast/perch_v2_china-southeast_int8_arm.onnx",
             "filename": "perch_v2_china-southeast_int8_arm.onnx",
@@ -2350,7 +2347,7 @@
           "group": "asia",
           "group_name": "Asia",
           "group_order": 1,
-          "classes": 0,
+          "classes": 1373,
           "model": {
             "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/china-southeast/perch_v2_china-southeast_no_dft_fp32.onnx",
             "filename": "perch_v2_china-southeast_no_dft_fp32.onnx",
@@ -2369,7 +2366,7 @@
           "group": "asia",
           "group_name": "Asia",
           "group_order": 1,
-          "classes": 0,
+          "classes": 1409,
           "model": {
             "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/china-southwest/perch_v2_china-southwest_int8_arm.onnx",
             "filename": "perch_v2_china-southwest_int8_arm.onnx",
@@ -2388,7 +2385,7 @@
           "group": "asia",
           "group_name": "Asia",
           "group_order": 1,
-          "classes": 0,
+          "classes": 1409,
           "model": {
             "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/china-southwest/perch_v2_china-southwest_no_dft_fp32.onnx",
             "filename": "perch_v2_china-southwest_no_dft_fp32.onnx",
@@ -2407,7 +2404,7 @@
           "group": "south-america",
           "group_name": "South America",
           "group_order": 3,
-          "classes": 0,
+          "classes": 2184,
           "model": {
             "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/eastern-brazil/perch_v2_eastern-brazil_int8_arm.onnx",
             "filename": "perch_v2_eastern-brazil_int8_arm.onnx",
@@ -2426,7 +2423,7 @@
           "group": "south-america",
           "group_name": "South America",
           "group_order": 3,
-          "classes": 0,
+          "classes": 2184,
           "model": {
             "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/eastern-brazil/perch_v2_eastern-brazil_no_dft_fp32.onnx",
             "filename": "perch_v2_eastern-brazil_no_dft_fp32.onnx",
@@ -2445,7 +2442,7 @@
           "group": "europe",
           "group_name": "Europe",
           "group_order": 0,
-          "classes": 0,
+          "classes": 739,
           "model": {
             "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/eastern-europe/perch_v2_eastern-europe_int8_arm.onnx",
             "filename": "perch_v2_eastern-europe_int8_arm.onnx",
@@ -2464,7 +2461,7 @@
           "group": "europe",
           "group_name": "Europe",
           "group_order": 0,
-          "classes": 0,
+          "classes": 739,
           "model": {
             "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/eastern-europe/perch_v2_eastern-europe_no_dft_fp32.onnx",
             "filename": "perch_v2_eastern-europe_no_dft_fp32.onnx",
@@ -2483,7 +2480,7 @@
           "group": "south-america",
           "group_name": "South America",
           "group_order": 3,
-          "classes": 0,
+          "classes": 336,
           "model": {
             "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/galapagos/perch_v2_galapagos_int8_arm.onnx",
             "filename": "perch_v2_galapagos_int8_arm.onnx",
@@ -2502,7 +2499,7 @@
           "group": "south-america",
           "group_name": "South America",
           "group_order": 3,
-          "classes": 0,
+          "classes": 336,
           "model": {
             "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/galapagos/perch_v2_galapagos_no_dft_fp32.onnx",
             "filename": "perch_v2_galapagos_no_dft_fp32.onnx",
@@ -2521,7 +2518,7 @@
           "group": "oceania",
           "group_name": "Oceania",
           "group_order": 5,
-          "classes": 0,
+          "classes": 478,
           "model": {
             "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/hawaii/perch_v2_hawaii_int8_arm.onnx",
             "filename": "perch_v2_hawaii_int8_arm.onnx",
@@ -2540,7 +2537,7 @@
           "group": "oceania",
           "group_name": "Oceania",
           "group_order": 5,
-          "classes": 0,
+          "classes": 478,
           "model": {
             "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/hawaii/perch_v2_hawaii_no_dft_fp32.onnx",
             "filename": "perch_v2_hawaii_no_dft_fp32.onnx",
@@ -2559,7 +2556,7 @@
           "group": "asia",
           "group_name": "Asia",
           "group_order": 1,
-          "classes": 0,
+          "classes": 1407,
           "model": {
             "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/himalaya/perch_v2_himalaya_int8_arm.onnx",
             "filename": "perch_v2_himalaya_int8_arm.onnx",
@@ -2578,7 +2575,7 @@
           "group": "asia",
           "group_name": "Asia",
           "group_order": 1,
-          "classes": 0,
+          "classes": 1407,
           "model": {
             "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/himalaya/perch_v2_himalaya_no_dft_fp32.onnx",
             "filename": "perch_v2_himalaya_no_dft_fp32.onnx",
@@ -2597,7 +2594,7 @@
           "group": "europe",
           "group_name": "Europe",
           "group_order": 0,
-          "classes": 0,
+          "classes": 856,
           "model": {
             "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/iberia/perch_v2_iberia_int8_arm.onnx",
             "filename": "perch_v2_iberia_int8_arm.onnx",
@@ -2616,7 +2613,7 @@
           "group": "europe",
           "group_name": "Europe",
           "group_order": 0,
-          "classes": 0,
+          "classes": 856,
           "model": {
             "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/iberia/perch_v2_iberia_no_dft_fp32.onnx",
             "filename": "perch_v2_iberia_no_dft_fp32.onnx",
@@ -2635,7 +2632,7 @@
           "group": "europe",
           "group_name": "Europe",
           "group_order": 0,
-          "classes": 0,
+          "classes": 591,
           "model": {
             "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/iceland/perch_v2_iceland_int8_arm.onnx",
             "filename": "perch_v2_iceland_int8_arm.onnx",
@@ -2654,7 +2651,7 @@
           "group": "europe",
           "group_name": "Europe",
           "group_order": 0,
-          "classes": 0,
+          "classes": 591,
           "model": {
             "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/iceland/perch_v2_iceland_no_dft_fp32.onnx",
             "filename": "perch_v2_iceland_no_dft_fp32.onnx",
@@ -2673,7 +2670,7 @@
           "group": "asia",
           "group_name": "Asia",
           "group_order": 1,
-          "classes": 0,
+          "classes": 1406,
           "model": {
             "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/indo-gangetic/perch_v2_indo-gangetic_int8_arm.onnx",
             "filename": "perch_v2_indo-gangetic_int8_arm.onnx",
@@ -2692,7 +2689,7 @@
           "group": "asia",
           "group_name": "Asia",
           "group_order": 1,
-          "classes": 0,
+          "classes": 1406,
           "model": {
             "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/indo-gangetic/perch_v2_indo-gangetic_no_dft_fp32.onnx",
             "filename": "perch_v2_indo-gangetic_no_dft_fp32.onnx",
@@ -2711,7 +2708,7 @@
           "group": "asia",
           "group_name": "Asia",
           "group_order": 1,
-          "classes": 0,
+          "classes": 799,
           "model": {
             "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/japan/perch_v2_japan_int8_arm.onnx",
             "filename": "perch_v2_japan_int8_arm.onnx",
@@ -2730,7 +2727,7 @@
           "group": "asia",
           "group_name": "Asia",
           "group_order": 1,
-          "classes": 0,
+          "classes": 799,
           "model": {
             "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/japan/perch_v2_japan_no_dft_fp32.onnx",
             "filename": "perch_v2_japan_no_dft_fp32.onnx",
@@ -2749,7 +2746,7 @@
           "group": "europe",
           "group_name": "Europe",
           "group_order": 0,
-          "classes": 0,
+          "classes": 459,
           "model": {
             "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/madeira/perch_v2_madeira_int8_arm.onnx",
             "filename": "perch_v2_madeira_int8_arm.onnx",
@@ -2768,7 +2765,7 @@
           "group": "europe",
           "group_name": "Europe",
           "group_order": 0,
-          "classes": 0,
+          "classes": 459,
           "model": {
             "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/madeira/perch_v2_madeira_no_dft_fp32.onnx",
             "filename": "perch_v2_madeira_no_dft_fp32.onnx",
@@ -2787,7 +2784,7 @@
           "group": "africa",
           "group_name": "Africa",
           "group_order": 4,
-          "classes": 0,
+          "classes": 272,
           "model": {
             "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/mauritius/perch_v2_mauritius_int8_arm.onnx",
             "filename": "perch_v2_mauritius_int8_arm.onnx",
@@ -2806,7 +2803,7 @@
           "group": "africa",
           "group_name": "Africa",
           "group_order": 4,
-          "classes": 0,
+          "classes": 272,
           "model": {
             "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/mauritius/perch_v2_mauritius_no_dft_fp32.onnx",
             "filename": "perch_v2_mauritius_no_dft_fp32.onnx",
@@ -2825,7 +2822,7 @@
           "group": "oceania",
           "group_name": "Oceania",
           "group_order": 5,
-          "classes": 0,
+          "classes": 377,
           "model": {
             "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/new-caledonia/perch_v2_new-caledonia_int8_arm.onnx",
             "filename": "perch_v2_new-caledonia_int8_arm.onnx",
@@ -2844,7 +2841,7 @@
           "group": "oceania",
           "group_name": "Oceania",
           "group_order": 5,
-          "classes": 0,
+          "classes": 377,
           "model": {
             "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/new-caledonia/perch_v2_new-caledonia_no_dft_fp32.onnx",
             "filename": "perch_v2_new-caledonia_no_dft_fp32.onnx",
@@ -2863,7 +2860,7 @@
           "group": "oceania",
           "group_name": "Oceania",
           "group_order": 5,
-          "classes": 0,
+          "classes": 486,
           "model": {
             "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/new-zealand/perch_v2_new-zealand_int8_arm.onnx",
             "filename": "perch_v2_new-zealand_int8_arm.onnx",
@@ -2882,7 +2879,7 @@
           "group": "oceania",
           "group_name": "Oceania",
           "group_order": 5,
-          "classes": 0,
+          "classes": 486,
           "model": {
             "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/new-zealand/perch_v2_new-zealand_no_dft_fp32.onnx",
             "filename": "perch_v2_new-zealand_no_dft_fp32.onnx",
@@ -2901,7 +2898,7 @@
           "group": "europe",
           "group_name": "Europe",
           "group_order": 0,
-          "classes": 0,
+          "classes": 638,
           "model": {
             "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/nordic/perch_v2_nordic_int8_arm.onnx",
             "filename": "perch_v2_nordic_int8_arm.onnx",
@@ -2920,7 +2917,7 @@
           "group": "europe",
           "group_name": "Europe",
           "group_order": 0,
-          "classes": 0,
+          "classes": 638,
           "model": {
             "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/nordic/perch_v2_nordic_no_dft_fp32.onnx",
             "filename": "perch_v2_nordic_no_dft_fp32.onnx",
@@ -2939,7 +2936,7 @@
           "group": "north-america",
           "group_name": "North America",
           "group_order": 2,
-          "classes": 0,
+          "classes": 999,
           "model": {
             "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/north-america-east/perch_v2_north-america-east_int8_arm.onnx",
             "filename": "perch_v2_north-america-east_int8_arm.onnx",
@@ -2958,7 +2955,7 @@
           "group": "north-america",
           "group_name": "North America",
           "group_order": 2,
-          "classes": 0,
+          "classes": 999,
           "model": {
             "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/north-america-east/perch_v2_north-america-east_no_dft_fp32.onnx",
             "filename": "perch_v2_north-america-east_no_dft_fp32.onnx",
@@ -2977,7 +2974,7 @@
           "group": "north-america",
           "group_name": "North America",
           "group_order": 2,
-          "classes": 0,
+          "classes": 1002,
           "model": {
             "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/north-america-west/perch_v2_north-america-west_int8_arm.onnx",
             "filename": "perch_v2_north-america-west_int8_arm.onnx",
@@ -2996,7 +2993,7 @@
           "group": "north-america",
           "group_name": "North America",
           "group_order": 2,
-          "classes": 0,
+          "classes": 1002,
           "model": {
             "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/north-america-west/perch_v2_north-america-west_no_dft_fp32.onnx",
             "filename": "perch_v2_north-america-west_no_dft_fp32.onnx",
@@ -3015,7 +3012,7 @@
           "group": "africa",
           "group_name": "Africa",
           "group_order": 4,
-          "classes": 0,
+          "classes": 274,
           "model": {
             "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/reunion/perch_v2_reunion_int8_arm.onnx",
             "filename": "perch_v2_reunion_int8_arm.onnx",
@@ -3034,7 +3031,7 @@
           "group": "africa",
           "group_name": "Africa",
           "group_order": 4,
-          "classes": 0,
+          "classes": 274,
           "model": {
             "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/reunion/perch_v2_reunion_no_dft_fp32.onnx",
             "filename": "perch_v2_reunion_no_dft_fp32.onnx",
@@ -3053,7 +3050,7 @@
           "group": "africa",
           "group_name": "Africa",
           "group_order": 4,
-          "classes": 0,
+          "classes": 324,
           "model": {
             "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/sao-tome-principe/perch_v2_sao-tome-principe_int8_arm.onnx",
             "filename": "perch_v2_sao-tome-principe_int8_arm.onnx",
@@ -3072,7 +3069,7 @@
           "group": "africa",
           "group_name": "Africa",
           "group_order": 4,
-          "classes": 0,
+          "classes": 324,
           "model": {
             "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/sao-tome-principe/perch_v2_sao-tome-principe_no_dft_fp32.onnx",
             "filename": "perch_v2_sao-tome-principe_no_dft_fp32.onnx",
@@ -3091,7 +3088,7 @@
           "group": "africa",
           "group_name": "Africa",
           "group_order": 4,
-          "classes": 0,
+          "classes": 318,
           "model": {
             "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/seychelles/perch_v2_seychelles_int8_arm.onnx",
             "filename": "perch_v2_seychelles_int8_arm.onnx",
@@ -3110,7 +3107,7 @@
           "group": "africa",
           "group_name": "Africa",
           "group_order": 4,
-          "classes": 0,
+          "classes": 318,
           "model": {
             "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/seychelles/perch_v2_seychelles_no_dft_fp32.onnx",
             "filename": "perch_v2_seychelles_no_dft_fp32.onnx",
@@ -3129,7 +3126,7 @@
           "group": "asia",
           "group_name": "Asia",
           "group_order": 1,
-          "classes": 0,
+          "classes": 879,
           "model": {
             "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/south-asia-peninsular/perch_v2_south-asia-peninsular_int8_arm.onnx",
             "filename": "perch_v2_south-asia-peninsular_int8_arm.onnx",
@@ -3148,7 +3145,7 @@
           "group": "asia",
           "group_name": "Asia",
           "group_order": 1,
-          "classes": 0,
+          "classes": 879,
           "model": {
             "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/south-asia-peninsular/perch_v2_south-asia-peninsular_no_dft_fp32.onnx",
             "filename": "perch_v2_south-asia-peninsular_no_dft_fp32.onnx",
@@ -3167,7 +3164,7 @@
           "group": "africa",
           "group_name": "Africa",
           "group_order": 4,
-          "classes": 0,
+          "classes": 1002,
           "model": {
             "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/southern-africa/perch_v2_southern-africa_int8_arm.onnx",
             "filename": "perch_v2_southern-africa_int8_arm.onnx",
@@ -3186,7 +3183,7 @@
           "group": "africa",
           "group_name": "Africa",
           "group_order": 4,
-          "classes": 0,
+          "classes": 1002,
           "model": {
             "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/southern-africa/perch_v2_southern-africa_no_dft_fp32.onnx",
             "filename": "perch_v2_southern-africa_no_dft_fp32.onnx",
@@ -3205,7 +3202,7 @@
           "group": "south-america",
           "group_name": "South America",
           "group_order": 3,
-          "classes": 0,
+          "classes": 1855,
           "model": {
             "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/southern-cone/perch_v2_southern-cone_int8_arm.onnx",
             "filename": "perch_v2_southern-cone_int8_arm.onnx",
@@ -3224,7 +3221,7 @@
           "group": "south-america",
           "group_name": "South America",
           "group_order": 3,
-          "classes": 0,
+          "classes": 1855,
           "model": {
             "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/southern-cone/perch_v2_southern-cone_no_dft_fp32.onnx",
             "filename": "perch_v2_southern-cone_no_dft_fp32.onnx",
@@ -3243,7 +3240,7 @@
           "group": "europe",
           "group_name": "Europe",
           "group_order": 0,
-          "classes": 0,
+          "classes": 839,
           "model": {
             "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/southern-europe/perch_v2_southern-europe_int8_arm.onnx",
             "filename": "perch_v2_southern-europe_int8_arm.onnx",
@@ -3262,7 +3259,7 @@
           "group": "europe",
           "group_name": "Europe",
           "group_order": 0,
-          "classes": 0,
+          "classes": 839,
           "model": {
             "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/southern-europe/perch_v2_southern-europe_no_dft_fp32.onnx",
             "filename": "perch_v2_southern-europe_no_dft_fp32.onnx",
@@ -3281,7 +3278,7 @@
           "group": "europe",
           "group_name": "Europe",
           "group_order": 0,
-          "classes": 0,
+          "classes": 480,
           "model": {
             "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/svalbard/perch_v2_svalbard_int8_arm.onnx",
             "filename": "perch_v2_svalbard_int8_arm.onnx",
@@ -3300,7 +3297,7 @@
           "group": "europe",
           "group_name": "Europe",
           "group_order": 0,
-          "classes": 0,
+          "classes": 480,
           "model": {
             "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/svalbard/perch_v2_svalbard_no_dft_fp32.onnx",
             "filename": "perch_v2_svalbard_no_dft_fp32.onnx",
@@ -3319,7 +3316,7 @@
           "group": "asia",
           "group_name": "Asia",
           "group_order": 1,
-          "classes": 0,
+          "classes": 1407,
           "model": {
             "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/tibet/perch_v2_tibet_int8_arm.onnx",
             "filename": "perch_v2_tibet_int8_arm.onnx",
@@ -3338,7 +3335,7 @@
           "group": "asia",
           "group_name": "Asia",
           "group_order": 1,
-          "classes": 0,
+          "classes": 1407,
           "model": {
             "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/tibet/perch_v2_tibet_no_dft_fp32.onnx",
             "filename": "perch_v2_tibet_no_dft_fp32.onnx",
@@ -3357,7 +3354,7 @@
           "group": "europe",
           "group_name": "Europe",
           "group_order": 0,
-          "classes": 0,
+          "classes": 1599,
           "model": {
             "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/western-palearctic/perch_v2_western-palearctic_int8_arm.onnx",
             "filename": "perch_v2_western-palearctic_int8_arm.onnx",
@@ -3376,7 +3373,7 @@
           "group": "europe",
           "group_name": "Europe",
           "group_order": 0,
-          "classes": 0,
+          "classes": 1599,
           "model": {
             "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/western-palearctic/perch_v2_western-palearctic_no_dft_fp32.onnx",
             "filename": "perch_v2_western-palearctic_no_dft_fp32.onnx",

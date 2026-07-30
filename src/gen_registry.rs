@@ -63,6 +63,9 @@ struct RegionMetadata {
     group_display: Option<String>,
     #[serde(default)]
     group_order: u32,
+    /// Class count, where the manifest entry itself does not carry one.
+    #[serde(default)]
+    classes: Option<usize>,
 }
 
 /// Curation entry from `registry-sources.toml`.
@@ -200,7 +203,12 @@ fn build_entry(root: &Path, source: &SourceModel) -> Result<ModelEntry> {
             group: region_meta.and_then(|m| m.group.clone()),
             group_name: region_meta.and_then(|m| m.group_display.clone()),
             group_order: region_meta.map_or(0, |m| m.group_order),
-            classes: model.classes.unwrap_or_default(),
+            // The manifest entry first, then the region's own metadata. Perch
+            // states class counts only in the latter, and not at all for its
+            // global model, which is why this can legitimately end up None.
+            classes: model
+                .classes
+                .or_else(|| region_meta.and_then(|m| m.classes)),
             model: FileInfo {
                 url: file_url(&manifest.repo, &model.path),
                 filename: basename(&model.path)?.to_string(),

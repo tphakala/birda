@@ -1970,8 +1970,8 @@ fn handle_models_install(
                 choice.reason.describe()
             );
             println!(
-                "  {} species, {}",
-                choice.variant.classes,
+                "  {}, {}",
+                registry::species_count_label(choice.variant.classes),
                 config::geomodel::human_size(choice.variant.model.size_bytes)
             );
             println!();

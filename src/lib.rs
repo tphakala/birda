@@ -1668,8 +1668,22 @@ fn handle_models_command(
         ModelsAction::Install {
             id,
             language,
+            region,
+            variant,
             default,
-        } => handle_models_install(&id, language.as_deref(), default, output_mode, assume_yes),
+        } => handle_models_install(
+            &id,
+            language.as_deref(),
+            region.as_deref(),
+            variant.as_deref(),
+            default,
+            output_mode,
+            assume_yes,
+        ),
+        ModelsAction::Regions { id } => {
+            let registry = registry::load_registry()?;
+            registry::show_regions(&registry, &id)
+        }
     }
 }
 
@@ -1902,6 +1916,8 @@ fn handle_models_remove(
 fn handle_models_install(
     id: &str,
     language: Option<&str>,
+    region: Option<&str>,
+    variant: Option<&str>,
     set_default: bool,
     output_mode: OutputMode,
     assume_yes: bool,
@@ -1930,6 +1946,53 @@ fn handle_models_install(
     let model = registry::find_model(&registry, id)
         .ok_or_else(|| Error::ModelNotFoundInRegistry { id: id.to_string() })?;
 
+    let mut config = load_default_config()?;
+
+    // Resolve the variant before the licence prompt, so a typo in --region
+    // fails immediately rather than after the user has accepted a licence for a
+    // download that was never going to start.
+    let choice = if model.is_variant_based() {
+        let choice = registry::select_variant(
+            model,
+            region,
+            variant,
+            config.inference.device,
+            &registry::SystemProbe,
+        )?;
+
+        if !output_mode.is_structured() {
+            println!(
+                "Selected variant {} ({}).",
+                choice.variant.id,
+                choice.reason.describe()
+            );
+            println!(
+                "  {} species, {}",
+                choice.variant.classes,
+                config::geomodel::human_size(choice.variant.model.size_bytes)
+            );
+            println!();
+        }
+
+        Some(choice)
+    } else {
+        // Silently ignoring these would install the global model and leave the
+        // user believing they had a regional one.
+        if region.is_some() {
+            return Err(Error::RegionsNotSupported {
+                model_id: id.to_string(),
+            });
+        }
+        if let Some(requested) = variant {
+            return Err(Error::VariantNotFound {
+                model_id: id.to_string(),
+                variant: requested.to_string(),
+                available: "none, this model publishes a single file".to_string(),
+            });
+        }
+        None
+    };
+
     // Prompt for license acceptance
     let asset = registry::LicensedAsset {
         name: &model.name,
@@ -1949,7 +2012,12 @@ fn handle_models_install(
         message: format!("Failed to create async runtime: {e}"),
     })?;
 
-    let installed = runtime.block_on(async { registry::install_model(model, language).await })?;
+    let installed = match choice.as_ref() {
+        Some(choice) => {
+            runtime.block_on(async { registry::install_variant(model, choice.variant).await })?
+        }
+        None => runtime.block_on(async { registry::install_model(model, language).await })?,
+    };
 
     // Ensure the shared range filter is present so a fresh install can range
     // filter immediately. A failure here is a warning, not an error: the
@@ -2005,9 +2073,6 @@ fn handle_models_install(
         false
     };
 
-    // Add to config
-    let mut config = load_default_config()?;
-
     // Parse model_type from string
     let model_type: ModelType = model
         .model_type
@@ -2019,14 +2084,32 @@ fn handle_models_install(
     let model_path = installed.model.clone();
     let labels_path = installed.labels.clone();
 
+    // A regional install occupies its own key, so a global and a regional model
+    // coexist and both stay selectable with -m. Derived from the provenance,
+    // never from user input.
+    let config_key = installed
+        .provenance
+        .as_ref()
+        .map_or_else(|| id.to_string(), registry::InstallProvenance::config_key);
+
+    // Collected before the insert overwrites the entry that names them, and
+    // deleted only after the config is saved: a crash in between leaves a
+    // config that points exclusively at files which exist.
+    let orphans = registry::orphaned_files(
+        &config,
+        &config_key,
+        &[model_path.clone(), labels_path.clone()],
+    );
+
+    let provenance = installed.provenance;
     config.models.insert(
-        id.to_string(),
+        config_key.clone(),
         ModelConfig {
-            registry_id: None,
-            installed_version: None,
-            installed_build: None,
-            region: None,
-            variant: None,
+            registry_id: Some(id.to_string()),
+            installed_version: provenance.as_ref().map(|p| p.version.clone()),
+            installed_build: provenance.as_ref().and_then(|p| p.build),
+            region: provenance.as_ref().and_then(|p| p.region.clone()),
+            variant: provenance.as_ref().and_then(|p| p.variant.clone()),
             path: installed.model,
             labels: installed.labels,
             model_type,
@@ -2038,15 +2121,25 @@ fn handle_models_install(
     );
 
     if should_set_default {
-        config.defaults.model = Some(id.to_string());
+        config.defaults.model = Some(config_key.clone());
     }
 
     save_default_config(&config)?;
 
+    // Files the replaced entry owned and nothing else references. Published
+    // filenames never change, so an upgrade writes new files beside the old
+    // ones; without this every upgrade would leak the previous download.
+    for (path, e) in registry::remove_orphans(&orphans) {
+        warn!(
+            "Could not remove the superseded model file {}: {e}",
+            path.display()
+        );
+    }
+
     if output_mode.is_structured() {
         let payload = ModelInstalledPayload {
             result_type: ResultType::ModelInstalled,
-            id: id.to_string(),
+            id: config_key,
             set_as_default: should_set_default,
             model_path,
             labels_path,
@@ -2054,13 +2147,19 @@ fn handle_models_install(
         emit_json_result(&payload);
     } else {
         if should_set_default {
-            println!("Model '{id}' added to configuration and set as default.");
+            println!("Model '{config_key}' added to configuration and set as default.");
         } else {
-            println!("Model '{id}' added to configuration.");
+            println!("Model '{config_key}' added to configuration.");
         }
         println!();
         println!("Ready to analyze:");
-        println!("  birda recording.wav");
+        if config_key == *id {
+            println!("  birda recording.wav");
+        } else {
+            // A regional install is not the default unless asked for, so name
+            // the flag that reaches it.
+            println!("  birda -m {config_key} recording.wav");
+        }
     }
 
     Ok(())

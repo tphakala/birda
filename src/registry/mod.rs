@@ -10,9 +10,11 @@ pub mod selection;
 pub mod types;
 
 // Re-export commonly used types and functions
+pub use cleanup::{orphaned_files, remove_orphans};
 pub use installer::{
-    GEOMODEL_INSTALL_ID, InstalledRangeFilter, download_file, find_obsolete_files, geomodel_paths,
-    install_model, install_range_filter, models_dir,
+    GEOMODEL_INSTALL_ID, InstallProvenance, InstalledRangeFilter, download_file,
+    find_obsolete_files, geomodel_paths, install_model, install_range_filter, install_variant,
+    models_dir,
 };
 pub use license::{LicensedAsset, prompt_license_acceptance};
 pub use loader::{find_model, load_registry};
@@ -350,6 +352,51 @@ mod tests {
     fn test_license_line_adds_nothing_for_an_unrestricted_licence() {
         assert_eq!(license_line(&license(true, false)), "TEST-1.0");
     }
+}
+
+/// List the regional tiles a model publishes, grouped by continent.
+///
+/// Regions are what a user picks; the variant is picked for them, so this lists
+/// each tile once rather than once per hardware variant.
+pub fn show_regions(registry: &Registry, id: &str) -> Result<()> {
+    let model = find_model(registry, id)
+        .ok_or_else(|| Error::ModelNotFoundInRegistry { id: id.to_string() })?;
+
+    let regions = model.regions();
+    if regions.is_empty() {
+        return Err(Error::RegionsNotSupported {
+            model_id: id.to_string(),
+        });
+    }
+
+    println!("Regional variants of {}:", model.name);
+    println!();
+
+    let mut current_group: Option<&str> = None;
+    for variant in regions {
+        let group = variant.group_name.as_deref().unwrap_or("Other");
+        if current_group != Some(group) {
+            if current_group.is_some() {
+                println!();
+            }
+            println!("{group}:");
+            current_group = Some(group);
+        }
+        println!(
+            "  {:<24} {:>6} species   {}",
+            variant.region.as_deref().unwrap_or("global"),
+            variant.classes,
+            crate::config::geomodel::human_size(variant.model.size_bytes),
+        );
+    }
+
+    println!();
+    println!("A regional model scores only the species of that region, which cuts");
+    println!("memory use and latency. It is otherwise the same model.");
+    println!();
+    println!("To install: birda models install {id} --region <slug>");
+
+    Ok(())
 }
 
 /// Show available languages for a model.

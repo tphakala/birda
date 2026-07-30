@@ -433,12 +433,44 @@ pub enum Error {
     },
 
     /// Invalid time range for clip extraction.
-    #[error("invalid time range: end ({end}s) must be greater than start ({start}s)")]
+    ///
+    /// Covers a non-finite bound as well as an out-of-order one, because the
+    /// ordering test alone never rejects NaN.
+    // Unit outside the parentheses, as in `InvalidPadding`: a NaN bound would
+    // otherwise render as `NaNs`.
+    #[error(
+        "invalid time range: start {start}, end {end} (both must be finite non-negative seconds, with end greater than start)"
+    )]
     InvalidTimeRange {
         /// Start time in seconds.
         start: f64,
         /// End time in seconds.
         end: f64,
+    },
+
+    /// Invalid clip padding value.
+    // No unit suffix directly after `{value}`: this variant exists to report
+    // non-finite values, and `NaNs` reads as a plural rather than a quantity.
+    // The parenthesised-constraint shape matches `InvalidLatitude` and its
+    // siblings.
+    #[error(
+        "invalid padding: {value} (must be a finite number of seconds from 0.0 to {:.1})",
+        crate::constants::clipper::MAX_PADDING
+    )]
+    InvalidPadding {
+        /// The rejected padding value in seconds.
+        value: f64,
+    },
+
+    /// Invalid clip confidence threshold.
+    #[error(
+        "invalid confidence: {value} (must be a finite number from {:.1} to {:.1})",
+        crate::constants::confidence::MIN,
+        crate::constants::confidence::MAX
+    )]
+    InvalidConfidence {
+        /// The rejected confidence value.
+        value: f32,
     },
 
     /// BSG model configuration error.
@@ -619,5 +651,44 @@ mod tests {
             value: "foobar".to_string(),
         };
         assert_eq!(err.to_string(), "invalid output format: foobar");
+    }
+
+    /// The three #310 messages, asserted on their rendered text rather than
+    /// their variant. The rest of the suite matches on the variant, so the
+    /// wording was free to drift, and the wording is the whole user-visible
+    /// half of the fix. Each case is a non-finite value on purpose: that is
+    /// the population these variants exist to report, and it is where a unit
+    /// suffix placed straight after the value renders as `NaNs`.
+    #[test]
+    fn test_invalid_time_range_renders_both_bounds() {
+        let err = Error::InvalidTimeRange {
+            start: f64::NAN,
+            end: 5.0,
+        };
+        assert_eq!(
+            err.to_string(),
+            "invalid time range: start NaN, end 5 \
+             (both must be finite non-negative seconds, with end greater than start)"
+        );
+    }
+
+    #[test]
+    fn test_invalid_padding_renders_the_value_and_the_ceiling() {
+        let err = Error::InvalidPadding {
+            value: f64::INFINITY,
+        };
+        assert_eq!(
+            err.to_string(),
+            "invalid padding: inf (must be a finite number of seconds from 0.0 to 300.0)"
+        );
+    }
+
+    #[test]
+    fn test_invalid_confidence_renders_the_value_and_the_range() {
+        let err = Error::InvalidConfidence { value: f32::NAN };
+        assert_eq!(
+            err.to_string(),
+            "invalid confidence: NaN (must be a finite number from 0.0 to 1.0)"
+        );
     }
 }

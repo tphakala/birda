@@ -2,7 +2,6 @@
 
 use crate::config::Config;
 use crate::error::{Error, Result};
-use std::io::Write;
 use std::path::Path;
 
 /// Load configuration from a TOML file.
@@ -74,10 +73,11 @@ fn write_error(path: &Path, source: std::io::Error) -> Error {
 /// a loaded one (`models add`, `models install`, `models remove`, the geomodel
 /// install) and reached this function without validating.
 ///
-/// The write itself goes to a temporary file beside the target, which is then
-/// renamed over it. Both halves matter and they cover different failure modes.
-/// Validating first stops an invalid config destroying a good one on disk;
-/// replacing by rename stops an *interrupted* write doing the same.
+/// The write itself goes through [`crate::utils::fs::write_atomic`], which
+/// writes to a temporary beside the target and renames it over. Both halves
+/// matter and they cover different failure modes. Validating first stops an
+/// invalid config destroying a good one on disk; replacing by rename stops an
+/// *interrupted* write doing the same.
 ///
 /// The second one is why this is not a plain `fs::write`. That call truncates
 /// the file and then writes, so ENOSPC, SIGKILL or power loss in between leaves
@@ -88,16 +88,10 @@ fn write_error(path: &Path, source: std::io::Error) -> Error {
 /// within a filesystem, so a reader sees either the whole old file or the whole
 /// new one.
 ///
-/// Two consequences of replacing rather than rewriting in place. The temporary
-/// must live in the target's directory, because rename across filesystems is
-/// not atomic (and `$TMPDIR` is routinely a different one), so it is created in
-/// the user's config directory and removed on every return path, success or
-/// failure. Not on every path out, though: the Ctrl+C handler installed in
-/// `run()` ends the process with `std::process::exit`, which runs no
-/// destructors, so interrupting a save can leave one `.tmp` file behind.
-/// And the resulting file takes its permissions from the temporary rather than
-/// from the file it replaced, so an existing mode is copied across explicitly;
-/// see [`preserve_existing_mode`].
+/// One consequence of replacing rather than rewriting in place is handled here
+/// rather than in the helper: rename replaces the *name* it is given, where a
+/// write would have followed a symlink at that name, so the link is resolved
+/// first. See [`resolve_link`].
 ///
 /// Two things this deliberately does not address. The whole file is
 /// re-serialised from the struct, so comments and unrecognised keys are dropped
@@ -114,54 +108,19 @@ pub fn save_config(config: &Config, path: &Path) -> Result<()> {
     let target = resolve_link(path);
     let target = target.as_path();
 
-    // `parent` is empty for a bare relative filename like `config.toml`, which
-    // is a valid path to save to and not the same thing as having no parent.
-    let dir = target
-        .parent()
-        .filter(|parent| !parent.as_os_str().is_empty())
-        .unwrap_or_else(|| Path::new("."));
-    std::fs::create_dir_all(dir).map_err(|e| write_error(path, e))?;
-
     let contents =
         toml::to_string_pretty(config).map_err(|e| Error::ConfigSerialize { source: e })?;
 
-    // Worth knowing when this one fails: creating the temporary needs write and
-    // execute on the DIRECTORY, which a plain write never needed, so a config
-    // file the user can plainly write can now fail to save. The message names
-    // the config file like every other failure here, and the cause carries the
-    // detail, because the io::Error already names the temporary and so the
-    // directory with it.
-    let mut temp = tempfile::NamedTempFile::new_in(dir).map_err(|e| write_error(path, e))?;
-    temp.write_all(contents.as_bytes())
-        .map_err(|e| write_error(path, e))?;
-
-    // Mode first, then flush. `sync_all` persists the inode's metadata as well
-    // as its data, so widening the permissions afterwards would leave that one
-    // change unflushed and a crash could publish the file still at the
-    // temporary's private 0600. Writing the contents while it is still 0600 and
-    // widening only at the end is also the right order for a file that may hold
-    // something worth protecting.
-    preserve_existing_mode(target, &temp).map_err(|e| write_error(path, e))?;
-
-    // Flush to disk before the rename, not after. Without this the rename can
-    // reach the disk while the data behind it has not, which on a crash leaves
-    // the config path pointing at a file of zeros: exactly the outcome the
-    // rename is here to prevent, just reached by a different route.
-    //
-    // Untested, and untestable from here: deleting this line, or the directory
-    // fsync below, leaves the whole suite green, because the difference only
-    // shows up across a crash. Both are reasoned, not covered.
-    temp.as_file()
-        .sync_all()
-        .map_err(|e| write_error(path, e))?;
-
-    // Drops the temporary on failure, so a rejected save leaves nothing behind.
-    temp.persist(target)
-        .map_err(|e| write_error(path, e.error))?;
-
-    sync_directory(dir);
-
-    Ok(())
+    // `OwnerOnly`, so a config file that does not exist yet is created private
+    // rather than at whatever the umask allows. A config directory is per-user
+    // and the file can name paths the user would rather not advertise. An
+    // existing file keeps the mode it already had, which the helper handles.
+    crate::utils::fs::write_atomic(
+        target,
+        contents.as_bytes(),
+        crate::utils::fs::NewFileMode::OwnerOnly,
+    )
+    .map_err(|e| write_error(path, e))
 }
 
 /// The real file `path` names, following it if it is a symlink.
@@ -198,14 +157,24 @@ pub fn save_config(config: &Config, path: &Path) -> Result<()> {
 /// crosses a privilege boundary, and this is still the better failure mode than
 /// eating the link.
 ///
-/// One hop, not a loop. A chain of dangling links is not worth the cycle
-/// detection it would need. For `a -> b -> missing` the write lands on `b`
-/// rather than on `a` or on the end of the chain, so `a` survives as a link and
-/// still reads through, which is the property that matters. Every cycle
-/// terminates, but only a cycle of length two or more preserves that property:
-/// `a -> a` resolves to `a` itself and is replaced by a regular file. That
-/// costs nothing in practice, since a self-referential config link cannot be
-/// read either.
+/// One hop, not a loop, and only for a link this function has to resolve by hand.
+/// A chain of dangling links is not worth the cycle detection it would need. For
+/// `a -> b -> missing` the write lands on `b` rather than on `a` or on the end of
+/// the chain, so `a` survives as a link and still reads through, which is the
+/// property that matters. A link cycle no longer reaches the write at all: the
+/// helper reads the target's mode and `metadata` on a cycle returns ELOOP, which
+/// is propagated, so the save fails with "Too many levels of symbolic links". That
+/// is what a plain write did too, and it costs nothing in practice, since a config
+/// link that points at itself cannot be read either.
+///
+/// Note where that guarantee lives: the ELOOP comes from the write helper reading
+/// the target's mode, not from anything here. `resolve_link` itself just hands back
+/// a path for a cycle, the same as it does for a path that does not exist yet (the
+/// link itself for `a -> a`, the first hop for `a -> b -> a`). Two consequences. If
+/// `utils::fs::existing_mode` is ever relaxed to fold non-`NotFound` failures into
+/// "no file there", cycles start being eaten again, silently. And the guarantee is
+/// Unix-only: the non-unix `existing_mode` has no mode to read and returns `None`
+/// unconditionally, so there a cycle is replaced by a regular file.
 fn resolve_link(path: &Path) -> std::path::PathBuf {
     if let Ok(resolved) = std::fs::canonicalize(path) {
         return resolved;
@@ -225,73 +194,6 @@ fn resolve_link(path: &Path) -> std::path::PathBuf {
             .join(link_target)
     }
 }
-
-/// Give the temporary the mode of the file it is about to replace.
-///
-/// `NamedTempFile` creates at 0600, so without this the first save after this
-/// change would silently narrow a config the user had deliberately made
-/// readable to others. A file that does not exist yet has no mode to carry
-/// over and keeps the restrictive default, which is the right direction for a
-/// per-user config directory and is what a fresh install now gets.
-///
-/// A `metadata` failure other than "not found" is not fatal. It means the mode
-/// cannot be read, not that the save cannot proceed, and refusing to write the
-/// user's config over it would trade a cosmetic difference for a lost setting.
-/// The fallback is the restrictive mode, so the failure direction is safe.
-#[cfg(unix)]
-fn preserve_existing_mode(target: &Path, temp: &tempfile::NamedTempFile) -> std::io::Result<()> {
-    use std::os::unix::fs::PermissionsExt;
-
-    let Ok(existing) = std::fs::metadata(target) else {
-        return Ok(());
-    };
-
-    // `0o7777`, not `0o777`: the mask exists to strip the file-type bits, and a
-    // narrower one would silently drop setuid, setgid and the sticky bit from a
-    // mode the user chose. None of the three is meaningful on a config file,
-    // which is the point: dropping them would be an unannounced change to
-    // something this function claims to preserve.
-    let mode = existing.permissions().mode() & 0o7777;
-    temp.as_file()
-        .set_permissions(std::fs::Permissions::from_mode(mode))
-}
-
-/// No-op on platforms without Unix permission bits.
-///
-/// Windows carries an ACL rather than a mode, and `MoveFileEx` does NOT carry
-/// the replaced file's security descriptor across; the temporary's own ACL
-/// survives the move. So the Unix hazard exists here too and is simply not
-/// handled: an explicit ACL set on config.toml is lost when it is replaced.
-///
-/// Accepted rather than fixed, because the temporary is created in the config
-/// directory and inherits that directory's inheritable ACEs, which is exactly
-/// what a file freshly created there would get. That is the right answer for a
-/// per-user config directory and the wrong one only for a config someone has
-/// deliberately re-ACLed, which needs `ReplaceFile` rather than `MoveFileEx`.
-#[cfg(not(unix))]
-#[allow(clippy::unnecessary_wraps)]
-fn preserve_existing_mode(_target: &Path, _temp: &tempfile::NamedTempFile) -> std::io::Result<()> {
-    Ok(())
-}
-
-/// Flush the directory entry the rename created.
-///
-/// Best effort, deliberately. The rename is already atomic as far as any reader
-/// is concerned; this only decides whether the *new* name or the old one
-/// survives a power loss, and both are whole, valid configs. Some filesystems
-/// reject `fsync` on a directory outright, so failing a save that has already
-/// completed would cost the user a setting to buy durability that was never
-/// required for correctness.
-#[cfg(unix)]
-fn sync_directory(dir: &Path) {
-    if let Ok(handle) = std::fs::File::open(dir) {
-        drop(handle.sync_all());
-    }
-}
-
-/// No-op on platforms where a directory is not an openable file.
-#[cfg(not(unix))]
-fn sync_directory(_dir: &Path) {}
 
 /// Save configuration to the default platform-specific path.
 ///
@@ -391,10 +293,11 @@ min_confidence = 0.25
 
     #[test]
     fn test_save_config_does_not_truncate_an_existing_config() {
-        // The regression guard that matters most. This function truncates and
-        // rewrites the whole file, and a half-written config parses as
-        // all-defaults, silently losing every model the user had. Validating
-        // before the write is what stops a bad config destroying a good one.
+        // The regression guard that matters most. This function re-serialises the
+        // whole file, and a half-written config parses as all-defaults, silently
+        // losing every model the user had. Validating before the write is what
+        // stops a bad config destroying a good one; the sibling test below covers
+        // the other half, that an interrupted write cannot do it either.
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("config.toml");
 
@@ -486,10 +389,10 @@ min_confidence = 0.25
         // of /tmp on tmpfs and ~/.config on disk.
         //
         // Every other test saves into `tempfile::tempdir()`, which is itself
-        // under $TMPDIR, so `persist` never crosses a device and swapping
-        // `new_in(dir)` for `new()` leaves them all green. Saving into /dev/shm
-        // puts the target on a different filesystem from /tmp, which is what
-        // makes this one able to fail.
+        // under $TMPDIR, so `persist` never crosses a device and swapping the
+        // helper's `tempfile_in(dir)` for a plain `tempfile()` leaves them all
+        // green. Saving into /dev/shm puts the target on a different filesystem
+        // from /tmp, which is what makes this one able to fail.
         //
         // Two environments make this inert: /dev/shm missing, and $TMPDIR
         // pointed at /dev/shm so both ends share a device. It skips rather than
@@ -577,9 +480,11 @@ min_confidence = 0.25
     fn test_save_config_preserves_the_file_mode() {
         // Replacing by rename means the new file's permissions come from the
         // temporary, not from the file being replaced, so a rewrite would
-        // silently reset whatever mode the user had chosen. `NamedTempFile`
-        // creates at 0600, so without this the first `config set` after the
-        // upgrade would quietly narrow a shared 0644 config.
+        // silently reset whatever mode the user had chosen. A temporary is created
+        // owner-only, so without the mode being carried across the first
+        // `config set` after the upgrade would quietly narrow a shared 0644
+        // config. The mechanism lives in `crate::utils::fs::write_atomic_with`;
+        // this pins the contract at the config route.
         use std::os::unix::fs::PermissionsExt;
 
         let dir = tempfile::tempdir().unwrap();
@@ -604,8 +509,16 @@ min_confidence = 0.25
     fn test_a_new_config_is_created_private() {
         // The other half of the rule above. There is no previous mode to carry
         // over for a file that does not exist yet, and a config directory is
-        // per-user, so the restrictive default `NamedTempFile` gives is kept
-        // rather than widened to match what `fs::write` used to produce.
+        // per-user, so the file is created restrictively rather than at whatever
+        // the umask allows.
+        //
+        // What this guards changed with the extraction: the privacy used to be
+        // structural, because a temporary is created owner-only and there was no
+        // way to ask for anything else. It is now the `NewFileMode::OwnerOnly`
+        // argument in `save_config`, so this test is what catches that argument
+        // being changed to `Umask`. It only catches it under a umask that admits
+        // group or world bits, since a umask of 0o077 masks both policies to the
+        // same 0o600; the helper's own mode test says so out loud when it happens.
         use std::os::unix::fs::PermissionsExt;
 
         let dir = tempfile::tempdir().unwrap();

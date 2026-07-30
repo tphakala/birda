@@ -3,6 +3,7 @@
 //! Writes audio clips to WAV files organized by species.
 
 use std::fs;
+use std::io::BufWriter;
 use std::path::{Path, PathBuf};
 
 use hound::{SampleFormat, WavSpec, WavWriter as HoundWriter};
@@ -52,7 +53,12 @@ impl WavWriter {
         // Sanitize species name for filesystem
         let safe_species = sanitize_filename(species);
 
-        // Create species subdirectory
+        // Create species subdirectory. Redundant for creating it, since the write
+        // helper creates missing parents too, but load-bearing for the error: this
+        // is the only thing that reports a failure here as
+        // `OutputDirCreateFailed` naming the DIRECTORY. Without it a permission
+        // problem on the species directory surfaces as `WavWriteFailed` naming a
+        // .wav file, pointing the user at the wrong object.
         let species_dir = self.output_dir.join(&safe_species);
         fs::create_dir_all(&species_dir).map_err(|e| Error::OutputDirCreateFailed {
             path: species_dir.clone(),
@@ -97,7 +103,38 @@ fn generate_filename(species: &str, confidence: f32, start_time: f64, end_time: 
     format!("{species}_{confidence_pct}p_{start_time:.1}-{end_time:.1}.wav")
 }
 
-/// Write samples to a WAV file.
+/// Write samples to a WAV file, atomically.
+///
+/// Not `HoundWriter::create(path)`, which is `File::create` on the final path.
+/// hound writes a placeholder RIFF header first and patches the RIFF and `data`
+/// lengths only in `finalize()`, so a kill, a full disk or a write error partway
+/// through the sample loop leaves a file at the serving path whose header claims
+/// **zero data bytes**: structurally valid, silently empty, and indistinguishable
+/// from a legitimately empty clip. Writing to a temporary and renaming means the
+/// clip appears at its path complete or not at all.
+///
+/// Only half of that ambiguity closes here. Nothing checks the decoded result
+/// before writing it, so a range that decodes no audio still produces a valid
+/// 0-frame WAV and is still reported as an extracted clip; that is #319. Until
+/// both land, an empty clip and a crash-truncated one remain byte-identical.
+///
+/// The cost, stated because it is paid per clip rather than once: this adds an
+/// fsync of the clip and an fsync of the species directory to every extraction,
+/// which is under a millisecond on an SSD and a few milliseconds on spinning
+/// media. A long recording producing hundreds of clips pays it hundreds of times,
+/// for durability a clip does not strictly need, since it can be regenerated from
+/// the source audio and the detections file. Accepted rather than split into a
+/// rename-only mode, because one publish path is easier to reason about than two.
+///
+/// The temporary's name is unique rather than fixed, which matters more here than
+/// anywhere else this helper is used: clip extraction writes many files into one
+/// directory, so a shared temporary name lets two writers interleave and the
+/// loser's rename fail with ENOENT, losing that clip permanently.
+///
+/// `NewFileMode::Umask` because a clip is a file the user asked to be produced
+/// and may serve or share, so it has to come out exactly as `File::create` would
+/// have left it. Owner-only clips would break a directory served by a web server
+/// or read by another account.
 fn write_wav_file(path: &Path, samples: &[f32], sample_rate: u32) -> Result<(), Error> {
     let spec = WavSpec {
         channels: 1,
@@ -106,29 +143,28 @@ fn write_wav_file(path: &Path, samples: &[f32], sample_rate: u32) -> Result<(), 
         sample_format: SampleFormat::Int,
     };
 
-    let mut writer = HoundWriter::create(path, spec).map_err(|e| Error::WavWriteFailed {
+    crate::utils::fs::write_atomic_with(path, crate::utils::fs::NewFileMode::Umask, |file| {
+        // `BufWriter` is not optional. hound does no buffering of its own and
+        // only its `create` constructor adds any, so writing straight to the
+        // handle would turn a 13-second clip into hundreds of thousands of write
+        // syscalls.
+        let mut writer = HoundWriter::new(BufWriter::new(file), spec)?;
+
+        // Convert f32 samples to i16
+        for &sample in samples {
+            #[allow(clippy::cast_possible_truncation)]
+            let sample_i16 = (sample.clamp(-1.0, 1.0) * f32::from(i16::MAX)) as i16;
+            writer.write_sample(sample_i16)?;
+        }
+
+        // Patches the header and flushes the buffer, so every byte is with the
+        // kernel before the helper fsyncs the handle behind it.
+        writer.finalize()
+    })
+    .map_err(|e| Error::WavWriteFailed {
         path: path.to_path_buf(),
         source: e,
-    })?;
-
-    // Convert f32 samples to i16
-    for &sample in samples {
-        #[allow(clippy::cast_possible_truncation)]
-        let sample_i16 = (sample.clamp(-1.0, 1.0) * f32::from(i16::MAX)) as i16;
-        writer
-            .write_sample(sample_i16)
-            .map_err(|e| Error::WavWriteFailed {
-                path: path.to_path_buf(),
-                source: e,
-            })?;
-    }
-
-    writer.finalize().map_err(|e| Error::WavWriteFailed {
-        path: path.to_path_buf(),
-        source: e,
-    })?;
-
-    Ok(())
+    })
 }
 
 #[cfg(test)]

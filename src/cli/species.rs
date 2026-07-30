@@ -8,7 +8,6 @@ use crate::inference::range_filter::RangeFilter;
 use crate::output::{ResultType, SpeciesEntry, SpeciesListPayload, emit_json_result};
 use crate::utils::date::{date_to_week, day_of_year_to_date, week_to_start_day};
 use std::fs::File;
-use std::io::Write;
 use std::path::PathBuf;
 
 /// Default output file name.
@@ -268,25 +267,135 @@ fn read_labels_file(path: &std::path::Path) -> Result<Vec<String>> {
     Ok(labels)
 }
 
-/// Write species list to file.
+/// Write species list to file, atomically.
 ///
 /// Format: `Genus species_Common Name` (one per line)
+///
+/// Written to a temporary and renamed rather than created in place, for the same
+/// reason a clip is: a truncated species list is silently valid. Every line is
+/// well formed, so a list cut short by an interrupted write is indistinguishable
+/// from a shorter range, and feeding it back through `--species-list` filters an
+/// analysis run down to whatever survived. `File::create` plus a `flush` and no
+/// fsync left exactly that on disk.
+///
+/// `NewFileMode::Umask` because this is a file the user asked to be produced and
+/// may share, so it keeps the permissions it always had.
 fn write_species_list(path: &std::path::Path, species: &[(String, f32)]) -> Result<()> {
-    let mut file = File::create(path).map_err(Error::Io)?;
-
+    // Sized exactly rather than grown, so a long list does not walk up through a
+    // dozen reallocations. The whole list is materialised because the helper takes
+    // bytes; that is bounded by the classifier's label file rather than by anything
+    // the user supplies, so the ceiling is the geomodel's 12,012 species at roughly
+    // 40 bytes each, well under a megabyte. It is also strictly less I/O than the
+    // `writeln!` loop on an unbuffered `File` that it replaced, which issued one
+    // write syscall per species.
+    let capacity = species.iter().map(|(label, _)| label.len() + 1).sum();
+    let mut contents = String::with_capacity(capacity);
     for (label, _score) in species {
-        writeln!(file, "{label}").map_err(Error::Io)?;
+        contents.push_str(label);
+        contents.push('\n');
     }
 
-    file.flush().map_err(Error::Io)?;
-
-    Ok(())
+    // Named rather than a bare `Error::Io`, which is what this used to return and
+    // which renders as "I/O error: Permission denied (os error 13)" with no path.
+    // This is the one write path here whose destination the USER chose, via
+    // `--output`, and the write now has three more places to fail than the single
+    // `File::create` it replaced (the directory, the temporary, the rename), so
+    // the failure message has to say which file it was about. Its three siblings
+    // (`ConfigWrite`, `RegistryWrite`, `WavWriteFailed`) all name their file.
+    crate::utils::fs::write_atomic(
+        path,
+        contents.as_bytes(),
+        crate::utils::fs::NewFileMode::Umask,
+    )
+    .map_err(|source| Error::SpeciesListWrite {
+        path: path.to_path_buf(),
+        source,
+    })
 }
 
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::float_cmp)]
 mod tests {
     use super::*;
+
+    /// A species list with `count` distinguishable entries.
+    fn species_of(count: usize) -> Vec<(String, f32)> {
+        (0..count)
+            .map(|i| (format!("Genus species{i}_Common {i}"), 0.5))
+            .collect()
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn test_write_species_list_does_not_write_in_place() {
+        // A truncated species list is silently valid: every line in it is well
+        // formed, so a list cut short by an interrupted write reads as a shorter
+        // range and quietly filters a later analysis run down to whatever
+        // survived.
+        //
+        // A hardlink is a second name for the same inode. Writing in place would
+        // show the new list through the link; writing to a temporary and renaming
+        // leaves the old inode intact behind it, so reading the original line
+        // count back through the link proves the file was replaced.
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("species_list.txt");
+
+        write_species_list(&path, &species_of(3)).unwrap();
+        let link = dir.path().join("first.txt");
+        std::fs::hard_link(&path, &link).unwrap();
+
+        write_species_list(&path, &species_of(1)).unwrap();
+
+        let lines_in = |p: &std::path::Path| std::fs::read_to_string(p).unwrap().lines().count();
+        assert_eq!(
+            lines_in(&link),
+            3,
+            "the previous list must survive behind its own name; seeing one line \
+             here means the file was written in place"
+        );
+        assert_eq!(lines_in(&path), 1, "the path must carry the new list");
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn test_a_species_list_is_not_narrowed_to_its_owner() {
+        // Publishing by rename hands the path the temporary's inode, and a
+        // temporary is created owner-only, so without an explicit mode policy
+        // this file would come out 0600 where it used to follow the umask. It is
+        // a file the user asked to be produced and may hand to someone else.
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("species_list.txt");
+
+        write_species_list(&path, &species_of(2)).unwrap();
+
+        // Compared against a file `File::create` made under the same umask
+        // rather than against a literal 0o644, which would fail for anyone whose
+        // umask is 0o077 or 0o002.
+        let reference = dir.path().join("reference.txt");
+        drop(File::create(&reference).unwrap());
+
+        let mode_of =
+            |p: &std::path::Path| std::fs::metadata(p).unwrap().permissions().mode() & 0o777;
+        assert_eq!(
+            mode_of(&path),
+            mode_of(&reference),
+            "a species list must keep the mode File::create would have given it"
+        );
+
+        // What this cannot see, said out loud rather than left as a silent pass:
+        // under a umask that masks the group and world bits away, `Umask` and
+        // `OwnerOnly` both yield 0o600, so the assertion above holds whichever
+        // policy production passes.
+        if mode_of(&reference) & 0o066 == 0 {
+            eprintln!(
+                "skipped the policy distinction: this umask masks both policies to \
+                 {:o}, so a wrong one would not be detected here",
+                mode_of(&reference)
+            );
+        }
+    }
 
     fn labels_of(values: &[&str]) -> Vec<String> {
         values.iter().map(|v| (*v).to_string()).collect()

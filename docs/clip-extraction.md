@@ -102,6 +102,17 @@ Output files are:
 - **Bit depth**: 16-bit signed integer
 - **Sample rate**: Same as source audio
 
+Each clip is written to a temporary file in its species directory and renamed into place, so a clip appears at its final path complete or not at all. Without that, interrupting an extraction leaves a WAV whose header says it holds no audio, because the length fields are only filled in once the clip has been written.
+
+Four consequences, none of which affect an ordinary extraction into a fresh directory:
+
+- **Watching for new clips must watch for a move, not a write.** A clip now arrives via `rename`, so inotify reports `IN_MOVED_TO` on the clip name; the `IN_CLOSE_WRITE` happens on the temporary, whose name has no `.wav` suffix. A post-processing hook filtering on `close_write` and `*.wav` will stop firing. Use `-e moved_to` (or both).
+- **A clip file that is a hardlink stops tracking** after a re-extraction, since a rename gives the path a new inode.
+- **A clip path that is a dangling symlink is replaced** by a regular file rather than written through. An existing symlink is followed, as before.
+- **Interrupting an extraction with Ctrl+C can leave one temporary behind** in the species directory, named `.tmp` followed by random characters and with no extension. birda releases its lock files on Ctrl+C but exits without unwinding, so an in-progress temporary is not removed, and nothing sweeps stale ones later; they are safe to delete.
+
+A clip keeps the permissions your umask asks for, exactly as before, so a clip directory served by a web server or read by another account keeps working. Per-file ACLs set on a specific clip are not carried across, because the replacement is a new inode; a default ACL on the directory is inherited as it would be for any new file.
+
 ## Examples
 
 ### Basic Extraction

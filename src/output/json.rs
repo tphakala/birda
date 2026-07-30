@@ -6,7 +6,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::fs::File;
-use std::io::BufWriter;
+use std::io::{BufWriter, Write};
 use std::path::{Path, PathBuf};
 
 /// JSON result file structure.
@@ -185,13 +185,26 @@ impl OutputWriter for JsonResultWriter {
         };
 
         let file = File::create(&self.output_path)?;
-        let writer = BufWriter::new(file);
-        serde_json::to_writer_pretty(writer, &result).map_err(|e| {
+        let mut writer = BufWriter::new(file);
+        serde_json::to_writer_pretty(&mut writer, &result).map_err(|e| {
             crate::error::Error::JsonWrite {
                 path: self.output_path.clone(),
                 source: e,
             }
         })?;
+
+        // Flushed explicitly, like every sibling writer. `to_writer_pretty` used to
+        // take the `BufWriter` by value and drop it, so the last chunk was flushed
+        // by `BufWriter::drop`, which discards the error: an ENOSPC or EIO there
+        // returned Ok with truncated JSON on disk and a completion event beside it.
+        // birda-gui reads that file and its retry wraps only the read, not the
+        // parse, so the run's detections went missing with no error anywhere.
+        writer
+            .flush()
+            .map_err(|source| crate::error::Error::JsonFlush {
+                path: self.output_path.clone(),
+                source,
+            })?;
 
         Ok(())
     }

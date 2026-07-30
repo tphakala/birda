@@ -138,8 +138,30 @@ fn part_path(dest: &Path) -> Result<PathBuf> {
 }
 
 /// Move a completed download onto its destination, consuming the part file.
+///
+/// What the directory fsync buys here, stated precisely because it is easy to
+/// overclaim: it stops a crash costing the user the download again. `stream_to_file`
+/// has already `sync_all`ed the part file, so the data behind the new name is
+/// durable when the name appears; without the directory fsync a crash can lose only
+/// the name, `is_installed` then correctly reports the model missing (it stats the
+/// file), and the next run re-downloads it. Wasted bandwidth on a large model, never
+/// a corrupt install.
+///
+/// The order matters and is the reason this is not the same as the self-update
+/// swap: fsync the FILE first, then rename, then fsync the directory. A directory
+/// fsync over a file that was never flushed publishes a durable name over
+/// non-durable data, which is worse than losing the rename.
 fn finalize_download(part: &Path, dest: &Path) -> Result<()> {
-    std::fs::rename(part, dest).map_err(Error::Io)
+    // Named rather than a bare `Error::Io`, which renders as "I/O error: Device or
+    // resource busy (os error 16)" with neither path in it. That EBUSY is a real
+    // case: a destination bind-mounted as a file cannot be renamed over, and it is
+    // the same failure this change documents for the registry one directory away.
+    std::fs::rename(part, dest).map_err(|source| Error::DownloadInstallFailed {
+        dest: dest.to_path_buf(),
+        source,
+    })?;
+    crate::utils::fs::sync_parent_directory(dest);
+    Ok(())
 }
 
 /// Stream a response body into `dest`, updating the progress bar as it goes.

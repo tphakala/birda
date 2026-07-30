@@ -228,6 +228,16 @@ pub enum Error {
         source: serde_json::Error,
     },
 
+    /// Failed to move a completed download onto its destination.
+    #[error("failed to install downloaded file '{dest}'")]
+    DownloadInstallFailed {
+        /// Path the download was being renamed onto.
+        dest: std::path::PathBuf,
+        /// Underlying I/O error.
+        #[source]
+        source: std::io::Error,
+    },
+
     /// Failed to write registry file.
     #[error("failed to write registry file '{path}'")]
     RegistryWrite {
@@ -366,6 +376,16 @@ pub enum Error {
         source: std::io::Error,
     },
 
+    /// Failed to write a species list file.
+    #[error("failed to write species list '{path}'")]
+    SpeciesListWrite {
+        /// Path to the species list file.
+        path: std::path::PathBuf,
+        /// Underlying I/O error.
+        #[source]
+        source: std::io::Error,
+    },
+
     // Clipper errors
     /// Failed to parse detection file.
     #[error("failed to parse detection file '{path}'")]
@@ -423,6 +443,20 @@ pub enum Error {
         /// Underlying serialization error.
         #[source]
         source: serde_json::Error,
+    },
+
+    /// Failed to flush a JSON output file to disk.
+    ///
+    /// Separate from [`Self::JsonWrite`] because that one carries a serialization
+    /// error, and the final flush fails with an I/O error instead. It is the
+    /// failure that used to be discarded entirely.
+    #[error("failed to flush JSON output file '{path}'")]
+    JsonFlush {
+        /// Path to the JSON file.
+        path: std::path::PathBuf,
+        /// Underlying I/O error.
+        #[source]
+        source: std::io::Error,
     },
 
     /// Invalid output format string.

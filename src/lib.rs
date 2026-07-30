@@ -151,10 +151,15 @@ fn resolve_range_filter_geomodel(
         return None;
     }
 
-    // load_registry writes ~/.config/birda/registry.json, both to bootstrap it
-    // and to perform the v3 to v4 rewrite this release triggers, so it can fail
-    // on a read-only or unresolvable config dir. That must not abort analysis
-    // either: it is the upgrade path itself.
+    // load_registry writes ~/.config/birda/registry.json, both to bootstrap it and
+    // to perform the v3 to v4 rewrite this release triggers, so it can fail on an
+    // unresolvable config dir. That must not abort analysis either: it is the
+    // upgrade path itself.
+    //
+    // The read-only case no longer reaches here at all: `persist_registry` now
+    // warns rather than propagating, because a cache it could not save is no reason
+    // to fail a command. This branch still covers a config directory that cannot be
+    // resolved and a bundled registry that will not parse.
     let registry = match registry::load_registry() {
         Ok(registry) => registry,
         Err(e) => {

@@ -166,6 +166,12 @@ pub async fn perform_update(
         return Err(e);
     }
 
+    // 9b. Flush it, data and mode together, before step 10 publishes the name.
+    if let Err(e) = flush_extracted_binary(&temp_binary) {
+        let _ = std::fs::remove_file(&temp_binary);
+        return Err(e);
+    }
+
     // 10. Replace binary
     let backup_kept = match replace::replace_binary(&exe_path, &temp_binary) {
         Ok(kept) => kept,
@@ -378,6 +384,49 @@ fn extract_tar_gz(archive_path: &Path, dest: &Path) -> Result<()> {
     Err(Error::UpdateExtractFailed {
         reason: format!("binary '{binary_name}' not found in archive"),
     })
+}
+
+/// Flush the extracted binary, and the mode set on it, before it is published.
+///
+/// `replace_binary` publishes this file with a rename and then fsyncs the
+/// directory, which makes the NAME durable. Without this the data behind that name
+/// need not be, so a power loss shortly after a reportedly successful update can
+/// leave the executable's own path pointing at a file of zeros. That is worse than
+/// the update not having happened, and it is silent: the recovery copy sits at
+/// `birda.old` and the tool cannot run to say so.
+///
+/// The ext4 heuristic that usually rescues a write-then-rename does not apply
+/// here, because `replace_unix` renames the old binary out of the way first, so the
+/// destination does not exist when the second rename lands.
+///
+/// Called after `set_executable` rather than at the end of extraction, and the
+/// ordering is the same one the write helper documents: `fsync` persists the
+/// inode's metadata along with its data, so flushing before the chmod would leave
+/// that one change unflushed and a crash could publish a durable, correct, but
+/// non-executable binary.
+///
+/// The sibling download path has always done this: `stream_to_file` flushes and
+/// `sync_all`s the part file before `finalize_download` renames it.
+fn flush_extracted_binary(dest: &Path) -> Result<()> {
+    // Opened for READ AND WRITE, not read-only, and that is not incidental. On
+    // Unix `fsync` acts on the inode and a read-only handle would do, but on
+    // Windows `File::sync_all` is `FlushFileBuffers`, which Microsoft documents as
+    // requiring `GENERIC_WRITE`, and `File::open` asks for `GENERIC_READ` alone
+    // (std `sys/fs/windows.rs`, `get_access_mode` and `fsync`). A read-only handle
+    // fail every `birda update` on Windows, after the download, the checksum and
+    // the extraction had all succeeded. Windows is a shipped target that CI never
+    // exercises, so nothing else would have caught it.
+    std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(dest)
+        .and_then(|file| file.sync_all())
+        .map_err(|e| Error::UpdateExtractFailed {
+            reason: format!(
+                "failed to flush the extracted binary at '{}': {e}",
+                dest.display()
+            ),
+        })
 }
 
 /// Extract the binary from a `.zip` archive.

@@ -57,8 +57,37 @@ pub struct InstalledModel {
     pub bsg_distribution_maps: Option<PathBuf>,
 }
 
+/// Rewrite a Hugging Face URL to the mirror named by `HF_ENDPOINT`.
+///
+/// Users on networks that block huggingface.co set `HF_ENDPOINT` to a mirror.
+/// Applied at request time rather than baked into `registry.json`, so it also
+/// covers entries whose URLs were pinned before mirrors were supported, and so
+/// changing the mirror needs no registry rewrite.
+#[must_use]
+pub fn resolve_url(url: &str) -> String {
+    let Ok(endpoint) = std::env::var(crate::constants::download::HF_ENDPOINT_ENV) else {
+        return url.to_string();
+    };
+
+    // An exported-but-empty HF_ENDPOINT is a common shell accident. Treating it
+    // as an endpoint would rewrite every URL into a relative path.
+    let endpoint = endpoint.trim().trim_end_matches('/');
+    if endpoint.is_empty() {
+        return url.to_string();
+    }
+
+    url.strip_prefix(crate::constants::download::HUGGING_FACE_ENDPOINT)
+        .map_or_else(|| url.to_string(), |rest| format!("{endpoint}{rest}"))
+}
+
 /// Download a file with progress bar.
 pub async fn download_file(client: &Client, url: &str, dest: &Path) -> Result<()> {
+    // Resolved once, and every message below reports the resolved URL, so a
+    // mirror failure names the host actually contacted rather than the one the
+    // registry happens to record.
+    let resolved = resolve_url(url);
+    let url: &str = &resolved;
+
     let response = client
         .get(url)
         .send()
@@ -368,6 +397,63 @@ mod tests {
     use super::*;
 
     use crate::registry::types::{FileInfo, LicenseInfo};
+    use serial_test::serial;
+
+    // HF_ENDPOINT is process-global, so these run serially against every other
+    // test that reads the environment.
+
+    #[test]
+    #[serial]
+    fn test_resolve_url_is_identity_without_an_endpoint_override() {
+        temp_env::with_var_unset("HF_ENDPOINT", || {
+            let url = "https://huggingface.co/tphakala/X/resolve/main/m.onnx";
+            assert_eq!(resolve_url(url), url);
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn test_resolve_url_rewrites_the_hugging_face_prefix() {
+        temp_env::with_var("HF_ENDPOINT", Some("https://hf-mirror.com"), || {
+            assert_eq!(
+                resolve_url("https://huggingface.co/tphakala/X/resolve/main/m.onnx"),
+                "https://hf-mirror.com/tphakala/X/resolve/main/m.onnx"
+            );
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn test_resolve_url_tolerates_a_trailing_slash_on_the_endpoint() {
+        // Without trimming, the rewrite produces a double slash after the host,
+        // which some mirrors serve and others 404.
+        temp_env::with_var("HF_ENDPOINT", Some("https://hf-mirror.com/"), || {
+            assert_eq!(
+                resolve_url("https://huggingface.co/a/b"),
+                "https://hf-mirror.com/a/b"
+            );
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn test_resolve_url_leaves_non_hugging_face_urls_alone() {
+        temp_env::with_var("HF_ENDPOINT", Some("https://hf-mirror.com"), || {
+            let url = "https://zenodo.org/records/1/files/m.onnx";
+            assert_eq!(resolve_url(url), url);
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn test_resolve_url_ignores_a_blank_endpoint() {
+        // An exported-but-empty HF_ENDPOINT is a common shell accident.
+        // Treating it as an endpoint would rewrite every URL to a bare path.
+        temp_env::with_var("HF_ENDPOINT", Some("   "), || {
+            let url = "https://huggingface.co/a/b";
+            assert_eq!(resolve_url(url), url);
+        });
+    }
 
     /// SHA256 of the byte string `b"right"`, used by the checksum tests.
     const RIGHT_SHA256: &str = "27042f4e6eca7d0b2a7ee4026df2ecfa51d3339e6d122aa099118ecd8563bad9";

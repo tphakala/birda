@@ -35,6 +35,12 @@
 /docs/critical-issues-fix-plan-v2.md
 /docs/nsis-evaluation-result.md
 
+# Stray build artifacts from ad-hoc rustc invocations at the repo root. Cargo
+# writes to /target, so anything matching these at the top level is a leftover
+# from compiling a scratch file by hand.
+/*.rlib
+/*.rmeta
+
 # Git worktrees
 /.worktrees/
 

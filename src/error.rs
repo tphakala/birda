@@ -228,6 +228,16 @@ pub enum Error {
         source: serde_json::Error,
     },
 
+    /// Failed to move a completed download onto its destination.
+    #[error("failed to install downloaded file '{dest}'")]
+    DownloadInstallFailed {
+        /// Path the download was being renamed onto.
+        dest: std::path::PathBuf,
+        /// Underlying I/O error.
+        #[source]
+        source: std::io::Error,
+    },
+
     /// Failed to write registry file.
     #[error("failed to write registry file '{path}'")]
     RegistryWrite {

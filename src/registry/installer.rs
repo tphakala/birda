@@ -152,7 +152,14 @@ fn part_path(dest: &Path) -> Result<PathBuf> {
 /// fsync over a file that was never flushed publishes a durable name over
 /// non-durable data, which is worse than losing the rename.
 fn finalize_download(part: &Path, dest: &Path) -> Result<()> {
-    std::fs::rename(part, dest).map_err(Error::Io)?;
+    // Named rather than a bare `Error::Io`, which renders as "I/O error: Device or
+    // resource busy (os error 16)" with neither path in it. That EBUSY is a real
+    // case: a destination bind-mounted as a file cannot be renamed over, and it is
+    // the same failure this change documents for the registry one directory away.
+    std::fs::rename(part, dest).map_err(|source| Error::DownloadInstallFailed {
+        dest: dest.to_path_buf(),
+        source,
+    })?;
     crate::utils::fs::sync_parent_directory(dest);
     Ok(())
 }

@@ -281,7 +281,15 @@ fn read_labels_file(path: &std::path::Path) -> Result<Vec<String>> {
 /// `NewFileMode::Umask` because this is a file the user asked to be produced and
 /// may share, so it keeps the permissions it always had.
 fn write_species_list(path: &std::path::Path, species: &[(String, f32)]) -> Result<()> {
-    let mut contents = String::new();
+    // Sized exactly rather than grown, so a long list does not walk up through a
+    // dozen reallocations. The whole list is materialised because the helper takes
+    // bytes; that is bounded by the classifier's label file rather than by anything
+    // the user supplies, so the ceiling is the geomodel's 12,012 species at roughly
+    // 40 bytes each, well under a megabyte. It is also strictly less I/O than the
+    // `writeln!` loop on an unbuffered `File` that it replaced, which issued one
+    // write syscall per species.
+    let capacity = species.iter().map(|(label, _)| label.len() + 1).sum();
+    let mut contents = String::with_capacity(capacity);
     for (label, _score) in species {
         contents.push_str(label);
         contents.push('\n');

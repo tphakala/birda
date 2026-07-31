@@ -13,6 +13,7 @@ use birdnet_onnx::{
 };
 use std::collections::HashSet;
 use std::path::PathBuf;
+use std::sync::Mutex;
 use tracing::{debug, error, info, warn};
 
 use super::get_tensorrt_library_name;
@@ -201,6 +202,47 @@ pub struct BirdClassifier {
     bsg_processor: Option<BsgPostProcessor>,
     /// Execution provider status (requested, actual, fallback reason).
     ep_status: ExecutionProviderStatus,
+    /// Batch sizes this classifier has already been warmed up for.
+    ///
+    /// Kept here rather than in the pipeline because it is a property of this
+    /// classifier's session, and a run processes files of differing lengths
+    /// that each pick their own batch size.
+    warmed: WarmupRegistry,
+}
+
+/// Which batch sizes a classifier has already been warmed up for.
+///
+/// Execution providers compile a graph per input shape, and the first
+/// inference at a shape is the one that pays for it. Under `OpenVINO` that first
+/// inference does not merely cost time: for `Perch` v2 it returns output
+/// tensors that were never filled, so the batch is silently scored as noise.
+/// Warming a shape absorbs that first run, leaving every batch the caller
+/// actually cares about at least the second of its shape.
+#[derive(Debug, Default)]
+struct WarmupRegistry {
+    sizes: Mutex<HashSet<usize>>,
+}
+
+impl WarmupRegistry {
+    /// Whether `batch_size` has already been warmed.
+    ///
+    /// A poisoned registry means another thread panicked mid-warmup. The set
+    /// is still readable and the worst case is a redundant warmup, so this
+    /// recovers rather than turning it into a failed run.
+    fn is_warm(&self, batch_size: usize) -> bool {
+        self.sizes
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .contains(&batch_size)
+    }
+
+    /// Record `batch_size` as warmed.
+    fn mark_warm(&self, batch_size: usize) {
+        self.sizes
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .insert(batch_size);
+    }
 }
 
 impl BirdClassifier {
@@ -310,6 +352,7 @@ impl BirdClassifier {
             uses_tensorrt,
             bsg_processor,
             ep_status,
+            warmed: WarmupRegistry::default(),
         })
     }
 
@@ -358,6 +401,31 @@ impl BirdClassifier {
             })
     }
 
+    /// Warm up for `batch_size` unless that shape has already been warmed.
+    ///
+    /// Every batch size a run submits has to go through this before it carries
+    /// real audio. Warming one shape does nothing for another: providers key
+    /// their compiled graph on the input shape, so each distinct batch size
+    /// pays its own first-inference cost, and under `OpenVINO` that first
+    /// inference returns unpopulated outputs rather than merely being slow.
+    ///
+    /// Repeat calls for a shape already warmed return without running
+    /// inference, so this is cheap to call once per file.
+    pub fn ensure_warm(&self, batch_size: usize) -> Result<()> {
+        if self.warmed.is_warm(batch_size) {
+            return Ok(());
+        }
+
+        self.warmup(batch_size)?;
+
+        // Recorded only after the warmup succeeds. A failed warmup that was
+        // recorded anyway would let the next caller skip straight to real
+        // audio on a shape that was never warmed.
+        self.warmed.mark_warm(batch_size);
+
+        Ok(())
+    }
+
     /// Perform a warm-up inference to initialize GPU resources.
     ///
     /// This method runs inference with the specified batch size to trigger any
@@ -370,6 +438,8 @@ impl BirdClassifier {
     ///
     /// `TensorRT` engine compilation can take several minutes on first run, but
     /// the compiled engine is cached for subsequent runs.
+    ///
+    /// Prefer [`Self::ensure_warm`], which skips shapes already warmed.
     pub fn warmup(&self, batch_size: usize) -> Result<()> {
         let sample_count = self.inner.config().sample_count;
         let dummy_segment = vec![0.0f32; sample_count];
@@ -569,6 +639,68 @@ impl BirdClassifier {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn warmup_registry_starts_cold_for_every_size() {
+        let registry = WarmupRegistry::default();
+
+        assert!(!registry.is_warm(1));
+        assert!(!registry.is_warm(8));
+        assert!(!registry.is_warm(16));
+    }
+
+    #[test]
+    fn warmup_registry_reports_a_marked_size_as_warm() {
+        let registry = WarmupRegistry::default();
+        registry.mark_warm(8);
+
+        assert!(registry.is_warm(8));
+    }
+
+    #[test]
+    fn warmup_registry_keeps_sizes_independent() {
+        // The bug this guards against: warming the configured batch size and
+        // treating the whole classifier as warm, while a short file submits a
+        // smaller batch that was never warmed. Each size stands alone.
+        let registry = WarmupRegistry::default();
+        registry.mark_warm(16);
+
+        assert!(registry.is_warm(16));
+        assert!(!registry.is_warm(8), "warming 16 must not vouch for 8");
+        assert!(!registry.is_warm(1), "warming 16 must not vouch for 1");
+    }
+
+    #[test]
+    fn warmup_registry_marking_twice_is_idempotent() {
+        let registry = WarmupRegistry::default();
+        registry.mark_warm(4);
+        registry.mark_warm(4);
+
+        assert!(registry.is_warm(4));
+    }
+
+    #[test]
+    fn warmup_registry_survives_a_poisoned_lock() {
+        // Recovery matters because a panic in one warmup would otherwise turn
+        // every later `ensure_warm` into a failure, including for sizes that
+        // were warmed successfully before the panic.
+        let registry = WarmupRegistry::default();
+        registry.mark_warm(8);
+
+        let poisoned = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _guard = registry.sizes.lock();
+            #[allow(clippy::panic)]
+            {
+                panic!("poison the registry");
+            }
+        }));
+        assert!(poisoned.is_err(), "the test must actually poison the lock");
+        assert!(registry.sizes.is_poisoned());
+
+        assert!(registry.is_warm(8), "a poisoned registry still reads");
+        registry.mark_warm(2);
+        assert!(registry.is_warm(2), "a poisoned registry still records");
+    }
 
     #[test]
     #[allow(clippy::unwrap_used)]

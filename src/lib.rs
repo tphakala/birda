@@ -2979,7 +2979,6 @@ mod tests {
     // A test command line that fails to parse is a broken test, not a runtime
     // condition to handle, so `expect` is the right call here. Matches the
     // convention the other test modules in this crate use.
-    #[allow(clippy::expect_used)]
     mod requires_valid_config {
         use super::*;
 

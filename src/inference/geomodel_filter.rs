@@ -79,8 +79,6 @@ pub fn filter_predictions(
 }
 
 #[cfg(test)]
-#[allow(clippy::float_cmp)]
-#[allow(clippy::unwrap_used)] // Test setup code - panics are acceptable
 mod tests {
     use super::*;
     use crate::inference::geomodel::SpeciesMapping;

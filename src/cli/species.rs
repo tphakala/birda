@@ -314,7 +314,6 @@ fn write_species_list(path: &std::path::Path, species: &[(String, f32)]) -> Resu
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::float_cmp)]
 mod tests {
     use super::*;
 

@@ -177,7 +177,6 @@ pub fn validate_range_filter(config: &Config) -> Result<()> {
 // float comparisons check that a literal passed in came back unchanged, so an
 // epsilon would weaken them. Matches the convention used by the other test
 // modules in this crate.
-#[allow(clippy::unwrap_used, clippy::float_cmp)]
 mod tests {
     use super::*;
 

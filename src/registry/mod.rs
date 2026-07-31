@@ -411,7 +411,6 @@ pub fn show_languages(registry: &Registry, id: &str) -> Result<()> {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)] // Test setup code - panics are acceptable
 mod tests {
     use super::*;
 

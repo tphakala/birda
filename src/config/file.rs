@@ -205,7 +205,6 @@ pub fn save_default_config(config: &Config) -> Result<std::path::PathBuf> {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used, clippy::float_cmp)]
 mod tests {
     use super::*;
     use std::io::Write;

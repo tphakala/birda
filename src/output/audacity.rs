@@ -46,7 +46,6 @@ impl OutputWriter for AudacityWriter {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
     use std::path::PathBuf;

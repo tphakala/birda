@@ -41,7 +41,6 @@ pub fn read_species_list(path: &Path) -> Result<Vec<String>> {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)] // Test setup code - panics are acceptable
 mod tests {
     use super::*;
     use std::io::Write;

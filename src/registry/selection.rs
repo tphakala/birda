@@ -260,7 +260,6 @@ pub fn select_variant<'a>(
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)] // Test setup code - panics are acceptable
 mod tests {
     use super::*;
     use crate::registry::types::{FileInfo, LicenseInfo};

@@ -1151,7 +1151,6 @@ mod tests {
 
         let poisoned = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             let _guard = registry.sizes.lock();
-            #[allow(clippy::panic)]
             {
                 panic!("poison the registry");
             }
@@ -1165,7 +1164,6 @@ mod tests {
     }
 
     #[test]
-    #[allow(clippy::unwrap_used)]
     fn test_filter_predictions_with_species_list() {
         use birdnet_onnx::Prediction;
 

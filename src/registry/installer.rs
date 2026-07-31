@@ -540,7 +540,6 @@ fn roll_back(paths: &[&Path]) {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)] // Test setup code - panics are acceptable
 mod tests {
     use super::*;
 

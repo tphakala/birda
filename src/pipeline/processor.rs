@@ -555,6 +555,27 @@ pub fn process_file(
         info!("Processing audio (duration unknown)");
     }
 
+    // Warm up for the batch size this file will actually submit.
+    //
+    // The startup warmup runs at the configured batch size, but a file shorter
+    // than that is capped to its own segment count just above, and partial
+    // batches are padded up to the capped value rather than the configured one.
+    // A short file therefore runs every one of its batches at a shape the
+    // startup warmup never touched.
+    //
+    // That is not just a missed optimization. Under OpenVINO the first
+    // inference at a new shape comes back with output tensors that were never
+    // filled, which for `Perch` v2 means the whole batch is scored as noise:
+    // no error, no warning, just a file's worth of wrong detections. With the
+    // default batch size of 16 and Perch's 5-second segments, that covers
+    // every recording under 80 seconds, and a single-batch file has no second
+    // batch to come out right.
+    //
+    // Warming the effective size here means the first real batch is at least
+    // the second inference of its shape. `ensure_warm` skips sizes already
+    // warmed, so a directory of same-length files pays for this once.
+    classifier.ensure_warm(effective_batch_size)?;
+
     // Create batch context for GPU memory efficiency (if effective_batch_size > 1)
     // Context is created once and reused for all batches in this file
     // IMPORTANT: This uses effective_batch_size to avoid over-allocating memory

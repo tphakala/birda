@@ -535,7 +535,7 @@ fn warmup_classifier(classifier: &BirdClassifier, batch_size: usize) -> Result<(
     use std::time::{Duration, Instant};
 
     if !classifier.uses_tensorrt() {
-        return classifier.warmup(batch_size);
+        return classifier.ensure_warm(batch_size);
     }
 
     let spinner = ProgressBar::new_spinner();
@@ -550,7 +550,7 @@ fn warmup_classifier(classifier: &BirdClassifier, batch_size: usize) -> Result<(
     spinner.enable_steady_tick(Duration::from_millis(100));
 
     let warmup_start = Instant::now();
-    let result = classifier.warmup(batch_size);
+    let result = classifier.ensure_warm(batch_size);
     let warmup_duration = warmup_start.elapsed();
 
     spinner.finish_and_clear();

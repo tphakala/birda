@@ -1,4 +1,17 @@
 //! Tests for detection file parser.
+// Integration test crate. `unwrap`, `expect` and `panic` are how a test reports
+// failure, not unhandled error paths, so rewriting them into propagated errors
+// would only hide which assertion fired. Every exact float assertion in these
+// tests is on a passed-through value (a literal parsed from a file, a
+// coordinate round-tripped through JSON, a clip boundary clamped to a whole
+// number) rather than a computed one, so exact equality is the assertion the
+// test wants. The crate-level deny still governs everything birda ships.
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::float_cmp
+)]
 
 use std::io::Write;
 
@@ -7,11 +20,11 @@ use tempfile::NamedTempFile;
 
 #[test]
 fn test_parse_birda_csv_format() {
-    let csv_content = r#"Start (s),End (s),Scientific name,Common name,Confidence
+    let csv_content = r"Start (s),End (s),Scientific name,Common name,Confidence
 0.0,3.0,Parus major,Great Tit,0.8542
 3.0,6.0,Cyanistes caeruleus,Eurasian Blue Tit,0.7123
 6.0,9.0,Parus major,Great Tit,0.9001
-"#;
+";
 
     let mut file = NamedTempFile::with_suffix(".BirdNET.results.csv").unwrap();
     file.write_all(csv_content.as_bytes()).unwrap();
@@ -74,9 +87,9 @@ fn test_parse_missing_column_returns_error() {
 #[test]
 fn test_parse_csv_with_optional_columns() {
     // birda CSV output may include optional metadata columns
-    let csv_content = r#"Start (s),End (s),Scientific name,Common name,Confidence,Lat,Lon,Week,Model
+    let csv_content = r"Start (s),End (s),Scientific name,Common name,Confidence,Lat,Lon,Week,Model
 0.0,3.0,Parus major,Great Tit,0.8542,60.1699,24.9384,15,birdnet-v24
-"#;
+";
 
     let mut file = NamedTempFile::with_suffix(".csv").unwrap();
     file.write_all(csv_content.as_bytes()).unwrap();
@@ -90,9 +103,9 @@ fn test_parse_csv_with_optional_columns() {
 #[test]
 fn test_parse_invalid_time_range_returns_error() {
     // End time before start time should be rejected
-    let csv_content = r#"Start (s),End (s),Scientific name,Common name,Confidence
+    let csv_content = r"Start (s),End (s),Scientific name,Common name,Confidence
 5.0,3.0,Parus major,Great Tit,0.85
-"#;
+";
 
     let mut file = NamedTempFile::with_suffix(".csv").unwrap();
     file.write_all(csv_content.as_bytes()).unwrap();

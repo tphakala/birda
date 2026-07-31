@@ -149,7 +149,6 @@ pub fn build_range_filter_config(
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)] // Test setup code - panics are acceptable
 mod tests {
     use super::*;
     use crate::config::types::UnmatchedPolicy;

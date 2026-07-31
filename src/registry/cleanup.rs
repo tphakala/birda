@@ -83,7 +83,6 @@ pub fn remove_orphans(paths: &[PathBuf]) -> Vec<(PathBuf, std::io::Error)> {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)] // Test setup code - panics are acceptable
 mod tests {
     use super::*;
     use crate::config::{ModelConfig, ModelType};
@@ -248,7 +247,7 @@ mod tests {
         let present = dir.path().join("gone.onnx");
         std::fs::write(&present, b"x").unwrap();
 
-        let failures = remove_orphans(&[present.clone()]);
+        let failures = remove_orphans(std::slice::from_ref(&present));
 
         assert!(!present.exists());
         assert!(failures.is_empty());

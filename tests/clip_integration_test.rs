@@ -5,8 +5,19 @@
 //! These drive the real binary, because the hazard is in the seam between the
 //! CLI parsers, the range guard and the extractor's allocation, and each layer
 //! looks correct on its own.
-
-#![allow(clippy::unwrap_used, clippy::expect_used)]
+// Integration test crate. `unwrap`, `expect` and `panic` are how a test reports
+// failure, not unhandled error paths, so rewriting them into propagated errors
+// would only hide which assertion fired. Every exact float assertion in these
+// tests is on a passed-through value (a literal parsed from a file, a
+// coordinate round-tripped through JSON, a clip boundary clamped to a whole
+// number) rather than a computed one, so exact equality is the assertion the
+// test wants. The crate-level deny still governs everything birda ships.
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::float_cmp
+)]
 
 use std::io::Write;
 use std::path::PathBuf;

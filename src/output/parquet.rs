@@ -484,7 +484,7 @@ mod tests {
             scientific_name: "Poecile atricapillus".to_string(),
             common_name: "Black-capped Chickadee".to_string(),
             confidence: 0.95,
-            metadata: Default::default(),
+            metadata: crate::output::DetectionMetadata::default(),
         }];
 
         let schema = build_schema(&[]);

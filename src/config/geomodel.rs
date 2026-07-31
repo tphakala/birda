@@ -282,7 +282,6 @@ pub(crate) fn human_size(bytes: Option<u64>) -> String {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)] // Test setup code - panics are acceptable
 mod tests {
     use super::*;
     use std::path::PathBuf;

@@ -244,7 +244,8 @@ fn process_detection_file(
         ProgressBar::hidden()
     } else {
         let pb = ProgressBar::new(groups.len() as u64);
-        // Template is hardcoded and known to be valid
+        // Template is hardcoded and known to be valid, so the only way this
+        // expect fires is a typo in the literal above, which the tests catch.
         #[allow(clippy::expect_used)]
         pb.set_style(
             ProgressStyle::default_bar()
@@ -412,7 +413,6 @@ fn find_source_audio(
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
 

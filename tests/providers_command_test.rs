@@ -2,6 +2,19 @@
 //!
 //! Note: These tests require ONNX Runtime to be available.
 //! They will be skipped if ONNX Runtime initialization fails (e.g., in CI).
+// Integration test crate. `unwrap`, `expect` and `panic` are how a test reports
+// failure, not unhandled error paths, so rewriting them into propagated errors
+// would only hide which assertion fired. Every exact float assertion in these
+// tests is on a passed-through value (a literal parsed from a file, a
+// coordinate round-tripped through JSON, a clip boundary clamped to a whole
+// number) rather than a computed one, so exact equality is the assertion the
+// test wants. The crate-level deny still governs everything birda ships.
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::float_cmp
+)]
 
 use std::time::Duration;
 
@@ -40,9 +53,8 @@ fn get_providers_json() -> Option<Value> {
 
 #[test]
 fn test_providers_command_human_readable() {
-    let stdout = match run_providers_command(&[]) {
-        Some(stdout) => stdout,
-        None => return,
+    let Some(stdout) = run_providers_command(&[]) else {
+        return;
     };
 
     let output = String::from_utf8(stdout).expect("stdout should be valid UTF-8");
@@ -52,9 +64,8 @@ fn test_providers_command_human_readable() {
 
 #[test]
 fn test_providers_command_json_output() {
-    let json = match get_providers_json() {
-        Some(json) => json,
-        None => return,
+    let Some(json) = get_providers_json() else {
+        return;
     };
 
     // Verify structure - spec_version should be present and non-empty
@@ -101,9 +112,8 @@ fn test_providers_command_json_output() {
 
 #[test]
 fn test_providers_json_all_fields_present() {
-    let json = match get_providers_json() {
-        Some(json) => json,
-        None => return,
+    let Some(json) = get_providers_json() else {
+        return;
     };
 
     let providers = json["payload"]["providers"]
@@ -146,9 +156,8 @@ fn test_providers_json_all_fields_present() {
 
 #[test]
 fn test_providers_command_shows_usage_help() {
-    let stdout = match run_providers_command(&[]) {
-        Some(stdout) => stdout,
-        None => return,
+    let Some(stdout) = run_providers_command(&[]) else {
+        return;
     };
 
     let output = String::from_utf8(stdout).expect("stdout should be valid UTF-8");

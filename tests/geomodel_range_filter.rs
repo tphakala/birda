@@ -1,4 +1,4 @@
-//! End-to-end tests for the BirdNET Geomodel range filter path.
+//! End-to-end tests for the `BirdNET` Geomodel range filter path.
 //!
 //! These run against a tiny fixture ONNX with the same input and output
 //! contract as the real geomodel (3 float32 inputs, N sigmoid outputs), so the
@@ -10,8 +10,19 @@
 //! fresh checkout) each test skips rather than running: `ort` does not fail
 //! fast on a missing library, it blocks, so an unguarded session build hangs
 //! the job until the CI timeout instead of reporting anything useful.
-
-#![allow(clippy::unwrap_used, clippy::expect_used)]
+// Integration test crate. `unwrap`, `expect` and `panic` are how a test reports
+// failure, not unhandled error paths, so rewriting them into propagated errors
+// would only hide which assertion fired. Every exact float assertion in these
+// tests is on a passed-through value (a literal parsed from a file, a
+// coordinate round-tripped through JSON, a clip boundary clamped to a whole
+// number) rather than a computed one, so exact equality is the assertion the
+// test wants. The crate-level deny still governs everything birda ships.
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::float_cmp
+)]
 
 use birda::config::UnmatchedPolicy;
 use birda::inference::range_filter::RangeFilter;
@@ -268,7 +279,15 @@ fn test_rerank_scales_confidence_by_the_predicted_score() {
     );
 
     assert_eq!(filtered.len(), 1);
-    assert!((filtered[0].confidence - 0.8 * score).abs() < 1e-6);
+    // Written as the plain two-step expression rather than the `mul_add` clippy
+    // suggests. `suboptimal_flops` is a performance lint and there is no hot
+    // path in an assertion, while `mul_add` fuses the multiply and add into a
+    // single rounding. That would compute the expected value more precisely
+    // than the production code being checked computes the actual one, which is
+    // the wrong reference for this test to compare against.
+    #[allow(clippy::suboptimal_flops)]
+    let expected_delta = (filtered[0].confidence - 0.8 * score).abs();
+    assert!(expected_delta < 1e-6);
 }
 
 #[test]

@@ -329,49 +329,6 @@ pub fn show_info(registry: &Registry, id: &str) -> Result<()> {
     Ok(())
 }
 
-#[cfg(test)]
-#[allow(clippy::unwrap_used)] // Test setup code - panics are acceptable
-mod tests {
-    use super::*;
-
-    fn license(commercial_use: bool, share_alike: bool) -> LicenseInfo {
-        LicenseInfo {
-            r#type: "TEST-1.0".into(),
-            url: "https://example.com/licence".into(),
-            commercial_use,
-            attribution_required: true,
-            share_alike,
-        }
-    }
-
-    #[test]
-    fn test_license_line_names_every_restriction_that_applies() {
-        // The defect this replaced: the classifier loop showed only
-        // "(non-commercial)" and the range filter only "(share-alike)", so
-        // birdnet-v24 and bsg-fi-v44 listed with no share-alike note despite
-        // carrying that obligation. Both restrictions must show together.
-        let line = license_line(&license(false, true));
-
-        assert!(line.contains("non-commercial"), "got: {line}");
-        assert!(line.contains("share-alike"), "got: {line}");
-    }
-
-    #[test]
-    fn test_license_line_names_share_alike_on_a_commercial_licence() {
-        // The geomodel's shape: CC BY-SA permits commercial use but still binds
-        // share-alike, so the note must not be suppressed by commercial_use.
-        let line = license_line(&license(true, true));
-
-        assert!(!line.contains("non-commercial"), "got: {line}");
-        assert!(line.contains("share-alike"), "got: {line}");
-    }
-
-    #[test]
-    fn test_license_line_adds_nothing_for_an_unrestricted_licence() {
-        assert_eq!(license_line(&license(true, false)), "TEST-1.0");
-    }
-}
-
 /// List the regional tiles a model publishes, grouped by continent.
 ///
 /// Regions are what a user picks; the variant is picked for them, so this lists
@@ -451,4 +408,46 @@ pub fn show_languages(registry: &Registry, id: &str) -> Result<()> {
     println!("  birda models install {} --language <code>", model.id);
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn license(commercial_use: bool, share_alike: bool) -> LicenseInfo {
+        LicenseInfo {
+            r#type: "TEST-1.0".into(),
+            url: "https://example.com/licence".into(),
+            commercial_use,
+            attribution_required: true,
+            share_alike,
+        }
+    }
+
+    #[test]
+    fn test_license_line_names_every_restriction_that_applies() {
+        // The defect this replaced: the classifier loop showed only
+        // "(non-commercial)" and the range filter only "(share-alike)", so
+        // birdnet-v24 and bsg-fi-v44 listed with no share-alike note despite
+        // carrying that obligation. Both restrictions must show together.
+        let line = license_line(&license(false, true));
+
+        assert!(line.contains("non-commercial"), "got: {line}");
+        assert!(line.contains("share-alike"), "got: {line}");
+    }
+
+    #[test]
+    fn test_license_line_names_share_alike_on_a_commercial_licence() {
+        // The geomodel's shape: CC BY-SA permits commercial use but still binds
+        // share-alike, so the note must not be suppressed by commercial_use.
+        let line = license_line(&license(true, true));
+
+        assert!(!line.contains("non-commercial"), "got: {line}");
+        assert!(line.contains("share-alike"), "got: {line}");
+    }
+
+    #[test]
+    fn test_license_line_adds_nothing_for_an_unrestricted_licence() {
+        assert_eq!(license_line(&license(true, false)), "TEST-1.0");
+    }
 }

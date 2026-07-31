@@ -555,8 +555,14 @@ mod tests {
         };
         reporter.pipeline_started(5, "test-model", 0.1, &dummy_ep, None);
 
-        let output = buffer.lock().expect("lock");
-        let output_str = String::from_utf8_lossy(&output);
+        // Scoped so the guard is released before the assertions run: holding a
+        // lock across assertions means a failing assert unwinds while still
+        // holding it, poisoning the mutex and turning one clear failure into a
+        // cascade of confusing ones in sibling tests that share the buffer.
+        let output_str = {
+            let output = buffer.lock().expect("lock");
+            String::from_utf8_lossy(&output).into_owned()
+        };
         assert!(output_str.contains("\"event\":\"pipeline_started\""));
         assert!(output_str.contains("\"total_files\":5"));
     }
@@ -594,13 +600,19 @@ mod tests {
             scientific_name: "Parus major".to_string(),
             common_name: "Great Tit".to_string(),
             confidence: 0.95,
-            metadata: Default::default(),
+            metadata: crate::output::DetectionMetadata::default(),
         }];
 
         reporter.detections(Path::new("test.wav"), &detections, None);
 
-        let output = buffer.lock().expect("lock");
-        let output_str = String::from_utf8_lossy(&output);
+        // Scoped so the guard is released before the assertions run: holding a
+        // lock across assertions means a failing assert unwinds while still
+        // holding it, poisoning the mutex and turning one clear failure into a
+        // cascade of confusing ones in sibling tests that share the buffer.
+        let output_str = {
+            let output = buffer.lock().expect("lock");
+            String::from_utf8_lossy(&output).into_owned()
+        };
         assert!(output_str.contains("\"event\":\"detections\""));
         assert!(output_str.contains("\"Great Tit\""));
         assert!(output_str.contains("\"confidence\":0.95"));

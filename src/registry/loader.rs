@@ -165,7 +165,6 @@ pub fn find_model<'a>(registry: &'a Registry, id: &str) -> Option<&'a ModelEntry
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
     use crate::registry::types::{FileInfo, LabelsInfo, LanguageVariant, LicenseInfo, ModelFiles};

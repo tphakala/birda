@@ -412,8 +412,6 @@ impl std::str::FromStr for ModelType {
 }
 
 #[cfg(test)]
-#[allow(clippy::float_cmp)]
-#[allow(clippy::unwrap_used)] // Test setup code - panics are acceptable
 mod tests {
     use super::*;
 

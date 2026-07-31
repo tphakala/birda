@@ -47,7 +47,6 @@ pub fn tensorrt_cache_dir() -> Result<PathBuf> {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
 

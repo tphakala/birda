@@ -142,7 +142,6 @@ fn license_summary(license: &LicenseInfo, vendor: &str) -> String {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)] // Test setup code - panics are acceptable
 mod tests {
     use super::*;
 

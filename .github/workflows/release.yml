@@ -55,8 +55,9 @@ jobs:
       - name: Check formatting
         run: cargo fmt --check
 
+      # --all-targets so tests are linted too, matching the CI workflow.
       - name: Run clippy
-        run: cargo clippy --no-default-features -- -D warnings
+        run: cargo clippy --no-default-features --all-targets -- -D warnings
 
       - name: Run tests
         run: cargo test --no-default-features --no-fail-fast

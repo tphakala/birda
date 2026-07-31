@@ -169,14 +169,13 @@ pub fn cleanup_all_locks() {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
     use std::fs::File;
     use std::sync::Mutex;
     use tempfile::TempDir;
 
-    /// Serialize locking tests to avoid race conditions with cleanup_all_locks()
+    /// Serialize locking tests to avoid race conditions with `cleanup_all_locks()`
     /// which drains the entire global registry.
     static TEST_LOCK: Mutex<()> = Mutex::new(());
 

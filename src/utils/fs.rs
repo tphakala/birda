@@ -484,7 +484,6 @@ fn sync_directory(dir: &Path) {
 fn sync_directory(_dir: &Path) {}
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
 

@@ -115,7 +115,6 @@ fn estimate_output_len(input_len: usize, from_rate: u32, to_rate: u32) -> usize 
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
     use std::f32::consts::PI;

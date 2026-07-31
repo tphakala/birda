@@ -5294,7 +5294,7 @@ MIT License
 
 Used by:
   - birda 1.10.0
-  - birdnet-onnx 2.0.0-rc.15
+  - birdnet-onnx 2.0.0-rc.16
 
 MIT License
 

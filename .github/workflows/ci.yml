@@ -37,8 +37,12 @@ jobs:
       - name: Check formatting
         run: cargo fmt --check
 
+      # --all-targets so tests are linted too. Without it clippy only sees the
+      # lib and the binary, and the test code drifts unchecked: this flag was
+      # added against a backlog of 221 warnings that had accumulated entirely
+      # in test code, none of which any CI run had ever reported.
       - name: Run clippy
-        run: cargo clippy --no-default-features -- -D warnings
+        run: cargo clippy --no-default-features --all-targets -- -D warnings
 
   test:
     name: Test

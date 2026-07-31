@@ -1,6 +1,17 @@
 //! Tests for WAV file writer.
-
-#![allow(clippy::unwrap_used, clippy::expect_used)]
+// Integration test crate. `unwrap`, `expect` and `panic` are how a test reports
+// failure, not unhandled error paths, so rewriting them into propagated errors
+// would only hide which assertion fired. Every exact float assertion in these
+// tests is on a passed-through value (a literal parsed from a file, a
+// coordinate round-tripped through JSON, a clip boundary clamped to a whole
+// number) rather than a computed one, so exact equality is the assertion the
+// test wants. The crate-level deny still governs everything birda ships.
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::float_cmp
+)]
 
 use birda::clipper::WavWriter;
 use tempfile::TempDir;
@@ -51,7 +62,9 @@ fn test_write_clip_creates_species_directory() {
     let writer = WavWriter::new(temp_dir.path().to_path_buf());
 
     // Simple sine wave samples
-    let samples: Vec<f32> = (0..48000).map(|i| (i as f32 * 0.01).sin()).collect();
+    let samples: Vec<f32> = (0..48_000u16)
+        .map(|i| (f32::from(i) * 0.01).sin())
+        .collect();
 
     let path = writer
         .write_clip(&samples, 48000, "Parus major", 0.85, 10.5, 11.5)
@@ -75,7 +88,7 @@ fn test_write_clip_filename_format() {
     let filename = path.file_name().unwrap().to_str().unwrap();
     // Format: species_confidence_start-end.wav
     assert!(filename.starts_with("Cyanistes caeruleus_92p_"));
-    assert!(filename.ends_with(".wav"));
+    assert_eq!(path.extension(), Some(std::ffi::OsStr::new("wav")));
 }
 
 #[test]
@@ -116,7 +129,9 @@ fn test_written_wav_is_valid() {
     let temp_dir = TempDir::new().unwrap();
     let writer = WavWriter::new(temp_dir.path().to_path_buf());
 
-    let samples: Vec<f32> = (0..48000).map(|i| (i as f32 * 0.01).sin()).collect();
+    let samples: Vec<f32> = (0..48_000u16)
+        .map(|i| (f32::from(i) * 0.01).sin())
+        .collect();
 
     let path = writer
         .write_clip(&samples, 48000, "Test Species", 0.85, 0.0, 1.0)

@@ -636,142 +636,6 @@ impl BirdClassifier {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn warmup_registry_starts_cold_for_every_size() {
-        let registry = WarmupRegistry::default();
-
-        assert!(!registry.is_warm(1));
-        assert!(!registry.is_warm(8));
-        assert!(!registry.is_warm(16));
-    }
-
-    #[test]
-    fn warmup_registry_reports_a_marked_size_as_warm() {
-        let registry = WarmupRegistry::default();
-        registry.mark_warm(8);
-
-        assert!(registry.is_warm(8));
-    }
-
-    #[test]
-    fn warmup_registry_keeps_sizes_independent() {
-        // The bug this guards against: warming the configured batch size and
-        // treating the whole classifier as warm, while a short file submits a
-        // smaller batch that was never warmed. Each size stands alone.
-        let registry = WarmupRegistry::default();
-        registry.mark_warm(16);
-
-        assert!(registry.is_warm(16));
-        assert!(!registry.is_warm(8), "warming 16 must not vouch for 8");
-        assert!(!registry.is_warm(1), "warming 16 must not vouch for 1");
-    }
-
-    #[test]
-    fn warmup_registry_marking_twice_is_idempotent() {
-        let registry = WarmupRegistry::default();
-        registry.mark_warm(4);
-        registry.mark_warm(4);
-
-        assert!(registry.is_warm(4));
-    }
-
-    #[test]
-    fn warmup_registry_survives_a_poisoned_lock() {
-        // Recovery matters because a panic in one warmup would otherwise turn
-        // every later `ensure_warm` into a failure, including for sizes that
-        // were warmed successfully before the panic.
-        let registry = WarmupRegistry::default();
-        registry.mark_warm(8);
-
-        let poisoned = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            let _guard = registry.sizes.lock();
-            #[allow(clippy::panic)]
-            {
-                panic!("poison the registry");
-            }
-        }));
-        assert!(poisoned.is_err(), "the test must actually poison the lock");
-        assert!(registry.sizes.is_poisoned());
-
-        assert!(registry.is_warm(8), "a poisoned registry still reads");
-        registry.mark_warm(2);
-        assert!(registry.is_warm(2), "a poisoned registry still records");
-    }
-
-    #[test]
-    #[allow(clippy::unwrap_used)]
-    fn test_filter_predictions_with_species_list() {
-        use birdnet_onnx::Prediction;
-
-        let predictions = vec![
-            Prediction {
-                species: "Parus major_Great Tit".to_string(),
-                confidence: 0.95,
-                index: 0,
-            },
-            Prediction {
-                species: "Turdus merula_Blackbird".to_string(),
-                confidence: 0.85,
-                index: 1,
-            },
-            Prediction {
-                species: "Cyanistes caeruleus_Blue Tit".to_string(),
-                confidence: 0.75,
-                index: 2,
-            },
-        ];
-
-        let species_list: HashSet<String> = vec![
-            "Parus major_Great Tit".to_string(),
-            "Cyanistes caeruleus_Blue Tit".to_string(),
-        ]
-        .into_iter()
-        .collect();
-
-        // Filter using the species list (now O(1) lookup)
-        let filtered: Vec<Prediction> = predictions
-            .iter()
-            .filter(|p| species_list.contains(&p.species))
-            .cloned()
-            .collect();
-
-        assert_eq!(filtered.len(), 2);
-        assert!(filtered.iter().any(|p| p.species.contains("Parus major")));
-        assert!(filtered.iter().any(|p| p.species.contains("Cyanistes")));
-        assert!(!filtered.iter().any(|p| p.species.contains("Turdus")));
-    }
-
-    #[test]
-    fn test_execution_provider_status_creation() {
-        let status = ExecutionProviderStatus {
-            requested: "auto".to_string(),
-            actual: "CUDA".to_string(),
-            fallback_reason: Some("TensorRT libraries not found".to_string()),
-        };
-
-        assert_eq!(status.requested, "auto");
-        assert_eq!(status.actual, "CUDA");
-        assert!(status.fallback_reason.is_some());
-    }
-
-    #[test]
-    fn test_execution_provider_status_no_fallback() {
-        let status = ExecutionProviderStatus {
-            requested: "cuda".to_string(),
-            actual: "CUDA".to_string(),
-            fallback_reason: None,
-        };
-
-        assert_eq!(status.requested, "cuda");
-        assert_eq!(status.actual, "CUDA");
-        assert!(status.fallback_reason.is_none());
-    }
-}
-
 /// Holds the result of execution provider selection.
 struct ProviderSelection {
     /// Builder with the chosen provider configured.
@@ -1232,4 +1096,140 @@ fn provider_unavailable_error(provider_name: &str, available: &[ExecutionProvide
     message.push_str("  birda <input>           (auto mode with fallback)\n");
 
     Error::ClassifierBuild { reason: message }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn warmup_registry_starts_cold_for_every_size() {
+        let registry = WarmupRegistry::default();
+
+        assert!(!registry.is_warm(1));
+        assert!(!registry.is_warm(8));
+        assert!(!registry.is_warm(16));
+    }
+
+    #[test]
+    fn warmup_registry_reports_a_marked_size_as_warm() {
+        let registry = WarmupRegistry::default();
+        registry.mark_warm(8);
+
+        assert!(registry.is_warm(8));
+    }
+
+    #[test]
+    fn warmup_registry_keeps_sizes_independent() {
+        // The bug this guards against: warming the configured batch size and
+        // treating the whole classifier as warm, while a short file submits a
+        // smaller batch that was never warmed. Each size stands alone.
+        let registry = WarmupRegistry::default();
+        registry.mark_warm(16);
+
+        assert!(registry.is_warm(16));
+        assert!(!registry.is_warm(8), "warming 16 must not vouch for 8");
+        assert!(!registry.is_warm(1), "warming 16 must not vouch for 1");
+    }
+
+    #[test]
+    fn warmup_registry_marking_twice_is_idempotent() {
+        let registry = WarmupRegistry::default();
+        registry.mark_warm(4);
+        registry.mark_warm(4);
+
+        assert!(registry.is_warm(4));
+    }
+
+    #[test]
+    fn warmup_registry_survives_a_poisoned_lock() {
+        // Recovery matters because a panic in one warmup would otherwise turn
+        // every later `ensure_warm` into a failure, including for sizes that
+        // were warmed successfully before the panic.
+        let registry = WarmupRegistry::default();
+        registry.mark_warm(8);
+
+        let poisoned = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _guard = registry.sizes.lock();
+            #[allow(clippy::panic)]
+            {
+                panic!("poison the registry");
+            }
+        }));
+        assert!(poisoned.is_err(), "the test must actually poison the lock");
+        assert!(registry.sizes.is_poisoned());
+
+        assert!(registry.is_warm(8), "a poisoned registry still reads");
+        registry.mark_warm(2);
+        assert!(registry.is_warm(2), "a poisoned registry still records");
+    }
+
+    #[test]
+    #[allow(clippy::unwrap_used)]
+    fn test_filter_predictions_with_species_list() {
+        use birdnet_onnx::Prediction;
+
+        let predictions = [
+            Prediction {
+                species: "Parus major_Great Tit".to_string(),
+                confidence: 0.95,
+                index: 0,
+            },
+            Prediction {
+                species: "Turdus merula_Blackbird".to_string(),
+                confidence: 0.85,
+                index: 1,
+            },
+            Prediction {
+                species: "Cyanistes caeruleus_Blue Tit".to_string(),
+                confidence: 0.75,
+                index: 2,
+            },
+        ];
+
+        let species_list: HashSet<String> = vec![
+            "Parus major_Great Tit".to_string(),
+            "Cyanistes caeruleus_Blue Tit".to_string(),
+        ]
+        .into_iter()
+        .collect();
+
+        // Filter using the species list (now O(1) lookup)
+        let filtered: Vec<Prediction> = predictions
+            .iter()
+            .filter(|p| species_list.contains(&p.species))
+            .cloned()
+            .collect();
+
+        assert_eq!(filtered.len(), 2);
+        assert!(filtered.iter().any(|p| p.species.contains("Parus major")));
+        assert!(filtered.iter().any(|p| p.species.contains("Cyanistes")));
+        assert!(!filtered.iter().any(|p| p.species.contains("Turdus")));
+    }
+
+    #[test]
+    fn test_execution_provider_status_creation() {
+        let status = ExecutionProviderStatus {
+            requested: "auto".to_string(),
+            actual: "CUDA".to_string(),
+            fallback_reason: Some("TensorRT libraries not found".to_string()),
+        };
+
+        assert_eq!(status.requested, "auto");
+        assert_eq!(status.actual, "CUDA");
+        assert!(status.fallback_reason.is_some());
+    }
+
+    #[test]
+    fn test_execution_provider_status_no_fallback() {
+        let status = ExecutionProviderStatus {
+            requested: "cuda".to_string(),
+            actual: "CUDA".to_string(),
+            fallback_reason: None,
+        };
+
+        assert_eq!(status.requested, "cuda");
+        assert_eq!(status.actual, "CUDA");
+        assert!(status.fallback_reason.is_none());
+    }
 }

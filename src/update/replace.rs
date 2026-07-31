@@ -207,12 +207,12 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn test_set_executable_on_temp_file() {
+        use std::os::unix::fs::PermissionsExt;
         let dir = tempfile::tempdir().expect("failed to create temp dir");
         let path = dir.path().join("test-bin");
         std::fs::write(&path, b"fake binary").expect("failed to write test file");
         set_executable(&path).expect("set_executable should succeed");
 
-        use std::os::unix::fs::PermissionsExt;
         let mode = std::fs::metadata(&path)
             .expect("failed to read metadata")
             .permissions()

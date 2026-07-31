@@ -8,8 +8,19 @@
 //! geomodel` still failed, because that function takes the asset directly and
 //! the dispatch never reaches it for this id. Only driving the binary exercises
 //! the dispatch, which is where the defect lived.
-
-#![allow(clippy::unwrap_used, clippy::expect_used)]
+// Integration test crate. `unwrap`, `expect` and `panic` are how a test reports
+// failure, not unhandled error paths, so rewriting them into propagated errors
+// would only hide which assertion fired. Every exact float assertion in these
+// tests is on a passed-through value (a literal parsed from a file, a
+// coordinate round-tripped through JSON, a clip boundary clamped to a whole
+// number) rather than a computed one, so exact equality is the assertion the
+// test wants. The crate-level deny still governs everything birda ships.
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::float_cmp
+)]
 
 use std::time::Duration;
 

@@ -3,6 +3,31 @@
 //! This crate provides audio analysis capabilities using `BirdNET` and Perch models.
 
 #![warn(missing_docs)]
+// Test code is held to different rules than shipping code, and these four lints
+// encode the difference.
+//
+// `unwrap`, `expect` and `panic` are how a test reports failure: a panic in a
+// test is the assertion firing, not an unhandled error path, and rewriting them
+// into propagated `Result`s would hide which assertion failed. The crate-level
+// deny still applies to everything birda actually ships, because `cfg(test)` is
+// false in that build.
+//
+// `float_cmp` is a false positive throughout this suite. Every exact float
+// assertion here is on a value that is passed through rather than computed: a
+// literal parsed from a file, a coordinate round-tripped through JSON, or a
+// clip boundary clamped to a whole number. Exact equality is the assertion the
+// test wants, and an epsilon would stop it catching a boundary that is off by a
+// hair. Where a value IS computed, these tests already compare against an
+// epsilon by hand.
+#![cfg_attr(
+    test,
+    allow(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        clippy::panic,
+        clippy::float_cmp
+    )
+)]
 
 pub mod audio;
 pub mod cli;
@@ -2305,7 +2330,7 @@ mod tests {
         }
     }
 
-    /// Create default AnalyzeArgs (all None/false).
+    /// Create default `AnalyzeArgs` (all None/false).
     fn default_args() -> AnalyzeArgs {
         AnalyzeArgs::default()
     }
@@ -2496,11 +2521,13 @@ mod tests {
     fn test_adhoc_ignores_the_deprecated_meta_model_flag() {
         // --meta-model-path is retained as a hidden flag so scripts do not
         // break, but it no longer configures anything.
-        let mut args = AnalyzeArgs::default();
-        args.model_path = Some(PathBuf::from("/adhoc/model.onnx"));
-        args.labels_path = Some(PathBuf::from("/adhoc/labels.txt"));
-        args.model_type = Some(ModelType::BirdnetV24);
-        args.meta_model_path = Some(PathBuf::from("/adhoc/meta.onnx"));
+        let args = AnalyzeArgs {
+            model_path: Some(PathBuf::from("/adhoc/model.onnx")),
+            labels_path: Some(PathBuf::from("/adhoc/labels.txt")),
+            model_type: Some(ModelType::BirdnetV24),
+            meta_model_path: Some(PathBuf::from("/adhoc/meta.onnx")),
+            ..Default::default()
+        };
 
         let config = Config::default();
         let (model_config, name) = resolve_model_config(&args, &config).unwrap();

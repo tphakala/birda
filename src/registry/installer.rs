@@ -865,8 +865,9 @@ mod tests {
             name.starts_with("birdnet-geomodel-v3.0.2.onnx."),
             "part file must sit beside the destination, got {name}"
         );
-        assert!(
-            name.ends_with(".part"),
+        assert_eq!(
+            Path::new(&name).extension(),
+            Some(std::ffi::OsStr::new("part")),
             "part file must carry the partial suffix, got {name}"
         );
         assert!(

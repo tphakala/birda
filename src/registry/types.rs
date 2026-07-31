@@ -317,9 +317,7 @@ mod tests {
             files: None,
             build: Some(1),
             default_variant: Some("fp32".to_string()),
-            selection: [("cuda".to_string(), "fp16".to_string())]
-                .into_iter()
-                .collect(),
+            selection: std::iter::once(("cuda".to_string(), "fp16".to_string())).collect(),
             variants: vec![
                 variant("fp32", None, 11560),
                 variant("fp16", None, 11560),

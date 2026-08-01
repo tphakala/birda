@@ -73,6 +73,77 @@ pub mod day_of_year {
     pub const MAX: u32 = 366;
 }
 
+/// Geographic coordinate bounds, in degrees.
+///
+/// Three routes reach one setting: `--lat`/`--lon` and their `BIRDA_LATITUDE`/
+/// `BIRDA_LONGITUDE` variables, `birda config set defaults.latitude`, and a
+/// hand-edited config.toml. Before #340 each of `cli::validators`,
+/// `config::validate::validate_range_filter` and the `Error::InvalidLatitude`
+/// message text carried its own copy of these numbers, with nothing keeping
+/// them equal. `test_parse_latitude_matches_the_config_file_rule` and its
+/// longitude twin drive the flag and the file together and compare verdicts,
+/// so neither rule can be changed alone.
+pub mod coordinates {
+    /// Southernmost latitude.
+    pub const LATITUDE_MIN: f64 = -90.0;
+
+    /// Northernmost latitude.
+    pub const LATITUDE_MAX: f64 = 90.0;
+
+    /// Westernmost longitude.
+    pub const LONGITUDE_MIN: f64 = -180.0;
+
+    /// Easternmost longitude.
+    pub const LONGITUDE_MAX: f64 = 180.0;
+}
+
+/// Apache Parquet output constants.
+pub mod parquet {
+    /// Columns every Parquet file carries before the optional metadata ones.
+    ///
+    /// Three things must agree on this number: the base `fields` vec in
+    /// `build_schema`, the base `columns` vec in `build_record_batch`, and the
+    /// `skip` that walks past them to reach the columns `build_metadata_column`
+    /// handles. The first two build their entries literally and cannot read a
+    /// constant; `test_schema_basic` is what pins them to it.
+    pub const BASE_FIELD_COUNT: usize = 6;
+}
+
+/// Optional metadata columns for the CSV and Parquet writers.
+pub mod csv_columns {
+    /// Every name `defaults.csv_columns.include` accepts.
+    ///
+    /// Every writer that consumes `include` matches on these names, and a name
+    /// added here needs an arm in each of them. Today that is three arms, and
+    /// they disagree about what an unhandled name does: `CsvWriter::
+    /// write_detection` leaves the cell empty, so the name becomes a header
+    /// over a column empty in every row; `parquet::build_schema` drops it; and
+    /// `parquet::build_metadata_column` returns `Error::InvalidColumnName`,
+    /// which fails the write outright. The count is deliberately not the point
+    /// of this sentence: the invariant survives a fourth writer, a count does
+    /// not.
+    ///
+    /// `config::validate` rejects an unrecognised name, so none of those three
+    /// behaviours is reachable from an analyze run. It is not a guarantee for a
+    /// library caller: `CsvWriter::new` and `ParquetWriter::new` are public and
+    /// take the list directly, which is the same hole `should_process` keeps
+    /// its own guard for.
+    ///
+    /// `test_every_recognised_column_is_written` and
+    /// `test_every_recognised_column_reaches_the_parquet_writer` drive both
+    /// writers with every name here.
+    pub const RECOGNISED: [&str; 8] = [
+        "lat",
+        "lon",
+        "week",
+        "model",
+        "overlap",
+        "sensitivity",
+        "min_conf",
+        "species_list",
+    ];
+}
+
 /// Default number of top predictions to return per segment.
 pub const DEFAULT_TOP_K: usize = 5;
 
@@ -131,7 +202,16 @@ pub mod raven {
 
 /// Range filter constants.
 pub mod range_filter {
+    /// First week of the year, the lower bound for `--week`.
+    pub const WEEK_MIN: u32 = 1;
+
     /// `BirdNET` uses 48 weeks per year.
+    ///
+    /// Doubles as the upper bound for `--week`, which is why both `--week`
+    /// declarations in `cli::args` read this rather than restating 48 (#340).
+    /// `utils::date::date_to_week` clamps its result to the same value, so a
+    /// separately written CLI bound could have admitted a week that function
+    /// never returns.
     pub const WEEKS_PER_YEAR: u32 = 48;
 
     /// Days per `BirdNET` week (365.25 / 48).
@@ -200,6 +280,40 @@ pub mod obsolete_files {
 pub mod calendar {
     /// Days in each month (non-leap year).
     pub const DAYS_IN_MONTH: [u32; 12] = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+
+    /// First month of the year, the lower bound for `--month`.
+    pub const MONTH_MIN: u32 = 1;
+
+    /// Last month of the year, the upper bound for `--month`.
+    pub const MONTH_MAX: u32 = 12;
+
+    /// First day of any month, the lower bound for `--day`.
+    pub const DAY_MIN: u32 = 1;
+
+    /// Last day of the longest month, the upper bound for `--day`.
+    ///
+    /// `--day` is not checked against the month chosen alongside it, so the
+    /// bound is the longest month rather than the selected one.
+    pub const DAY_MAX: u32 = 31;
+
+    // Pin both upper bounds to the table they describe. A month added to or
+    // removed from `DAYS_IN_MONTH`, or a change to its longest entry, fails the
+    // build here rather than leaving `--month` and `--day` bounded by numbers
+    // the calendar they came from no longer supports.
+    const _: () = {
+        let mut months: u32 = 0;
+        let mut longest: u32 = 0;
+        let mut index = 0;
+        while index < DAYS_IN_MONTH.len() {
+            if DAYS_IN_MONTH[index] > longest {
+                longest = DAYS_IN_MONTH[index];
+            }
+            months += 1;
+            index += 1;
+        }
+        assert!(months == MONTH_MAX);
+        assert!(longest == DAY_MAX);
+    };
 }
 
 /// UTF-8 Byte Order Mark for Excel compatibility in CSV files.

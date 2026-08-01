@@ -382,21 +382,43 @@ pub enum Error {
     },
 
     /// Invalid latitude value.
-    #[error("invalid latitude: {value} (must be -90.0 to 90.0)")]
+    ///
+    /// The bounds are interpolated from `constants::coordinates` rather than
+    /// spelled out, so this message cannot drift from the rule that produced it
+    /// (#340). Same arrangement as `InvalidPadding` below.
+    #[error(
+        "invalid latitude: {value} (must be {:.1} to {:.1})",
+        crate::constants::coordinates::LATITUDE_MIN,
+        crate::constants::coordinates::LATITUDE_MAX
+    )]
     InvalidLatitude {
         /// Invalid latitude value.
         value: f64,
     },
 
     /// Invalid longitude value.
-    #[error("invalid longitude: {value} (must be -180.0 to 180.0)")]
+    #[error(
+        "invalid longitude: {value} (must be {:.1} to {:.1})",
+        crate::constants::coordinates::LONGITUDE_MIN,
+        crate::constants::coordinates::LONGITUDE_MAX
+    )]
     InvalidLongitude {
         /// Invalid longitude value.
         value: f64,
     },
 
     /// Invalid range filter threshold.
-    #[error("invalid range threshold: {value} (must be 0.0 to 1.0)")]
+    ///
+    /// Reads the same constants as the rule that produces it, for the reason
+    /// given on `InvalidLatitude` above, and was the variant left behind when
+    /// the coordinate pair was converted in #340. Every variant in this enum
+    /// that renders a numeric bound should interpolate it rather than spell it
+    /// out; that invariant is the point, not how many of them there are.
+    #[error(
+        "invalid range threshold: {value} (must be {:.1} to {:.1})",
+        crate::constants::confidence::MIN,
+        crate::constants::confidence::MAX
+    )]
     InvalidRangeThreshold {
         /// Invalid threshold value.
         value: f32,
@@ -759,6 +781,20 @@ mod tests {
         assert_eq!(
             err.to_string(),
             "invalid confidence: NaN (must be a finite number from 0.0 to 1.0)"
+        );
+    }
+
+    #[test]
+    fn test_invalid_range_threshold_renders_the_value_and_the_range() {
+        // Added with the conversion of this variant to read `confidence::MIN`
+        // and `MAX` (#340). The literal text is spelled out here on purpose,
+        // the way its two siblings above are: interpolating the constants into
+        // the expectation as well would compare the message against itself and
+        // pass whatever it renders.
+        let err = Error::InvalidRangeThreshold { value: -1.0 };
+        assert_eq!(
+            err.to_string(),
+            "invalid range threshold: -1 (must be 0.0 to 1.0)"
         );
     }
 }

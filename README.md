@@ -238,7 +238,7 @@ Arguments:
 
 Options:
   -m, --model <MODEL>           Model name from configuration
-  -f, --format <FORMAT>         Output formats (csv,json,raven,audacity,kaleidoscope)
+  -f, --format <FORMAT>         Output formats, comma-separated
       --output-mode <MODE>      CLI output mode (human,json,ndjson)
   -o, --output-dir <DIR>        Output directory (default: same as input)
   -c, --min-confidence <VALUE>  Minimum confidence threshold (0.0-1.0)
@@ -364,11 +364,13 @@ combined_prefix = "BirdNET"
 
 ### Configuration Validation
 
-An analysis run validates the configuration file before it starts, so a bad value is reported once, up front, instead of turning into odd results later in the run. The rules cover `min_confidence` and `range_threshold` (both 0.0 to 1.0), `overlap` (finite and non-negative), `batch_size` (1 to 512), `day_of_year` (1 to 366), `latitude` (-90.0 to 90.0), `longitude` (-180.0 to 180.0), and `defaults.model`, which must name a model that exists in the file.
+An analysis run validates the configuration file before it starts, so a bad value is reported once, up front, instead of turning into odd results later in the run. The rules cover `min_confidence` and `range_threshold` (both 0.0 to 1.0), `overlap` (finite and non-negative), `batch_size` (1 to 512), `day_of_year` (1 to 366), `latitude` (-90.0 to 90.0), `longitude` (-180.0 to 180.0), `formats` (at least one output format), `csv_columns.include` (only names birda recognises), and `defaults.model`, which must name a model that exists in the file.
 
 For `overlap` the rule also applies to the command-line flag and the environment variable, not just to the file: `--overlap`, `BIRDA_OVERLAP` and `defaults.overlap` are three routes to one setting, and all three reject a negative, NaN or infinite value. Previously only the file did, and the other two silently became zero overlap. `min_confidence`, `range_threshold`, `latitude`, `longitude`, `batch_size` and `day_of_year` agree across their routes too.
 
 `batch_size` and `day_of_year` were the last two to disagree, and in both cases the config file was the route without the rule. The 512 cap on `batch_size` exists to keep a run from exhausting GPU memory, and it applied to `--batch-size` and `BIRDA_BATCH_SIZE` but not to the file, so a larger value hand-edited into `config.toml` went straight to the inference path. `day_of_year` was bounded on the flag and the environment variable, and `birda config set defaults.day_of_year` did not exist, so editing the file was the only way to set the stored default and the only route with nothing checking it.
+
+`formats` and `csv_columns.include` are the two keys where the config file is the only route that can carry a bad value. `--format` and `BIRDA_FORMAT` do reach `formats`, and win over the file, but they go through a fixed list of names, so neither can produce an empty or unknown one; `csv_columns.include` has no command-line route at all. Neither key has a `birda config set` arm either, so a hand edit was the only way to set either one and the only route with nothing checking it. An empty `formats` was the more expensive of the two: an analysis run asked whether the outputs already existed, got "yes" for a list with nothing in it, and so treated every input file as already done. It logged `Skipping (output exists)` against files that had no output, finished with `0 processed`, and exited 0 having written nothing. An unrecognised name in `csv_columns.include` was quieter and inconsistent between formats: CSV grew a column that was empty in every row, Parquet dropped it.
 
 If you already have a `config.toml` with `batch_size` above 512 or a `day_of_year` outside 1 to 366, this release starts refusing it: an analysis run stops with an error naming the key, and so does any command that saves the configuration. Bring the value into range to get going again:
 
@@ -376,6 +378,10 @@ If you already have a `config.toml` with `batch_size` above 512 or a `day_of_yea
 birda config set defaults.batch_size ""    # or a size in 1-512; empty restores the smart default
 birda config set defaults.day_of_year ""   # or a day in 1-366; empty restores auto-detection
 ```
+
+An empty `formats` and an unrecognised CSV column are refused the same way, and neither has a `config set` arm, so both are fixed by editing `config.toml`: give `formats` at least one of `csv`, `raven`, `audacity`, `kaleidoscope`, `json` or `parquet`, and leave `csv_columns.include` holding only names from `lat`, `lon`, `week`, `model`, `overlap`, `sensitivity`, `min_conf` and `species_list`. Both errors name the offending key and point at `birda config path` for the file; the CSV one also lists the eight accepted column names, since a typo is the only way to reach it.
+
+Validation reads the file as a document, so a stored value is checked whether or not the run would have used it. `--format csv` does not get you past an empty `formats`, `--stdout` does not get you past it either even though that mode writes no files, and a `csv_columns.include` typo stops a `--format json` run that would never have opened a CSV writer. That is how every rule here behaves, and has since `batch_size` and `day_of_year` gained their file-side checks: a `batch_size` of 9999 in the file stops `birda --batch-size 32` too. The upside is that you learn the file is broken on the next run rather than on the day you leave the flag off; the cost is that the repair is not optional. For a `--stdout` user the repair is free, since naming a format writes no file in that mode anyway.
 
 If more than one value is out of range, each write is rejected by the other fault and you will need to edit `config.toml` directly; that limitation is described below.
 

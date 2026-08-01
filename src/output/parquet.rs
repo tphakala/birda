@@ -13,6 +13,7 @@ use std::fs::File;
 use std::path::Path;
 use std::sync::Arc;
 
+use crate::constants::parquet::BASE_FIELD_COUNT;
 use crate::error::Result;
 use crate::output::OutputWriter;
 use crate::output::types::Detection;
@@ -227,7 +228,7 @@ fn build_record_batch(detections: &[Detection], schema: &Arc<Schema>) -> Result<
     ];
 
     // Add optional metadata columns based on schema
-    for field in schema.fields().iter().skip(6) {
+    for field in schema.fields().iter().skip(BASE_FIELD_COUNT) {
         let array = build_metadata_column(field, detections)?;
         columns.push(array);
     }
@@ -456,9 +457,110 @@ mod tests {
     use std::path::PathBuf;
 
     #[test]
+    fn test_every_recognised_column_reaches_the_parquet_writer() {
+        // The Parquet twin of `csv::tests::test_every_recognised_column_is_written`.
+        // `config::validate` admits exactly `csv_columns::RECOGNISED`, and this
+        // module matches those names TWICE, in opposite failure directions:
+        // `build_schema` drops an unhandled name silently, so the column just
+        // vanishes from the file, while `build_metadata_column` returns
+        // `Error::InvalidColumnName`, which `?` propagates and fails the entire
+        // write. Neither had a test driving the constant, so a name added to
+        // `RECOGNISED` with only a CSV arm shipped green.
+        //
+        // Both arms are exercised here rather than only the schema, because the
+        // two disagree and the loud one is the one a user would hit at the end
+        // of a long run.
+        let columns: Vec<String> = crate::constants::csv_columns::RECOGNISED
+            .iter()
+            .map(|c| (*c).to_string())
+            .collect();
+
+        let schema = build_schema(&columns);
+        assert_eq!(
+            schema.fields().len(),
+            BASE_FIELD_COUNT + columns.len(),
+            "build_schema dropped a recognised column, so it has no arm for it"
+        );
+
+        // Every field carries a value that is not a substring of any other, and
+        // each column is asserted to contain its own AND none of the rest.
+        //
+        // Both halves are load-bearing. `is_ok()` over an empty
+        // `DetectionMetadata` proves nothing, because an arm reading a
+        // different field still returns `Ok`; `build_metadata_column` returns
+        // `ArrayRef`, so no pair of arms is protected by types, whatever their
+        // field types are. And a bare `contains` is not enough either: an
+        // earlier version of this test used week 24 and min_conf 0.1, which are
+        // substrings of the longitude 24.9384 and the latitude 60.1699, so
+        // swapping those two arms left every test green while any run with
+        // `week` configured failed at `RecordBatch::try_new` with a schema type
+        // mismatch. The exclusion loop is what makes the check independent of
+        // how lucky the fixture values are.
+        //
+        // Asserting on the rendered array rather than downcasting keeps this
+        // from restating the name-to-type mapping the schema already owns,
+        // which is the thing under test.
+        let mut detection = Detection::from_label(
+            "Passer domesticus_House Sparrow",
+            0.85,
+            0.0,
+            3.0,
+            PathBuf::from("/path/to/audio.wav"),
+        );
+        detection.metadata = crate::output::DetectionMetadata {
+            lat: Some(11.0625),
+            lon: Some(22.1875),
+            week: Some(37),
+            model: Some("model-name".to_string()),
+            overlap: Some(33.5),
+            sensitivity: Some(44.75),
+            min_conf: Some(55.25),
+            species_list: Some("species-list".to_string()),
+        };
+        let detections = [detection];
+
+        let expected = [
+            ("lat", "11.0625"),
+            ("lon", "22.1875"),
+            ("week", "37"),
+            ("model", "model-name"),
+            ("overlap", "33.5"),
+            ("sensitivity", "44.75"),
+            ("min_conf", "55.25"),
+            ("species_list", "species-list"),
+        ];
+        assert_eq!(expected.len(), columns.len());
+
+        for (name, want) in expected {
+            let field = schema
+                .field_with_name(name)
+                .unwrap_or_else(|_| panic!("build_schema has no arm for '{name}'"));
+            let column = build_metadata_column(field, &detections).unwrap_or_else(|e| {
+                panic!(
+                    "build_metadata_column has no arm for the recognised column '{name}', which \
+                     fails every Parquet write rather than dropping the column: {e}"
+                )
+            });
+
+            let rendered = format!("{column:?}");
+            assert!(
+                rendered.contains(want),
+                "'{name}' must carry its own metadata field, expected {want} in: {rendered}"
+            );
+            for (other, unwanted) in expected {
+                assert!(
+                    other == name || !rendered.contains(unwanted),
+                    "'{name}' rendered {unwanted}, which belongs to '{other}', so its arm reads \
+                     the wrong field: {rendered}"
+                );
+            }
+        }
+    }
+
+    #[test]
     fn test_schema_basic() {
         let schema = build_schema(&[]);
-        assert_eq!(schema.fields().len(), 6);
+        assert_eq!(schema.fields().len(), BASE_FIELD_COUNT);
         assert_eq!(schema.field(0).name(), "start_s");
         assert_eq!(schema.field(1).name(), "end_s");
         assert_eq!(schema.field(2).name(), "scientific_name");
@@ -491,7 +593,7 @@ mod tests {
         let batch = build_record_batch(&detections, &schema).ok().unwrap();
 
         assert_eq!(batch.num_rows(), 1);
-        assert_eq!(batch.num_columns(), 6);
+        assert_eq!(batch.num_columns(), BASE_FIELD_COUNT);
     }
 
     #[test]
@@ -499,6 +601,6 @@ mod tests {
         let schema = build_schema(&[]);
         let batch = build_record_batch(&[], &schema).ok().unwrap();
         assert_eq!(batch.num_rows(), 0);
-        assert_eq!(batch.num_columns(), 6);
+        assert_eq!(batch.num_columns(), BASE_FIELD_COUNT);
     }
 }

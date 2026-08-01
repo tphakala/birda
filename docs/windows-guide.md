@@ -281,7 +281,7 @@ birda species --lat 60.17 --lon 24.94 --week 24 --output species.txt
 # Analysis options
 birda [OPTIONS] <FILES>
   -m, --model <NAME>        # Use specific model
-  -f, --format <FORMATS>    # Output formats (csv,raven,audacity,kaleidoscope)
+  -f, --format <FORMATS>    # Output formats, comma-separated; birda --help lists them
   -o, --output-dir <DIR>    # Output directory
   -c, --min-confidence <N>  # Confidence threshold (0.0-1.0)
   -b, --batch-size <N>      # Inference batch size

@@ -410,9 +410,10 @@ pub enum Error {
     /// Invalid range filter threshold.
     ///
     /// Reads the same constants as the rule that produces it, for the reason
-    /// given on `InvalidLatitude` above. It is the third variant rendering a
-    /// bound this way and was the one left behind when the coordinate pair was
-    /// converted in #340.
+    /// given on `InvalidLatitude` above, and was the variant left behind when
+    /// the coordinate pair was converted in #340. Every variant in this enum
+    /// that renders a numeric bound should interpolate it rather than spell it
+    /// out; that invariant is the point, not how many of them there are.
     #[error(
         "invalid range threshold: {value} (must be {:.1} to {:.1})",
         crate::constants::confidence::MIN,

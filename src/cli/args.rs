@@ -545,7 +545,7 @@ use super::validators::{
 )]
 mod tests {
     use super::*;
-    use crate::constants::coordinates;
+    use crate::constants::{MAX_BATCH_SIZE, MIN_BATCH_SIZE, confidence, coordinates, day_of_year};
     use clap::CommandFactory;
     use std::path::Path;
 
@@ -630,6 +630,30 @@ mod tests {
         }
     }
 
+    /// Assert the help block introduced by `flag` states `bound`.
+    ///
+    /// The block is the window after the flag's own line, which is where clap
+    /// renders its description. Long enough to clear the `[env: ..]` and
+    /// `[possible values: ..]` trailers, short enough not to reach the next
+    /// flag's description.
+    fn assert_flag_states(help: &str, surface: &str, flag: &str, bound: &str) {
+        // Search only the options list. The usage synopsis above it names the
+        // same flags with no description, and on the `species` surface that is
+        // the FIRST match, so an unanchored search reads a window that could
+        // never contain a bound.
+        let body = help
+            .split_once("Options:")
+            .map_or(help, |(_usage, options)| options);
+        let at = body
+            .find(flag)
+            .unwrap_or_else(|| panic!("{surface} does not render {flag} at all"));
+        let block = &body[at..body.len().min(at + 240)];
+        assert!(
+            block.contains(bound),
+            "{surface} must state {bound} on {flag}, got: {block}"
+        );
+    }
+
     #[test]
     fn test_help_text_states_the_enforced_bounds() {
         // A `///` comment on an `#[arg]` field is rendered into `birda --help`,
@@ -652,39 +676,83 @@ mod tests {
             .to_string()
             .replace('\n', " ");
 
-        // Latitude and longitude are here for the same reason, and they are the
-        // pair this change created constants for: each is declared twice, on
-        // `species` and on the analyze arguments, and each states its bounds in
-        // help text no `value_parser` change can reach. They render in a
-        // different shape from the calendar bounds, hence the two formats.
-        let mut stated: Vec<String> = [
-            (range_filter::WEEK_MIN, range_filter::WEEKS_PER_YEAR),
-            (calendar::MONTH_MIN, calendar::MONTH_MAX),
-            (calendar::DAY_MIN, calendar::DAY_MAX),
-        ]
-        .iter()
-        .map(|(min, max)| format!("({min}-{max})"))
-        .collect();
-        stated.push(format!(
-            "({:.1} to {:.1})",
-            coordinates::LATITUDE_MIN,
-            coordinates::LATITUDE_MAX
-        ));
-        stated.push(format!(
-            "({:.1} to {:.1})",
-            coordinates::LONGITUDE_MIN,
-            coordinates::LONGITUDE_MAX
-        ));
+        // The rule is every bound a constant owns that is ALSO stated in help
+        // text, not a list someone remembered to extend. Latitude and longitude
+        // are the pair this change created constants for; day-of-year,
+        // batch size and the two confidence bounds already had them from #312
+        // and #341, and were just as unpinned. They render in three different
+        // shapes, hence the three formats below.
+        // Each bound is checked against ITS OWN flag's help block, not against
+        // the whole page. Searching the page lets one flag cover for another:
+        // written that way, `--min-confidence` drifting to (0.0-2.0) stayed
+        // green, because `--range-threshold` still rendered (0.0-1.0) elsewhere
+        // on the page. The second name is the flag on the `species` surface,
+        // `None` where `species` does not declare it.
+        let checks: [(&str, Option<&str>, String); 9] = [
+            (
+                "--week <",
+                Some("--week <"),
+                format!(
+                    "({}-{})",
+                    range_filter::WEEK_MIN,
+                    range_filter::WEEKS_PER_YEAR
+                ),
+            ),
+            (
+                "--month <",
+                Some("--month <"),
+                format!("({}-{})", calendar::MONTH_MIN, calendar::MONTH_MAX),
+            ),
+            (
+                "--day <",
+                Some("--day <"),
+                format!("({}-{})", calendar::DAY_MIN, calendar::DAY_MAX),
+            ),
+            (
+                "--day-of-year <",
+                None,
+                format!("({}-{})", day_of_year::MIN, day_of_year::MAX),
+            ),
+            (
+                "--batch-size <",
+                None,
+                format!("({MIN_BATCH_SIZE}-{MAX_BATCH_SIZE})"),
+            ),
+            (
+                "--min-confidence <",
+                None,
+                format!("({:.1}-{:.1})", confidence::MIN, confidence::MAX),
+            ),
+            (
+                "--range-threshold <",
+                Some("--threshold <"),
+                format!("({:.1}-{:.1})", confidence::MIN, confidence::MAX),
+            ),
+            (
+                "--lat <",
+                Some("--lat <"),
+                format!(
+                    "({:.1} to {:.1})",
+                    coordinates::LATITUDE_MIN,
+                    coordinates::LATITUDE_MAX
+                ),
+            ),
+            (
+                "--lon <",
+                Some("--lon <"),
+                format!(
+                    "({:.1} to {:.1})",
+                    coordinates::LONGITUDE_MIN,
+                    coordinates::LONGITUDE_MAX
+                ),
+            ),
+        ];
 
-        for stated in stated {
-            assert!(
-                root.contains(&stated),
-                "`birda --help` must state the enforced range {stated}"
-            );
-            assert!(
-                species.contains(&stated),
-                "`birda species --help` must state the enforced range {stated}"
-            );
+        for (root_flag, species_flag, bound) in checks {
+            assert_flag_states(&root, "`birda --help`", root_flag, &bound);
+            if let Some(flag) = species_flag {
+                assert_flag_states(&species, "`birda species --help`", flag, &bound);
+            }
         }
     }
 

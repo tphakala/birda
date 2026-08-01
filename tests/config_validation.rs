@@ -376,13 +376,19 @@ fn test_neither_new_rule_has_a_config_set_arm_to_repair_it() {
     let home = tempfile::tempdir().unwrap();
     seed_config(home.path(), EMPTY_FORMATS);
 
-    let direct = run_in(home.path(), &["config", "set", "defaults.formats", "csv"]);
-    assert_eq!(direct.status.code(), Some(APPLICATION_ERROR));
-    assert!(
-        stderr_of(&direct).contains("unknown configuration key"),
-        "there is no arm for defaults.formats, got: {}",
-        stderr_of(&direct)
-    );
+    // Both keys, because the name says both and the advice covers both. Written
+    // with only `defaults.formats` first, this stayed green if someone added a
+    // `defaults.csv_columns` arm, which would make half of `EDIT_THE_FILE`
+    // false while nothing noticed.
+    for key in ["defaults.formats", "defaults.csv_columns"] {
+        let direct = run_in(home.path(), &["config", "set", key, "csv"]);
+        assert_eq!(direct.status.code(), Some(APPLICATION_ERROR));
+        assert!(
+            stderr_of(&direct).contains("unknown configuration key"),
+            "there is no arm for {key}, got: {}",
+            stderr_of(&direct)
+        );
+    }
 
     let other = run_in(
         home.path(),
@@ -392,6 +398,14 @@ fn test_neither_new_rule_has_a_config_set_arm_to_repair_it() {
     assert!(
         stderr_of(&other).contains(EMPTY_FORMATS_VIOLATION),
         "an unrelated key must also be refused while the file is invalid, got: {}",
+        stderr_of(&other)
+    );
+
+    // The recovery advice itself is user-facing output with nothing else
+    // asserting a word of it.
+    assert!(
+        stderr_of(&other).contains("birda config path"),
+        "the message must point at the file, got: {}",
         stderr_of(&other)
     );
 }

@@ -238,7 +238,7 @@ Arguments:
 
 Options:
   -m, --model <MODEL>           Model name from configuration
-  -f, --format <FORMAT>         Output formats (csv,raven,audacity,kaleidoscope,json,parquet)
+  -f, --format <FORMAT>         Output formats, comma-separated
       --output-mode <MODE>      CLI output mode (human,json,ndjson)
   -o, --output-dir <DIR>        Output directory (default: same as input)
   -c, --min-confidence <VALUE>  Minimum confidence threshold (0.0-1.0)
@@ -379,9 +379,9 @@ birda config set defaults.batch_size ""    # or a size in 1-512; empty restores 
 birda config set defaults.day_of_year ""   # or a day in 1-366; empty restores auto-detection
 ```
 
-An empty `formats` and an unrecognised CSV column are refused the same way, and neither has a `config set` arm, so both are fixed by editing `config.toml`: give `formats` at least one of `csv`, `raven`, `audacity`, `kaleidoscope`, `json` or `parquet`, and leave `csv_columns.include` holding only names from `lat`, `lon`, `week`, `model`, `overlap`, `sensitivity`, `min_conf` and `species_list`. The error names the offending key, lists the accepted values where there is a list, and points at `birda config path` for the file.
+An empty `formats` and an unrecognised CSV column are refused the same way, and neither has a `config set` arm, so both are fixed by editing `config.toml`: give `formats` at least one of `csv`, `raven`, `audacity`, `kaleidoscope`, `json` or `parquet`, and leave `csv_columns.include` holding only names from `lat`, `lon`, `week`, `model`, `overlap`, `sensitivity`, `min_conf` and `species_list`. Both errors name the offending key and point at `birda config path` for the file; the CSV one also lists the eight accepted column names, since a typo is the only way to reach it.
 
-Validation reads the file as a document, so a stored value is checked whether or not the run would have used it. `--format csv` does not get you past an empty `formats`, `--stdout` does not get you past it either even though that mode writes no files, and a `csv_columns.include` typo stops a `--format json` run that would never have opened a CSV writer. That is how every rule here has always behaved: a `batch_size` of 9999 in the file stops `birda --batch-size 32` too. The upside is that you learn the file is broken on the next run rather than on the day you leave the flag off; the cost is that the repair is not optional. For a `--stdout` user the repair is free, since naming a format writes no file in that mode anyway.
+Validation reads the file as a document, so a stored value is checked whether or not the run would have used it. `--format csv` does not get you past an empty `formats`, `--stdout` does not get you past it either even though that mode writes no files, and a `csv_columns.include` typo stops a `--format json` run that would never have opened a CSV writer. That is how every rule here behaves, and has since `batch_size` and `day_of_year` gained their file-side checks: a `batch_size` of 9999 in the file stops `birda --batch-size 32` too. The upside is that you learn the file is broken on the next run rather than on the day you leave the flag off; the cost is that the repair is not optional. For a `--stdout` user the repair is free, since naming a format writes no file in that mode anyway.
 
 If more than one value is out of range, each write is rejected by the other fault and you will need to edit `config.toml` directly; that limitation is described below.
 

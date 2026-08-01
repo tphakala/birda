@@ -101,9 +101,11 @@ pub mod coordinates {
 pub mod parquet {
     /// Columns every Parquet file carries before the optional metadata ones.
     ///
-    /// `build_record_batch` skips exactly this many fields to reach the ones
-    /// `build_metadata_column` handles, so the two must agree. It was a bare
-    /// `6` at both sites.
+    /// Three things must agree on this number: the base `fields` vec in
+    /// `build_schema`, the base `columns` vec in `build_record_batch`, and the
+    /// `skip` that walks past them to reach the columns `build_metadata_column`
+    /// handles. The first two build their entries literally and cannot read a
+    /// constant; `test_schema_basic` is what pins them to it.
     pub const BASE_FIELD_COUNT: usize = 6;
 }
 

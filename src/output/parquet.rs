@@ -482,14 +482,24 @@ mod tests {
             "build_schema dropped a recognised column, so it has no arm for it"
         );
 
-        // Every field carries a DISTINCT value, and each column is asserted
-        // against its own. `is_ok()` over an empty `DetectionMetadata` would
-        // not be enough, for the reason the CSV twin spells out: an arm reading
-        // the wrong field of the right type still returns `Ok`, and the three
-        // `Option<f32>` fields here are freely interchangeable without the
-        // compiler noticing. Asserting on the rendered array rather than
-        // downcasting keeps this from restating the name-to-type mapping the
-        // schema already owns, which is the thing under test.
+        // Every field carries a value that is not a substring of any other, and
+        // each column is asserted to contain its own AND none of the rest.
+        //
+        // Both halves are load-bearing. `is_ok()` over an empty
+        // `DetectionMetadata` proves nothing, because an arm reading a
+        // different field still returns `Ok`; `build_metadata_column` returns
+        // `ArrayRef`, so no pair of arms is protected by types, whatever their
+        // field types are. And a bare `contains` is not enough either: an
+        // earlier version of this test used week 24 and min_conf 0.1, which are
+        // substrings of the longitude 24.9384 and the latitude 60.1699, so
+        // swapping those two arms left every test green while any run with
+        // `week` configured failed at `RecordBatch::try_new` with a schema type
+        // mismatch. The exclusion loop is what makes the check independent of
+        // how lucky the fixture values are.
+        //
+        // Asserting on the rendered array rather than downcasting keeps this
+        // from restating the name-to-type mapping the schema already owns,
+        // which is the thing under test.
         let mut detection = Detection::from_label(
             "Passer domesticus_House Sparrow",
             0.85,
@@ -498,26 +508,26 @@ mod tests {
             PathBuf::from("/path/to/audio.wav"),
         );
         detection.metadata = crate::output::DetectionMetadata {
-            lat: Some(60.1699),
-            lon: Some(24.9384),
-            week: Some(24),
-            model: Some("birdnet-v24".to_string()),
-            overlap: Some(1.5),
-            sensitivity: Some(1.25),
-            min_conf: Some(0.1),
-            species_list: Some("finland.txt".to_string()),
+            lat: Some(11.0625),
+            lon: Some(22.1875),
+            week: Some(37),
+            model: Some("model-name".to_string()),
+            overlap: Some(33.5),
+            sensitivity: Some(44.75),
+            min_conf: Some(55.25),
+            species_list: Some("species-list".to_string()),
         };
         let detections = [detection];
 
         let expected = [
-            ("lat", "60.1699"),
-            ("lon", "24.9384"),
-            ("week", "24"),
-            ("model", "birdnet-v24"),
-            ("overlap", "1.5"),
-            ("sensitivity", "1.25"),
-            ("min_conf", "0.1"),
-            ("species_list", "finland.txt"),
+            ("lat", "11.0625"),
+            ("lon", "22.1875"),
+            ("week", "37"),
+            ("model", "model-name"),
+            ("overlap", "33.5"),
+            ("sensitivity", "44.75"),
+            ("min_conf", "55.25"),
+            ("species_list", "species-list"),
         ];
         assert_eq!(expected.len(), columns.len());
 
@@ -537,6 +547,13 @@ mod tests {
                 rendered.contains(want),
                 "'{name}' must carry its own metadata field, expected {want} in: {rendered}"
             );
+            for (other, unwanted) in expected {
+                assert!(
+                    other == name || !rendered.contains(unwanted),
+                    "'{name}' rendered {unwanted}, which belongs to '{other}', so its arm reads \
+                     the wrong field: {rendered}"
+                );
+            }
         }
     }
 
@@ -576,7 +593,7 @@ mod tests {
         let batch = build_record_batch(&detections, &schema).ok().unwrap();
 
         assert_eq!(batch.num_rows(), 1);
-        assert_eq!(batch.num_columns(), 6);
+        assert_eq!(batch.num_columns(), BASE_FIELD_COUNT);
     }
 
     #[test]
@@ -584,6 +601,6 @@ mod tests {
         let schema = build_schema(&[]);
         let batch = build_record_batch(&[], &schema).ok().unwrap();
         assert_eq!(batch.num_rows(), 0);
-        assert_eq!(batch.num_columns(), 6);
+        assert_eq!(batch.num_columns(), BASE_FIELD_COUNT);
     }
 }

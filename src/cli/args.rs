@@ -35,9 +35,11 @@ fn month_range() -> impl clap::builder::TypedValueParser<Value = u32> {
 
 /// Accepted range for `--day`, read from `constants::calendar`.
 ///
-/// The upper bound is the longest month, not the month given alongside it:
-/// clap validates each argument on its own, and `--month 2 --day 31` is
-/// resolved by `date` rather than rejected here.
+/// The upper bound is the longest month, not the month given alongside it,
+/// because clap validates each argument on its own. Nothing downstream rejects
+/// the pair either: `utils::date::date_to_week` says in its own doc that it
+/// does not validate month and day together, so `--month 2 --day 31` is summed
+/// to day 62 and reported as the week of March 3.
 fn day_of_month_range() -> impl clap::builder::TypedValueParser<Value = u32> {
     clap::value_parser!(u32).range(i64::from(calendar::DAY_MIN)..=i64::from(calendar::DAY_MAX))
 }
@@ -299,7 +301,7 @@ pub struct AnalyzeArgs {
     // read `csv,raven,audacity,kaleidoscope` long after `json` and `parquet`
     // were added. clap already prints the full set under "Possible values",
     // which cannot go stale, so the list is gone rather than corrected.
-    /// Output formats, comma-separated. At least one is required.
+    /// Output formats, comma-separated. Defaults to `defaults.formats` in config.toml.
     #[arg(short, long, value_delimiter = ',', env = "BIRDA_FORMAT")]
     pub format: Option<Vec<OutputFormat>>,
 
@@ -451,8 +453,10 @@ pub struct AnalyzeArgs {
     // replaced an inline `clap::value_parser!(u32).range(1..=366)`, whose bound
     // no other route could read.
     //
-    // `--week`, `--month` and `--day` above keep their inline ranges because
-    // they have no config-file counterpart to disagree with.
+    // `--week`, `--month` and `--day` above have no config-file counterpart, so
+    // they need no parity rule the way this flag does. They stopped carrying
+    // inline ranges in #340 all the same, because each is declared twice, once
+    // per subcommand, and the two copies could disagree with each other.
     /// Day of year for BSG SDM adjustment (1-366).
     /// If not provided and BSG model is used, auto-detected from file timestamp.
     #[arg(long, value_parser = parse_day_of_year, env = "BIRDA_DAY_OF_YEAR")]
@@ -541,6 +545,7 @@ use super::validators::{
 )]
 mod tests {
     use super::*;
+    use crate::constants::coordinates;
     use clap::CommandFactory;
     use std::path::Path;
 
@@ -596,19 +601,37 @@ mod tests {
                 );
             }
 
-            // `min - 1` is checked only where the minimum leaves room for it;
-            // all three are 1-based, so 0 is the case, and it must be rejected.
+            // All three are 1-based, so `min - 1` is 0, and it must be refused
+            // BY THE RANGE. Asserting only `is_err()` does not establish that:
+            // `--month` and `--day` require each other, so `--month=0` alone
+            // fails on the missing `--day` whatever the range says, and
+            // lowering `MONTH_MIN` to 0 would leave such a test green. So the
+            // partner argv is supplied and the message is asserted on. Both
+            // surfaces are driven, since the name of this test claims both and
+            // a `species` declaration could drift on its own.
             let zero = format!("--{flag}=0");
-            assert!(
-                Cli::try_parse_from(["birda", "in.wav", &zero]).is_err(),
-                "{zero} must be rejected: the range is 1-based"
-            );
-            let _ = min;
+            for argv in [
+                vec!["birda", "in.wav", &zero],
+                vec!["birda", "species", "--lat=60.0", "--lon=25.0", &zero],
+            ] {
+                let err = Cli::try_parse_from(
+                    argv.clone()
+                        .into_iter()
+                        .chain(partner.iter().map(String::as_str)),
+                )
+                .expect_err(&format!("{argv:?} must be rejected: the range is 1-based"))
+                .to_string();
+
+                assert!(
+                    err.contains(&format!("0 is not in {min}..={max}")),
+                    "{argv:?} must be refused by the range itself, got: {err}"
+                );
+            }
         }
     }
 
     #[test]
-    fn test_calendar_help_text_states_the_enforced_bounds() {
+    fn test_help_text_states_the_enforced_bounds() {
         // A `///` comment on an `#[arg]` field is rendered into `birda --help`,
         // so the "(1-48)" in those doc comments is a user-facing statement of
         // the rule, and the one copy of these numbers that no value_parser
@@ -629,12 +652,31 @@ mod tests {
             .to_string()
             .replace('\n', " ");
 
-        for (min, max) in [
+        // Latitude and longitude are here for the same reason, and they are the
+        // pair this change created constants for: each is declared twice, on
+        // `species` and on the analyze arguments, and each states its bounds in
+        // help text no `value_parser` change can reach. They render in a
+        // different shape from the calendar bounds, hence the two formats.
+        let mut stated: Vec<String> = [
             (range_filter::WEEK_MIN, range_filter::WEEKS_PER_YEAR),
             (calendar::MONTH_MIN, calendar::MONTH_MAX),
             (calendar::DAY_MIN, calendar::DAY_MAX),
-        ] {
-            let stated = format!("({min}-{max})");
+        ]
+        .iter()
+        .map(|(min, max)| format!("({min}-{max})"))
+        .collect();
+        stated.push(format!(
+            "({:.1} to {:.1})",
+            coordinates::LATITUDE_MIN,
+            coordinates::LATITUDE_MAX
+        ));
+        stated.push(format!(
+            "({:.1} to {:.1})",
+            coordinates::LONGITUDE_MIN,
+            coordinates::LONGITUDE_MAX
+        ));
+
+        for stated in stated {
             assert!(
                 root.contains(&stated),
                 "`birda --help` must state the enforced range {stated}"

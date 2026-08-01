@@ -45,6 +45,18 @@ const OUT_OF_RANGE_LATITUDE: &str = "[defaults]\nlatitude = 200.0\n";
 /// "0 species in range".
 const NAN_RANGE_THRESHOLD: &str = "[defaults]\nrange_threshold = nan\n";
 
+/// An empty output-format list (#339).
+///
+/// The reason this rule needs a binary-level test more than its siblings do:
+/// the symptom it fixes was an exit code, not a message. Before the rule, this
+/// config made a run log "Skipping (output exists)" for every input file and
+/// exit 0 having written nothing, so a unit test on `validate_config` can show
+/// the rule fires but not that the run now stops.
+const EMPTY_FORMATS: &str = "[defaults]\nformats = []\n";
+
+/// A CSV column name no writer has an arm for (#339).
+const UNKNOWN_CSV_COLUMN: &str = "[defaults.csv_columns]\ninclude = [\"lattitude\"]\n";
+
 /// Every `BIRDA_*` variable clap binds to an argument.
 ///
 /// All of them are cleared per run. These tests assert on what the config file
@@ -239,6 +251,8 @@ fn assert_validation_did_not_reject(home: &Path) {
         OVERLAP_VIOLATION,
         BATCH_SIZE_VIOLATION,
         DAY_OF_YEAR_VIOLATION,
+        EMPTY_FORMATS_VIOLATION,
+        UNKNOWN_CSV_COLUMN_VIOLATION,
     ] {
         assert!(
             !stderr.contains(message),
@@ -268,6 +282,8 @@ const THRESHOLD_VIOLATION: &str = "invalid range threshold";
 const OVERLAP_VIOLATION: &str = "overlap must be a finite non-negative number";
 const BATCH_SIZE_VIOLATION: &str = "batch_size must be between";
 const DAY_OF_YEAR_VIOLATION: &str = "day_of_year must be between";
+const EMPTY_FORMATS_VIOLATION: &str = "defaults.formats must list at least one output format";
+const UNKNOWN_CSV_COLUMN_VIOLATION: &str = "has an unknown column 'lattitude'";
 
 /// The tail `cli::validators::parse_batch_size` adds and the config-file rule
 /// does not.
@@ -324,6 +340,60 @@ fn test_out_of_range_latitude_is_rejected_on_load() {
     seed_config(home.path(), OUT_OF_RANGE_LATITUDE);
 
     assert_analysis_rejected(home.path(), LATITUDE_VIOLATION);
+}
+
+#[test]
+fn test_an_empty_format_list_is_rejected_on_load() {
+    // #339. The failure this replaces was silent: every input file was reported
+    // as "Skipping (output exists)", the run summary said "0 processed", and
+    // the exit code was 0. `assert_analysis_rejected` pins the exit code as
+    // well as the message, which is the half a unit test cannot reach and the
+    // half that was actually wrong.
+    let home = tempfile::tempdir().unwrap();
+    seed_config(home.path(), EMPTY_FORMATS);
+
+    assert_analysis_rejected(home.path(), EMPTY_FORMATS_VIOLATION);
+}
+
+#[test]
+fn test_an_unknown_csv_column_is_rejected_on_load() {
+    // #339, the same no-CLI-route shape one key over. 'lattitude' reached the
+    // CSV header verbatim and produced a column empty in every row, while the
+    // Parquet writer dropped it, so the same config gave two different answers.
+    let home = tempfile::tempdir().unwrap();
+    seed_config(home.path(), UNKNOWN_CSV_COLUMN);
+
+    assert_analysis_rejected(home.path(), UNKNOWN_CSV_COLUMN_VIOLATION);
+}
+
+#[test]
+fn test_neither_new_rule_has_a_config_set_arm_to_repair_it() {
+    // Pins the reason both messages carry recovery advice that the sibling
+    // rules do not. `config set` cannot reach either key, and because
+    // `save_config` validates the whole file, the fault also blocks `config
+    // set` on every OTHER key. Hand-editing config.toml is the only way out,
+    // and the README says so; this is what stops that becoming untrue quietly.
+    let home = tempfile::tempdir().unwrap();
+    seed_config(home.path(), EMPTY_FORMATS);
+
+    let direct = run_in(home.path(), &["config", "set", "defaults.formats", "csv"]);
+    assert_eq!(direct.status.code(), Some(APPLICATION_ERROR));
+    assert!(
+        stderr_of(&direct).contains("unknown configuration key"),
+        "there is no arm for defaults.formats, got: {}",
+        stderr_of(&direct)
+    );
+
+    let other = run_in(
+        home.path(),
+        &["config", "set", "defaults.min_confidence", "0.2"],
+    );
+    assert_eq!(other.status.code(), Some(APPLICATION_ERROR));
+    assert!(
+        stderr_of(&other).contains(EMPTY_FORMATS_VIOLATION),
+        "an unrelated key must also be refused while the file is invalid, got: {}",
+        stderr_of(&other)
+    );
 }
 
 #[test]

@@ -13,6 +13,17 @@ pub fn validate_config(config: &Config) -> Result<()> {
     Ok(())
 }
 
+/// Recovery advice for the two keys `birda config set` cannot reach.
+///
+/// Every other rule in `validate_defaults` guards a key with a `config set`
+/// arm, so the tool can repair it and the message can stay short. `formats` and
+/// `csv_columns` have no arm, and a bad value in either is refused by
+/// `save_config` as well, so `config set` on any OTHER key is refused too until
+/// the file is fixed by hand. That makes this text the only pointer the user
+/// gets.
+const EDIT_THE_FILE: &str = "This key has no 'birda config set' arm, so edit config.toml directly; \
+     'birda config path' prints where it is.";
+
 /// Validate default settings.
 fn validate_defaults(config: &Config) -> Result<()> {
     let defaults = &config.defaults;
@@ -128,12 +139,14 @@ fn validate_defaults(config: &Config) -> Result<()> {
     // "everything is already there": each file logged "Skipping (output
     // exists)", naming a reason that was not the real one, and the run exited 0.
     //
-    // config.toml is the only route to the value, which is the #312 and #306
-    // shape once more. `--format`/`BIRDA_FORMAT` is a `Vec<OutputFormat>` of
-    // `ValueEnum`s, so clap rejects an empty or unknown value, and
-    // `handle_config_set` has no `defaults.formats` arm. Unlike those two the
-    // failure was silent rather than loud, which is why it cost a whole run's
-    // output rather than an error message.
+    // config.toml is the only route that can carry an EMPTY list, which is the
+    // #312 and #306 shape once more. `--format` and `BIRDA_FORMAT` do reach
+    // this setting and win over the file, but they are a `Vec<OutputFormat>`
+    // of `ValueEnum`s, so clap refuses an empty or unknown value rather than
+    // producing an empty list; `handle_config_set` has no `defaults.formats`
+    // arm at all. Unlike those two predecessors the failure was silent rather
+    // than loud, which is why it cost a whole run's output rather than an
+    // error message.
     //
     // `DefaultsConfig::default()` sets `formats = ["csv"]`, so an empty list is
     // never what an untouched config carries and rejecting it cannot break one.
@@ -141,11 +154,28 @@ fn validate_defaults(config: &Config) -> Result<()> {
     // The two guards are independent on purpose: this one keeps the value out of
     // the config, and that one keeps the vacuous branch closed for a library
     // caller passing the slice directly.
+    // The message describes the value, not the old symptom. "skips every input
+    // file" was true before the coordinator guard went in alongside this rule,
+    // and stating it here would have been this commit contradicting itself in
+    // text the user reads.
+    //
+    // The rule is unconditional, like every sibling above, even though
+    // `--stdout` never reads `formats` and an empty list is inert there. Making
+    // it mode-aware would mean handing the args to a validator that is
+    // deliberately blind to them, to preserve a setting whose only other mode
+    // it silently breaks; and the repair costs a `--stdout` user nothing, since
+    // naming a format writes no file in that mode either.
+    // Both new messages name the full key and point at the file, which the
+    // rules above deliberately do not. Those keys all have a `config set` arm,
+    // so the tool can repair them and the message can stay short; these two
+    // have none, so a hand edit is the only way out and the message is the only
+    // place to say so.
     if defaults.formats.is_empty() {
         return Err(Error::ConfigValidation {
-            message: "formats must list at least one output format; an empty list skips every \
-                      input file and writes nothing"
-                .to_string(),
+            message: format!(
+                "defaults.formats must list at least one output format; with an empty list a \
+                 run writes no output at all\n\n{EDIT_THE_FILE}"
+            ),
         });
     }
 
@@ -167,7 +197,8 @@ fn validate_defaults(config: &Config) -> Result<()> {
     {
         return Err(Error::ConfigValidation {
             message: format!(
-                "csv_columns.include has an unknown column '{unknown}'; the columns are {}",
+                "defaults.csv_columns.include has an unknown column '{unknown}'; the accepted \
+                 columns are {}\n\n{EDIT_THE_FILE}",
                 csv_columns::RECOGNISED.join(", ")
             ),
         });
@@ -240,8 +271,10 @@ pub fn get_model<'a>(config: &'a Config, name: &str) -> Result<&'a ModelConfig> 
 /// Validate range filter configuration.
 pub fn validate_range_filter(config: &Config) -> Result<()> {
     // Both bounds read `constants::coordinates`, which `cli::validators` and the
-    // `Error` message text also read (#340). Three routes reach one setting and
-    // each used to carry its own copy of the numbers.
+    // `Error` message text also read (#340). Those three were the copies of the
+    // numbers; the routes to the setting are a different set, being the flag
+    // and its environment variable, `config set`, and a hand-edited file.
+    // `config set` never held a copy, since it calls `parse_latitude`.
     if let Some(lat) = config.defaults.latitude
         && !(coordinates::LATITUDE_MIN..=coordinates::LATITUDE_MAX).contains(&lat)
     {
@@ -596,9 +629,11 @@ mod tests {
     #[test]
     fn test_validate_accepts_every_recognised_csv_column() {
         // Drives the whole of `csv_columns::RECOGNISED` through the rule that
-        // reads it, so a name added to the constant without the writers
-        // handling it is caught by `test_every_recognised_column_is_written`
-        // rather than by a user finding an empty column.
+        // reads it, so this rule cannot start refusing a name the writers
+        // handle. The converse, a name accepted here that a writer does not
+        // handle, is pinned separately and per writer, by
+        // `test_every_recognised_column_is_written` and
+        // `test_every_recognised_column_reaches_the_parquet_writer`.
         assert!(validate_config(&config_with_csv_columns(&csv_columns::RECOGNISED)).is_ok());
         assert!(validate_config(&config_with_csv_columns(&[])).is_ok());
     }

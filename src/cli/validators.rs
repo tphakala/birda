@@ -467,6 +467,13 @@ mod tests {
         //
         // The inputs are derived from the constants rather than spelled out, so
         // that moving a bound leaves them still straddling it.
+        // `nan`, `inf` and `-inf` are carried over from
+        // `test_parse_overlap_matches_the_config_file_rule`, which drives them
+        // for the reason that applies here too: TOML admits them as float
+        // literals, so the config route can genuinely hold one, and both rules
+        // reject them only because `(min..=max).contains` is false for every
+        // NaN comparison. A hand-rolled `value < min || value > max` on either
+        // side would let NaN through and this is what would notice.
         let below = (coordinates::LATITUDE_MIN - 1.0).to_string();
         let above = (coordinates::LATITUDE_MAX + 1.0).to_string();
         for input in [
@@ -477,6 +484,9 @@ mod tests {
             &below,
             &above,
             "1000",
+            "nan",
+            "inf",
+            "-inf",
         ] {
             let cli = parse_latitude(input);
 
@@ -509,6 +519,9 @@ mod tests {
             &below,
             &above,
             "1000",
+            "nan",
+            "inf",
+            "-inf",
         ] {
             let cli = parse_longitude(input);
 
@@ -534,18 +547,22 @@ mod tests {
         // when their value is refused. It interpolates the constants, so this
         // fails if the message is ever written back out as a literal that
         // disagrees with the rule that produced it.
-        let latitude = crate::error::Error::InvalidLatitude { value: 91.0 }.to_string();
-        assert!(
-            latitude.contains(&format!("{:.1}", coordinates::LATITUDE_MIN))
-                && latitude.contains(&format!("{:.1}", coordinates::LATITUDE_MAX)),
-            "latitude message must state the enforced bounds, got '{latitude}'"
+        //
+        // Asserted as the whole rendered string, the form `error.rs`'s own
+        // `test_invalid_padding_renders_the_value_and_the_ceiling` uses. A pair
+        // of `contains` checks is not enough here and the reason is specific:
+        // "90.0" is a substring of "-90.0", so a message that rendered the
+        // minimum at both ends would satisfy both of them.
+        let (min, max) = (coordinates::LATITUDE_MIN, coordinates::LATITUDE_MAX);
+        assert_eq!(
+            crate::error::Error::InvalidLatitude { value: 91.0 }.to_string(),
+            format!("invalid latitude: 91 (must be {min:.1} to {max:.1})")
         );
 
-        let longitude = crate::error::Error::InvalidLongitude { value: 181.0 }.to_string();
-        assert!(
-            longitude.contains(&format!("{:.1}", coordinates::LONGITUDE_MIN))
-                && longitude.contains(&format!("{:.1}", coordinates::LONGITUDE_MAX)),
-            "longitude message must state the enforced bounds, got '{longitude}'"
+        let (min, max) = (coordinates::LONGITUDE_MIN, coordinates::LONGITUDE_MAX);
+        assert_eq!(
+            crate::error::Error::InvalidLongitude { value: 181.0 }.to_string(),
+            format!("invalid longitude: 181 (must be {min:.1} to {max:.1})")
         );
     }
 

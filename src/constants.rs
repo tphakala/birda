@@ -101,13 +101,25 @@ pub mod coordinates {
 pub mod csv_columns {
     /// Every name `defaults.csv_columns.include` accepts.
     ///
-    /// `CsvWriter::write_detection` and `parquet::build_schema` each match on
-    /// these names, and each falls through silently on anything else in the
-    /// opposite direction: the CSV writer emits an unknown name as a header
-    /// over a column that is empty in every row, the Parquet writer drops it.
-    /// `config::validate` rejects an unrecognised name so neither behaviour is
-    /// reachable, and `test_every_recognised_column_is_written` drives the CSV
-    /// writer with each name here and fails if one stops being handled.
+    /// Every writer that consumes `include` matches on these names, and a name
+    /// added here needs an arm in each of them. Today that is three arms, and
+    /// they disagree about what an unhandled name does: `CsvWriter::
+    /// write_detection` leaves the cell empty, so the name becomes a header
+    /// over a column empty in every row; `parquet::build_schema` drops it; and
+    /// `parquet::build_metadata_column` returns `Error::InvalidColumnName`,
+    /// which fails the write outright. The count is deliberately not the point
+    /// of this sentence: the invariant survives a fourth writer, a count does
+    /// not.
+    ///
+    /// `config::validate` rejects an unrecognised name, so none of those three
+    /// behaviours is reachable from an analyze run. It is not a guarantee for a
+    /// library caller: `CsvWriter::new` and `ParquetWriter::new` are public and
+    /// take the list directly, which is the same hole `should_process` keeps
+    /// its own guard for.
+    ///
+    /// `test_every_recognised_column_is_written` and
+    /// `test_every_recognised_column_reaches_the_parquet_writer` drive both
+    /// writers with every name here.
     pub const RECOGNISED: [&str; 8] = [
         "lat",
         "lon",

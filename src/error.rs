@@ -408,7 +408,16 @@ pub enum Error {
     },
 
     /// Invalid range filter threshold.
-    #[error("invalid range threshold: {value} (must be 0.0 to 1.0)")]
+    ///
+    /// Reads the same constants as the rule that produces it, for the reason
+    /// given on `InvalidLatitude` above. It is the third variant rendering a
+    /// bound this way and was the one left behind when the coordinate pair was
+    /// converted in #340.
+    #[error(
+        "invalid range threshold: {value} (must be {:.1} to {:.1})",
+        crate::constants::confidence::MIN,
+        crate::constants::confidence::MAX
+    )]
     InvalidRangeThreshold {
         /// Invalid threshold value.
         value: f32,
@@ -771,6 +780,20 @@ mod tests {
         assert_eq!(
             err.to_string(),
             "invalid confidence: NaN (must be a finite number from 0.0 to 1.0)"
+        );
+    }
+
+    #[test]
+    fn test_invalid_range_threshold_renders_the_value_and_the_range() {
+        // Added with the conversion of this variant to read `confidence::MIN`
+        // and `MAX` (#340). The literal text is spelled out here on purpose,
+        // the way its two siblings above are: interpolating the constants into
+        // the expectation as well would compare the message against itself and
+        // pass whatever it renders.
+        let err = Error::InvalidRangeThreshold { value: -1.0 };
+        assert_eq!(
+            err.to_string(),
+            "invalid range threshold: -1 (must be 0.0 to 1.0)"
         );
     }
 }

@@ -141,6 +141,13 @@ impl OutputWriter for ParquetWriter {
     }
 }
 
+/// Columns every Parquet file carries before the optional metadata ones.
+///
+/// `build_record_batch` skips exactly this many fields to reach the columns
+/// `build_metadata_column` handles, so the two must agree. It was written out
+/// as a bare `6` at both sites.
+const BASE_FIELD_COUNT: usize = 6;
+
 /// Build Arrow schema based on included columns.
 ///
 /// Creates a schema with core detection columns plus any additional metadata columns.
@@ -227,7 +234,7 @@ fn build_record_batch(detections: &[Detection], schema: &Arc<Schema>) -> Result<
     ];
 
     // Add optional metadata columns based on schema
-    for field in schema.fields().iter().skip(6) {
+    for field in schema.fields().iter().skip(BASE_FIELD_COUNT) {
         let array = build_metadata_column(field, detections)?;
         columns.push(array);
     }
@@ -456,9 +463,93 @@ mod tests {
     use std::path::PathBuf;
 
     #[test]
+    fn test_every_recognised_column_reaches_the_parquet_writer() {
+        // The Parquet twin of `csv::tests::test_every_recognised_column_is_written`.
+        // `config::validate` admits exactly `csv_columns::RECOGNISED`, and this
+        // module matches those names TWICE, in opposite failure directions:
+        // `build_schema` drops an unhandled name silently, so the column just
+        // vanishes from the file, while `build_metadata_column` returns
+        // `Error::InvalidColumnName`, which `?` propagates and fails the entire
+        // write. Neither had a test driving the constant, so a name added to
+        // `RECOGNISED` with only a CSV arm shipped green.
+        //
+        // Both arms are exercised here rather than only the schema, because the
+        // two disagree and the loud one is the one a user would hit at the end
+        // of a long run.
+        let columns: Vec<String> = crate::constants::csv_columns::RECOGNISED
+            .iter()
+            .map(|c| (*c).to_string())
+            .collect();
+
+        let schema = build_schema(&columns);
+        assert_eq!(
+            schema.fields().len(),
+            BASE_FIELD_COUNT + columns.len(),
+            "build_schema dropped a recognised column, so it has no arm for it"
+        );
+
+        // Every field carries a DISTINCT value, and each column is asserted
+        // against its own. `is_ok()` over an empty `DetectionMetadata` would
+        // not be enough, for the reason the CSV twin spells out: an arm reading
+        // the wrong field of the right type still returns `Ok`, and the three
+        // `Option<f32>` fields here are freely interchangeable without the
+        // compiler noticing. Asserting on the rendered array rather than
+        // downcasting keeps this from restating the name-to-type mapping the
+        // schema already owns, which is the thing under test.
+        let mut detection = Detection::from_label(
+            "Passer domesticus_House Sparrow",
+            0.85,
+            0.0,
+            3.0,
+            PathBuf::from("/path/to/audio.wav"),
+        );
+        detection.metadata = crate::output::DetectionMetadata {
+            lat: Some(60.1699),
+            lon: Some(24.9384),
+            week: Some(24),
+            model: Some("birdnet-v24".to_string()),
+            overlap: Some(1.5),
+            sensitivity: Some(1.25),
+            min_conf: Some(0.1),
+            species_list: Some("finland.txt".to_string()),
+        };
+        let detections = [detection];
+
+        let expected = [
+            ("lat", "60.1699"),
+            ("lon", "24.9384"),
+            ("week", "24"),
+            ("model", "birdnet-v24"),
+            ("overlap", "1.5"),
+            ("sensitivity", "1.25"),
+            ("min_conf", "0.1"),
+            ("species_list", "finland.txt"),
+        ];
+        assert_eq!(expected.len(), columns.len());
+
+        for (name, want) in expected {
+            let field = schema
+                .field_with_name(name)
+                .unwrap_or_else(|_| panic!("build_schema has no arm for '{name}'"));
+            let column = build_metadata_column(field, &detections).unwrap_or_else(|e| {
+                panic!(
+                    "build_metadata_column has no arm for the recognised column '{name}', which \
+                     fails every Parquet write rather than dropping the column: {e}"
+                )
+            });
+
+            let rendered = format!("{column:?}");
+            assert!(
+                rendered.contains(want),
+                "'{name}' must carry its own metadata field, expected {want} in: {rendered}"
+            );
+        }
+    }
+
+    #[test]
     fn test_schema_basic() {
         let schema = build_schema(&[]);
-        assert_eq!(schema.fields().len(), 6);
+        assert_eq!(schema.fields().len(), BASE_FIELD_COUNT);
         assert_eq!(schema.field(0).name(), "start_s");
         assert_eq!(schema.field(1).name(), "end_s");
         assert_eq!(schema.field(2).name(), "scientific_name");

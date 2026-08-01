@@ -206,15 +206,39 @@ mod tests {
         let row: Vec<&str> = lines.next().unwrap().split(',').collect();
         assert_eq!(header.len(), row.len(), "header and row must line up");
 
-        for column in &columns {
+        // Each cell is asserted against the value that column is FOR, not
+        // merely against being non-empty. Non-emptiness alone passes when an
+        // arm emits the wrong field: rewriting the `lat` arm to write
+        // `metadata.lon` leaves a populated `lat` column carrying a longitude,
+        // and a presence check cannot see it. Every value here is comma-free,
+        // which is what keeps the naive `split(',')` above honest; the
+        // `header.len() == row.len()` assertion fails loudly rather than
+        // silently misaligning if that ever stops being true.
+        let expected = [
+            ("lat", "60.1699"),
+            ("lon", "24.9384"),
+            ("week", "24"),
+            ("model", "birdnet-v24"),
+            ("overlap", "1.5"),
+            ("sensitivity", "1.25"),
+            ("min_conf", "0.1"),
+            ("species_list", "finland.txt"),
+        ];
+        assert_eq!(
+            expected.len(),
+            columns.len(),
+            "every name in RECOGNISED needs an expected value here"
+        );
+
+        for (column, want) in expected {
             let index = header
                 .iter()
-                .position(|h| h == column)
+                .position(|h| *h == column)
                 .unwrap_or_else(|| panic!("'{column}' is missing from the header"));
-            assert!(
-                !row[index].is_empty(),
-                "'{column}' is a recognised column but write_detection left it empty, \
-                 so it has no arm in the match"
+            assert_eq!(
+                row[index], want,
+                "'{column}' must carry its own metadata field; an empty cell means no arm in \
+                 the match, a wrong value means the arm reads the wrong field"
             );
         }
     }

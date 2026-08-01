@@ -113,16 +113,17 @@ pub fn should_process(
 
     // Check if all outputs exist (unless force)
     //
-    // The list has to be non-empty for the question to mean anything: `all` over
-    // an empty slice is vacuously true, so an empty `formats` answered "every
-    // output already exists" when there was nothing to check, and every input
-    // file was skipped with a reason naming a file that did not exist (#339).
+    // The list has to be non-empty for the question to mean anything, since
+    // `all` over an empty slice is vacuously true (#339).
     //
     // `config::validate` rejects an empty `defaults.formats`, so the analyze
     // path cannot arrive here with one. This guard is for the direct caller:
     // `should_process` is public and takes the slice, so it should not depend on
     // a rule enforced two layers up. Returning `Process` is the honest answer;
-    // no output can be found to already exist when none was asked for.
+    // no output can be found to already exist when none was asked for. It is
+    // not free, though: such a caller now decodes and runs inference over every
+    // file and still writes nothing, where before it did nothing quickly. Both
+    // are silent, which is why the config rule is the one that matters.
     if !force && !formats.is_empty() {
         let all_exist = formats.iter().all(|fmt| {
             output_path_for(input, output_dir, *fmt).map_or_else(
@@ -199,10 +200,11 @@ mod tests {
         // whose outputs did not exist and could not, and the caller logged
         // "Skipping (output exists)" naming a reason that was never true.
         //
-        // The directory has to exist for the lock check to behave, and the
-        // input deliberately does not: with no format requested there is no
-        // output path to test, so nothing about the filesystem can make the
-        // answer `SkipExists`.
+        // The input deliberately does not exist: with no format requested there
+        // is no output path to test, so nothing about the filesystem can make
+        // the answer `SkipExists`. The tempdir is for a unique path, not for
+        // the lock check, which is a bare `Path::exists` and answers false for
+        // a path under a directory that is not there either.
         let dir = tempfile::tempdir().unwrap();
         let input = dir.path().join("recording.wav");
 

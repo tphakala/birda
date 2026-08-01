@@ -29,7 +29,8 @@ fn test_tensorrt_library_name_platform_specific() {
     #[cfg(target_os = "windows")]
     {
         assert_eq!(lib_name, "nvinfer_10.dll");
-        assert!(lib_name.ends_with(".dll"));
+        // `contains`, not `ends_with`: see the macOS arm below.
+        assert!(lib_name.contains(".dll"));
     }
 
     #[cfg(target_os = "linux")]
@@ -43,9 +44,12 @@ fn test_tensorrt_library_name_platform_specific() {
     {
         assert_eq!(lib_name, "libnvinfer.10.dylib");
         assert!(lib_name.starts_with("lib"));
-        // `contains` rather than `ends_with`, matching the Linux arm above and
-        // `tests/cuda_detection_test.rs`. See the comment there: Linux CI never
-        // compiled this arm, so the lint survived the sweep in #338.
+        // `contains` rather than `ends_with`, matching the Linux arm above.
+        // Not for the reason `tests/cuda_detection_test.rs` gives: this value is
+        // a plain filename, so `Path::extension` would work on it. The reason
+        // here is consistency with the Linux arm, whose `libnvinfer.so.10` has
+        // extension "10". Either way `case_sensitive_file_extension_comparisons`
+        // fires on `ends_with`, and no CI job compiles this arm.
         assert!(lib_name.contains(".dylib"));
     }
 }

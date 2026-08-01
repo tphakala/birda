@@ -66,7 +66,7 @@ fn validate_defaults(config: &Config) -> Result<()> {
     }
 
     // The upper bound is the half that was missing (#312). `parse_batch_size`
-    // has rejected anything above `MAX_BATCH_SIZE` since the flag existed and
+    // has rejected anything above `MAX_BATCH_SIZE` since #135 added the cap and
     // this side checked only `Some(0)`, so `--batch-size 100000` was refused
     // while `batch_size = 100000` hand-edited into config.toml went straight to
     // the inference path. The limit is there to prevent GPU memory exhaustion,
@@ -78,10 +78,17 @@ fn validate_defaults(config: &Config) -> Result<()> {
     // compares their verdicts, so neither can be tightened alone.
     //
     // The wording deliberately stops short of the "reduce it or use --cpu"
-    // advice `parse_batch_size` adds. The two layers stay distinguishable in a
-    // test that way, which is what lets the `config set` and load-path tests
-    // each pin their own layer rather than being satisfied by the other's
-    // error.
+    // advice `parse_batch_size` adds. That is what keeps the two layers
+    // distinguishable, so `test_config_set_rejects_an_oversized_batch_size` can
+    // assert on the advice and fail if its arm falls through to this rule
+    // instead. The load-path test is pinned differently, by passing no flag at
+    // all, since this message is the only one reachable that way.
+    //
+    // The lower bound is the one place the two texts diverge without being
+    // designed to: `parse_batch_size` says "must be at least 1" while this says
+    // "must be between 1 and 512". Same verdict, different sentence, which is
+    // why `BATCH_SIZE_VIOLATION` in the integration suite matches the flag only
+    // at the upper bound.
     if let Some(batch_size) = defaults.batch_size
         && !(MIN_BATCH_SIZE..=MAX_BATCH_SIZE).contains(&batch_size)
     {
@@ -94,10 +101,12 @@ fn validate_defaults(config: &Config) -> Result<()> {
 
     // Same shape one field over. `--day-of-year` and `BIRDA_DAY_OF_YEAR` are
     // bounded by `parse_day_of_year`; the file was not, and `handle_config_set`
-    // had no arm for the key at all, so hand-editing config.toml was both the
-    // only way to set it and the one route with no check. `day_of_year = 999`
-    // then reached the BSG SDM path in `run()`, which rejects it from
-    // birdnet-onnx, far from the value that caused it.
+    // had no arm for the key at all, so hand-editing config.toml was the only
+    // way to set `defaults.day_of_year` and the only route with no check. (The
+    // flag and the environment variable set the value for one run, and both
+    // were bounded.) `day_of_year = 999` then reached the BSG SDM path in
+    // `run()`, which rejects it from birdnet-onnx, far from the value that
+    // caused it.
     if let Some(day) = defaults.day_of_year
         && !(day_of_year::MIN..=day_of_year::MAX).contains(&day)
     {

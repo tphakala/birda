@@ -155,15 +155,24 @@ pub fn parse_day_of_year(s: &str) -> Result<u32, String> {
     // Trimmed; see `parse_confidence`. This one backs `--day-of-year` and
     // `BIRDA_DAY_OF_YEAR`.
     //
-    // A negative input fails here rather than at the range check, so it is
-    // reported as "not a valid number" rather than as an out-of-range day. That
-    // is what the clap range parser did too.
-    let value: u32 = s
+    // Parsed as `i64` and then range-checked, rather than straight to `u32`,
+    // because that is what the clap parser this replaced did: `value_parser!(u32)`
+    // resolves to `RangedI64ValueParser<u32>`, which parses to `i64` first
+    // (clap_builder 4.6.2, src/builder/value_parser.rs:2362 and :1418, read this
+    // session). A negative therefore reached its bounds check and was reported as
+    // out of range.
+    //
+    // Parsing straight to `u32` looks equivalent and is not: `-1` fails at the
+    // parse step and gets reported as "not a valid number", which is false on its
+    // face. That was measured against this branch before the `i64` step was put
+    // back, and `--week` still shows the original behaviour for comparison.
+    let value: i64 = s
         .trim()
         .parse()
         .map_err(|_| format!("'{s}' is not a valid number"))?;
 
-    if !(day_of_year::MIN..=day_of_year::MAX).contains(&value) {
+    let range = i64::from(day_of_year::MIN)..=i64::from(day_of_year::MAX);
+    if !range.contains(&value) {
         return Err(format!(
             "day_of_year must be between {} and {}, got {value}",
             day_of_year::MIN,
@@ -171,7 +180,8 @@ pub fn parse_day_of_year(s: &str) -> Result<u32, String> {
         ));
     }
 
-    Ok(value)
+    // Infallible: the range check above bounds `value` to 1..=366, which fits.
+    u32::try_from(value).map_err(|_| format!("'{s}' is not a valid number"))
 }
 
 #[cfg(test)]
@@ -280,16 +290,24 @@ mod tests {
     #[test]
     fn test_env_backed_validators_all_tolerate_whitespace() {
         // Environment variables pick up stray whitespace easily, and every one
-        // of these is reachable through a `BIRDA_*` variable. Asserted across
-        // all four together rather than for overlap alone, because the failure
-        // this pins is the crate holding two spellings of one rule: for a while
+        // of these is reachable through a `BIRDA_*` variable. Asserted over the
+        // whole set rather than for overlap alone, because the failure this
+        // pins is the crate holding two spellings of one rule: for a while
         // `BIRDA_OVERLAP=" 1.5 "` was accepted and `BIRDA_LATITUDE=" 60.1 "`
         // was not.
+        //
+        // Deliberately not stated as a count. This test said "all four" while
+        // asserting five, and #312 then added a sixth (`parse_day_of_year`,
+        // reached through `BIRDA_DAY_OF_YEAR`) without the number moving. Every
+        // env-backed parser belongs in this list; the way to check is
+        // `grep -rhoE 'env = "BIRDA_[A-Z_]+"' src/` against the ones that carry
+        // a `value_parser`.
         assert_eq!(parse_overlap(" 1.5 ").ok(), Some(1.5));
         assert_eq!(parse_confidence(" 0.5 ").ok(), Some(0.5));
         assert_eq!(parse_latitude(" 60.17 ").ok(), Some(60.17));
         assert_eq!(parse_longitude(" 24.94 ").ok(), Some(24.94));
         assert_eq!(parse_batch_size(" 32 ").ok(), Some(32));
+        assert_eq!(parse_day_of_year(" 200 ").ok(), Some(200));
     }
 
     #[test]
@@ -327,7 +345,7 @@ mod tests {
 
     #[test]
     fn test_parse_batch_size_valid() {
-        assert_eq!(parse_batch_size("1").ok(), Some(1));
+        assert_eq!(parse_batch_size("1").ok(), Some(MIN_BATCH_SIZE));
         assert_eq!(parse_batch_size("8").ok(), Some(8));
         assert_eq!(parse_batch_size("128").ok(), Some(128));
     }
@@ -350,7 +368,7 @@ mod tests {
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert!(err.contains(&format!(
-            "batch_size must be between 1 and {MAX_BATCH_SIZE}"
+            "batch_size must be between {MIN_BATCH_SIZE} and {MAX_BATCH_SIZE}"
         )));
         assert!(err.contains("GPU memory exhaustion"));
     }
@@ -361,7 +379,7 @@ mod tests {
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert!(err.contains(&format!(
-            "batch_size must be between 1 and {MAX_BATCH_SIZE}"
+            "batch_size must be between {MIN_BATCH_SIZE} and {MAX_BATCH_SIZE}"
         )));
         assert!(err.contains("GPU memory exhaustion"));
     }
@@ -386,9 +404,21 @@ mod tests {
         // says nothing about the config file, which is precisely where the
         // upper bound was missing: `--batch-size 100000` was refused while
         // `batch_size = 100000` in config.toml reached the inference path.
+        // The boundaries are derived from the constants rather than spelled
+        // out. Agreement would still be checked either way, since both rules
+        // read the same constants, but with "512"/"513" written in, raising
+        // `MAX_BATCH_SIZE` would leave the inputs no longer straddling the
+        // bound, so the test would keep passing while covering less.
+        let below = (MIN_BATCH_SIZE - 1).to_string();
+        let at_max = MAX_BATCH_SIZE.to_string();
+        let above = (MAX_BATCH_SIZE + 1).to_string();
         for input in [
-            "1", "8", "512", // accepted by both
-            "0", "513", "100000", // rejected by both
+            "1",
+            "8",
+            at_max.as_str(), // accepted by both
+            below.as_str(),
+            above.as_str(),
+            "100000", // rejected by both
         ] {
             let cli = parse_batch_size(input);
 
@@ -422,8 +452,18 @@ mod tests {
         assert!(parse_day_of_year("0").is_err(), "the range is 1-based");
         assert!(parse_day_of_year("367").is_err());
         assert!(parse_day_of_year("999").is_err(), "the value from #312");
-        assert!(parse_day_of_year("-1").is_err());
         assert!(parse_day_of_year("abc").is_err());
+
+        // A negative is reported as OUT OF RANGE, not as a malformed number,
+        // because `-1` plainly is a number. Asserted rather than left to
+        // `is_err()`: parsing straight to `u32` also rejects it, but with
+        // "'-1' is not a valid number", and that is what this branch shipped
+        // until the gate caught it.
+        let negative = parse_day_of_year("-1").unwrap_err();
+        assert!(
+            negative.contains("must be between") && negative.contains("got -1"),
+            "a negative day should be reported as out of range, got: {negative}"
+        );
 
         let err = parse_day_of_year("367").unwrap_err();
         assert!(
@@ -439,14 +479,18 @@ mod tests {
     #[test]
     fn test_parse_day_of_year_matches_the_config_file_rule() {
         // The other half of #312. `--day-of-year` carried an inline
-        // `range(1..=366)`, `validate_defaults` looked at the field at all, and
-        // `config set` had no arm for the key, so config.toml was both the only
-        // route to the setting and the only unchecked one.
+        // `range(1..=366)`, `validate_defaults` did not look at the field at
+        // all, and `config set` had no arm for the key, so config.toml was the
+        // only route that could set `defaults.day_of_year` and the only one
+        // with no check. The flag and `BIRDA_DAY_OF_YEAR` could set the value
+        // for a single run, and both were bounded.
         //
         // Inputs are restricted to ones that parse as `u32`, since the config
         // side is already typed and cannot be handed "abc" or "-1"; those are
         // covered against the parser in `test_parse_day_of_year_invalid`.
-        for input in ["1", "200", "366", "0", "367", "100000"] {
+        let at_max = day_of_year::MAX.to_string();
+        let above = (day_of_year::MAX + 1).to_string();
+        for input in ["1", "200", at_max.as_str(), "0", above.as_str(), "100000"] {
             let cli = parse_day_of_year(input);
 
             let mut config = crate::config::Config::default();

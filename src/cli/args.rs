@@ -276,24 +276,27 @@ pub struct AnalyzeArgs {
     #[arg(short = 'c', long, value_parser = parse_confidence, env = "BIRDA_MIN_CONFIDENCE")]
     pub min_confidence: Option<f32>,
 
+    // `//` rather than `///`, same reason as `yes` below: this was rendered
+    // into `--help`, where a user asking what `--overlap` does got two
+    // paragraphs about clap attributes.
+    //
+    // `allow_hyphen_values` so a negative value reaches the parser and gets
+    // the real diagnostic. Without it clap reads the leading `-` as the start
+    // of another flag and reports "a value is required", which is a usage
+    // error about the wrong thing.
+    //
+    // `--lat` and `--lon` carry the same attribute for a stronger reason, not
+    // the same one: a negative coordinate is *valid input*, so without it
+    // every southern and western hemisphere position is unreachable. Here a
+    // negative overlap is invalid either way and only the message improves.
+    // The cost, shared with those two, is that `--overlap --cpu file.wav`
+    // consumes `--cpu` as the value and reports that it is not a number
+    // rather than that no value was supplied.
     /// Segment overlap in seconds.
-    ///
-    /// `allow_hyphen_values` so a negative value reaches the parser and gets
-    /// the real diagnostic. Without it clap reads the leading `-` as the start
-    /// of another flag and reports "a value is required", which is a usage
-    /// error about the wrong thing.
-    ///
-    /// `--lat` and `--lon` carry the same attribute for a stronger reason, not
-    /// the same one: a negative coordinate is *valid input*, so without it
-    /// every southern and western hemisphere position is unreachable. Here a
-    /// negative overlap is invalid either way and only the message improves.
-    /// The cost, shared with those two, is that `--overlap --cpu file.wav`
-    /// consumes `--cpu` as the value and reports that it is not a number
-    /// rather than that no value was supplied.
     #[arg(long, allow_hyphen_values = true, value_parser = parse_overlap, env = "BIRDA_OVERLAP")]
     pub overlap: Option<f32>,
 
-    /// Inference batch size (must be at least 1).
+    /// Inference batch size (1-512).
     #[arg(short, long, value_parser = parse_batch_size, env = "BIRDA_BATCH_SIZE")]
     pub batch_size: Option<usize>,
 
@@ -402,13 +405,21 @@ pub struct AnalyzeArgs {
           requires = "month", conflicts_with = "week")]
     pub day: Option<u32>,
 
+    // Kept as a `//` comment for the reason spelled out on `yes` below: clap
+    // renders `///` into `--help`, and this is rationale for the code rather
+    // than guidance for the user.
+    //
+    // The bound lives in `constants::day_of_year`. `parse_day_of_year` applies
+    // it to this flag and to `BIRDA_DAY_OF_YEAR`, the same parser applies it
+    // through `config set`, and `validate_defaults` applies it to config.toml,
+    // which is the route that had no check at all before #312. The parser
+    // replaced an inline `clap::value_parser!(u32).range(1..=366)`, whose bound
+    // no other route could read.
+    //
+    // `--week`, `--month` and `--day` above keep their inline ranges because
+    // they have no config-file counterpart to disagree with.
     /// Day of year for BSG SDM adjustment (1-366).
     /// If not provided and BSG model is used, auto-detected from file timestamp.
-    ///
-    /// Validated by `parse_day_of_year` rather than by an inline clap range, so
-    /// the flag, `BIRDA_DAY_OF_YEAR`, `config set` and config.toml all apply one
-    /// bound. `--week`, `--month` and `--day` above keep their inline ranges
-    /// because they have no config-file counterpart to disagree with.
     #[arg(long, value_parser = parse_day_of_year, env = "BIRDA_DAY_OF_YEAR")]
     pub day_of_year: Option<u32>,
 

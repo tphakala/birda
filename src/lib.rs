@@ -1331,11 +1331,14 @@ fn handle_config_command(action: cli::ConfigAction, output_mode: OutputMode) -> 
 /// Apply a `cli::validators` parser to a `config set` value, naming the key.
 ///
 /// These are the same parsers clap runs for the matching flags, so a value
-/// typed at `config set` is refused for the same reason, and with the same
-/// wording, as `--batch-size` or `--day-of-year`. Each arm used to call a bare
+/// typed at `config set` is refused for the same reason, and carries the same
+/// rule message, as `--batch-size` or `--day-of-year`; this adds the key name
+/// in front of it. The numeric arms this serves used to call a bare
 /// `value.parse()` and lean on the whole-config validation inside
 /// `save_config`, which knows nothing about the key the user typed and, for
-/// `batch_size`, did not carry the upper bound at all (#312).
+/// `batch_size`, did not carry the upper bound at all (#312). The
+/// `defaults.day_of_year` arm is new. The arms that store a string, a path or
+/// an enum do not come through here and never parsed.
 ///
 /// The key prefix is not only for the reader. It is what tells this layer's
 /// rejection apart from `validate_defaults`', so a test for this arm cannot be

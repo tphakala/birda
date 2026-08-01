@@ -2,7 +2,7 @@
 //!
 //! Shared validation functions for CLI argument parsing.
 
-use crate::constants::{MAX_BATCH_SIZE, confidence};
+use crate::constants::{MAX_BATCH_SIZE, MIN_BATCH_SIZE, confidence, day_of_year};
 
 /// Parse and validate confidence value (0.0-1.0).
 pub fn parse_confidence(s: &str) -> Result<f32, String> {
@@ -109,22 +109,65 @@ pub fn parse_overlap(s: &str) -> Result<f32, String> {
     Ok(value)
 }
 
-/// Parse and validate batch size (must be between 1 and `MAX_BATCH_SIZE`).
+/// Parse and validate batch size (must be between `MIN_BATCH_SIZE` and
+/// `MAX_BATCH_SIZE`).
+///
+/// The same range is applied to `defaults.batch_size` by
+/// `config::validate::validate_defaults`, and
+/// `test_parse_batch_size_matches_the_config_file_rule` drives both and
+/// compares their verdicts. Before #312 only this side carried the upper
+/// bound, so `--batch-size 100000` was refused while the same value in
+/// config.toml reached the inference path.
 pub fn parse_batch_size(s: &str) -> Result<usize, String> {
     let value: usize = s
         .trim()
         .parse()
         .map_err(|_| format!("'{s}' is not a valid number"))?;
 
-    if value < 1 {
-        return Err(format!("batch_size must be at least 1, got {value}"));
+    if value < MIN_BATCH_SIZE {
+        return Err(format!(
+            "batch_size must be at least {MIN_BATCH_SIZE}, got {value}"
+        ));
     }
 
     if value > MAX_BATCH_SIZE {
         return Err(format!(
-            "batch_size must be between 1 and {MAX_BATCH_SIZE}, got {value}\n\n\
+            "batch_size must be between {MIN_BATCH_SIZE} and {MAX_BATCH_SIZE}, got {value}\n\n\
              This limit prevents GPU memory exhaustion.\n\
              If processing fails with batch_size={MAX_BATCH_SIZE}, try reducing it further or use --cpu."
+        ));
+    }
+
+    Ok(value)
+}
+
+/// Parse and validate the day of year used for BSG SDM adjustment (1-366).
+///
+/// Shared with the config-file rule in `validate_defaults` for the reason
+/// `parse_overlap` documents: `--day-of-year` and `BIRDA_DAY_OF_YEAR` both win
+/// over `defaults.day_of_year`, so a bound enforced on one route left the
+/// routes disagreeing about one setting.
+///
+/// This replaces an inline `clap::value_parser!(u32).range(1..=366)` on the
+/// argument. That bounded the flag, but the bound was a literal only clap could
+/// read, so neither `handle_config_set` nor `validate_defaults` could apply it.
+pub fn parse_day_of_year(s: &str) -> Result<u32, String> {
+    // Trimmed; see `parse_confidence`. This one backs `--day-of-year` and
+    // `BIRDA_DAY_OF_YEAR`.
+    //
+    // A negative input fails here rather than at the range check, so it is
+    // reported as "not a valid number" rather than as an out-of-range day. That
+    // is what the clap range parser did too.
+    let value: u32 = s
+        .trim()
+        .parse()
+        .map_err(|_| format!("'{s}' is not a valid number"))?;
+
+    if !(day_of_year::MIN..=day_of_year::MAX).contains(&value) {
+        return Err(format!(
+            "day_of_year must be between {} and {}, got {value}",
+            day_of_year::MIN,
+            day_of_year::MAX
         ));
     }
 
@@ -330,5 +373,94 @@ mod tests {
         assert_eq!(parse_batch_size("32 ").ok(), Some(32));
         assert_eq!(parse_batch_size(" 32 ").ok(), Some(32));
         assert_eq!(parse_batch_size("  64  ").ok(), Some(64));
+    }
+
+    #[test]
+    fn test_parse_batch_size_matches_the_config_file_rule() {
+        // #312, and deliberately the same shape as
+        // `test_parse_overlap_matches_the_config_file_rule` above.
+        //
+        // Driving both rules and comparing verdicts is what makes this catch
+        // the defect. A list-based test written from the CLI's point of view
+        // ("512 ok, 513 rejected") passes against `parse_batch_size` alone and
+        // says nothing about the config file, which is precisely where the
+        // upper bound was missing: `--batch-size 100000` was refused while
+        // `batch_size = 100000` in config.toml reached the inference path.
+        for input in [
+            "1", "8", "512", // accepted by both
+            "0", "513", "100000", // rejected by both
+        ] {
+            let cli = parse_batch_size(input);
+
+            let mut config = crate::config::Config::default();
+            config.defaults.batch_size =
+                Some(input.trim().parse().expect("input must parse as usize"));
+            let file = crate::config::validate_config(&config);
+
+            assert_eq!(
+                cli.is_ok(),
+                file.is_ok(),
+                "'{input}': the flag says {}, config.toml says {}. The two rules must agree.",
+                if cli.is_ok() { "ok" } else { "rejected" },
+                if file.is_ok() { "ok" } else { "rejected" },
+            );
+        }
+    }
+
+    #[test]
+    fn test_parse_day_of_year_valid() {
+        assert_eq!(parse_day_of_year("1").ok(), Some(day_of_year::MIN));
+        assert_eq!(parse_day_of_year("200").ok(), Some(200));
+        assert_eq!(parse_day_of_year("366").ok(), Some(day_of_year::MAX));
+        // Trimmed like every sibling, because `BIRDA_DAY_OF_YEAR` can pick up a
+        // space from a shell profile or a Docker env file.
+        assert_eq!(parse_day_of_year(" 200 ").ok(), Some(200));
+    }
+
+    #[test]
+    fn test_parse_day_of_year_invalid() {
+        assert!(parse_day_of_year("0").is_err(), "the range is 1-based");
+        assert!(parse_day_of_year("367").is_err());
+        assert!(parse_day_of_year("999").is_err(), "the value from #312");
+        assert!(parse_day_of_year("-1").is_err());
+        assert!(parse_day_of_year("abc").is_err());
+
+        let err = parse_day_of_year("367").unwrap_err();
+        assert!(
+            err.contains(&format!(
+                "day_of_year must be between {} and {}",
+                day_of_year::MIN,
+                day_of_year::MAX
+            )),
+            "the message should name the bound it enforces, got: {err}"
+        );
+    }
+
+    #[test]
+    fn test_parse_day_of_year_matches_the_config_file_rule() {
+        // The other half of #312. `--day-of-year` carried an inline
+        // `range(1..=366)`, `validate_defaults` looked at the field at all, and
+        // `config set` had no arm for the key, so config.toml was both the only
+        // route to the setting and the only unchecked one.
+        //
+        // Inputs are restricted to ones that parse as `u32`, since the config
+        // side is already typed and cannot be handed "abc" or "-1"; those are
+        // covered against the parser in `test_parse_day_of_year_invalid`.
+        for input in ["1", "200", "366", "0", "367", "100000"] {
+            let cli = parse_day_of_year(input);
+
+            let mut config = crate::config::Config::default();
+            config.defaults.day_of_year =
+                Some(input.trim().parse().expect("input must parse as u32"));
+            let file = crate::config::validate_config(&config);
+
+            assert_eq!(
+                cli.is_ok(),
+                file.is_ok(),
+                "'{input}': the flag says {}, config.toml says {}. The two rules must agree.",
+                if cli.is_ok() { "ok" } else { "rejected" },
+                if file.is_ok() { "ok" } else { "rejected" },
+            );
+        }
     }
 }

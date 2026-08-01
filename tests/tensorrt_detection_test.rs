@@ -42,6 +42,10 @@ fn test_tensorrt_library_name_platform_specific() {
     #[cfg(target_os = "macos")]
     {
         assert_eq!(lib_name, "libnvinfer.10.dylib");
-        assert!(lib_name.ends_with(".dylib"));
+        assert!(lib_name.starts_with("lib"));
+        // `contains` rather than `ends_with`, matching the Linux arm above and
+        // `tests/cuda_detection_test.rs`. See the comment there: Linux CI never
+        // compiled this arm, so the lint survived the sweep in #338.
+        assert!(lib_name.contains(".dylib"));
     }
 }

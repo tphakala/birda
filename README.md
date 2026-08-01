@@ -364,9 +364,11 @@ combined_prefix = "BirdNET"
 
 ### Configuration Validation
 
-An analysis run validates the configuration file before it starts, so a bad value is reported once, up front, instead of turning into odd results later in the run. The rules cover `min_confidence` and `range_threshold` (both 0.0 to 1.0), `overlap` (finite and non-negative), `batch_size` (at least 1), `latitude` (-90.0 to 90.0), `longitude` (-180.0 to 180.0), and `defaults.model`, which must name a model that exists in the file.
+An analysis run validates the configuration file before it starts, so a bad value is reported once, up front, instead of turning into odd results later in the run. The rules cover `min_confidence` and `range_threshold` (both 0.0 to 1.0), `overlap` (finite and non-negative), `batch_size` (1 to 512), `day_of_year` (1 to 366), `latitude` (-90.0 to 90.0), `longitude` (-180.0 to 180.0), and `defaults.model`, which must name a model that exists in the file.
 
-For `overlap` the rule also applies to the command-line flag and the environment variable, not just to the file: `--overlap`, `BIRDA_OVERLAP` and `defaults.overlap` are three routes to one setting, and all three reject a negative, NaN or infinite value. Previously only the file did, and the other two silently became zero overlap. `min_confidence`, `range_threshold`, `latitude` and `longitude` agree across their routes too.
+For `overlap` the rule also applies to the command-line flag and the environment variable, not just to the file: `--overlap`, `BIRDA_OVERLAP` and `defaults.overlap` are three routes to one setting, and all three reject a negative, NaN or infinite value. Previously only the file did, and the other two silently became zero overlap. `min_confidence`, `range_threshold`, `latitude`, `longitude`, `batch_size` and `day_of_year` agree across their routes too.
+
+`batch_size` and `day_of_year` were the last two to disagree. The 512 cap on `batch_size` exists to keep a run from exhausting GPU memory, and it used to apply to `--batch-size` alone, so a larger value hand-edited into `config.toml` went straight to the inference path. `day_of_year` was bounded on `--day-of-year` and nowhere else, and `birda config set defaults.day_of_year` did not exist, so the file was both the only way to set it and the only unchecked one.
 
 ```text
 $ birda recording.wav

@@ -48,7 +48,13 @@ fn test_cuda_library_patterns_platform_specific() {
     {
         assert_eq!(patterns, &["libcudart.*.dylib"]);
         assert!(patterns[0].starts_with("lib"));
-        assert!(patterns[0].ends_with(".dylib"));
+        // `contains` rather than `ends_with`, matching the Linux arm above.
+        // The value is a glob pattern, not a path, so
+        // `case_sensitive_file_extension_comparisons` fires on `ends_with` and
+        // suggests `Path::extension`, which would be the wrong question to ask
+        // of a pattern. Linux CI never compiled this arm, which is how it
+        // survived the `--all-targets` sweep in #338.
+        assert!(patterns[0].contains(".dylib"));
         assert!(patterns[0].contains('*'));
     }
 }

@@ -404,7 +404,12 @@ pub struct AnalyzeArgs {
 
     /// Day of year for BSG SDM adjustment (1-366).
     /// If not provided and BSG model is used, auto-detected from file timestamp.
-    #[arg(long, value_parser = clap::value_parser!(u32).range(1..=366), env = "BIRDA_DAY_OF_YEAR")]
+    ///
+    /// Validated by `parse_day_of_year` rather than by an inline clap range, so
+    /// the flag, `BIRDA_DAY_OF_YEAR`, `config set` and config.toml all apply one
+    /// bound. `--week`, `--month` and `--day` above keep their inline ranges
+    /// because they have no config-file counterpart to disagree with.
+    #[arg(long, value_parser = parse_day_of_year, env = "BIRDA_DAY_OF_YEAR")]
     pub day_of_year: Option<u32>,
 
     /// Range filter threshold (0.0-1.0).
@@ -476,7 +481,8 @@ impl AnalyzeArgs {
 
 // Re-use shared validators
 use super::validators::{
-    parse_batch_size, parse_confidence, parse_latitude, parse_longitude, parse_overlap,
+    parse_batch_size, parse_confidence, parse_day_of_year, parse_latitude, parse_longitude,
+    parse_overlap,
 };
 
 #[cfg(test)]

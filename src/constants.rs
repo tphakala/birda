@@ -20,6 +20,14 @@ pub const DEFAULT_OVERLAP: f32 = 0.0;
 /// See `determine_default_batch_size()` in `lib.rs` for dynamic batch size selection.
 pub const DEFAULT_BATCH_SIZE: usize = 8;
 
+/// Minimum allowed batch size.
+///
+/// One segment per inference call. Zero means "run inference on nothing", and
+/// it was the only batch size the config-file route rejected before #312: the
+/// upper bound lived in `cli::validators::parse_batch_size` alone. Both routes
+/// read this constant now, so neither can be tightened without the other.
+pub const MIN_BATCH_SIZE: usize = 1;
+
 /// Maximum allowed batch size to prevent GPU memory exhaustion.
 ///
 /// This hard limit prevents users from specifying absurdly large batch sizes
@@ -47,6 +55,22 @@ pub mod batch_size {
 
     /// Conservative default for unknown/other GPU providers.
     pub const OTHER_GPU: usize = 16;
+}
+
+/// Valid range for the day of year used by BSG SDM seasonal adjustment.
+///
+/// A calendar position rather than an offset, so it is 1-based, and the upper
+/// bound is 366 so the last day of a leap year is reachable.
+///
+/// Read by `cli::validators::parse_day_of_year` and by `config::validate`, for
+/// the reason above: the bound used to be an inline `range(1..=366)` on the
+/// clap argument, which nothing else could see.
+pub mod day_of_year {
+    /// First day of the year.
+    pub const MIN: u32 = 1;
+
+    /// Last day of a leap year.
+    pub const MAX: u32 = 366;
 }
 
 /// Default number of top predictions to return per segment.

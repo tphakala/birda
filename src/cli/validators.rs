@@ -2,7 +2,7 @@
 //!
 //! Shared validation functions for CLI argument parsing.
 
-use crate::constants::{MAX_BATCH_SIZE, MIN_BATCH_SIZE, confidence, day_of_year};
+use crate::constants::{MAX_BATCH_SIZE, MIN_BATCH_SIZE, confidence, coordinates, day_of_year};
 
 /// Parse and validate confidence value (0.0-1.0).
 pub fn parse_confidence(s: &str) -> Result<f32, String> {
@@ -59,14 +59,31 @@ pub fn parse_bounded_float(s: &str, min: f64, max: f64, name: &str) -> Result<f6
     Ok(value)
 }
 
-/// Parse and validate latitude value (-90.0 to 90.0).
+/// Parse and validate a latitude in degrees.
+///
+/// Reads `coordinates::LATITUDE_MIN`/`MAX`, the same pair
+/// `config::validate::validate_range_filter` and `Error::InvalidLatitude` read.
+/// `test_parse_latitude_matches_the_config_file_rule` drives this and the file
+/// rule together and compares verdicts (#340).
 pub fn parse_latitude(s: &str) -> Result<f64, String> {
-    parse_bounded_float(s, -90.0, 90.0, "latitude")
+    parse_bounded_float(
+        s,
+        coordinates::LATITUDE_MIN,
+        coordinates::LATITUDE_MAX,
+        "latitude",
+    )
 }
 
-/// Parse and validate longitude value (-180.0 to 180.0).
+/// Parse and validate a longitude in degrees.
+///
+/// See [`parse_latitude`] for the shared-constant arrangement.
 pub fn parse_longitude(s: &str) -> Result<f64, String> {
-    parse_bounded_float(s, -180.0, 180.0, "longitude")
+    parse_bounded_float(
+        s,
+        coordinates::LONGITUDE_MIN,
+        coordinates::LONGITUDE_MAX,
+        "longitude",
+    )
 }
 
 /// Parse and validate segment overlap in seconds (finite and non-negative).
@@ -435,6 +452,101 @@ mod tests {
                 if file.is_ok() { "ok" } else { "rejected" },
             );
         }
+    }
+
+    #[test]
+    fn test_parse_latitude_matches_the_config_file_rule() {
+        // #340, the same shape as `test_parse_batch_size_matches_the_config_file_rule`
+        // above. Three routes reach `defaults.latitude`: the flag, `config set`
+        // (which routes through this parser), and a hand-edited config.toml.
+        // Before this the bound was written out in `cli::validators`, in
+        // `config::validate::validate_range_filter` and a third time in the
+        // `Error::InvalidLatitude` message, with nothing keeping the three
+        // equal. They agreed, so there was no live defect; this is what keeps
+        // that true.
+        //
+        // The inputs are derived from the constants rather than spelled out, so
+        // that moving a bound leaves them still straddling it.
+        let below = (coordinates::LATITUDE_MIN - 1.0).to_string();
+        let above = (coordinates::LATITUDE_MAX + 1.0).to_string();
+        for input in [
+            "0",
+            "60.1699",
+            &coordinates::LATITUDE_MIN.to_string(),
+            &coordinates::LATITUDE_MAX.to_string(),
+            &below,
+            &above,
+            "1000",
+        ] {
+            let cli = parse_latitude(input);
+
+            let mut config = crate::config::Config::default();
+            config.defaults.latitude = Some(input.trim().parse().expect("input must parse as f64"));
+            let file = crate::config::validate_config(&config);
+
+            assert_eq!(
+                cli.is_ok(),
+                file.is_ok(),
+                "'{input}': the flag says {}, config.toml says {}. The two rules must agree.",
+                if cli.is_ok() { "ok" } else { "rejected" },
+                if file.is_ok() { "ok" } else { "rejected" },
+            );
+        }
+    }
+
+    #[test]
+    fn test_parse_longitude_matches_the_config_file_rule() {
+        // See `test_parse_latitude_matches_the_config_file_rule`. Kept separate
+        // rather than folded into a loop over both, so a failure names which of
+        // the two bounds drifted.
+        let below = (coordinates::LONGITUDE_MIN - 1.0).to_string();
+        let above = (coordinates::LONGITUDE_MAX + 1.0).to_string();
+        for input in [
+            "0",
+            "24.9384",
+            &coordinates::LONGITUDE_MIN.to_string(),
+            &coordinates::LONGITUDE_MAX.to_string(),
+            &below,
+            &above,
+            "1000",
+        ] {
+            let cli = parse_longitude(input);
+
+            let mut config = crate::config::Config::default();
+            config.defaults.longitude =
+                Some(input.trim().parse().expect("input must parse as f64"));
+            let file = crate::config::validate_config(&config);
+
+            assert_eq!(
+                cli.is_ok(),
+                file.is_ok(),
+                "'{input}': the flag says {}, config.toml says {}. The two rules must agree.",
+                if cli.is_ok() { "ok" } else { "rejected" },
+                if file.is_ok() { "ok" } else { "rejected" },
+            );
+        }
+    }
+
+    #[test]
+    fn test_coordinate_error_messages_carry_the_enforced_bounds() {
+        // The third copy of the numbers, and the one no parity test can reach:
+        // `Error::InvalidLatitude` renders the bounds into text a user reads
+        // when their value is refused. It interpolates the constants, so this
+        // fails if the message is ever written back out as a literal that
+        // disagrees with the rule that produced it.
+        let latitude = crate::error::Error::InvalidLatitude { value: 91.0 }.to_string();
+        assert!(
+            latitude.contains(&format!("{:.1}", coordinates::LATITUDE_MIN))
+                && latitude.contains(&format!("{:.1}", coordinates::LATITUDE_MAX)),
+            "latitude message must state the enforced bounds, got '{latitude}'"
+        );
+
+        let longitude = crate::error::Error::InvalidLongitude { value: 181.0 }.to_string();
+        assert!(
+            longitude.contains(&format!("{:.1}", coordinates::LONGITUDE_MIN))
+                && longitude.contains(&format!("{:.1}", coordinates::LONGITUDE_MAX)),
+            "longitude message must state the enforced bounds, got '{longitude}'"
+        );
     }
 
     #[test]

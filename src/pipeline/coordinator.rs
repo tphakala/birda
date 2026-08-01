@@ -112,7 +112,18 @@ pub fn should_process(
     }
 
     // Check if all outputs exist (unless force)
-    if !force {
+    //
+    // The list has to be non-empty for the question to mean anything: `all` over
+    // an empty slice is vacuously true, so an empty `formats` answered "every
+    // output already exists" when there was nothing to check, and every input
+    // file was skipped with a reason naming a file that did not exist (#339).
+    //
+    // `config::validate` rejects an empty `defaults.formats`, so the analyze
+    // path cannot arrive here with one. This guard is for the direct caller:
+    // `should_process` is public and takes the slice, so it should not depend on
+    // a rule enforced two layers up. Returning `Process` is the honest answer;
+    // no output can be found to already exist when none was asked for.
+    if !force && !formats.is_empty() {
         let all_exist = formats.iter().all(|fmt| {
             output_path_for(input, output_dir, *fmt).map_or_else(
                 |e| {
@@ -180,6 +191,46 @@ fn is_audio_file(path: &Path) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_should_process_does_not_skip_when_no_formats_are_requested() {
+        // #339, at the layer that has the information. `all` over an empty
+        // slice is vacuously true, so this returned `SkipExists` for a file
+        // whose outputs did not exist and could not, and the caller logged
+        // "Skipping (output exists)" naming a reason that was never true.
+        //
+        // The directory has to exist for the lock check to behave, and the
+        // input deliberately does not: with no format requested there is no
+        // output path to test, so nothing about the filesystem can make the
+        // answer `SkipExists`.
+        let dir = tempfile::tempdir().unwrap();
+        let input = dir.path().join("recording.wav");
+
+        let check = should_process(&input, dir.path(), &[], false, false);
+
+        assert!(
+            matches!(check, ProcessCheck::Process),
+            "an empty format list must not read as 'every output already exists', got {check:?}"
+        );
+    }
+
+    #[test]
+    fn test_should_process_still_skips_when_the_only_output_exists() {
+        // The other half of the pair: the empty-slice guard must not stop the
+        // existence check doing its job for a list that has something in it.
+        // Without this, deleting the whole `if` block passes the test above.
+        let dir = tempfile::tempdir().unwrap();
+        let input = dir.path().join("recording.wav");
+        let existing = output_path_for(&input, dir.path(), OutputFormat::Csv).unwrap();
+        std::fs::write(&existing, "").unwrap();
+
+        let check = should_process(&input, dir.path(), &[OutputFormat::Csv], false, false);
+
+        assert!(
+            matches!(check, ProcessCheck::SkipExists),
+            "an existing output must still be skipped, got {check:?}"
+        );
+    }
 
     #[test]
     fn test_output_dir_for_with_explicit() {

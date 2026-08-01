@@ -382,14 +382,26 @@ pub enum Error {
     },
 
     /// Invalid latitude value.
-    #[error("invalid latitude: {value} (must be -90.0 to 90.0)")]
+    ///
+    /// The bounds are interpolated from `constants::coordinates` rather than
+    /// spelled out, so this message cannot drift from the rule that produced it
+    /// (#340). Same arrangement as `InvalidPadding` below.
+    #[error(
+        "invalid latitude: {value} (must be {:.1} to {:.1})",
+        crate::constants::coordinates::LATITUDE_MIN,
+        crate::constants::coordinates::LATITUDE_MAX
+    )]
     InvalidLatitude {
         /// Invalid latitude value.
         value: f64,
     },
 
     /// Invalid longitude value.
-    #[error("invalid longitude: {value} (must be -180.0 to 180.0)")]
+    #[error(
+        "invalid longitude: {value} (must be {:.1} to {:.1})",
+        crate::constants::coordinates::LONGITUDE_MIN,
+        crate::constants::coordinates::LONGITUDE_MAX
+    )]
     InvalidLongitude {
         /// Invalid longitude value.
         value: f64,

@@ -31,7 +31,13 @@ pub fn date_to_week(month: u32, day: u32) -> u32 {
     week.min(WEEKS_PER_YEAR)
 }
 
-/// Convert day of year (1-365) to (month, day).
+/// Convert a day of year to (month, day) on a non-leap calendar.
+///
+/// The stated domain used to be "1-365", which disagreed with the 1-366 the
+/// rest of the crate bounds a day of year to (#340). Neither number is a
+/// precondition, because this function bounds nothing: a day past the end of
+/// the table saturates to December 31, which is where day 366 of a leap year
+/// lands.
 pub fn day_of_year_to_date(day_of_year: u32) -> (u32, u32) {
     let mut remaining = day_of_year;
     for (month_idx, &days_in_month) in DAYS_IN_MONTH.iter().enumerate() {

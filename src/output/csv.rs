@@ -161,6 +161,65 @@ mod tests {
     }
 
     #[test]
+    fn test_every_recognised_column_is_written() {
+        // Pins `csv_columns::RECOGNISED`, which `config::validate` accepts, to
+        // what this writer actually handles. The two are matched on strings in
+        // arms the compiler cannot connect to the constant, and the fall-through
+        // is silent: an unhandled name becomes a header over a column empty in
+        // every row. Adding a name to the constant without an arm here, or
+        // removing an arm, fails this test rather than shipping that column.
+        let columns: Vec<String> = crate::constants::csv_columns::RECOGNISED
+            .iter()
+            .map(|c| (*c).to_string())
+            .collect();
+
+        let file = NamedTempFile::new().unwrap();
+        let mut writer = CsvWriter::new(file.path(), columns.clone(), false).unwrap();
+
+        let mut detection = Detection::from_label(
+            "Passer domesticus_House Sparrow",
+            0.85,
+            0.0,
+            3.0,
+            PathBuf::from("/path/to/audio.wav"),
+        );
+        // Every optional field set, so an empty cell can only mean the writer
+        // did not handle the column.
+        detection.metadata = crate::output::DetectionMetadata {
+            lat: Some(60.1699),
+            lon: Some(24.9384),
+            week: Some(24),
+            model: Some("birdnet-v24".to_string()),
+            overlap: Some(1.5),
+            sensitivity: Some(1.25),
+            min_conf: Some(0.1),
+            species_list: Some("finland.txt".to_string()),
+        };
+
+        writer.write_header().unwrap();
+        writer.write_detection(&detection).unwrap();
+        writer.finalize().unwrap();
+
+        let contents = std::fs::read_to_string(file.path()).unwrap();
+        let mut lines = contents.lines();
+        let header: Vec<&str> = lines.next().unwrap().split(',').collect();
+        let row: Vec<&str> = lines.next().unwrap().split(',').collect();
+        assert_eq!(header.len(), row.len(), "header and row must line up");
+
+        for column in &columns {
+            let index = header
+                .iter()
+                .position(|h| h == column)
+                .unwrap_or_else(|| panic!("'{column}' is missing from the header"));
+            assert!(
+                !row[index].is_empty(),
+                "'{column}' is a recognised column but write_detection left it empty, \
+                 so it has no arm in the match"
+            );
+        }
+    }
+
+    #[test]
     fn test_escape_csv() {
         assert_eq!(escape_csv("simple"), "simple");
         assert_eq!(escape_csv("with,comma"), "\"with,comma\"");

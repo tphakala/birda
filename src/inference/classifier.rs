@@ -520,8 +520,18 @@ impl BirdClassifier {
             // Apply calibration + SDM
             bsg.process(&result, lat, lon, day).map_err(|e| match e {
                 birdnet_onnx::Error::BsgProcessing(msg) => Error::BsgConfig { message: msg },
+                // The bounds are read from `constants::day_of_year`, the pair
+                // `cli::validators::parse_day_of_year` and `config::validate`
+                // enforce (#340). This guard stays even though both of those
+                // now cover every route to the value: the error it renders
+                // comes from birdnet-onnx, so it is a library boundary rather
+                // than a duplicate of the input checks.
                 birdnet_onnx::Error::InvalidDayOfYear { day_of_year } => Error::BsgConfig {
-                    message: format!("invalid day of year: {day_of_year} (must be 1-366)"),
+                    message: format!(
+                        "invalid day of year: {day_of_year} (must be {}-{})",
+                        crate::constants::day_of_year::MIN,
+                        crate::constants::day_of_year::MAX
+                    ),
                 },
                 other => Error::Inference {
                     reason: other.to_string(),

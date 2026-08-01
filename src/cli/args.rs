@@ -1,6 +1,7 @@
 //! CLI argument definitions.
 
 use crate::config::{ModelType, OutputFormat, OutputMode};
+use crate::constants::{calendar, range_filter};
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use std::path::PathBuf;
 
@@ -13,6 +14,32 @@ pub enum SortOrder {
     Freq,
     /// Sort alphabetically.
     Alpha,
+}
+
+/// Accepted range for `--week`, read from `constants::range_filter`.
+///
+/// Both `--week` declarations call this: the one on `species` and the one on
+/// the analyze arguments. Each used to spell out `1..=48`, restating
+/// `WEEKS_PER_YEAR`, which `utils::date::date_to_week` clamps its result to, so
+/// changing the `BirdNET` week count would have moved the clamp and left both
+/// declarations behind (#340).
+fn week_range() -> impl clap::builder::TypedValueParser<Value = u32> {
+    clap::value_parser!(u32)
+        .range(i64::from(range_filter::WEEK_MIN)..=i64::from(range_filter::WEEKS_PER_YEAR))
+}
+
+/// Accepted range for `--month`, read from `constants::calendar`.
+fn month_range() -> impl clap::builder::TypedValueParser<Value = u32> {
+    clap::value_parser!(u32).range(i64::from(calendar::MONTH_MIN)..=i64::from(calendar::MONTH_MAX))
+}
+
+/// Accepted range for `--day`, read from `constants::calendar`.
+///
+/// The upper bound is the longest month, not the month given alongside it:
+/// clap validates each argument on its own, and `--month 2 --day 31` is
+/// resolved by `date` rather than rejected here.
+fn day_of_month_range() -> impl clap::builder::TypedValueParser<Value = u32> {
+    clap::value_parser!(u32).range(i64::from(calendar::DAY_MIN)..=i64::from(calendar::DAY_MAX))
 }
 
 /// Bird species detection using `BirdNET` and Perch models.
@@ -83,17 +110,17 @@ pub enum Command {
         lon: f64,
 
         /// Week number (1-48).
-        #[arg(long, value_parser = clap::value_parser!(u32).range(1..=48),
+        #[arg(long, value_parser = week_range(),
               conflicts_with_all = ["month", "day"])]
         week: Option<u32>,
 
         /// Month (1-12).
-        #[arg(long, value_parser = clap::value_parser!(u32).range(1..=12),
+        #[arg(long, value_parser = month_range(),
               requires = "day", conflicts_with = "week")]
         month: Option<u32>,
 
         /// Day of month (1-31).
-        #[arg(long, value_parser = clap::value_parser!(u32).range(1..=31),
+        #[arg(long, value_parser = day_of_month_range(),
               requires = "month", conflicts_with = "week")]
         day: Option<u32>,
 
@@ -264,7 +291,15 @@ pub struct AnalyzeArgs {
     #[arg(long, value_name = "REGION")]
     pub bat: Option<crate::config::BatRegion>,
 
-    /// Output formats (comma-separated: csv,raven,audacity,kaleidoscope).
+    // Kept as a `//` comment for the reason spelled out on `yes` below: clap
+    // renders `///` into `--help`, and this is rationale for the code rather
+    // than guidance for the user.
+    //
+    // The names used to be spelled out in the line below and had drifted: it
+    // read `csv,raven,audacity,kaleidoscope` long after `json` and `parquet`
+    // were added. clap already prints the full set under "Possible values",
+    // which cannot go stale, so the list is gone rather than corrected.
+    /// Output formats, comma-separated. At least one is required.
     #[arg(short, long, value_delimiter = ',', env = "BIRDA_FORMAT")]
     pub format: Option<Vec<OutputFormat>>,
 
@@ -391,17 +426,17 @@ pub struct AnalyzeArgs {
     pub lon: Option<f64>,
 
     /// Week number for range filtering (1-48).
-    #[arg(long, value_parser = clap::value_parser!(u32).range(1..=48),
+    #[arg(long, value_parser = week_range(),
           conflicts_with_all = ["month", "day"])]
     pub week: Option<u32>,
 
     /// Month for range filtering (1-12).
-    #[arg(long, value_parser = clap::value_parser!(u32).range(1..=12),
+    #[arg(long, value_parser = month_range(),
           requires = "day", conflicts_with = "week")]
     pub month: Option<u32>,
 
     /// Day of month for range filtering (1-31).
-    #[arg(long, value_parser = clap::value_parser!(u32).range(1..=31),
+    #[arg(long, value_parser = day_of_month_range(),
           requires = "month", conflicts_with = "week")]
     pub day: Option<u32>,
 
@@ -506,7 +541,110 @@ use super::validators::{
 )]
 mod tests {
     use super::*;
+    use clap::CommandFactory;
     use std::path::Path;
+
+    #[test]
+    fn test_week_month_and_day_bounds_are_the_same_on_both_subcommands() {
+        // #340. `--week`, `--month` and `--day` are declared twice each, on
+        // `species` and on the analyze arguments, and each pair used to spell
+        // out its own `1..=48`, `1..=12` and `1..=31`. Driving clap at the
+        // boundary on both is what pins the two copies together; asserting the
+        // helper functions alone would pass while one declaration still carried
+        // a literal.
+        //
+        // The boundaries come from the constants, so raising one leaves the
+        // inputs still straddling it rather than quietly testing less.
+        let cases = [
+            ("week", range_filter::WEEK_MIN, range_filter::WEEKS_PER_YEAR),
+            ("month", calendar::MONTH_MIN, calendar::MONTH_MAX),
+            ("day", calendar::DAY_MIN, calendar::DAY_MAX),
+        ];
+
+        for (flag, min, max) in cases {
+            // `--month` and `--day` require each other, and both conflict with
+            // `--week`, so each is exercised with the partner it needs.
+            let partner: &[String] = match flag {
+                "month" => &[format!("--day={}", calendar::DAY_MIN)],
+                "day" => &[format!("--month={}", calendar::MONTH_MIN)],
+                _ => &[],
+            };
+
+            for (value, expected_ok) in [(min, true), (max, true), (max + 1, false)] {
+                let arg = format!("--{flag}={value}");
+
+                let analyze = Cli::try_parse_from(
+                    ["birda", "in.wav", &arg]
+                        .into_iter()
+                        .chain(partner.iter().map(String::as_str)),
+                );
+                assert_eq!(
+                    analyze.is_ok(),
+                    expected_ok,
+                    "analyze {arg}: expected ok={expected_ok}"
+                );
+
+                let species = Cli::try_parse_from(
+                    ["birda", "species", "--lat=60.0", "--lon=25.0", &arg]
+                        .into_iter()
+                        .chain(partner.iter().map(String::as_str)),
+                );
+                assert_eq!(
+                    species.is_ok(),
+                    expected_ok,
+                    "species {arg}: expected ok={expected_ok}, and it must agree with analyze"
+                );
+            }
+
+            // `min - 1` is checked only where the minimum leaves room for it;
+            // all three are 1-based, so 0 is the case, and it must be rejected.
+            let zero = format!("--{flag}=0");
+            assert!(
+                Cli::try_parse_from(["birda", "in.wav", &zero]).is_err(),
+                "{zero} must be rejected: the range is 1-based"
+            );
+            let _ = min;
+        }
+    }
+
+    #[test]
+    fn test_calendar_help_text_states_the_enforced_bounds() {
+        // A `///` comment on an `#[arg]` field is rendered into `birda --help`,
+        // so the "(1-48)" in those doc comments is a user-facing statement of
+        // the rule, and the one copy of these numbers that no value_parser
+        // change can update. This fails if a bound moves and the help text is
+        // left behind.
+        //
+        // The two surfaces are asserted separately on purpose. Checking them
+        // concatenated lets either one drift while the other still carries the
+        // string, which is the two-copies problem #340 is about: written that
+        // way, this test stayed green when the `species` doc comment was
+        // mutated to (1-52), and covered only the analyze copy.
+        let mut command = Cli::command();
+        let root = command.render_long_help().to_string().replace('\n', " ");
+        let species = command
+            .find_subcommand_mut("species")
+            .expect("the species subcommand declares its own --week, --month and --day")
+            .render_long_help()
+            .to_string()
+            .replace('\n', " ");
+
+        for (min, max) in [
+            (range_filter::WEEK_MIN, range_filter::WEEKS_PER_YEAR),
+            (calendar::MONTH_MIN, calendar::MONTH_MAX),
+            (calendar::DAY_MIN, calendar::DAY_MAX),
+        ] {
+            let stated = format!("({min}-{max})");
+            assert!(
+                root.contains(&stated),
+                "`birda --help` must state the enforced range {stated}"
+            );
+            assert!(
+                species.contains(&stated),
+                "`birda species --help` must state the enforced range {stated}"
+            );
+        }
+    }
 
     #[test]
     fn test_cli_parse_simple() {

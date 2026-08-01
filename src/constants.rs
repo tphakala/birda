@@ -73,6 +73,53 @@ pub mod day_of_year {
     pub const MAX: u32 = 366;
 }
 
+/// Geographic coordinate bounds, in degrees.
+///
+/// Three routes reach one setting: `--lat`/`--lon` and their `BIRDA_LATITUDE`/
+/// `BIRDA_LONGITUDE` variables, `birda config set defaults.latitude`, and a
+/// hand-edited config.toml. Before #340 each of `cli::validators`,
+/// `config::validate::validate_range_filter` and the `Error::InvalidLatitude`
+/// message text carried its own copy of these numbers, with nothing keeping
+/// them equal. `test_parse_latitude_matches_the_config_file_rule` and its
+/// longitude twin drive the flag and the file together and compare verdicts,
+/// so neither rule can be changed alone.
+pub mod coordinates {
+    /// Southernmost latitude.
+    pub const LATITUDE_MIN: f64 = -90.0;
+
+    /// Northernmost latitude.
+    pub const LATITUDE_MAX: f64 = 90.0;
+
+    /// Westernmost longitude.
+    pub const LONGITUDE_MIN: f64 = -180.0;
+
+    /// Easternmost longitude.
+    pub const LONGITUDE_MAX: f64 = 180.0;
+}
+
+/// Optional metadata columns for the CSV and Parquet writers.
+pub mod csv_columns {
+    /// Every name `defaults.csv_columns.include` accepts.
+    ///
+    /// `CsvWriter::write_detection` and `parquet::build_schema` each match on
+    /// these names, and each falls through silently on anything else in the
+    /// opposite direction: the CSV writer emits an unknown name as a header
+    /// over a column that is empty in every row, the Parquet writer drops it.
+    /// `config::validate` rejects an unrecognised name so neither behaviour is
+    /// reachable, and `test_every_recognised_column_is_written` drives the CSV
+    /// writer with each name here and fails if one stops being handled.
+    pub const RECOGNISED: [&str; 8] = [
+        "lat",
+        "lon",
+        "week",
+        "model",
+        "overlap",
+        "sensitivity",
+        "min_conf",
+        "species_list",
+    ];
+}
+
 /// Default number of top predictions to return per segment.
 pub const DEFAULT_TOP_K: usize = 5;
 
@@ -131,7 +178,16 @@ pub mod raven {
 
 /// Range filter constants.
 pub mod range_filter {
+    /// First week of the year, the lower bound for `--week`.
+    pub const WEEK_MIN: u32 = 1;
+
     /// `BirdNET` uses 48 weeks per year.
+    ///
+    /// Doubles as the upper bound for `--week`, which is why both `--week`
+    /// declarations in `cli::args` read this rather than restating 48 (#340).
+    /// `utils::date::date_to_week` clamps its result to the same value, so a
+    /// separately written CLI bound could have admitted a week that function
+    /// never returns.
     pub const WEEKS_PER_YEAR: u32 = 48;
 
     /// Days per `BirdNET` week (365.25 / 48).
@@ -200,6 +256,40 @@ pub mod obsolete_files {
 pub mod calendar {
     /// Days in each month (non-leap year).
     pub const DAYS_IN_MONTH: [u32; 12] = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+
+    /// First month of the year, the lower bound for `--month`.
+    pub const MONTH_MIN: u32 = 1;
+
+    /// Last month of the year, the upper bound for `--month`.
+    pub const MONTH_MAX: u32 = 12;
+
+    /// First day of any month, the lower bound for `--day`.
+    pub const DAY_MIN: u32 = 1;
+
+    /// Last day of the longest month, the upper bound for `--day`.
+    ///
+    /// `--day` is not checked against the month chosen alongside it, so the
+    /// bound is the longest month rather than the selected one.
+    pub const DAY_MAX: u32 = 31;
+
+    // Pin both upper bounds to the table they describe. A month added to or
+    // removed from `DAYS_IN_MONTH`, or a change to its longest entry, fails the
+    // build here rather than leaving `--month` and `--day` bounded by numbers
+    // the calendar they came from no longer supports.
+    const _: () = {
+        let mut months: u32 = 0;
+        let mut longest: u32 = 0;
+        let mut index = 0;
+        while index < DAYS_IN_MONTH.len() {
+            if DAYS_IN_MONTH[index] > longest {
+                longest = DAYS_IN_MONTH[index];
+            }
+            months += 1;
+            index += 1;
+        }
+        assert!(months == MONTH_MAX);
+        assert!(longest == DAY_MAX);
+    };
 }
 
 /// UTF-8 Byte Order Mark for Excel compatibility in CSV files.

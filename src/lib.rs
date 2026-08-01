@@ -1328,6 +1328,31 @@ fn handle_config_command(action: cli::ConfigAction, output_mode: OutputMode) -> 
     }
 }
 
+/// Apply a `cli::validators` parser to a `config set` value, naming the key.
+///
+/// These are the same parsers clap runs for the matching flags, so a value
+/// typed at `config set` is refused for the same reason, and carries the same
+/// rule message, as `--batch-size` or `--day-of-year`; this adds the key name
+/// in front of it. The numeric arms this serves used to call a bare
+/// `value.parse()` and lean on the whole-config validation inside
+/// `save_config`, which knows nothing about the key the user typed and, for
+/// `batch_size`, did not carry the upper bound at all (#312). The
+/// `defaults.day_of_year` arm is new. The arms that store a string, a path or
+/// an enum do not come through here and never parsed.
+///
+/// The key prefix is not only for the reader. It is what tells this layer's
+/// rejection apart from `validate_defaults`', so a test for this arm cannot be
+/// satisfied by the save-side check firing instead.
+fn parse_config_value<T>(
+    key: &str,
+    value: &str,
+    parse: impl Fn(&str) -> std::result::Result<T, String>,
+) -> Result<T> {
+    parse(value).map_err(|message| Error::ConfigValidation {
+        message: format!("invalid value for '{key}': {message}"),
+    })
+}
+
 fn handle_config_set(key: &str, value: &str, output_mode: OutputMode) -> Result<()> {
     let mut config = load_default_config()?;
     let config_path = config_file_path()?;
@@ -1344,58 +1369,73 @@ fn handle_config_set(key: &str, value: &str, output_mode: OutputMode) -> Result<
             config.defaults.min_confidence = if value.is_empty() {
                 config::DefaultsConfig::default().min_confidence
             } else {
-                value.parse::<f32>().map_err(|_| Error::ConfigValidation {
-                    message: format!("invalid float value for '{key}': {value}"),
-                })?
+                parse_config_value(key, value, cli::validators::parse_confidence)?
             };
         }
         "defaults.overlap" => {
             config.defaults.overlap = if value.is_empty() {
                 config::DefaultsConfig::default().overlap
             } else {
-                value.parse::<f32>().map_err(|_| Error::ConfigValidation {
-                    message: format!("invalid float value for '{key}': {value}"),
-                })?
+                parse_config_value(key, value, cli::validators::parse_overlap)?
             };
         }
         "defaults.latitude" => {
             config.defaults.latitude = if value.is_empty() {
                 None
             } else {
-                Some(value.parse::<f64>().map_err(|_| Error::ConfigValidation {
-                    message: format!("invalid float value for '{key}': {value}"),
-                })?)
+                Some(parse_config_value(
+                    key,
+                    value,
+                    cli::validators::parse_latitude,
+                )?)
             };
         }
         "defaults.longitude" => {
             config.defaults.longitude = if value.is_empty() {
                 None
             } else {
-                Some(value.parse::<f64>().map_err(|_| Error::ConfigValidation {
-                    message: format!("invalid float value for '{key}': {value}"),
-                })?)
+                Some(parse_config_value(
+                    key,
+                    value,
+                    cli::validators::parse_longitude,
+                )?)
             };
         }
         "defaults.batch_size" => {
             config.defaults.batch_size = if value.is_empty() {
                 None
             } else {
-                Some(
-                    value
-                        .parse::<usize>()
-                        .map_err(|_| Error::ConfigValidation {
-                            message: format!("invalid integer value for '{key}': {value}"),
-                        })?,
-                )
+                Some(parse_config_value(
+                    key,
+                    value,
+                    cli::validators::parse_batch_size,
+                )?)
+            };
+        }
+        // No arm existed for this key, so hand-editing config.toml was the only
+        // way to set it, and that was the one route `validate_defaults` did not
+        // check either (#312). Both halves are closed now.
+        "defaults.day_of_year" => {
+            config.defaults.day_of_year = if value.is_empty() {
+                None
+            } else {
+                Some(parse_config_value(
+                    key,
+                    value,
+                    cli::validators::parse_day_of_year,
+                )?)
             };
         }
         "defaults.range_threshold" => {
             config.defaults.range_threshold = if value.is_empty() {
                 config::DefaultsConfig::default().range_threshold
             } else {
-                value.parse::<f32>().map_err(|_| Error::ConfigValidation {
-                    message: format!("invalid float value for '{key}': {value}"),
-                })?
+                // `parse_confidence` rather than a threshold-specific parser
+                // because `--range-threshold` already uses it: both are bounded
+                // by `confidence::MIN`/`MAX`, and a second parser would be a
+                // second copy of one rule. The message it produces says
+                // "confidence", which the key prefix disambiguates.
+                parse_config_value(key, value, cli::validators::parse_confidence)?
             };
         }
         // The three keys below are siblings of range_threshold above. They were

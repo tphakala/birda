@@ -32,7 +32,10 @@ fn test_cuda_library_patterns_platform_specific() {
     #[cfg(target_os = "windows")]
     {
         assert_eq!(patterns, &["cudart64_*.dll"]);
-        assert!(patterns[0].ends_with(".dll"));
+        // `contains`, not `ends_with`: see the macOS arm below. The lint is
+        // extension-agnostic, so this arm trips it too, and nothing in CI
+        // compiles either one.
+        assert!(patterns[0].contains(".dll"));
         assert!(patterns[0].contains('*'));
     }
 
@@ -48,7 +51,15 @@ fn test_cuda_library_patterns_platform_specific() {
     {
         assert_eq!(patterns, &["libcudart.*.dylib"]);
         assert!(patterns[0].starts_with("lib"));
-        assert!(patterns[0].ends_with(".dylib"));
+        // `contains` rather than `ends_with`, matching the Linux arm above.
+        // `case_sensitive_file_extension_comparisons` fires on `ends_with` with
+        // an extension literal and suggests `Path::extension`, which is the
+        // wrong question to ask of a glob pattern. Every job in
+        // .github/workflows/ci.yml runs on ubuntu-latest, so neither this arm
+        // nor the Windows one is ever linted there, which is how both survived
+        // the `--all-targets` sweep in #338; they surface for a developer
+        // running the gate on that platform.
+        assert!(patterns[0].contains(".dylib"));
         assert!(patterns[0].contains('*'));
     }
 }

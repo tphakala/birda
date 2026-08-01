@@ -1,5 +1,6 @@
-//! Integration tests for configuration validation on load (#295), and for the
-//! overlap rule reaching every input channel rather than only the file (#306).
+//! Integration tests for configuration validation on load (#295), for the
+//! overlap rule reaching every input channel rather than only the file (#306),
+//! and for the same parity on `batch_size` and `day_of_year` (#312).
 //!
 //! These drive the real binary rather than calling `validate_config` directly,
 //! and that is the point. Every rule in `src/config/validate.rs` already
@@ -154,6 +155,28 @@ fn seed_config(home: &Path, contents: &str) -> PathBuf {
     path
 }
 
+/// Read one `[defaults]` key back through the structured envelope.
+///
+/// Asserted through JSON rather than by parsing config.toml, for the reason
+/// `test_config_show_still_works_with_an_invalid_config` gives: this payload is
+/// what birda-gui consumes, so it is the surface worth pinning.
+///
+/// Returns `Value::Null` for a cleared key, whichever way it is cleared:
+/// `day_of_year` carries `skip_serializing_if` so it disappears from the
+/// payload, `batch_size` carries no serde attribute so it appears as an
+/// explicit null, and indexing yields `Value::Null` either way.
+fn config_value(home: &Path, key: &str) -> serde_json::Value {
+    let shown = run_in(home, &["config", "show", "--output-mode", "json"]);
+    assert!(
+        shown.status.success(),
+        "`config show` failed: {}",
+        stderr_of(&shown)
+    );
+    let envelope: serde_json::Value = serde_json::from_str(&String::from_utf8_lossy(&shown.stdout))
+        .expect("`config show` must emit a parseable envelope");
+    envelope["payload"]["config"]["defaults"][key].clone()
+}
+
 /// An input path that makes the run take the analyze branch.
 ///
 /// Analysis is the only gated command, so every "must be rejected" assertion
@@ -210,13 +233,29 @@ fn assert_validation_did_not_reject(home: &Path) {
     let input = dummy_input(home);
     let stderr = stderr_of(&run_in(home, &[input.to_str().unwrap()]));
 
-    for message in [LATITUDE_VIOLATION, THRESHOLD_VIOLATION, OVERLAP_VIOLATION] {
+    for message in [
+        LATITUDE_VIOLATION,
+        THRESHOLD_VIOLATION,
+        OVERLAP_VIOLATION,
+        BATCH_SIZE_VIOLATION,
+        DAY_OF_YEAR_VIOLATION,
+    ] {
         assert!(
             !stderr.contains(message),
             "a valid config must not be rejected ({message}), got: {stderr}"
         );
     }
 }
+
+/// A config that passes validation, for tests whose subject is not the file.
+///
+/// Named rather than repeated inline because the call to `seed_config` is
+/// load-bearing even when the contents are irrelevant: it carries the assertion
+/// that the temp HOME actually redirected the config directory. Without it a
+/// test reaches the developer's real config.toml on any platform where the
+/// redirection does not work. `test_a_valid_overlap_flag_is_accepted` explains
+/// this at length; the constant keeps the next reader from having to find it.
+const VALID_SEED: &str = "[defaults]\nbatch_size = 8\n";
 
 /// The rule messages this suite drives, exactly as the user sees them.
 ///
@@ -227,6 +266,24 @@ fn assert_validation_did_not_reject(home: &Path) {
 const LATITUDE_VIOLATION: &str = "invalid latitude";
 const THRESHOLD_VIOLATION: &str = "invalid range threshold";
 const OVERLAP_VIOLATION: &str = "overlap must be a finite non-negative number";
+const BATCH_SIZE_VIOLATION: &str = "batch_size must be between";
+const DAY_OF_YEAR_VIOLATION: &str = "day_of_year must be between";
+
+/// The tail `cli::validators::parse_batch_size` adds and the config-file rule
+/// does not.
+///
+/// Asserted on so the `config set` test pins its own layer. Both layers reject
+/// an oversized batch size and both exit 1, so a test that only checked for
+/// [`BATCH_SIZE_VIOLATION`] would pass just as well when the arm falls through
+/// to the whole-config validation inside `save_config`, which is the state
+/// before #312.
+const BATCH_SIZE_CLI_ADVICE: &str = "GPU memory exhaustion";
+
+/// The prefix `handle_config_set` puts on a value it refused itself.
+///
+/// Same purpose as [`BATCH_SIZE_CLI_ADVICE`]: it names the key the user typed,
+/// which neither `validate_defaults` nor clap can do.
+const CONFIG_SET_REJECTION: &str = "invalid value for";
 
 /// The exit code birda uses for an application error, as opposed to a clap
 /// parse failure (2) or a panic (101). Pinned so a rejection test cannot be
@@ -451,12 +508,22 @@ fn test_a_dangling_default_model_does_not_block_the_models_commands() {
     assert_command_succeeds(home.path(), &["models", "check"]);
 }
 
-/// Assert clap refused the run, naming the offending overlap value.
+/// Assert clap refused the run, naming the offending value.
 ///
-/// Takes the whole invocation rather than just the value, because #306 is about
-/// two input channels agreeing, and the flag and the environment variable reach
-/// clap by different routes.
-fn assert_overlap_rejected(home: &Path, env: &[(&str, &str)], args: &[&str]) {
+/// Takes the whole invocation rather than just the value, because #306 and #312
+/// are both about input channels agreeing, and the flag and the environment
+/// variable reach clap by different routes.
+///
+/// `expected` is the rule message. For `OVERLAP_VIOLATION` and
+/// `DAY_OF_YEAR_VIOLATION` it is the same string the config-file rule emits,
+/// which is the claim being made: one rule, whichever route the value arrives
+/// by.
+///
+/// `BATCH_SIZE_VIOLATION` matches on the upper bound only. At the lower bound
+/// the flag says "`batch_size` must be at least 1" where the file says "must be
+/// between 1 and 512", so passing it here with `--batch-size 0` would fail.
+/// Same verdict, different sentence; `src/config/validate.rs` records why.
+fn assert_flag_rejected(home: &Path, env: &[(&str, &str)], args: &[&str], expected: &str) {
     let input = dummy_input(home);
     let mut full: Vec<&str> = args.to_vec();
     let input = input.to_str().unwrap();
@@ -467,14 +534,14 @@ fn assert_overlap_rejected(home: &Path, env: &[(&str, &str)], args: &[&str]) {
     assert_eq!(
         output.status.code(),
         Some(CLAP_USAGE_ERROR),
-        "an invalid overlap must be refused by the value parser, got: {}",
+        "an invalid value must be refused by the value parser, got: {}",
         stderr_of(&output)
     );
     let stderr = stderr_of(&output);
     assert!(
-        stderr.contains(OVERLAP_VIOLATION),
+        stderr.contains(expected),
         "the flag and the config file should give the same diagnostic \
-         ({OVERLAP_VIOLATION}), got: {stderr}"
+         ({expected}), got: {stderr}"
     );
 }
 
@@ -487,7 +554,7 @@ fn test_a_nan_overlap_flag_is_rejected() {
     // non-overlapping segments and said nothing.
     let home = tempfile::tempdir().unwrap();
 
-    assert_overlap_rejected(home.path(), &[], &["--overlap", "nan"]);
+    assert_flag_rejected(home.path(), &[], &["--overlap", "nan"], OVERLAP_VIOLATION);
 }
 
 #[test]
@@ -499,7 +566,7 @@ fn test_an_infinite_overlap_flag_is_rejected() {
     // no diagnostic.
     let home = tempfile::tempdir().unwrap();
 
-    assert_overlap_rejected(home.path(), &[], &["--overlap", "inf"]);
+    assert_flag_rejected(home.path(), &[], &["--overlap", "inf"], OVERLAP_VIOLATION);
 }
 
 #[test]
@@ -512,7 +579,7 @@ fn test_a_negative_overlap_flag_is_rejected() {
     // the same reason.
     let home = tempfile::tempdir().unwrap();
 
-    assert_overlap_rejected(home.path(), &[], &["--overlap", "-1"]);
+    assert_flag_rejected(home.path(), &[], &["--overlap", "-1"], OVERLAP_VIOLATION);
 }
 
 #[test]
@@ -525,7 +592,12 @@ fn test_the_overlap_env_var_is_validated() {
     // parser to both sources and only an end-to-end run proves it.
     let home = tempfile::tempdir().unwrap();
 
-    assert_overlap_rejected(home.path(), &[("BIRDA_OVERLAP", "-1")], &[]);
+    assert_flag_rejected(
+        home.path(),
+        &[("BIRDA_OVERLAP", "-1")],
+        &[],
+        OVERLAP_VIOLATION,
+    );
 }
 
 #[test]
@@ -569,15 +641,329 @@ fn test_a_valid_overlap_flag_is_accepted() {
 }
 
 #[test]
+fn test_an_oversized_batch_size_is_rejected_on_load() {
+    // #312. `parse_batch_size` has capped the flag at 512 since #135 added the
+    // cap, and config.toml was checked for `Some(0)` and nothing else, so
+    // `--batch-size 100000` was refused while this exact value, hand-edited,
+    // reached the inference path. The cap is there to prevent GPU memory
+    // exhaustion, so the unchecked route was the one that could hang the
+    // machine.
+    let home = tempfile::tempdir().unwrap();
+    seed_config(home.path(), "[defaults]\nbatch_size = 100000\n");
+
+    assert_analysis_rejected(home.path(), BATCH_SIZE_VIOLATION);
+}
+
+#[test]
+fn test_an_out_of_range_day_of_year_is_rejected_on_load() {
+    // The other #312 field, and the wider hole of the two: `validate_defaults`
+    // did not look at it at all and `config set` had no arm for it, so
+    // config.toml was the only route to `defaults.day_of_year` and the only one
+    // with no check. (`--day-of-year` and `BIRDA_DAY_OF_YEAR` set it for a
+    // single run and were both bounded.) 999 reached the BSG SDM path and was
+    // rejected there by birdnet-onnx, a long way from the key that carried it.
+    let home = tempfile::tempdir().unwrap();
+    seed_config(home.path(), "[defaults]\nday_of_year = 999\n");
+
+    assert_analysis_rejected(home.path(), DAY_OF_YEAR_VIOLATION);
+}
+
+#[test]
+fn test_the_day_of_year_flag_is_rejected_by_the_value_parser() {
+    // The flag was already bounded, by an inline `range(1..=366)`. This pins
+    // that swapping it for `parse_day_of_year` did not loosen it, which is what
+    // makes the shared parser safe to depend on: clap's range and the config
+    // rule were two literals, and only one of them existed.
+    let home = tempfile::tempdir().unwrap();
+
+    assert_flag_rejected(
+        home.path(),
+        &[],
+        &["--day-of-year", "999"],
+        DAY_OF_YEAR_VIOLATION,
+    );
+}
+
+#[test]
+fn test_the_day_of_year_env_var_is_validated() {
+    // `BIRDA_DAY_OF_YEAR` wins over the config value the same way
+    // `BIRDA_OVERLAP` does, so it gets the same treatment. clap applies the
+    // value parser to both sources and only an end-to-end run proves it.
+    let home = tempfile::tempdir().unwrap();
+
+    assert_flag_rejected(
+        home.path(),
+        &[("BIRDA_DAY_OF_YEAR", "0")],
+        &[],
+        DAY_OF_YEAR_VIOLATION,
+    );
+}
+
+#[test]
+fn test_a_valid_day_of_year_flag_is_accepted() {
+    // The control for the two above, which would both pass against a parser
+    // that rejected everything. 366 is deliberate: the last day of a leap year
+    // is a real date, and a bound written as 365 would refuse it.
+    let home = tempfile::tempdir().unwrap();
+    seed_config(home.path(), VALID_SEED);
+    let input = dummy_input(home.path());
+
+    let output = run_in(
+        home.path(),
+        &["--day-of-year", "366", input.to_str().unwrap()],
+    );
+
+    // "Not a usage error" rather than the absence of the message, for the
+    // reason `test_a_valid_overlap_flag_is_accepted` documents: absence alone
+    // also passes when the flag does not exist at all, and clap returns 2 for
+    // both "invalid value" and "unexpected argument".
+    assert_ne!(
+        output.status.code(),
+        Some(CLAP_USAGE_ERROR),
+        "a day of year inside the range must be accepted, got: {}",
+        stderr_of(&output)
+    );
+    assert!(
+        !stderr_of(&output).contains(DAY_OF_YEAR_VIOLATION),
+        "a day of year inside the range must not be rejected, got: {}",
+        stderr_of(&output)
+    );
+}
+
+#[test]
+fn test_config_set_rejects_an_oversized_batch_size() {
+    // The third route to the same setting, and the one #312 names explicitly:
+    // the arm parsed a bare `usize` and left the bound to the whole-config
+    // validation inside `save_config`, which did not carry it.
+    //
+    // Asserted on the parser's own wording rather than on "rejected", because
+    // the save-side rule now refuses this value too and exits the same way.
+    // Without pinning CONFIG_SET_REJECTION and BATCH_SIZE_CLI_ADVICE, both of
+    // which only the arm can produce, this test passes with the arm reverted to
+    // `value.parse::<usize>()` and proves nothing about the layer it names.
+    let home = tempfile::tempdir().unwrap();
+    let path = seed_config(home.path(), VALID_SEED);
+    let before = std::fs::read_to_string(&path).unwrap();
+
+    let output = run_in(
+        home.path(),
+        &["config", "set", "defaults.batch_size", "100000"],
+    );
+
+    assert_eq!(
+        output.status.code(),
+        Some(APPLICATION_ERROR),
+        "`config set` must reject an oversized batch size as an application \
+         error, got: {}",
+        stderr_of(&output)
+    );
+    let stderr = stderr_of(&output);
+    assert!(
+        stderr.contains(CONFIG_SET_REJECTION) && stderr.contains(BATCH_SIZE_CLI_ADVICE),
+        "the rejection should come from the shared value parser, naming the key \
+         and carrying its advice, got: {stderr}"
+    );
+    assert_eq!(
+        std::fs::read_to_string(&path).unwrap(),
+        before,
+        "a rejected `config set` must leave the file untouched"
+    );
+}
+
+#[test]
+fn test_config_set_writes_a_valid_day_of_year() {
+    // A new route rather than a repaired one: the key had no arm, so this
+    // failed with "invalid configuration key" and hand-editing config.toml was
+    // the only way in.
+    let home = tempfile::tempdir().unwrap();
+    seed_config(home.path(), VALID_SEED);
+
+    let output = run_in(
+        home.path(),
+        &["config", "set", "defaults.day_of_year", "200"],
+    );
+    assert!(
+        output.status.success(),
+        "`config set defaults.day_of_year` must be accepted: {}",
+        stderr_of(&output)
+    );
+
+    // Pin the value that landed, not just the exit code. An arm that parsed the
+    // value and then stored a default would satisfy a success assertion.
+    assert_eq!(
+        config_value(home.path(), "day_of_year"),
+        200,
+        "the stored day of year should be the one that was set"
+    );
+}
+
+#[test]
+fn test_config_set_rejects_an_out_of_range_day_of_year() {
+    // The rejecting half of the arm above. Pinned on CONFIG_SET_REJECTION
+    // because `validate_defaults` now emits the same rule message with the same
+    // exit code, so the key prefix is the only thing that tells the two apart.
+    let home = tempfile::tempdir().unwrap();
+    let path = seed_config(home.path(), VALID_SEED);
+    let before = std::fs::read_to_string(&path).unwrap();
+
+    let output = run_in(
+        home.path(),
+        &["config", "set", "defaults.day_of_year", "999"],
+    );
+
+    assert_eq!(
+        output.status.code(),
+        Some(APPLICATION_ERROR),
+        "`config set` must reject an out-of-range day of year as an \
+         application error, got: {}",
+        stderr_of(&output)
+    );
+    let stderr = stderr_of(&output);
+    assert!(
+        stderr.contains(CONFIG_SET_REJECTION) && stderr.contains(DAY_OF_YEAR_VIOLATION),
+        "the rejection should name the key and the rule, got: {stderr}"
+    );
+    assert_eq!(
+        std::fs::read_to_string(&path).unwrap(),
+        before,
+        "a rejected `config set` must leave the file untouched"
+    );
+}
+
+#[test]
+fn test_the_batch_size_flag_is_rejected_by_the_value_parser() {
+    // The route README's "agree across their routes" claim rested on with no
+    // test behind it: `batch_size` had end-to-end coverage for the file and for
+    // `config set`, and none for the flag or the environment variable.
+    //
+    // Driven at the UPPER bound deliberately. That is where the two routes
+    // share wording, so `BATCH_SIZE_VIOLATION` matches both; at the lower bound
+    // they diverge, which `assert_flag_rejected`'s doc records.
+    let home = tempfile::tempdir().unwrap();
+
+    assert_flag_rejected(
+        home.path(),
+        &[],
+        &["--batch-size", "100000"],
+        BATCH_SIZE_VIOLATION,
+    );
+}
+
+#[test]
+fn test_the_batch_size_env_var_is_validated() {
+    // `BIRDA_BATCH_SIZE` wins over the config value, so it gets the same
+    // treatment as `BIRDA_OVERLAP` and `BIRDA_DAY_OF_YEAR`. clap applies the
+    // value parser to both sources and only an end-to-end run proves it.
+    let home = tempfile::tempdir().unwrap();
+
+    assert_flag_rejected(
+        home.path(),
+        &[("BIRDA_BATCH_SIZE", "100000")],
+        &[],
+        BATCH_SIZE_VIOLATION,
+    );
+}
+
+#[test]
+fn test_config_set_writes_a_valid_batch_size() {
+    // The accept side its day_of_year twin already had. Without it the arm is
+    // only ever driven with a value it must refuse, so an arm that rejected
+    // everything would pass the suite.
+    let home = tempfile::tempdir().unwrap();
+    seed_config(home.path(), VALID_SEED);
+
+    let output = run_in(home.path(), &["config", "set", "defaults.batch_size", "32"]);
+    assert!(
+        output.status.success(),
+        "`config set defaults.batch_size 32` must be accepted: {}",
+        stderr_of(&output)
+    );
+
+    assert_eq!(
+        config_value(home.path(), "batch_size"),
+        32,
+        "the stored batch size should be the one that was set"
+    );
+}
+
+#[test]
+fn test_config_set_clears_the_day_of_year() {
+    // The empty-value branch of the new arm, which is the half that decides
+    // between `None` and a parsed value. Nothing else drives it, and it is the
+    // only way to get back to "auto-detect from the file timestamp" without
+    // hand-editing.
+    let home = tempfile::tempdir().unwrap();
+    seed_config(home.path(), "[defaults]\nday_of_year = 200\n");
+
+    let output = run_in(home.path(), &["config", "set", "defaults.day_of_year", ""]);
+    assert!(
+        output.status.success(),
+        "clearing the key must be accepted: {}",
+        stderr_of(&output)
+    );
+
+    assert!(
+        config_value(home.path(), "day_of_year").is_null(),
+        "an empty value must clear the key, not store a zero or a default"
+    );
+}
+
+#[test]
+fn test_config_set_rejects_an_out_of_range_min_confidence() {
+    // A rewired arm that is neither of the two #312 fields. Five of the seven
+    // numeric arms moved from a bare `value.parse()` to the shared validators
+    // in this change, and without this only `batch_size`, `day_of_year` and
+    // `latitude` were driven at all.
+    //
+    // Pinned on CONFIG_SET_REJECTION because `save_config`'s whole-config
+    // validation rejects 1.5 as well, with `min_confidence must be between`;
+    // only the arm names the key the user typed. So this fails if the arm is
+    // reverted to a bare parse, which is the layer it is here to cover.
+    let home = tempfile::tempdir().unwrap();
+    let path = seed_config(home.path(), VALID_SEED);
+    let before = std::fs::read_to_string(&path).unwrap();
+
+    let output = run_in(
+        home.path(),
+        &["config", "set", "defaults.min_confidence", "1.5"],
+    );
+
+    assert_eq!(
+        output.status.code(),
+        Some(APPLICATION_ERROR),
+        "`config set` must reject an out-of-range confidence as an application \
+         error, got: {}",
+        stderr_of(&output)
+    );
+    assert!(
+        stderr_of(&output).contains(CONFIG_SET_REJECTION),
+        "the arm should refuse it and name the key, got: {}",
+        stderr_of(&output)
+    );
+    assert_eq!(
+        std::fs::read_to_string(&path).unwrap(),
+        before,
+        "a rejected `config set` must leave the file untouched"
+    );
+}
+
+#[test]
 fn test_a_valid_config_still_loads() {
     // The control. Without it every assertion above would pass just as well if
     // the new check rejected every config it was handed. Analysis may still
     // fail further on (no model is configured here), so this asserts only that
     // it got past validation.
+    // `batch_size` and `day_of_year` are set at their inclusive maxima rather
+    // than left out. Omitted, `validate_defaults` short-circuits on `None` and
+    // the two rule messages this control asserts absent could never have
+    // appeared, so those assertions held by construction. At 512 and 366 they
+    // are real, and the upper bounds get end-to-end coverage they otherwise
+    // have only at unit level.
     let home = tempfile::tempdir().unwrap();
     seed_config(
         home.path(),
-        "[defaults]\nlatitude = 60.17\nlongitude = 24.94\nrange_threshold = 0.03\n",
+        "[defaults]\nlatitude = 60.17\nlongitude = 24.94\nrange_threshold = 0.03\n\
+         batch_size = 512\nday_of_year = 366\n",
     );
 
     assert_validation_did_not_reject(home.path());

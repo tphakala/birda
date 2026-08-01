@@ -1,7 +1,7 @@
 //! Configuration validation.
 
 use crate::config::{Config, ModelConfig};
-use crate::constants::confidence;
+use crate::constants::{MAX_BATCH_SIZE, MIN_BATCH_SIZE, confidence, day_of_year};
 use crate::error::{Error, Result};
 
 /// Validate the entire configuration.
@@ -65,10 +65,57 @@ fn validate_defaults(config: &Config) -> Result<()> {
         });
     }
 
-    // Validate batch_size is at least 1 (if explicitly set)
-    if defaults.batch_size == Some(0) {
+    // The upper bound is the half that was missing (#312). `parse_batch_size`
+    // has rejected anything above `MAX_BATCH_SIZE` since #135 added the cap and
+    // this side checked only `Some(0)`, so `--batch-size 100000` was refused
+    // while `batch_size = 100000` hand-edited into config.toml went straight to
+    // the inference path. The limit is there to prevent GPU memory exhaustion,
+    // so the route that skipped it was the one most likely to carry a value
+    // nobody had checked.
+    //
+    // Both sides read `MIN_BATCH_SIZE`/`MAX_BATCH_SIZE`, and
+    // `test_parse_batch_size_matches_the_config_file_rule` drives the two and
+    // compares their verdicts, so neither can be tightened alone.
+    //
+    // The wording deliberately stops short of the "reduce it or use --cpu"
+    // advice `parse_batch_size` adds. That is what keeps the two layers
+    // distinguishable, so `test_config_set_rejects_an_oversized_batch_size` can
+    // assert on the advice and fail if its arm falls through to this rule
+    // instead. The load-path test is pinned differently, by passing no flag at
+    // all, since this message is the only one reachable that way.
+    //
+    // The lower bound is the one place the two texts diverge without being
+    // designed to: `parse_batch_size` says "must be at least 1" while this says
+    // "must be between 1 and 512". Same verdict, different sentence, which is
+    // why `BATCH_SIZE_VIOLATION` in the integration suite matches the flag only
+    // at the upper bound.
+    if let Some(batch_size) = defaults.batch_size
+        && !(MIN_BATCH_SIZE..=MAX_BATCH_SIZE).contains(&batch_size)
+    {
         return Err(Error::ConfigValidation {
-            message: "batch_size must be at least 1".to_string(),
+            message: format!(
+                "batch_size must be between {MIN_BATCH_SIZE} and {MAX_BATCH_SIZE}, got {batch_size}"
+            ),
+        });
+    }
+
+    // Same shape one field over. `--day-of-year` and `BIRDA_DAY_OF_YEAR` are
+    // bounded by `parse_day_of_year`; the file was not, and `handle_config_set`
+    // had no arm for the key at all, so hand-editing config.toml was the only
+    // way to set `defaults.day_of_year` and the only route with no check. (The
+    // flag and the environment variable set the value for one run, and both
+    // were bounded.) `day_of_year = 999` then reached the BSG SDM path in
+    // `run()`, which rejects it from birdnet-onnx, far from the value that
+    // caused it.
+    if let Some(day) = defaults.day_of_year
+        && !(day_of_year::MIN..=day_of_year::MAX).contains(&day)
+    {
+        return Err(Error::ConfigValidation {
+            message: format!(
+                "day_of_year must be between {} and {}, got {day}",
+                day_of_year::MIN,
+                day_of_year::MAX
+            ),
         });
     }
 
@@ -242,6 +289,101 @@ mod tests {
         let mut config = Config::default();
         config.defaults.batch_size = Some(0);
         assert!(validate_config(&config).is_err());
+    }
+
+    /// Build a config carrying nothing but the batch size under test.
+    fn config_with_batch_size(batch_size: usize) -> Config {
+        let mut config = Config::default();
+        config.defaults.batch_size = Some(batch_size);
+        config
+    }
+
+    #[test]
+    fn test_validate_rejects_oversized_batch_size() {
+        // #312. This is the case the old `== Some(0)` check let through, and
+        // the reason it matters is in `parse_batch_size`: the cap exists to
+        // prevent GPU memory exhaustion, and config.toml was the route that
+        // skipped it.
+        let err = validate_config(&config_with_batch_size(100_000)).unwrap_err();
+
+        assert!(
+            matches!(err, Error::ConfigValidation { .. }),
+            "an oversized batch size is a config error, got {err:?}"
+        );
+        assert!(
+            err.to_string().contains(&format!(
+                "batch_size must be between {MIN_BATCH_SIZE} and {MAX_BATCH_SIZE}"
+            )),
+            "the message should name the bound, got: {err}"
+        );
+    }
+
+    #[test]
+    fn test_validate_accepts_the_batch_size_boundaries() {
+        // The control. Without it the rule above passes just as well when
+        // written with an exclusive upper bound, which would refuse the largest
+        // batch size the CLI accepts and make the two routes disagree in the
+        // other direction.
+        assert!(validate_config(&config_with_batch_size(MIN_BATCH_SIZE)).is_ok());
+        assert!(validate_config(&config_with_batch_size(MAX_BATCH_SIZE)).is_ok());
+    }
+
+    #[test]
+    fn test_validate_accepts_an_unset_batch_size() {
+        // `None` means "pick a default from the model and provider", which
+        // `determine_default_batch_size` does at run time. A range check
+        // written over `unwrap_or_default()` would turn that into a rejected
+        // zero, so the absent case is pinned separately.
+        let mut config = Config::default();
+        config.defaults.batch_size = None;
+        assert!(validate_config(&config).is_ok());
+    }
+
+    /// Build a config carrying nothing but the day of year under test.
+    fn config_with_day_of_year(day: u32) -> Config {
+        let mut config = Config::default();
+        config.defaults.day_of_year = Some(day);
+        config
+    }
+
+    #[test]
+    fn test_validate_rejects_out_of_range_day_of_year() {
+        // The field `validate_defaults` did not look at at all (#312). 999 is
+        // the value from the issue; it reached the BSG SDM path and was
+        // rejected there by birdnet-onnx, far from the config key that set it.
+        let err = validate_config(&config_with_day_of_year(999)).unwrap_err();
+
+        assert!(
+            matches!(err, Error::ConfigValidation { .. }),
+            "an out-of-range day of year is a config error, got {err:?}"
+        );
+        assert!(
+            err.to_string().contains(&format!(
+                "day_of_year must be between {} and {}",
+                day_of_year::MIN,
+                day_of_year::MAX
+            )),
+            "the message should name the bound, got: {err}"
+        );
+    }
+
+    #[test]
+    fn test_validate_rejects_day_of_year_zero() {
+        // The 1-based half. An off-by-one written as `0..=366` accepts this and
+        // passes every other test here.
+        assert!(validate_config(&config_with_day_of_year(0)).is_err());
+    }
+
+    #[test]
+    fn test_validate_accepts_the_day_of_year_boundaries() {
+        // 366 is deliberately included: the last day of a leap year is legal,
+        // and a bound written as 365 would reject a real date.
+        assert!(validate_config(&config_with_day_of_year(day_of_year::MIN)).is_ok());
+        assert!(validate_config(&config_with_day_of_year(day_of_year::MAX)).is_ok());
+        assert!(
+            validate_config(&Config::default()).is_ok(),
+            "unset is legal"
+        );
     }
 
     #[test]

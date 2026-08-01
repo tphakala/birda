@@ -13,6 +13,7 @@ use std::fs::File;
 use std::path::Path;
 use std::sync::Arc;
 
+use crate::constants::parquet::BASE_FIELD_COUNT;
 use crate::error::Result;
 use crate::output::OutputWriter;
 use crate::output::types::Detection;
@@ -140,13 +141,6 @@ impl OutputWriter for ParquetWriter {
         Ok(())
     }
 }
-
-/// Columns every Parquet file carries before the optional metadata ones.
-///
-/// `build_record_batch` skips exactly this many fields to reach the columns
-/// `build_metadata_column` handles, so the two must agree. It was written out
-/// as a bare `6` at both sites.
-const BASE_FIELD_COUNT: usize = 6;
 
 /// Build Arrow schema based on included columns.
 ///

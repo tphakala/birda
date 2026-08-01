@@ -97,6 +97,16 @@ pub mod coordinates {
     pub const LONGITUDE_MAX: f64 = 180.0;
 }
 
+/// Apache Parquet output constants.
+pub mod parquet {
+    /// Columns every Parquet file carries before the optional metadata ones.
+    ///
+    /// `build_record_batch` skips exactly this many fields to reach the ones
+    /// `build_metadata_column` handles, so the two must agree. It was a bare
+    /// `6` at both sites.
+    pub const BASE_FIELD_COUNT: usize = 6;
+}
+
 /// Optional metadata columns for the CSV and Parquet writers.
 pub mod csv_columns {
     /// Every name `defaults.csv_columns.include` accepts.

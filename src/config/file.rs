@@ -49,6 +49,14 @@ fn warn_deprecated_keys(config: &Config) {
             );
         }
     }
+
+    if config.output.combined_prefix.is_some() {
+        tracing::warn!(
+            "config key 'output.combined_prefix' is deprecated and ignored; combined output no \
+             longer uses a configurable prefix. The key is dropped the next time the config is \
+             saved."
+        );
+    }
 }
 
 /// Load configuration from the default platform-specific path.

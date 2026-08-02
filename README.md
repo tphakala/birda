@@ -359,7 +359,7 @@ include = []
 device = "auto"  # auto, gpu, or cpu
 
 [output]
-combined_prefix = "BirdNET"
+default_format = "human"  # human, json, or ndjson
 ```
 
 ### Configuration Validation

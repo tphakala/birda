@@ -11,8 +11,19 @@ pub const RELEASE_DOWNLOAD_URL: &str = "https://github.com/{repo}/releases/lates
 /// Filename of the release manifest.
 pub const MANIFEST_FILENAME: &str = "manifest.json";
 
-/// Temporary file suffix used during extraction.
-pub const UPDATE_TEMP_SUFFIX: &str = ".birda-update-new.tmp";
+/// Filename prefix for the extracted-binary temporary written during a self-update.
+///
+/// A unique random suffix is appended per run (see `reserve_temp_path`), so two
+/// concurrent `birda update` invocations sharing this directory cannot write the
+/// same temporary and corrupt each other's extraction.
+pub const UPDATE_TEMP_PREFIX: &str = "birda-update-new-";
+
+/// Filename prefix for the downloaded release archive during a self-update.
+///
+/// A unique random component and the asset's own `.download` suffix are appended
+/// per run (see `reserve_temp_path`), so concurrent updates cannot collide. The
+/// suffix stays at the end because `extract_binary` picks the format from it.
+pub const UPDATE_ARCHIVE_PREFIX: &str = "birda-update-";
 
 /// Maximum manifest response size in bytes (1 MiB).
 pub const MANIFEST_MAX_BYTES: u64 = 1024 * 1024;

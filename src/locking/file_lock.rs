@@ -253,4 +253,73 @@ mod tests {
             "unregister_lock should not delete files"
         );
     }
+
+    #[test]
+    fn test_is_stale_is_false_for_a_fresh_lock() {
+        let _guard = TEST_LOCK.lock().unwrap();
+        let temp_dir = TempDir::new().unwrap();
+        let input = temp_dir.path().join("test.wav");
+        File::create(&input).unwrap();
+
+        let _lock = FileLock::acquire(&input, temp_dir.path()).unwrap();
+
+        assert!(
+            !FileLock::is_stale(&input, temp_dir.path(), Duration::from_hours(1)),
+            "a lock taken just now is not older than an hour"
+        );
+    }
+
+    #[test]
+    fn test_is_stale_is_false_when_no_lock_exists() {
+        let temp_dir = TempDir::new().unwrap();
+        let input = temp_dir.path().join("nope.wav");
+
+        assert!(
+            !FileLock::is_stale(&input, temp_dir.path(), Duration::from_secs(0)),
+            "an absent lock is never stale"
+        );
+    }
+
+    #[test]
+    fn test_is_stale_detects_an_aged_lock_and_remove_stale_reclaims_it() {
+        use std::time::SystemTime;
+
+        let _guard = TEST_LOCK.lock().unwrap();
+        let temp_dir = TempDir::new().unwrap();
+        let input = temp_dir.path().join("test.wav");
+
+        // Age the lock deterministically rather than sleeping, so the timing is
+        // not at the mercy of the test runner or the filesystem clock.
+        let lock_path = FileLock::lock_path_for(&input, temp_dir.path());
+        let lock_file = File::create(&lock_path).unwrap();
+        lock_file
+            .set_modified(SystemTime::now() - Duration::from_hours(1))
+            .unwrap();
+
+        assert!(
+            FileLock::is_stale(&input, temp_dir.path(), Duration::from_mins(1)),
+            "an hour-old lock is stale against a one-minute timeout"
+        );
+        assert!(
+            !FileLock::is_stale(&input, temp_dir.path(), Duration::from_hours(2)),
+            "the same lock is fresh against a two-hour timeout"
+        );
+
+        FileLock::remove_stale(&input, temp_dir.path()).unwrap();
+        assert!(
+            !FileLock::is_locked(&input, temp_dir.path()),
+            "remove_stale must clear the lock so the file can be processed"
+        );
+    }
+
+    #[test]
+    fn test_remove_stale_errors_when_there_is_no_lock() {
+        let temp_dir = TempDir::new().unwrap();
+        let input = temp_dir.path().join("missing.wav");
+
+        assert!(
+            FileLock::remove_stale(&input, temp_dir.path()).is_err(),
+            "removing a lock that is not there is an error, not a silent success"
+        );
+    }
 }

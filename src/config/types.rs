@@ -301,8 +301,11 @@ impl std::fmt::Display for OutputMode {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct OutputConfig {
-    /// Prefix for combined output files.
-    pub combined_prefix: String,
+    /// Deprecated. Combined output no longer uses a configurable prefix.
+    ///
+    /// Parsed only so a stale key can be reported; never written back.
+    #[serde(default, skip_serializing)]
+    pub combined_prefix: Option<String>,
 
     /// Default CLI output format.
     pub default_format: OutputMode,
@@ -311,7 +314,7 @@ pub struct OutputConfig {
 impl Default for OutputConfig {
     fn default() -> Self {
         Self {
-            combined_prefix: "BirdNET".to_string(),
+            combined_prefix: None,
             default_format: OutputMode::Human,
         }
     }
@@ -557,8 +560,30 @@ meta_model = "/models/birdnet-v24-meta.onnx"
     #[test]
     fn test_output_config_default() {
         let config = OutputConfig::default();
-        assert_eq!(config.combined_prefix, "BirdNET");
+        assert!(config.combined_prefix.is_none());
         assert_eq!(config.default_format, OutputMode::Human);
+    }
+
+    #[test]
+    fn test_deprecated_combined_prefix_still_parses() {
+        let output: OutputConfig = toml::from_str("combined_prefix = \"BirdNET\"\n").unwrap();
+        assert!(
+            output.combined_prefix.is_some(),
+            "a stale combined_prefix must still parse so it can be reported"
+        );
+    }
+
+    #[test]
+    fn test_deprecated_combined_prefix_is_not_written_back() {
+        let output = OutputConfig {
+            combined_prefix: Some("BirdNET".to_string()),
+            default_format: OutputMode::Human,
+        };
+        let written = toml::to_string(&output).unwrap();
+        assert!(
+            !written.contains("combined_prefix"),
+            "a deprecated key must not be serialised back into the config"
+        );
     }
 
     #[test]

@@ -73,6 +73,21 @@ pub mod day_of_year {
     pub const MAX: u32 = 366;
 }
 
+/// Time-unit conversions, in seconds.
+///
+/// Read by `cli::validators::parse_stale_lock_timeout` so the `--stale-lock-timeout`
+/// unit suffixes (`s`/`m`/`h`/`d`) do not each carry their own literal.
+pub mod time {
+    /// Seconds in a minute.
+    pub const SECONDS_PER_MINUTE: u64 = 60;
+
+    /// Seconds in an hour.
+    pub const SECONDS_PER_HOUR: u64 = 60 * SECONDS_PER_MINUTE;
+
+    /// Seconds in a day.
+    pub const SECONDS_PER_DAY: u64 = 24 * SECONDS_PER_HOUR;
+}
+
 /// Geographic coordinate bounds, in degrees.
 ///
 /// Three routes reach one setting: `--lat`/`--lon` and their `BIRDA_LATITUDE`/

@@ -52,7 +52,6 @@ use cli::{AnalyzeArgs, Cli, Command};
 use config::{
     BatConfig, Config, InferenceDevice, ModelConfig, ModelType, OutputFormat, OutputMode,
     config_file_path, load_default_config, range_filter::build_range_filter_config,
-    save_default_config,
 };
 use constants::DEFAULT_TOP_K;
 use inference::BirdClassifier;
@@ -337,6 +336,7 @@ pub fn run() -> Result<()> {
     // Install Ctrl+C handler to clean up lock files on interrupt
     if let Err(e) = ctrlc::set_handler(|| {
         locking::cleanup_all_locks();
+        locking::cleanup_all_config_locks();
         std::process::exit(130); // 128 + SIGINT(2)
     }) {
         warn!("Failed to install Ctrl+C handler: {e}");
@@ -1310,17 +1310,26 @@ fn handle_config_command(action: cli::ConfigAction, output_mode: OutputMode) -> 
     match action {
         ConfigAction::Init => {
             let path = config_file_path()?;
-            if path.exists() {
-                println!("Configuration file already exists: {}", path.display());
-                println!("Use 'birda models add' to add models.");
-            } else {
-                let config = Config::default();
-                let saved_path = save_default_config(&config)?;
-                println!("Created configuration file: {}", saved_path.display());
+            // Re-check existence and create the file under the config lock, so an
+            // `init` racing a `config set` cannot clobber the set's file with a
+            // fresh default (#313).
+            let created = locking::with_config_lock(&path, || {
+                if path.exists() {
+                    Ok(false)
+                } else {
+                    config::save_config(&Config::default(), &path)?;
+                    Ok(true)
+                }
+            })?;
+            if created {
+                println!("Created configuration file: {}", path.display());
                 println!("\nNext steps:");
                 println!(
                     "  birda models add <name> --path <model.onnx> --labels <labels.txt> --type <type> --default"
                 );
+            } else {
+                println!("Configuration file already exists: {}", path.display());
+                println!("Use 'birda models add' to add models.");
             }
             Ok(())
         }
@@ -1395,151 +1404,151 @@ fn parse_config_value<T>(
 }
 
 fn handle_config_set(key: &str, value: &str, output_mode: OutputMode) -> Result<()> {
-    let mut config = load_default_config()?;
-    let config_path = config_file_path()?;
+    let ((), config, config_path) = config::update_config(|config| {
+        match key {
+            "defaults.model" => {
+                config.defaults.model = if value.is_empty() {
+                    None
+                } else {
+                    Some(value.to_string())
+                };
+            }
+            "defaults.min_confidence" => {
+                config.defaults.min_confidence = if value.is_empty() {
+                    config::DefaultsConfig::default().min_confidence
+                } else {
+                    parse_config_value(key, value, cli::validators::parse_confidence)?
+                };
+            }
+            "defaults.overlap" => {
+                config.defaults.overlap = if value.is_empty() {
+                    config::DefaultsConfig::default().overlap
+                } else {
+                    parse_config_value(key, value, cli::validators::parse_overlap)?
+                };
+            }
+            "defaults.latitude" => {
+                config.defaults.latitude = if value.is_empty() {
+                    None
+                } else {
+                    Some(parse_config_value(
+                        key,
+                        value,
+                        cli::validators::parse_latitude,
+                    )?)
+                };
+            }
+            "defaults.longitude" => {
+                config.defaults.longitude = if value.is_empty() {
+                    None
+                } else {
+                    Some(parse_config_value(
+                        key,
+                        value,
+                        cli::validators::parse_longitude,
+                    )?)
+                };
+            }
+            "defaults.batch_size" => {
+                config.defaults.batch_size = if value.is_empty() {
+                    None
+                } else {
+                    Some(parse_config_value(
+                        key,
+                        value,
+                        cli::validators::parse_batch_size,
+                    )?)
+                };
+            }
+            // No arm existed for this key, so hand-editing config.toml was the only
+            // way to set it, and that was the one route `validate_defaults` did not
+            // check either (#312). Both halves are closed now.
+            "defaults.day_of_year" => {
+                config.defaults.day_of_year = if value.is_empty() {
+                    None
+                } else {
+                    Some(parse_config_value(
+                        key,
+                        value,
+                        cli::validators::parse_day_of_year,
+                    )?)
+                };
+            }
+            "defaults.range_threshold" => {
+                config.defaults.range_threshold = if value.is_empty() {
+                    config::DefaultsConfig::default().range_threshold
+                } else {
+                    // `parse_confidence` rather than a threshold-specific parser
+                    // because `--range-threshold` already uses it: both are bounded
+                    // by `confidence::MIN`/`MAX`, and a second parser would be a
+                    // second copy of one rule. The message it produces says
+                    // "confidence", which the key prefix disambiguates.
+                    parse_config_value(key, value, cli::validators::parse_confidence)?
+                };
+            }
+            // The three keys below are siblings of range_threshold above. They were
+            // missed when the geomodel landed, so reaching them meant hand-editing
+            // config.toml. (The GUI's only config write is `config set
+            // defaults.model`, which reaches this same handler and is serialised
+            // by the #313 lock like any other; it never sets these three.)
+            "defaults.geomodel" => {
+                config.defaults.geomodel = if value.is_empty() {
+                    None
+                } else {
+                    Some(PathBuf::from(value))
+                };
+            }
+            "defaults.geomodel_labels" => {
+                config.defaults.geomodel_labels = if value.is_empty() {
+                    None
+                } else {
+                    Some(PathBuf::from(value))
+                };
+            }
+            "defaults.range_unmatched" => {
+                config.defaults.range_unmatched = if value.is_empty() {
+                    config::DefaultsConfig::default().range_unmatched
+                } else {
+                    // Parsed through clap's ValueEnum so `config set` accepts
+                    // exactly the spellings `--range-unmatched` accepts, rather
+                    // than a second, drifting list. The error message derives its
+                    // list the same way, so adding a variant cannot leave the two
+                    // out of step.
+                    <config::UnmatchedPolicy as clap::ValueEnum>::from_str(value, false).map_err(
+                        |_| {
+                            let accepted =
+                                <config::UnmatchedPolicy as clap::ValueEnum>::value_variants()
+                                    .iter()
+                                    .filter_map(clap::ValueEnum::to_possible_value)
+                                    .map(|v| format!("'{}'", v.get_name()))
+                                    .collect::<Vec<_>>()
+                                    .join(" or ");
+                            Error::ConfigValidation {
+                                message: format!(
+                                    "invalid value for '{key}': {value} (expected {accepted})"
+                                ),
+                            }
+                        },
+                    )?
+                };
+            }
+            _ => {
+                return Err(Error::InvalidConfigKey {
+                    key: key.to_string(),
+                });
+            }
+        }
+        Ok(())
+    })?;
 
-    match key {
-        "defaults.model" => {
-            config.defaults.model = if value.is_empty() {
-                None
-            } else {
-                Some(value.to_string())
-            };
-        }
-        "defaults.min_confidence" => {
-            config.defaults.min_confidence = if value.is_empty() {
-                config::DefaultsConfig::default().min_confidence
-            } else {
-                parse_config_value(key, value, cli::validators::parse_confidence)?
-            };
-        }
-        "defaults.overlap" => {
-            config.defaults.overlap = if value.is_empty() {
-                config::DefaultsConfig::default().overlap
-            } else {
-                parse_config_value(key, value, cli::validators::parse_overlap)?
-            };
-        }
-        "defaults.latitude" => {
-            config.defaults.latitude = if value.is_empty() {
-                None
-            } else {
-                Some(parse_config_value(
-                    key,
-                    value,
-                    cli::validators::parse_latitude,
-                )?)
-            };
-        }
-        "defaults.longitude" => {
-            config.defaults.longitude = if value.is_empty() {
-                None
-            } else {
-                Some(parse_config_value(
-                    key,
-                    value,
-                    cli::validators::parse_longitude,
-                )?)
-            };
-        }
-        "defaults.batch_size" => {
-            config.defaults.batch_size = if value.is_empty() {
-                None
-            } else {
-                Some(parse_config_value(
-                    key,
-                    value,
-                    cli::validators::parse_batch_size,
-                )?)
-            };
-        }
-        // No arm existed for this key, so hand-editing config.toml was the only
-        // way to set it, and that was the one route `validate_defaults` did not
-        // check either (#312). Both halves are closed now.
-        "defaults.day_of_year" => {
-            config.defaults.day_of_year = if value.is_empty() {
-                None
-            } else {
-                Some(parse_config_value(
-                    key,
-                    value,
-                    cli::validators::parse_day_of_year,
-                )?)
-            };
-        }
-        "defaults.range_threshold" => {
-            config.defaults.range_threshold = if value.is_empty() {
-                config::DefaultsConfig::default().range_threshold
-            } else {
-                // `parse_confidence` rather than a threshold-specific parser
-                // because `--range-threshold` already uses it: both are bounded
-                // by `confidence::MIN`/`MAX`, and a second parser would be a
-                // second copy of one rule. The message it produces says
-                // "confidence", which the key prefix disambiguates.
-                parse_config_value(key, value, cli::validators::parse_confidence)?
-            };
-        }
-        // The three keys below are siblings of range_threshold above. They were
-        // missed when the geomodel landed, so reaching them meant hand-editing
-        // config.toml. (Only users: the GUI has no config write path at all, it
-        // shells out to `config show` and `config path` only.)
-        "defaults.geomodel" => {
-            config.defaults.geomodel = if value.is_empty() {
-                None
-            } else {
-                Some(PathBuf::from(value))
-            };
-        }
-        "defaults.geomodel_labels" => {
-            config.defaults.geomodel_labels = if value.is_empty() {
-                None
-            } else {
-                Some(PathBuf::from(value))
-            };
-        }
-        "defaults.range_unmatched" => {
-            config.defaults.range_unmatched = if value.is_empty() {
-                config::DefaultsConfig::default().range_unmatched
-            } else {
-                // Parsed through clap's ValueEnum so `config set` accepts
-                // exactly the spellings `--range-unmatched` accepts, rather
-                // than a second, drifting list. The error message derives its
-                // list the same way, so adding a variant cannot leave the two
-                // out of step.
-                <config::UnmatchedPolicy as clap::ValueEnum>::from_str(value, false).map_err(
-                    |_| {
-                        let accepted =
-                            <config::UnmatchedPolicy as clap::ValueEnum>::value_variants()
-                                .iter()
-                                .filter_map(clap::ValueEnum::to_possible_value)
-                                .map(|v| format!("'{}'", v.get_name()))
-                                .collect::<Vec<_>>()
-                                .join(" or ");
-                        Error::ConfigValidation {
-                            message: format!(
-                                "invalid value for '{key}': {value} (expected {accepted})"
-                            ),
-                        }
-                    },
-                )?
-            };
-        }
-        _ => {
-            return Err(Error::InvalidConfigKey {
-                key: key.to_string(),
-            });
-        }
-    }
-
-    // Validation happens inside `save_config`, which `save_default_config`
-    // delegates to and every config writer reaches, so the mutated config is
-    // rejected before anything is written.
+    // `update_config` validates the whole config inside `save_config` before
+    // writing, and holds the config lock across the load-mutate-save so a
+    // concurrent writer cannot lose this edit (#313).
     //
-    // Note this validates the whole config, not just the key being set, so a
-    // file carrying two independent faults cannot be repaired one key at a time
-    // here. That predates #295 and is tracked separately; the load gate is
+    // Note the validation covers the whole config, not just the key being set,
+    // so a file carrying two independent faults cannot be repaired one key at a
+    // time here. That predates #295 and is tracked separately; the load gate is
     // scoped to analysis so it does not turn that into a lockout.
-    save_default_config(&config)?;
 
     if output_mode.is_structured() {
         let config_json = serde_json::to_value(&config).map_err(|e| Error::ConfigValidation {
@@ -1625,7 +1634,7 @@ fn handle_models_command(
             labels,
             r#type,
             default,
-        } => handle_models_add(name, path, labels, r#type, default),
+        } => handle_models_add(&name, &path, &labels, r#type, default),
         ModelsAction::Check => {
             // Leftover <name>.<pid>.part files from a download interrupted
             // before it finished, reported on both output paths so a directory
@@ -1812,54 +1821,58 @@ fn handle_models_command(
 
 /// Handle the `models add` command.
 fn handle_models_add(
-    name: String,
-    path: PathBuf,
-    labels: PathBuf,
+    name: &str,
+    path: &Path,
+    labels: &Path,
     model_type: ModelType,
     set_default: bool,
 ) -> Result<()> {
     // Validate files exist
     if !path.exists() {
-        return Err(Error::ModelFileNotFound { path });
+        return Err(Error::ModelFileNotFound {
+            path: path.to_path_buf(),
+        });
     }
     if !labels.exists() {
-        return Err(Error::LabelsFileNotFound { path: labels });
+        return Err(Error::LabelsFileNotFound {
+            path: labels.to_path_buf(),
+        });
     }
 
-    // Load existing config
-    let mut config = load_default_config()?;
+    // Load, check, insert and save under the config lock. The existence check
+    // and the insert must be atomic against a concurrent writer, so both live
+    // inside the locked closure (#313).
+    let ((), _config, config_path) = config::update_config(|config| {
+        if config.models.contains_key(name) {
+            return Err(Error::ModelAlreadyExists {
+                name: name.to_string(),
+            });
+        }
 
-    // Check if model already exists
-    if config.models.contains_key(&name) {
-        return Err(Error::ModelAlreadyExists { name });
-    }
+        config.models.insert(
+            name.to_string(),
+            ModelConfig {
+                registry_id: None,
+                installed_version: None,
+                installed_build: None,
+                region: None,
+                variant: None,
+                path: path.to_path_buf(),
+                labels: labels.to_path_buf(),
+                model_type,
+                meta_model: None,
+                bsg_calibration: None,
+                bsg_migration: None,
+                bsg_distribution_maps: None,
+            },
+        );
 
-    // Add the model
-    config.models.insert(
-        name.clone(),
-        ModelConfig {
-            registry_id: None,
-            installed_version: None,
-            installed_build: None,
-            region: None,
-            variant: None,
-            path: path.clone(),
-            labels: labels.clone(),
-            model_type,
-            meta_model: None,
-            bsg_calibration: None,
-            bsg_migration: None,
-            bsg_distribution_maps: None,
-        },
-    );
+        if set_default {
+            config.defaults.model = Some(name.to_string());
+        }
 
-    // Set as default if requested
-    if set_default {
-        config.defaults.model = Some(name.clone());
-    }
-
-    // Save config
-    let config_path = save_default_config(&config)?;
+        Ok(())
+    })?;
 
     // Print success message
     println!("Added model '{name}' ({model_type})");
@@ -1932,14 +1945,15 @@ fn handle_models_remove(
 ) -> Result<()> {
     use std::io::Write;
 
-    // Load config and verify model exists
-    let mut config = load_default_config()?;
-
-    // If purge, confirm before deleting files (skip in structured mode).
+    // Confirm before deleting files (skip in structured mode).
     //
     // `--yes` is honoured here because the flag is global and therefore appears
     // in this command's `--help`. A prompt that advertises the flag and then
     // ignores it is the same defect as a flag that never reaches the command.
+    //
+    // Prompted before the lock, not inside it: the prompt waits on the user, and
+    // holding the config lock across that would block every other config write
+    // for as long as the user takes to answer.
     if purge && !output_mode.is_structured() && !assume_yes {
         print!("This will delete model files for '{name}' from disk. Continue? [y/N]: ");
         std::io::stdout().flush()?;
@@ -1951,11 +1965,12 @@ fn handle_models_remove(
         }
     }
 
-    // Remove from config and handle default promotion
-    let (model, promoted) = remove_model_from_config(&mut config, name)?;
-
-    // Save config before deleting files (safer: config stays consistent even if delete fails)
-    let config_path = save_default_config(&config)?;
+    // Remove from config and handle default promotion under the config lock, so
+    // the load-mutate-save is serialised against a concurrent writer (#313).
+    // Files are deleted afterward, outside the lock: the config stays consistent
+    // even if a delete fails, and deleting model files does not touch the config.
+    let ((model, promoted), config, config_path) =
+        config::update_config(|config| remove_model_from_config(config, name))?;
 
     // Build the structured-output payload once for reuse in both the error and success paths.
     let structured_payload = ModelRemovedPayload {
@@ -2219,44 +2234,45 @@ fn handle_models_install(
     // download. The load above exists only to read the inference device for
     // variant selection, and the download between them can take minutes on a
     // 557 MB model: saving the stale copy would silently discard any `config
-    // set` or second install that landed in the meantime. This keeps the
-    // load/mutate/save window as narrow as it was before selection needed the
-    // device.
-    let mut config = load_default_config()?;
+    // set` or second install that landed in the meantime. Under the config lock
+    // this load-mutate-save is also serialised, so a concurrent writer cannot
+    // lose this install either (#313). The download stays outside the lock, so
+    // it never holds the lock for those minutes.
+    let (orphans, _config, _config_path) = config::update_config(|config| {
+        // Collected before the insert overwrites the entry that names them, and
+        // deleted only after the config is saved: a crash in between leaves a
+        // config that points exclusively at files which exist.
+        let mut keeping = vec![model_path.clone(), labels_path.clone()];
+        keeping.extend(installed.bsg_calibration.clone());
+        keeping.extend(installed.bsg_migration.clone());
+        keeping.extend(installed.bsg_distribution_maps.clone());
+        let orphans = registry::orphaned_files(config, &config_key, &keeping);
 
-    // Collected before the insert overwrites the entry that names them, and
-    // deleted only after the config is saved: a crash in between leaves a
-    // config that points exclusively at files which exist.
-    let mut keeping = vec![model_path.clone(), labels_path.clone()];
-    keeping.extend(installed.bsg_calibration.clone());
-    keeping.extend(installed.bsg_migration.clone());
-    keeping.extend(installed.bsg_distribution_maps.clone());
-    let orphans = registry::orphaned_files(&config, &config_key, &keeping);
+        let provenance = installed.provenance;
+        config.models.insert(
+            config_key.clone(),
+            ModelConfig {
+                registry_id: Some(id.to_string()),
+                installed_version: provenance.as_ref().map(|p| p.version.clone()),
+                installed_build: provenance.as_ref().and_then(|p| p.build),
+                region: provenance.as_ref().and_then(|p| p.region.clone()),
+                variant: provenance.as_ref().and_then(|p| p.variant.clone()),
+                path: installed.model,
+                labels: installed.labels,
+                model_type,
+                meta_model: None,
+                bsg_calibration: installed.bsg_calibration,
+                bsg_migration: installed.bsg_migration,
+                bsg_distribution_maps: installed.bsg_distribution_maps,
+            },
+        );
 
-    let provenance = installed.provenance;
-    config.models.insert(
-        config_key.clone(),
-        ModelConfig {
-            registry_id: Some(id.to_string()),
-            installed_version: provenance.as_ref().map(|p| p.version.clone()),
-            installed_build: provenance.as_ref().and_then(|p| p.build),
-            region: provenance.as_ref().and_then(|p| p.region.clone()),
-            variant: provenance.as_ref().and_then(|p| p.variant.clone()),
-            path: installed.model,
-            labels: installed.labels,
-            model_type,
-            meta_model: None,
-            bsg_calibration: installed.bsg_calibration,
-            bsg_migration: installed.bsg_migration,
-            bsg_distribution_maps: installed.bsg_distribution_maps,
-        },
-    );
+        if should_set_default {
+            config.defaults.model = Some(config_key.clone());
+        }
 
-    if should_set_default {
-        config.defaults.model = Some(config_key.clone());
-    }
-
-    save_default_config(&config)?;
+        Ok(orphans)
+    })?;
 
     // Files the replaced entry owned and nothing else references. Published
     // filenames never change, so an upgrade writes new files beside the old
@@ -2375,10 +2391,12 @@ fn handle_geomodel_install(
     })?;
     let installed = runtime.block_on(registry::install_range_filter(asset))?;
 
-    let mut config = load_default_config()?;
-    config.defaults.geomodel = Some(installed.model.clone());
-    config.defaults.geomodel_labels = Some(installed.labels.clone());
-    save_default_config(&config)?;
+    // Serialised load-mutate-save (#313); the download above is outside the lock.
+    config::update_config(|config| {
+        config.defaults.geomodel = Some(installed.model.clone());
+        config.defaults.geomodel_labels = Some(installed.labels.clone());
+        Ok(())
+    })?;
 
     if !output_mode.is_structured() {
         println!();

@@ -6,8 +6,18 @@ use std::path::PathBuf;
 
 /// Load registry from user config or bundled default.
 ///
-/// If a user registry exists but the bundled registry has a higher version,
-/// the user registry is replaced with the bundled version.
+/// Three outcomes, because the on-disk copy is a cache that can fail in two
+/// materially different ways:
+///
+/// - It is absent, older than the bundled registry, or not parseable by this
+///   binary: the bundled registry is written over it and returned.
+/// - It could not be READ (a permission or I/O failure, which says nothing about
+///   the contents): the bundled registry is returned and the file is left exactly
+///   as it is, so an intact registry survives a transient failure. Note the
+///   returned registry is then NOT what is on disk, and no version upgrade is
+///   persisted until the file becomes readable again.
+/// - Otherwise the user's copy is returned as is, including when it is NEWER than
+///   the bundled one.
 pub fn load_registry() -> Result<Registry> {
     let registry_path = registry_file_path()?;
     let bundled_registry = load_bundled_registry()?;
@@ -32,15 +42,20 @@ fn load_registry_from(registry_path: &std::path::Path, bundled_registry: Registr
 
     let user_registry = match load_from_file(registry_path) {
         Ok(registry) => registry,
-        // Definitively corrupt: nothing can be recovered from the bytes on disk,
-        // so replacing them with the bundled copy is the repair rather than a
-        // loss. This is the behaviour that has always been here.
+        // The bytes on disk are not a registry this binary can use, so replacing
+        // them with the bundled copy is the repair rather than a loss. This is the
+        // behaviour that has always been here.
+        //
+        // "Not usable by this binary" rather than "definitively corrupt", because
+        // this arm is wider than malformed JSON: every field of `ModelEntry` is
+        // required, so a registry.json written by a NEWER birda that added one
+        // also lands here and is replaced on a downgrade. That is the same
+        // outcome the version comparison below already gives an older binary, so
+        // it is consistent rather than surprising, but it is not corruption.
         Err(e @ Error::RegistryParse { .. }) => {
             tracing::warn!(
-                "The model registry at {} could not be parsed: {}. Replacing it \
-                 with the bundled registry.",
-                registry_path.display(),
-                e
+                "{e}{}. Replacing it with the bundled registry.",
+                cause_of(&e)
             );
             persist_registry(registry_path, &bundled_registry);
             return bundled_registry;
@@ -56,10 +71,9 @@ fn load_registry_from(registry_path: &std::path::Path, bundled_registry: Registr
         // error variant added to `load_from_file` later defaults to this arm.
         Err(e) => {
             tracing::warn!(
-                "The model registry at {} could not be read: {}. Continuing with \
-                 the bundled registry; the file on disk is unchanged.",
-                registry_path.display(),
-                e
+                "{e}{}. Continuing with the bundled registry; the file on disk is \
+                 left as it is and will be read again on the next run.",
+                cause_of(&e)
             );
             return bundled_registry;
         }
@@ -106,19 +120,51 @@ fn persist_registry(path: &std::path::Path, registry: &Registry) {
     }
 }
 
+/// The cause behind an error, rendered for a log line, or empty if it has none.
+///
+/// `thiserror` puts only the `#[error(...)]` string into `Display`, so `{e}` on
+/// these two variants names the path and stops. The `#[source]` is the part that
+/// tells the read arm's cases apart, and they want opposite responses: "Permission
+/// denied" is a chmod, "Input/output error" is a failing disk, "Too many open
+/// files" is a transient batch-run condition that will clear on its own. `main`
+/// walks this same chain for errors it returns (see its `caused by:` lines); these
+/// are warnings and never reach it, so they have to walk it themselves.
+fn cause_of(e: &Error) -> String {
+    std::error::Error::source(e).map_or_else(String::new, |source| format!(": {source}"))
+}
+
 /// Get path to registry file in user config.
 fn registry_file_path() -> Result<PathBuf> {
     Ok(crate::config::config_dir()?.join("registry.json"))
 }
 
 /// Load registry from existing file.
+///
+/// Bytes rather than `read_to_string`, and `from_slice` rather than `from_str`,
+/// because which of the two errors this returns is now a behavioural decision
+/// rather than a label: [`load_registry_from`] repairs a file it can only fail to
+/// PARSE and preserves one it could only fail to READ.
+///
+/// `read_to_string` breaks that split. It validates UTF-8 and reports a failure as
+/// `io::ErrorKind::InvalidData`, so bytes that are definitively not a registry
+/// arrived as a transport error and the file was never repaired: a warning on
+/// every run, no version upgrade, and no route back short of deleting the file by
+/// hand. The reachable sources are ordinary rather than exotic. A registry.json
+/// saved from Notepad as "Unicode" or written by PowerShell 5.1's `>` is UTF-16;
+/// one round-tripped through a cp1252 editor mangles the `ä` this project's own
+/// bundled registry carries; and a pre-atomic-write birda killed mid-write could
+/// truncate one mid-codepoint.
+///
+/// `from_slice` validates UTF-8 as part of parsing, so those all surface as the
+/// parse errors they are. `RegistryRead` is then only ever a failure to obtain the
+/// bytes, which is what the caller's non-destructive arm assumes.
 fn load_from_file(path: &std::path::Path) -> Result<Registry> {
-    let content = std::fs::read_to_string(path).map_err(|e| Error::RegistryRead {
+    let content = std::fs::read(path).map_err(|e| Error::RegistryRead {
         path: path.to_path_buf(),
         source: e,
     })?;
 
-    serde_json::from_str(&content).map_err(|e| Error::RegistryParse {
+    serde_json::from_slice(&content).map_err(|e| Error::RegistryParse {
         path: path.to_path_buf(),
         source: e,
     })
@@ -214,8 +260,21 @@ mod tests {
     }
 
     /// The `registry_version` recorded in the file at `path`.
+    ///
+    /// Panics with the load error and its cause rather than through a bare
+    /// `unwrap`, because for the repair tests the interesting failure IS the file
+    /// failing to load: an unwrap there reports this helper's frame and swallows
+    /// the caller's authored assertion message, which is the one that explains
+    /// what the test was pinning.
     fn version_at(path: &std::path::Path) -> u32 {
-        load_from_file(path).unwrap().registry_version
+        match load_from_file(path) {
+            Ok(registry) => registry.registry_version,
+            Err(e) => panic!(
+                "{} could not be loaded back{}",
+                path.display(),
+                super::cause_of(&e)
+            ),
+        }
     }
 
     #[test]
@@ -353,7 +412,17 @@ mod tests {
         std::fs::write(&path, &sentinel).unwrap();
         std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o000)).unwrap();
 
-        if std::fs::read_to_string(&path).is_ok() {
+        if std::fs::read(&path).is_ok() {
+            // A silent skip here is a green test that asserted nothing. On a
+            // developer's machine (a root shell, or a filesystem that ignores
+            // modes) that is worth tolerating; on a runner it means this arm has
+            // zero coverage and nobody would ever find out, so fail loudly there.
+            assert!(
+                std::env::var_os("CI").is_none(),
+                "this runner can read a mode-0000 file, so the read-failure arm is \
+                 not being exercised at all; the fixture needs rethinking for this \
+                 environment rather than reporting a pass"
+            );
             eprintln!(
                 "skipped: this process can read a mode-0000 file (running as root, \
                  or a filesystem that ignores modes), so the read-failure arm \
@@ -377,6 +446,42 @@ mod tests {
             "an intact but unreadable registry must survive byte for byte; \
              rewriting it destroys user-local edits for an error that says \
              nothing about the file's contents"
+        );
+    }
+
+    #[test]
+    fn test_a_registry_whose_bytes_are_not_utf8_is_repaired() {
+        // The bytes being invalid UTF-8 is a verdict on the CONTENTS, so it has to
+        // reach the repair arm. It did not while `load_from_file` used
+        // `read_to_string`, which reports that as `io::ErrorKind::InvalidData` and
+        // therefore as `RegistryRead`: the file was left alone forever, warning on
+        // every run, never upgraded, with no route back except deleting it by hand.
+        //
+        // Deliberately NOT `#[cfg(unix)]`. The reachable ways to produce this file
+        // are mostly Windows ones (Notepad's "Unicode" is UTF-16, so is PowerShell
+        // 5.1's `>`), and CI runs tests on Linux only, so gating this would leave
+        // the platform that triggers it with no coverage at all.
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("registry.json");
+
+        // Valid JSON shape; one byte inside a string value is not valid UTF-8, so
+        // the ONLY reason this fails to load is the encoding.
+        let mut bytes = br#"{"schema_version":"1.0","registry_version":1,"models":[]}"#.to_vec();
+        bytes[20] = 0xFF;
+        assert!(
+            String::from_utf8(bytes.clone()).is_err(),
+            "the fixture must actually be invalid UTF-8, or this test proves nothing"
+        );
+        std::fs::write(&path, &bytes).unwrap();
+
+        let loaded = load_registry_from(&path, versioned_registry(42));
+
+        assert_eq!(loaded.registry_version, 42);
+        assert_eq!(
+            version_at(&path),
+            42,
+            "bytes that are not UTF-8 cannot be a registry, so the file must be \
+             repaired rather than preserved as possibly-intact"
         );
     }
 
@@ -412,6 +517,57 @@ mod tests {
 
         assert_eq!(loaded.registry_version, 2);
         assert_eq!(version_at(&path), 2, "the cached copy must be updated too");
+    }
+
+    #[test]
+    fn test_a_missing_registry_is_bootstrapped_onto_disk() {
+        // The first-run branch, and the only path through the resolver the other
+        // tests never reach. A bootstrap that returned the right registry without
+        // ever writing it would have passed every one of them.
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("registry.json");
+        assert!(!path.exists(), "the fixture must start with no registry");
+
+        let loaded = load_registry_from(&path, versioned_registry(7));
+
+        assert_eq!(loaded.registry_version, 7);
+        assert_eq!(
+            version_at(&path),
+            7,
+            "a first run must leave the registry cached on disk, not only in memory"
+        );
+    }
+
+    #[test]
+    fn test_an_equal_version_is_not_an_upgrade_and_rewrites_nothing() {
+        // Two ways to break this are invisible to the newer/older pair, because
+        // neither of those lands on the boundary: widening `>` to `>=`, and a keep
+        // path that rewrites the file anyway. Both would rewrite the user's
+        // registry.json on EVERY run at steady state, which is the state nearly
+        // every install is in, discarding local edits each time.
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("registry.json");
+        write_registry_file(&path, &versioned_registry(5)).unwrap();
+
+        // A byte the resolver has no reason to touch. The registry round-trips
+        // exactly, so a rewrite would be byte-identical and undetectable without
+        // one: trailing whitespace survives a read but not a re-serialize.
+        let marked = format!("{}\n\n", std::fs::read_to_string(&path).unwrap());
+        std::fs::write(&path, &marked).unwrap();
+        let before = std::fs::read(&path).unwrap();
+
+        let loaded = load_registry_from(&path, versioned_registry(5));
+
+        assert_eq!(
+            loaded.registry_version, 5,
+            "the cached copy must be returned"
+        );
+        assert_eq!(
+            std::fs::read(&path).unwrap(),
+            before,
+            "an equal version is not an upgrade, so the file must be left byte for \
+             byte alone"
+        );
     }
 
     #[test]

@@ -507,6 +507,36 @@ pub fn emit_json_result<T: serde::Serialize>(payload: &T) {
     }
 }
 
+/// Emit a JSON error event to stdout.
+///
+/// The structured counterpart to a `warn!`/`eprintln!` diagnostic, for command
+/// handlers running in a structured output mode. `docs/json-output.md` documents
+/// this `error` event; until #319 nothing in the tree emitted it, and `birda
+/// clip` is its first caller.
+pub fn emit_json_error(
+    code: &str,
+    severity: ErrorSeverity,
+    message: &str,
+    suggestion: Option<&str>,
+) {
+    use crate::output::json_envelope::{EventType, JsonEnvelope};
+
+    let payload = ErrorPayload {
+        code: code.to_string(),
+        severity,
+        message: message.to_string(),
+        suggestion: suggestion.map(ToString::to_string),
+    };
+    let envelope = JsonEnvelope::new(EventType::Error, payload);
+    match serde_json::to_string(&envelope) {
+        Ok(json) => println!("{json}"),
+        Err(e) => {
+            // Log to stderr so it doesn't corrupt the JSON output stream.
+            eprintln!("error: failed to serialize JSON error event: {e}");
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

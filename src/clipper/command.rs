@@ -9,7 +9,10 @@ use crate::Error;
 use crate::cli::ClipArgs;
 use crate::config::OutputMode;
 use crate::constants::{clipper, confidence, output_extensions};
-use crate::output::{ClipExtractionEntry, ClipExtractionPayload, ResultType, emit_json_result};
+use crate::output::{
+    ClipExtractionEntry, ClipExtractionFailure, ClipExtractionPayload, ErrorSeverity, ResultType,
+    emit_json_error, emit_json_result,
+};
 
 use super::{
     ClipExtractor, DetectionGroup, ParsedDetection, WavWriter, group_detections,
@@ -73,48 +76,93 @@ fn validate_float_args(args: &ClipArgs) -> Result<(), Error> {
     Ok(())
 }
 
+/// JSON `error`-event code for a detection file that failed to process.
+///
+/// A named constant rather than an inline literal because it is an API-contract
+/// string a consumer keys on, mirroring `PROCESSING_ERROR_CODE` in `lib.rs`.
+const CLIP_FILE_FAILED_CODE: &str = "clip_file_failed";
+
 /// Execute clip extraction from CSV detection files.
-#[allow(clippy::unnecessary_wraps)]
+///
+/// Each detection file is processed independently. A per-file failure is a
+/// warning and the batch keeps going, so a mixed batch still writes the clips it
+/// could. The batch as a whole fails only when no file produced anything: that
+/// is the difference between "some recordings had no detections" and "every file
+/// was rejected", and before #319 the command reported success either way.
 fn execute_csv_mode(args: &ClipArgs, output_mode: OutputMode) -> Result<(), Error> {
     let extractor = ClipExtractor::new();
     let writer = WavWriter::new(args.output.clone());
     let is_json = output_mode.is_structured();
 
     let mut total_clips = 0;
-    let mut total_files = 0;
+    let mut processed_files = 0;
     let mut all_clips: Vec<ClipExtractionEntry> = Vec::new();
+    let mut failed_files: Vec<ClipExtractionFailure> = Vec::new();
 
     for detection_file in &args.files {
         match process_detection_file(detection_file, args, &extractor, &writer, is_json) {
             Ok((clip_count, clips)) => {
                 total_clips += clip_count;
-                total_files += 1;
+                processed_files += 1;
                 all_clips.extend(clips);
             }
             Err(e) => {
                 warn!("Failed to process {}: {e}", detection_file.display());
+                // Streaming diagnostic for NDJSON consumers: one `error` event
+                // per failure, as it happens. Gated to NDJSON specifically, not
+                // every structured mode, because plain `json` output is a single
+                // document (one `result` object) that `json.loads` has to parse,
+                // and a stream of `error` objects ahead of it would make stdout
+                // N+1 top-level objects. In `json` mode the same failures ride
+                // in the result's `failed_files` field instead.
+                if matches!(output_mode, OutputMode::Ndjson) {
+                    emit_json_error(
+                        CLIP_FILE_FAILED_CODE,
+                        ErrorSeverity::Warning,
+                        &format!("failed to process {}: {e}", detection_file.display()),
+                        None,
+                    );
+                }
+                failed_files.push(ClipExtractionFailure {
+                    file: detection_file.clone(),
+                    error: e.to_string(),
+                });
             }
         }
     }
 
-    // JSON/NDJSON output
+    // A total failure is a batch that had files to process and none of them
+    // produced anything. An empty batch, or one where every file simply held no
+    // detections above the threshold, is a legitimate zero-clip run. When
+    // `processed_files` is zero and something failed, every file failed, so
+    // `failed_files.len() == args.files.len()`.
+    let total_failure = processed_files == 0 && !failed_files.is_empty();
+
     if is_json {
         let payload = ClipExtractionPayload {
             result_type: ResultType::ClipExtraction,
             output_dir: args.output.clone(),
             total_clips,
-            total_files,
+            total_files: processed_files,
             clips: all_clips,
+            failed_files,
         };
         emit_json_result(&payload);
-        return Ok(());
+    } else {
+        info!(
+            "Extracted {total_clips} clips from {processed_files} detection files to {}",
+            args.output.display()
+        );
+        if !failed_files.is_empty() {
+            warn!("{} detection file(s) failed to process", failed_files.len());
+        }
     }
 
-    // Human-readable output
-    info!(
-        "Extracted {total_clips} clips from {total_files} detection files to {}",
-        args.output.display()
-    );
+    if total_failure {
+        return Err(Error::ClipBatchAllFailed {
+            total: args.files.len(),
+        });
+    }
 
     Ok(())
 }
@@ -184,6 +232,7 @@ fn execute_direct_extraction(
                 end_time: padded_end,
                 output_file: output_path,
             }],
+            failed_files: Vec::new(),
         };
         emit_json_result(&payload);
     } else {
@@ -314,6 +363,20 @@ fn process_detection_file(
     }
 
     pb.finish_with_message("done");
+
+    // The file had detections to extract (`groups` is non-empty) but every one
+    // failed to extract or write, so `clip_count` is zero. That is a failed
+    // file, not the legitimate zero-clip result of a file with no detections
+    // above the threshold (which returned early above). Reporting it as a
+    // failure is what lets the batch exit non-zero when nothing was produced,
+    // and what distinguishes "no detections" from "every detection thrown away"
+    // for a machine consumer (#319).
+    if !groups.is_empty() && clip_count == 0 {
+        return Err(Error::ClipFileProducedNothing {
+            path: detection_file.to_path_buf(),
+            attempted: groups.len(),
+        });
+    }
 
     Ok((clip_count, clip_entries))
 }

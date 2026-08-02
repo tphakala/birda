@@ -164,6 +164,21 @@ birda clip detections/*.csv -c 0.85 -o best_clips/
 - **Efficient seeking**: Uses format-native seeking when available (WAV, FLAC)
 - **Progress indication**: Shows extraction progress with time estimates
 
+## Exit Status
+
+`birda clip` exits non-zero only when the whole batch failed, that is, when every detection file failed: missing, unreadable, malformed, or with every detection failing to extract. A batch where at least one file was processed exits zero, even if other files failed and even if a processed file simply held no detections above the threshold. Each per-file failure is reported as a warning on stderr; in `ndjson` mode also as an `error` event, and in both `json` and `ndjson` modes in the result's `failed_files` field.
+
+So a total failure stops a chained publish step while a partial one does not:
+
+```bash
+# Skips the publish step only if the WHOLE batch failed. This does not
+# guarantee clips were produced: a batch that found nothing above the
+# threshold still exits 0, so check the output if that matters.
+birda clip detections/*.csv -o best_clips/ && rsync best_clips/ backup:/clips/
+```
+
+A direct-extraction range (`--start`/`--end`) that lies past the end of the file, or is too short to hold a single frame, is reported as an error rather than written out as an empty clip.
+
 ## Troubleshooting
 
 ### "Source audio file not found"

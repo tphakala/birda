@@ -657,6 +657,25 @@ fn report_summary(
     });
 }
 
+/// Reclaim a per-file lock older than `timeout`, if a timeout is set.
+///
+/// A peer that crashed leaves its lock behind: the Ctrl+C handler calls
+/// `process::exit` and runs no `Drop`. Without reclamation every later run skips
+/// that file as locked, forever. `--stale-lock-timeout` opts in; `None` honours
+/// every lock. Racing a live peer is safe: `FileLock::acquire` still creates with
+/// `O_EXCL`, so a peer that re-locks in the gap wins and this file takes the
+/// graceful `FileLocked` skip instead.
+fn reclaim_stale_lock(input: &Path, output_dir: &Path, timeout: Option<std::time::Duration>) {
+    let Some(max_age) = timeout else { return };
+    if !crate::locking::FileLock::is_stale(input, output_dir, max_age) {
+        return;
+    }
+    match crate::locking::FileLock::remove_stale(input, output_dir) {
+        Ok(()) => info!("Removed stale lock: {}", input.display()),
+        Err(e) => warn!("Could not remove stale lock for {}: {e}", input.display()),
+    }
+}
+
 /// Process all files, updating stats in place.
 ///
 /// On fail-fast error, returns `Err` immediately but `stats` contains partial results.
@@ -675,20 +694,8 @@ fn process_all_files(
     for (index, file) in files.iter().enumerate() {
         let file_output_dir = output_dir_for(file, params.output_dir);
 
-        // Reclaim a stale lock before the skip-locked check below, so a lock left
-        // by a peer that crashed (the Ctrl+C handler calls process::exit and runs
-        // no Drop) does not make this run skip the file forever. --stale-lock-timeout
-        // opts in; without it every lock is honoured. Racing a live peer is safe:
-        // FileLock::acquire still creates with O_EXCL, so a peer that re-locks in
-        // the gap wins and this file takes the graceful FileLocked skip instead.
-        if let Some(max_age) = params.stale_lock_timeout
-            && crate::locking::FileLock::is_stale(file, &file_output_dir, max_age)
-        {
-            match crate::locking::FileLock::remove_stale(file, &file_output_dir) {
-                Ok(()) => info!("Removed stale lock: {}", file.display()),
-                Err(e) => warn!("Could not remove stale lock for {}: {e}", file.display()),
-            }
-        }
+        // Reclaim a stale lock before the skip-locked check below (see the fn doc).
+        reclaim_stale_lock(file, &file_output_dir, params.stale_lock_timeout);
 
         // Check if should process
         match should_process(
@@ -2434,6 +2441,56 @@ fn handle_geomodel_install(
 mod tests {
     use super::*;
     use std::collections::HashMap;
+
+    #[test]
+    fn test_reclaim_stale_lock_removes_an_aged_lock_when_enabled() {
+        use std::time::{Duration, SystemTime};
+        let dir = tempfile::tempdir().unwrap();
+        let input = dir.path().join("audio.wav");
+        let lock = crate::locking::FileLock::lock_path_for(&input, dir.path());
+        let f = std::fs::File::create(&lock).unwrap();
+        // Age it deterministically instead of sleeping.
+        f.set_modified(SystemTime::now() - Duration::from_hours(1))
+            .unwrap();
+
+        reclaim_stale_lock(&input, dir.path(), Some(Duration::from_mins(1)));
+
+        assert!(
+            !crate::locking::FileLock::is_locked(&input, dir.path()),
+            "an hour-old lock must be reclaimed against a one-minute timeout"
+        );
+    }
+
+    #[test]
+    fn test_reclaim_stale_lock_keeps_a_fresh_lock() {
+        use std::time::Duration;
+        let dir = tempfile::tempdir().unwrap();
+        let input = dir.path().join("audio.wav");
+        let lock = crate::locking::FileLock::lock_path_for(&input, dir.path());
+        std::fs::File::create(&lock).unwrap();
+
+        reclaim_stale_lock(&input, dir.path(), Some(Duration::from_hours(1)));
+
+        assert!(
+            crate::locking::FileLock::is_locked(&input, dir.path()),
+            "a lock younger than the timeout must be kept"
+        );
+    }
+
+    #[test]
+    fn test_reclaim_stale_lock_is_a_noop_without_a_timeout() {
+        let dir = tempfile::tempdir().unwrap();
+        let input = dir.path().join("audio.wav");
+        let lock = crate::locking::FileLock::lock_path_for(&input, dir.path());
+        std::fs::File::create(&lock).unwrap();
+
+        reclaim_stale_lock(&input, dir.path(), None);
+
+        assert!(
+            crate::locking::FileLock::is_locked(&input, dir.path()),
+            "without --stale-lock-timeout every lock is honoured"
+        );
+    }
 
     /// A stand-in audio path for the `record_file_failure` tests; only ever
     /// displayed, never touched on disk.

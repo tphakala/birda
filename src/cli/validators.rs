@@ -2,13 +2,9 @@
 //!
 //! Shared validation functions for CLI argument parsing.
 
+use crate::constants::time::{SECONDS_PER_DAY, SECONDS_PER_HOUR, SECONDS_PER_MINUTE};
 use crate::constants::{MAX_BATCH_SIZE, MIN_BATCH_SIZE, confidence, coordinates, day_of_year};
 use std::time::Duration;
-
-/// Seconds in each unit accepted by [`parse_stale_lock_timeout`].
-const SECONDS_PER_MINUTE: u64 = 60;
-const SECONDS_PER_HOUR: u64 = 60 * SECONDS_PER_MINUTE;
-const SECONDS_PER_DAY: u64 = 24 * SECONDS_PER_HOUR;
 
 /// Parse and validate confidence value (0.0-1.0).
 pub fn parse_confidence(s: &str) -> Result<f32, String> {
@@ -209,10 +205,10 @@ pub fn parse_day_of_year(s: &str) -> Result<u32, String> {
 
 /// Parse a stale-lock timeout such as `30s`, `15m`, `2h`, or `1d`.
 ///
-/// A bare number is read as seconds. Exactly one unit suffix is accepted; a
-/// fractional or compound value (`1.5h`, `1h30m`) is rejected with a message
-/// naming the accepted forms. Backs `--stale-lock-timeout`, whose help advertises
-/// exactly these forms.
+/// A bare number is read as seconds and must be greater than zero. Exactly one
+/// unit suffix is accepted; a fractional or compound value (`1.5h`, `1h30m`) is
+/// rejected with a message naming the accepted forms. Backs `--stale-lock-timeout`;
+/// its help lists these forms as examples.
 pub fn parse_stale_lock_timeout(s: &str) -> Result<Duration, String> {
     let trimmed = s.trim();
     let malformed = || format!("invalid duration '{s}'; use forms like 30s, 15m, 2h, 1d");
@@ -228,10 +224,20 @@ pub fn parse_stale_lock_timeout(s: &str) -> Result<Duration, String> {
 
     let count: u64 = number.trim().parse().map_err(|_| malformed())?;
 
-    count
+    let seconds = count
         .checked_mul(seconds_per_unit)
-        .map(Duration::from_secs)
-        .ok_or_else(|| format!("duration '{s}' is too large"))
+        .ok_or_else(|| format!("duration '{s}' is too large"))?;
+
+    // A zero timeout treats every lock, including a live peer's brand-new one, as
+    // stale and reclaims it on sight, which defeats the mutual exclusion it is
+    // meant to recover. Reject it rather than silently disabling locking.
+    if seconds == 0 {
+        return Err(format!(
+            "stale-lock timeout must be greater than zero, got '{s}'"
+        ));
+    }
+
+    Ok(Duration::from_secs(seconds))
 }
 
 #[cfg(test)]
@@ -709,8 +715,21 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_stale_lock_timeout_rejects_zero() {
+        // A zero timeout would reclaim even a live peer's fresh lock.
+        for zero in ["0", "0s", "0m", "0h", "0d"] {
+            assert!(
+                parse_stale_lock_timeout(zero).is_err(),
+                "'{zero}' should be rejected"
+            );
+        }
+    }
+
+    #[test]
     fn test_parse_stale_lock_timeout_rejects_overflow() {
-        // u64 seconds times a day's worth of seconds overflows well before this.
-        assert!(parse_stale_lock_timeout("100000000000000000000d").is_err());
+        // 1e18 parses as u64 but overflows when multiplied by a day's seconds, so
+        // this exercises the checked_mul guard rather than the u64 parse. (A larger
+        // literal like 1e20 would fail the parse first and never reach checked_mul.)
+        assert!(parse_stale_lock_timeout("1000000000000000000d").is_err());
     }
 }

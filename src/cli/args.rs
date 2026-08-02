@@ -503,7 +503,7 @@ pub struct AnalyzeArgs {
     #[arg(long, env = "BIRDA_SPECIES_LIST")]
     pub slist: Option<PathBuf>,
 
-    /// Remove locks older than this duration (e.g., 1h, 30m) before processing.
+    /// Remove locks older than this duration before processing (e.g., 30s, 15m, 2h, 1d).
     #[arg(long, value_parser = parse_stale_lock_timeout)]
     pub stale_lock_timeout: Option<Duration>,
 

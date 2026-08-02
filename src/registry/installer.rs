@@ -341,8 +341,16 @@ pub fn geomodel_paths(asset: &RangeFilterAsset) -> Result<InstalledRangeFilter> 
 /// likeliest cause is a file left behind by an older birda version.
 pub async fn install_range_filter(asset: &RangeFilterAsset) -> Result<InstalledRangeFilter> {
     let paths = geomodel_paths(asset)?;
-    if paths.is_installed() && paths.verify(asset).is_ok() {
-        return Ok(paths);
+    if paths.is_installed() {
+        match paths.verify(asset) {
+            Ok(()) => return Ok(paths),
+            // A read error on an installed file is not proof it is wrong, and
+            // re-downloading hundreds of MB will not fix a failing disk. Surface
+            // it, mirroring `resolve_geomodel`, rather than silently redownload
+            // a copy that is fine. Only a genuine mismatch falls through.
+            Err(e) if !crate::update::checksum::is_checksum_mismatch(&e) => return Err(e),
+            Err(_) => {}
+        }
     }
 
     let dir = models_dir()?;
@@ -352,16 +360,30 @@ pub async fn install_range_filter(asset: &RangeFilterAsset) -> Result<InstalledR
     download_file(&client, &asset.model.url, &paths.model).await?;
     download_file(&client, &asset.labels.url, &paths.labels).await?;
 
-    // A post-download checksum failure must not leave the bad files installed.
-    // Consumers gate on presence, so a corrupt file left behind here would be
-    // loaded on every later run without ever being re-verified.
-    if let Err(e) = paths.verify(asset) {
-        drop(std::fs::remove_file(&paths.model));
-        drop(std::fs::remove_file(&paths.labels));
-        return Err(e);
-    }
+    verify_or_remove(&paths, asset)?;
 
     Ok(paths)
+}
+
+/// Verify freshly-downloaded range-filter files, removing them only on a
+/// genuine checksum mismatch.
+///
+/// Consumers gate on presence, so a corrupt file left behind here would be
+/// loaded on every later run without ever being re-verified; a genuine
+/// [`Error::UpdateChecksumMismatch`] therefore removes both files so the caller
+/// downloads a fresh copy. A read error (EACCES/EIO on a failing disk) is not
+/// proof the bytes are wrong: removing a possibly-correct model to force a
+/// re-download is destructive and loops on failing hardware, so on that error
+/// the files are left in place and the error surfaced.
+fn verify_or_remove(paths: &InstalledRangeFilter, asset: &RangeFilterAsset) -> Result<()> {
+    if let Err(e) = paths.verify(asset) {
+        if crate::update::checksum::is_checksum_mismatch(&e) {
+            drop(std::fs::remove_file(&paths.model));
+            drop(std::fs::remove_file(&paths.labels));
+        }
+        return Err(e);
+    }
+    Ok(())
 }
 
 /// Report files in the models directory that birda no longer uses.
@@ -701,6 +723,55 @@ mod tests {
         roll_back(&[&created]);
 
         assert!(!created.exists());
+    }
+
+    #[test]
+    fn test_verify_or_remove_leaves_files_intact_on_a_read_error() {
+        // The #348 data-loss regression guard: a read error (here EISDIR, a
+        // portable stand-in for the EACCES/EIO seen on a failing disk) must not
+        // be mistaken for a checksum mismatch and delete a possibly-correct
+        // model. The model is a valid regular file and the labels are the
+        // unreadable one, so the model assertion is load-bearing: reverting the
+        // `is_checksum_mismatch` gate deletes the real model file and turns this
+        // red, which the predicate-only tests do not catch.
+        let dir = tempfile::tempdir().unwrap();
+
+        // The model reads and verifies fine; the read error is on the labels.
+        let model = dir.path().join("model.onnx");
+        std::fs::write(&model, b"right").unwrap(); // matches RIGHT_SHA256
+        // A directory cannot be read as a file, so `verify` fails with Error::Io.
+        let labels = dir.path().join("labels");
+        std::fs::create_dir(&labels).unwrap();
+        let paths = InstalledRangeFilter { model, labels };
+
+        let err = verify_or_remove(&paths, &test_asset()).expect_err("a read error must surface");
+        assert!(
+            !crate::update::checksum::is_checksum_mismatch(&err),
+            "a read error is not a checksum mismatch"
+        );
+        assert!(
+            paths.model.exists(),
+            "the readable model must not be deleted"
+        );
+        assert!(paths.labels.exists(), "the labels must not be deleted");
+    }
+
+    #[test]
+    fn test_verify_or_remove_deletes_both_files_on_a_mismatch() {
+        // The complement: a genuine mismatch is the one case that legitimately
+        // removes the files, so the caller can download a fresh copy.
+        let dir = tempfile::tempdir().unwrap();
+
+        let model = dir.path().join("model.onnx");
+        std::fs::write(&model, b"wrong").unwrap(); // does not match RIGHT_SHA256
+        let labels = dir.path().join("labels.txt");
+        std::fs::write(&labels, b"right").unwrap();
+        let paths = InstalledRangeFilter { model, labels };
+
+        let err = verify_or_remove(&paths, &test_asset()).expect_err("a mismatch must surface");
+        assert!(crate::update::checksum::is_checksum_mismatch(&err));
+        assert!(!paths.model.exists(), "a corrupt model must be removed");
+        assert!(!paths.labels.exists(), "its labels must be removed with it");
     }
 
     // HF_ENDPOINT is process-global, so these run serially against every other

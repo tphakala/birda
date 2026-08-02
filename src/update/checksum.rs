@@ -26,6 +26,21 @@ pub fn verify_sha256(path: &Path, expected_hex: &str) -> Result<()> {
     Ok(())
 }
 
+/// Report whether a verification error is a genuine content mismatch.
+///
+/// `verify_sha256` fails two ways that must not be treated alike. A
+/// [`Error::UpdateChecksumMismatch`] proves the bytes on disk are wrong, so a
+/// caller may safely delete them and download again. A [`Error::Io`] means the
+/// file could not even be read (EACCES, EIO on a failing disk or SD card): that
+/// is not proof the bytes are bad, and deleting a possibly-correct model to
+/// re-download hundreds of MB is destructive and, on failing hardware, loops.
+///
+/// Call sites that react to a failed verification by removing files or
+/// re-downloading must gate that action on this returning `true`.
+pub fn is_checksum_mismatch(err: &Error) -> bool {
+    matches!(err, Error::UpdateChecksumMismatch { .. })
+}
+
 /// Compute the SHA256 hex digest of raw bytes.
 fn hex_digest(data: &[u8]) -> String {
     let hash = Sha256::digest(data);
@@ -42,6 +57,10 @@ fn hex_digest(data: &[u8]) -> String {
 mod tests {
     use super::*;
     use std::io::Write;
+
+    /// A hash no real content produces, used to force a deterministic mismatch.
+    const ALL_ZERO_SHA256: &str =
+        "0000000000000000000000000000000000000000000000000000000000000000";
 
     #[test]
     fn test_hex_digest_known_value() {
@@ -82,10 +101,42 @@ mod tests {
         f.write_all(b"test content").expect("test setup failed");
         drop(f);
 
-        let result = verify_sha256(
-            &path,
-            "0000000000000000000000000000000000000000000000000000000000000000",
-        );
+        let result = verify_sha256(&path, ALL_ZERO_SHA256);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_verify_sha256_read_error_is_io_not_mismatch() {
+        // A directory cannot be read as a file: `std::fs::read` returns EISDIR.
+        // This stands in for the EACCES/EIO read failures on failing hardware,
+        // and locks the contract that a read failure surfaces as `Error::Io`,
+        // never as a spurious checksum mismatch.
+        let dir = tempfile::tempdir().expect("test setup failed");
+
+        let result = verify_sha256(dir.path(), ALL_ZERO_SHA256);
+        assert!(matches!(result, Err(Error::Io(_))));
+    }
+
+    #[test]
+    fn test_is_checksum_mismatch_true_for_mismatch() {
+        let dir = tempfile::tempdir().expect("test setup failed");
+        let path = dir.path().join("test.bin");
+        let mut f = std::fs::File::create(&path).expect("test setup failed");
+        f.write_all(b"test content").expect("test setup failed");
+        drop(f);
+
+        let err =
+            verify_sha256(&path, ALL_ZERO_SHA256).expect_err("mismatched checksum should fail");
+        assert!(is_checksum_mismatch(&err));
+    }
+
+    #[test]
+    fn test_is_checksum_mismatch_false_for_read_error() {
+        // The destructive delete-and-redownload must not fire on a read error.
+        let dir = tempfile::tempdir().expect("test setup failed");
+
+        let err = verify_sha256(dir.path(), ALL_ZERO_SHA256)
+            .expect_err("reading a directory as a file should fail");
+        assert!(!is_checksum_mismatch(&err));
     }
 }

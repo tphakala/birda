@@ -123,14 +123,24 @@ pub fn resolve_geomodel(
         // A path pointing somewhere else is taken on trust: it may legitimately
         // be a different build of the geomodel, and its checksum is not ours to
         // police. The label-count check still guards the shape.
-        if !birda_managed || paths.verify(asset).is_ok() {
+        if !birda_managed {
             return Ok(GeomodelResolution::Ready(paths));
         }
 
-        warn!(
-            "Installed {} failed checksum verification and will be downloaded again",
-            asset.name
-        );
+        match paths.verify(asset) {
+            Ok(()) => return Ok(GeomodelResolution::Ready(paths)),
+            // A genuine mismatch: the cached bytes are wrong, re-download them.
+            Err(e) if crate::update::checksum::is_checksum_mismatch(&e) => {
+                warn!(
+                    "Installed {} failed checksum verification and will be downloaded again",
+                    asset.name
+                );
+            }
+            // A read error (permission/IO) is not a checksum failure. Naming it
+            // one is wrong, and re-downloading a file that is fine will not fix
+            // a failing disk. Surface the real error instead.
+            Err(e) => return Err(e),
+        }
     }
 
     // A configured path pointing outside the models directory is a

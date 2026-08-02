@@ -88,9 +88,33 @@ struct SourceModel {
 #[derive(Debug, Deserialize)]
 struct Sources {
     schema_version: String,
-    registry_version: u32,
     #[serde(rename = "model")]
     models: Vec<SourceModel>,
+}
+
+/// The `registry_version` for freshly generated content.
+///
+/// The loader replaces a user's cached registry only when the bundled version
+/// is strictly greater, so any content change must bump the version or it never
+/// reaches a cached user (the corrected Perch class counts that shipped without
+/// a bump and left every region showing "0 species"). This bumps by one when
+/// `generated` differs from `existing` in anything but the version field, and
+/// keeps the version when they match, so a no-op regeneration stays a no-op and
+/// a real change forces exactly one increment.
+///
+/// The comparison is against the on-disk registry, from which the frozen legacy
+/// entries and the range filter are also carried through verbatim, so it tracks
+/// changes to the generator-owned (manifest-derived) models. A manual edit to a
+/// carried-through entry appears on both sides and so does not bump; those
+/// entries are frozen, which is why that is acceptable.
+fn next_registry_version(generated: &Registry, existing: &Registry) -> u32 {
+    let mut normalized = generated.clone();
+    normalized.registry_version = existing.registry_version;
+    if normalized == *existing {
+        existing.registry_version
+    } else {
+        existing.registry_version.saturating_add(1)
+    }
 }
 
 /// Build the registry JSON text from the vendored manifests under `root`.
@@ -131,12 +155,16 @@ pub fn generate_from_repo_root(root: &str) -> Result<String> {
     // regeneration produces a reviewable diff rather than a reshuffle.
     models.sort_by(|a, b| a.id.cmp(&b.id));
 
-    let registry = Registry {
+    let mut registry = Registry {
         schema_version: sources.schema_version.clone(),
-        registry_version: sources.registry_version,
+        // Seeded from the on-disk registry; bumped just below only when the
+        // content actually changed, so the version is generator-managed rather
+        // than a manual step in registry-sources.toml that is easy to forget.
+        registry_version: existing.registry_version,
         models,
-        range_filter: existing.range_filter,
+        range_filter: existing.range_filter.clone(),
     };
+    registry.registry_version = next_registry_version(&registry, &existing);
 
     let mut json = serde_json::to_string_pretty(&registry).map_err(|e| Error::Internal {
         message: format!("could not serialize the registry: {e}"),
@@ -310,4 +338,112 @@ fn basename(path: &str) -> Result<&str> {
 pub fn write_registry(root: &str) -> Result<()> {
     let json = generate_from_repo_root(root)?;
     std::fs::write(Path::new(root).join(REGISTRY_FILE), json).map_err(Error::Io)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn registry(schema: &str, version: u32) -> Registry {
+        Registry {
+            schema_version: schema.to_string(),
+            registry_version: version,
+            models: Vec::new(),
+            range_filter: None,
+        }
+    }
+
+    #[test]
+    fn test_next_registry_version_keeps_version_when_content_is_unchanged() {
+        let existing = registry("2.0", 6);
+        // Same content, even though the generated struct carries a different
+        // version: the version is held equal for the comparison, so a no-op
+        // regeneration does not bump.
+        let generated = registry("2.0", 999);
+        assert_eq!(next_registry_version(&generated, &existing), 6);
+    }
+
+    #[test]
+    fn test_next_registry_version_bumps_once_when_content_changes() {
+        let existing = registry("2.0", 6);
+        // Any field but the version differing is a content change, and the
+        // loader only replaces a cached registry when the bundled version is
+        // strictly greater, so it must bump.
+        let generated = registry("2.1", 6);
+        assert_eq!(next_registry_version(&generated, &existing), 7);
+    }
+
+    #[test]
+    fn test_next_registry_version_saturates_at_u32_max() {
+        // A content change at the ceiling stays at the ceiling rather than
+        // wrapping to 0, which every cache would read as a downgrade.
+        let existing = registry("2.0", u32::MAX);
+        let generated = registry("2.1", u32::MAX);
+        assert_eq!(next_registry_version(&generated, &existing), u32::MAX);
+    }
+
+    #[test]
+    fn test_next_registry_version_bumps_on_a_model_level_change() {
+        // The #329/#332 failure was a model-level change (a corrected class
+        // count), not a schema_version change, so pin that a difference inside
+        // `models` alone, with schema_version held constant, still bumps.
+        let root = env!("CARGO_MANIFEST_DIR");
+        let existing: Registry = serde_json::from_str(
+            &std::fs::read_to_string(Path::new(root).join(REGISTRY_FILE)).unwrap(),
+        )
+        .unwrap();
+        let mut generated = existing.clone();
+        let model = generated
+            .models
+            .first_mut()
+            .expect("the registry has at least one model");
+        model.version = format!("{}-changed", model.version);
+
+        assert_eq!(
+            next_registry_version(&generated, &existing),
+            existing.registry_version.saturating_add(1)
+        );
+    }
+
+    #[test]
+    fn test_generate_bumps_the_version_when_the_content_changes() {
+        // End-to-end through the real generator: a hermetic copy of its inputs
+        // plus a stale on-disk registry proves a content change forces a bump.
+        // This reproduces the failure the versioned-model work (#329) exposed: a
+        // corrected class count shipped without a bump and reached no cached user.
+        let real_root = env!("CARGO_MANIFEST_DIR");
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path();
+
+        std::fs::copy(
+            Path::new(real_root).join(SOURCES_FILE),
+            root.join(SOURCES_FILE),
+        )
+        .unwrap();
+        let manifests = root.join(MANIFEST_DIR);
+        std::fs::create_dir(&manifests).unwrap();
+        for entry in std::fs::read_dir(Path::new(real_root).join(MANIFEST_DIR)).unwrap() {
+            let entry = entry.unwrap();
+            std::fs::copy(entry.path(), manifests.join(entry.file_name())).unwrap();
+        }
+
+        // Stand in for a cached registry at version 6 whose content is stale.
+        let mut stale: Registry =
+            serde_json::from_str(&generate_from_repo_root(real_root).unwrap()).unwrap();
+        stale.registry_version = 6;
+        stale.schema_version = "0.0-stale".to_string();
+        std::fs::write(
+            root.join(REGISTRY_FILE),
+            serde_json::to_string_pretty(&stale).unwrap(),
+        )
+        .unwrap();
+
+        let regenerated: Registry =
+            serde_json::from_str(&generate_from_repo_root(root.to_str().unwrap()).unwrap())
+                .unwrap();
+
+        // The generated content differs from the stale on-disk copy, so the
+        // version bumps exactly once.
+        assert_eq!(regenerated.registry_version, 7);
+    }
 }

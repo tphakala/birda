@@ -12,7 +12,7 @@ mod replace;
 use crate::error::{Error, Result};
 use constants::{
     BUILT_CUDA_TOOLKIT_VERSION, BUILT_CUDNN_VERSION, BUILT_ONNXRUNTIME_VERSION, GITHUB_REPO,
-    RELEASE_DOWNLOAD_URL, UPDATE_TEMP_PREFIX,
+    RELEASE_DOWNLOAD_URL, UPDATE_ARCHIVE_PREFIX, UPDATE_TEMP_PREFIX,
 };
 use indicatif::{ProgressBar, ProgressStyle};
 use manifest::Manifest;
@@ -139,7 +139,7 @@ pub async fn perform_update(
     // the end because `extract_binary` selects the archive format from it.
     let archive_path = reserve_temp_path(
         parent_dir,
-        "birda-update-",
+        UPDATE_ARCHIVE_PREFIX,
         &format!(".{}.download", asset.file),
     )?;
     if let Err(e) =
@@ -158,7 +158,15 @@ pub async fn perform_update(
     }
 
     // 8. Extract to temp file in same directory (avoids EXDEV)
-    let temp_binary = reserve_temp_path(parent_dir, UPDATE_TEMP_PREFIX, ".tmp")?;
+    // Reserving the extraction temp is now fallible; clean up the verified archive
+    // if it fails, matching every other error arm below.
+    let temp_binary = match reserve_temp_path(parent_dir, UPDATE_TEMP_PREFIX, ".tmp") {
+        Ok(path) => path,
+        Err(e) => {
+            let _ = std::fs::remove_file(&archive_path);
+            return Err(e);
+        }
+    };
     if let Err(e) = extract_binary(&archive_path, &temp_binary) {
         let _ = std::fs::remove_file(&archive_path);
         let _ = std::fs::remove_file(&temp_binary);
@@ -267,7 +275,6 @@ fn ort_major_minor_changed(current: &str, required: &str) -> bool {
     current_ver.major != required_ver.major || current_ver.minor != required_ver.minor
 }
 
-/// Download a file with a progress bar.
 /// Reserve a uniquely named path in `dir`, built as `<prefix><random><suffix>`.
 ///
 /// Two concurrent `birda update` runs sharing this directory would otherwise
@@ -291,6 +298,7 @@ fn reserve_temp_path(dir: &Path, prefix: &str, suffix: &str) -> Result<PathBuf> 
     Ok(path)
 }
 
+/// Download a file with a progress bar.
 async fn download_with_progress(
     client: &reqwest::Client,
     url: &str,

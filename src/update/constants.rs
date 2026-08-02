@@ -18,6 +18,13 @@ pub const MANIFEST_FILENAME: &str = "manifest.json";
 /// same temporary and corrupt each other's extraction.
 pub const UPDATE_TEMP_PREFIX: &str = "birda-update-new-";
 
+/// Filename prefix for the downloaded release archive during a self-update.
+///
+/// A unique random component and the asset's own `.download` suffix are appended
+/// per run (see `reserve_temp_path`), so concurrent updates cannot collide. The
+/// suffix stays at the end because `extract_binary` picks the format from it.
+pub const UPDATE_ARCHIVE_PREFIX: &str = "birda-update-";
+
 /// Maximum manifest response size in bytes (1 MiB).
 pub const MANIFEST_MAX_BYTES: u64 = 1024 * 1024;
 

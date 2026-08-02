@@ -41,17 +41,27 @@ static ACTIVE_CONFIG_LOCKS: LazyLock<Mutex<Vec<PathBuf>>> =
     LazyLock::new(|| Mutex::new(Vec::new()));
 
 /// Register a held lock path for signal cleanup.
+///
+/// Recovers from a poisoned mutex (`unwrap_or_else(into_inner)`) rather than
+/// skipping the update, matching [`cleanup_all_config_locks`]. If a panic while
+/// holding the lock left `register`/`unregister` no-ops but cleanup still
+/// draining, an unregister could silently not happen and cleanup would later
+/// delete a peer's fresh lock at that path.
 fn register(path: &Path) {
-    if let Ok(mut locks) = ACTIVE_CONFIG_LOCKS.lock() {
-        locks.push(path.to_path_buf());
-    }
+    let mut locks = ACTIVE_CONFIG_LOCKS
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner);
+    locks.push(path.to_path_buf());
 }
 
 /// Unregister a lock path once it is released.
+///
+/// Poison-recovering for the same reason as [`register`].
 fn unregister(path: &Path) {
-    if let Ok(mut locks) = ACTIVE_CONFIG_LOCKS.lock() {
-        locks.retain(|p| p != path);
-    }
+    let mut locks = ACTIVE_CONFIG_LOCKS
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner);
+    locks.retain(|p| p != path);
 }
 
 /// Remove every held config lock. Called from the Ctrl+C handler.

@@ -4,6 +4,7 @@ use crate::config::{ModelType, OutputFormat, OutputMode};
 use crate::constants::{calendar, range_filter};
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use std::path::PathBuf;
+use std::time::Duration;
 
 use super::clip::ClipArgs;
 
@@ -502,9 +503,9 @@ pub struct AnalyzeArgs {
     #[arg(long, env = "BIRDA_SPECIES_LIST")]
     pub slist: Option<PathBuf>,
 
-    /// Remove locks older than this duration (e.g., 1h, 30m).
-    #[arg(long)]
-    pub stale_lock_timeout: Option<String>,
+    /// Remove locks older than this duration (e.g., 1h, 30m) before processing.
+    #[arg(long, value_parser = parse_stale_lock_timeout)]
+    pub stale_lock_timeout: Option<Duration>,
 
     /// Write results to stdout as NDJSON stream (single file only).
     #[arg(long, conflicts_with_all = ["output_dir", "combine", "format"])]
@@ -532,7 +533,7 @@ impl AnalyzeArgs {
 // Re-use shared validators
 use super::validators::{
     parse_batch_size, parse_confidence, parse_day_of_year, parse_latitude, parse_longitude,
-    parse_overlap,
+    parse_overlap, parse_stale_lock_timeout,
 };
 
 #[cfg(test)]

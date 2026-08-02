@@ -311,6 +311,9 @@ struct ProcessingParams<'a> {
     bsg_params: Option<(f64, f64, Option<u32>)>,
     /// Optional custom classifier for two-stage inference (bat detection).
     custom_classifier: Option<&'a birdnet_onnx::CustomClassifier>,
+    /// Reclaim a per-file lock older than this before processing, if set.
+    /// Backs `--stale-lock-timeout`; `None` leaves every lock in place.
+    stale_lock_timeout: Option<std::time::Duration>,
 }
 
 /// Statistics from processing all files.
@@ -671,6 +674,21 @@ fn process_all_files(
 
     for (index, file) in files.iter().enumerate() {
         let file_output_dir = output_dir_for(file, params.output_dir);
+
+        // Reclaim a stale lock before the skip-locked check below, so a lock left
+        // by a peer that crashed (the Ctrl+C handler calls process::exit and runs
+        // no Drop) does not make this run skip the file forever. --stale-lock-timeout
+        // opts in; without it every lock is honoured. Racing a live peer is safe:
+        // FileLock::acquire still creates with O_EXCL, so a peer that re-locks in
+        // the gap wins and this file takes the graceful FileLocked skip instead.
+        if let Some(max_age) = params.stale_lock_timeout
+            && crate::locking::FileLock::is_stale(file, &file_output_dir, max_age)
+        {
+            match crate::locking::FileLock::remove_stale(file, &file_output_dir) {
+                Ok(()) => info!("Removed stale lock: {}", file.display()),
+                Err(e) => warn!("Could not remove stale lock for {}: {e}", file.display()),
+            }
+        }
 
         // Check if should process
         match should_process(
@@ -1060,6 +1078,7 @@ fn analyze_files(
         dual_output_mode,
         bsg_params,
         custom_classifier: bat_classifier.as_ref(),
+        stale_lock_timeout: args.stale_lock_timeout,
     };
 
     // Process all files - stats owned here so partial results available on fail-fast

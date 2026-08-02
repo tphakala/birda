@@ -602,6 +602,20 @@ pub enum Error {
         attempted: usize,
     },
 
+    /// The configuration is locked by another `birda` process.
+    ///
+    /// Returned when the config lock cannot be acquired within its timeout, so a
+    /// read-modify-write of `config.toml` is not attempted against a concurrent
+    /// writer that would otherwise lose one of the two edits (#313).
+    #[error(
+        "the configuration is locked by another birda process (lock file '{path}'); \
+         retry, or delete the lock file if no other birda is running"
+    )]
+    ConfigLocked {
+        /// Path to the lock file that could not be acquired.
+        path: std::path::PathBuf,
+    },
+
     /// Every detection file in a clip batch failed to process.
     ///
     /// `birda clip` treats a per-file problem as a warning and continues, so a

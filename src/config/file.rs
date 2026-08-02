@@ -2,7 +2,7 @@
 
 use crate::config::Config;
 use crate::error::{Error, Result};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 /// Load configuration from a TOML file.
 ///
@@ -93,11 +93,15 @@ fn write_error(path: &Path, source: std::io::Error) -> Error {
 /// write would have followed a symlink at that name, so the link is resolved
 /// first. See [`resolve_link`].
 ///
-/// Two things this deliberately does not address. The whole file is
-/// re-serialised from the struct, so comments and unrecognised keys are dropped
-/// as they always were. And every caller is a lock-free load-mutate-save, so
-/// two concurrent saves still lose one of the two edits; the rename makes each
-/// write whole, not the pair of them serialised.
+/// One thing this deliberately does not address: the whole file is re-serialised
+/// from the struct, so comments and unrecognised keys are dropped as they always
+/// were.
+///
+/// This is only the validated atomic-write primitive, not the serialisation of a
+/// PAIR of writes. That is [`update_config`]'s job: it holds a lock across the
+/// whole load-mutate-save, so two concurrent writers cannot both load the same
+/// base and lose one of the two edits (#313). Reach for `update_config`, not
+/// `save_config` directly, for any read-modify-write of the live config.
 pub fn save_config(config: &Config, path: &Path) -> Result<()> {
     super::validate_config(config)?;
 
@@ -195,13 +199,39 @@ fn resolve_link(path: &Path) -> std::path::PathBuf {
     }
 }
 
-/// Save configuration to the default platform-specific path.
+/// Load the config, apply `mutate`, and save it, all under an exclusive lock in
+/// the config directory so a concurrent `birda` cannot load the same base and
+/// lose the update (#313).
 ///
-/// Validates before writing; see [`save_config`].
-pub fn save_default_config(config: &Config) -> Result<std::path::PathBuf> {
+/// The config is loaded INSIDE the lock, so the whole load-mutate-save is
+/// serialised, not just the atomic write [`save_config`] already gives. Work
+/// that does not touch the config (a `models install` download, a confirmation
+/// prompt) MUST stay outside this call, so the lock is held only for the short
+/// write and never for a minutes-long download. `mutate`'s own return value is
+/// handed back alongside the saved config and the path it was written to.
+pub fn update_config<T>(
+    mutate: impl FnOnce(&mut Config) -> Result<T>,
+) -> Result<(T, Config, PathBuf)> {
     let path = super::config_file_path()?;
-    save_config(config, &path)?;
-    Ok(path)
+    let (out, config) = update_config_at(&path, mutate)?;
+    Ok((out, config, path))
+}
+
+/// [`update_config`] against an explicit `path`.
+///
+/// Split out so a test can drive the real load-lock-mutate-save against a
+/// temporary file, rather than the user's platform config path that
+/// [`update_config`] resolves.
+fn update_config_at<T>(
+    path: &Path,
+    mutate: impl FnOnce(&mut Config) -> Result<T>,
+) -> Result<(T, Config)> {
+    crate::locking::with_config_lock(path, || {
+        let mut config = load_config_file(path)?;
+        let out = mutate(&mut config)?;
+        save_config(&config, path)?;
+        Ok((out, config))
+    })
 }
 
 #[cfg(test)]
@@ -661,5 +691,80 @@ min_confidence = 0.25
         let loaded = load_config_file(&path).unwrap();
         assert_eq!(loaded.defaults.latitude, Some(60.17));
         assert_eq!(loaded.defaults.longitude, Some(24.94));
+    }
+
+    #[test]
+    fn test_update_config_at_persists_the_mutation_and_returns_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+
+        let (out, returned) = update_config_at(&path, |config| {
+            config.defaults.min_confidence = 0.42;
+            Ok("applied")
+        })
+        .unwrap();
+
+        assert_eq!(
+            out, "applied",
+            "the mutation's own return value is handed back"
+        );
+        assert!((returned.defaults.min_confidence - 0.42).abs() < f32::EPSILON);
+
+        // Persisted to disk, not merely returned in memory.
+        let loaded = load_config_file(&path).unwrap();
+        assert!((loaded.defaults.min_confidence - 0.42).abs() < f32::EPSILON);
+    }
+
+    /// The #313 guarantee, exercised through the shipped `update_config` helper
+    /// (via its path-injected core) rather than a hand-rolled copy: two writers
+    /// each load-mutate-save one field; under the lock the second waits for the
+    /// first, so both survive. Lock-free, the later save would discard the
+    /// earlier edit.
+    #[test]
+    fn test_update_config_at_serialises_concurrent_writers() {
+        use std::sync::{Arc, Barrier};
+        use std::time::Duration;
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        save_config(&Config::default(), &path).unwrap();
+
+        let barrier = Arc::new(Barrier::new(2));
+        let spawn = |field: char| {
+            let path = path.clone();
+            let barrier = Arc::clone(&barrier);
+            std::thread::spawn(move || {
+                barrier.wait();
+                update_config_at(&path, |config| {
+                    match field {
+                        'c' => config.defaults.min_confidence = 0.5,
+                        'o' => config.defaults.overlap = 1.5,
+                        _ => unreachable!(),
+                    }
+                    // Widen the load-mutate-save window so a lock-free helper
+                    // would reliably interleave and clobber.
+                    std::thread::sleep(Duration::from_millis(150));
+                    Ok(())
+                })
+                .unwrap();
+            })
+        };
+
+        let a = spawn('c');
+        let b = spawn('o');
+        a.join().unwrap();
+        b.join().unwrap();
+
+        let loaded = load_config_file(&path).unwrap();
+        assert!(
+            (loaded.defaults.min_confidence - 0.5).abs() < f32::EPSILON,
+            "the min_confidence edit was lost to an interleaved save: {}",
+            loaded.defaults.min_confidence
+        );
+        assert!(
+            (loaded.defaults.overlap - 1.5).abs() < f32::EPSILON,
+            "the overlap edit was lost to an interleaved save: {}",
+            loaded.defaults.overlap
+        );
     }
 }

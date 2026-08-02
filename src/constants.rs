@@ -150,6 +150,36 @@ pub const DEFAULT_TOP_K: usize = 5;
 /// Lock file extension.
 pub const LOCK_FILE_EXTENSION: &str = ".birda.lock";
 
+/// Tuning for the exclusive lock that serialises config read-modify-write.
+///
+/// The lock closes #313: #307 made each config write atomic, but two concurrent
+/// writers still both load the old file and the later save discards the earlier
+/// edit. This lock spans the whole load-mutate-save so a pair of writes is
+/// serialised, not just each write made whole.
+pub mod config_lock {
+    use std::time::Duration;
+
+    /// Suffix appended to the config file name to form its sibling lock file,
+    /// e.g. `config.toml` -> `config.toml.birda.lock`.
+    ///
+    /// Shares `FileLock`'s `.birda.lock` spelling so the sibling file is clearly
+    /// a birda artefact, which the "delete the lock file" recovery advice relies
+    /// on. The two locks never collide: they live in different directories and
+    /// use separate registries.
+    pub const LOCK_SUFFIX: &str = ".birda.lock";
+
+    /// How long to keep retrying a contended lock before giving up.
+    ///
+    /// A config read-modify-write is sub-second, so this easily outlasts
+    /// legitimate contention (a concurrent `models install` only holds the lock
+    /// for the write, not its download) while still bounding the wait behind a
+    /// wedged peer.
+    pub const ACQUIRE_TIMEOUT: Duration = Duration::from_secs(5);
+
+    /// Delay between acquisition attempts.
+    pub const RETRY_INTERVAL: Duration = Duration::from_millis(50);
+}
+
 /// Output file extensions by format.
 pub mod output_extensions {
     /// CSV output extension.

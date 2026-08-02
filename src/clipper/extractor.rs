@@ -82,8 +82,9 @@ impl ClipExtractor {
     /// # Errors
     ///
     /// Returns [`Error::InvalidTimeRange`] if `group`'s bounds are not finite
-    /// or do not increase, and an error if the audio file cannot be read or
-    /// decoded.
+    /// or do not increase, [`Error::EmptyExtraction`] if the range is valid but
+    /// decodes to no frames (it lies beyond the end of the file, or rounds to no
+    /// samples), and an error if the audio file cannot be read or decoded.
     pub fn extract_clip(
         &self,
         source_path: &Path,
@@ -257,6 +258,21 @@ impl ClipExtractor {
             if current_sample >= end_sample {
                 break;
             }
+        }
+
+        // A range that passed validation can still decode nothing: it lies past
+        // the end of the file, or is short enough to round to no samples. Left
+        // unchecked, that reaches the writer as a structurally valid 0-frame WAV
+        // reported as an extracted clip, byte-indistinguishable from a clip
+        // truncated by a crash mid-write. Reject it at the one chokepoint both
+        // extraction routes share, so neither the CSV batch nor the direct route
+        // can publish an empty clip (#319).
+        if samples.is_empty() {
+            return Err(Error::EmptyExtraction {
+                path: source_path.to_path_buf(),
+                start: group.start,
+                end: group.end,
+            });
         }
 
         Ok(ExtractedClip {

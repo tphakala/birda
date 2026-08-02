@@ -253,6 +253,10 @@ birda --output-mode json clip results.csv -c 0.7
 }
 ```
 
+`total_files` counts only the detection files that were processed successfully. When one or more files fail, the payload carries a `failed_files` array, each entry `{ "file": <path>, "error": <message> }`; the field is omitted entirely when every file succeeded, so an all-success payload is unchanged from earlier versions.
+
+In `ndjson` mode `birda clip` also emits a per-file `error` event (severity `warning`) as each failure occurs; in `json` mode the output stays a single document, so the failures are conveyed only through `failed_files`. Its exit status reflects the batch outcome: it exits non-zero only when every detection file failed. A batch where at least one file was processed exits zero even if others failed, so a machine consumer should read `failed_files` to detect partial failures rather than relying on the exit code alone. A direct-extraction range that decodes no audio (past the end of the file, or too short to hold a frame) is an error, not an empty clip.
+
 ## JSON Detection File Format
 
 Use `-f json` to write detection results to JSON files:

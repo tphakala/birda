@@ -565,6 +565,55 @@ pub enum Error {
         value: f32,
     },
 
+    /// A clip extraction produced no audio.
+    ///
+    /// The requested range is finite and correctly ordered, yet decoding it
+    /// yielded zero frames: it lies past the end of the file, or is so short it
+    /// rounds to no samples. Returned instead of writing a structurally valid
+    /// but empty 0-frame WAV and reporting it as an extracted clip, which was
+    /// byte-indistinguishable from a clip truncated by a crash mid-write (#319).
+    // Unit-free `{start}`/`{end}`, as in `InvalidTimeRange`: these bounds are
+    // always finite here (they pass validation before the decode), so no NaN
+    // can render, but the same spelling keeps the two clip-range messages
+    // consistent.
+    #[error(
+        "no audio in range {start}s-{end}s of '{path}' (the range decoded to zero frames; it may lie beyond the end of the file)"
+    )]
+    EmptyExtraction {
+        /// Source audio file.
+        path: std::path::PathBuf,
+        /// Requested start time in seconds.
+        start: f64,
+        /// Requested end time in seconds.
+        end: f64,
+    },
+
+    /// A detection file had detections to extract but produced no clips.
+    ///
+    /// Distinct from a file with no detections above the confidence threshold,
+    /// which is a legitimate empty result: here every candidate detection failed
+    /// to extract or write, so the file is reported as failed rather than as a
+    /// successful run that happened to yield nothing (#319).
+    #[error("no clips extracted from '{path}': all {attempted} detection(s) failed")]
+    ClipFileProducedNothing {
+        /// The detection file.
+        path: std::path::PathBuf,
+        /// Number of candidate detection groups, all of which failed.
+        attempted: usize,
+    },
+
+    /// Every detection file in a clip batch failed to process.
+    ///
+    /// `birda clip` treats a per-file problem as a warning and continues, so a
+    /// batch with at least one success exits zero. When no file produced
+    /// anything, the batch as a whole failed and says so rather than reporting
+    /// success over an empty result (#319).
+    #[error("clip extraction failed: all {total} detection file(s) were rejected")]
+    ClipBatchAllFailed {
+        /// Number of detection files attempted, all of which failed.
+        total: usize,
+    },
+
     /// BSG model configuration error.
     #[error("BSG configuration error: {message}")]
     BsgConfig {

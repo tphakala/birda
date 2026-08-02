@@ -554,3 +554,387 @@ fn test_skipped_row_warnings_are_capped_and_then_summarised() {
     // The cap bounds the diagnostics, never the skipping.
     assert_eq!(walk_wav_files(&output_dir).len(), 1);
 }
+
+/// Write a detection results CSV (header plus `rows`) at `dir/<name>`.
+///
+/// The name follows the `<audio>.BirdNET.results.csv` convention so
+/// `find_source_audio` can locate the sibling WAV.
+fn write_results_csv(dir: &std::path::Path, name: &str, rows: &[&str]) -> PathBuf {
+    let path = dir.join(name);
+    let mut file = std::fs::File::create(&path).unwrap();
+    writeln!(
+        file,
+        "Start (s),End (s),Scientific name,Common name,Confidence"
+    )
+    .unwrap();
+    for row in rows {
+        writeln!(file, "{row}").unwrap();
+    }
+    path
+}
+
+/// Parse every non-empty line of stdout as a JSON value. `birda clip` emits one
+/// envelope per line in structured mode, so a machine consumer reads it as
+/// NDJSON whichever of `json`/`ndjson` was asked for.
+fn json_events(stdout: &[u8]) -> Vec<serde_json::Value> {
+    String::from_utf8_lossy(stdout)
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .map(|line| {
+            serde_json::from_str(line)
+                .unwrap_or_else(|e| panic!("stdout line was not JSON: {line:?}: {e}"))
+        })
+        .collect()
+}
+
+/// A direct-extraction range past the end of the file decodes no audio. It used
+/// to be written out as a valid 0-frame WAV and reported as an extracted clip,
+/// byte-indistinguishable from a crash-truncated one; it must now fail and write
+/// nothing (#319).
+#[test]
+fn test_clip_direct_rejects_a_range_that_decodes_nothing() {
+    let temp_dir = TempDir::new().unwrap();
+    let wav_path = temp_dir.path().join("tone.wav");
+    create_test_wav(&wav_path, 5, 48000);
+    let output_dir = temp_dir.path().join("clips");
+
+    let output = run_direct_clip(
+        &wav_path,
+        &output_dir,
+        &[
+            "--start", "100", "--end", "105", "--pre", "0", "--post", "0",
+        ],
+    );
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        !output.status.success(),
+        "a range that decodes nothing must fail: {stderr}"
+    );
+    assert!(!stderr.contains("panicked"), "{stderr}");
+    assert!(
+        stderr.contains("no audio"),
+        "the failure should name the empty range: {stderr}"
+    );
+    assert!(
+        walk_wav_files(&output_dir).is_empty(),
+        "a range that decodes nothing must not leave a 0-frame WAV"
+    );
+}
+
+/// A CSV batch in which every file is rejected must exit non-zero. The
+/// documented `birda clip detections/*.csv && publish` workflow depends on it:
+/// before #319 a fully rejected batch exited 0 and the publish ran anyway.
+#[test]
+fn test_clip_csv_all_files_rejected_exits_nonzero() {
+    let temp_dir = TempDir::new().unwrap();
+    // A non-numeric start makes the row unparseable, so the whole file is
+    // rejected; contrast a non-finite row, which is skipped and the file kept.
+    let csv = write_results_csv(
+        temp_dir.path(),
+        "rec.wav.BirdNET.results.csv",
+        &["abc,3.0,Parus major,Great Tit,0.85"],
+    );
+    let output_dir = temp_dir.path().join("clips");
+
+    let output = birda_cmd()
+        .args([
+            "clip",
+            csv.to_str().unwrap(),
+            "--output",
+            output_dir.to_str().unwrap(),
+            "--pre",
+            "0",
+            "--post",
+            "0",
+        ])
+        .output()
+        .expect("failed to execute birda clip");
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        !output.status.success(),
+        "a fully rejected batch must fail: {stderr}"
+    );
+    assert!(!stderr.contains("panicked"), "{stderr}");
+    assert!(
+        stderr.contains("clip extraction failed"),
+        "the batch failure should be named, not surfaced as a generic error: {stderr}"
+    );
+    assert!(
+        walk_wav_files(&output_dir).is_empty(),
+        "a fully rejected batch must not write clips"
+    );
+}
+
+/// One file failing while another succeeds is a partial failure and stays exit
+/// 0: the surviving file's clips are real output. Only a total failure is
+/// non-zero (#319).
+#[test]
+fn test_clip_csv_partial_failure_still_exits_zero() {
+    let temp_dir = TempDir::new().unwrap();
+    let wav_path = temp_dir.path().join("good.wav");
+    create_test_wav(&wav_path, 5, 48000);
+    let good = write_results_csv(
+        temp_dir.path(),
+        "good.wav.BirdNET.results.csv",
+        &["0.0,3.0,Parus major,Great Tit,0.85"],
+    );
+    let bad = write_results_csv(
+        temp_dir.path(),
+        "bad.wav.BirdNET.results.csv",
+        &["abc,3.0,Parus major,Great Tit,0.85"],
+    );
+    let output_dir = temp_dir.path().join("clips");
+
+    let output = birda_cmd()
+        .args([
+            "clip",
+            good.to_str().unwrap(),
+            bad.to_str().unwrap(),
+            "--output",
+            output_dir.to_str().unwrap(),
+            "--pre",
+            "0",
+            "--post",
+            "0",
+        ])
+        .output()
+        .expect("failed to execute birda clip");
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        output.status.success(),
+        "a partial failure must not fail the whole run: {stderr}"
+    );
+    assert!(
+        stderr.contains("detection file(s) failed to process"),
+        "the partial failure should be summarised on stderr: {stderr}"
+    );
+    assert_eq!(
+        walk_wav_files(&output_dir).len(),
+        1,
+        "the surviving file's clip should still be written"
+    );
+}
+
+/// A detection file whose every detection lies past the end of the file has
+/// work to do and produces nothing. That is distinct from a file with no
+/// detections above the threshold (a legitimate empty result), and must be
+/// reported as a failure rather than a successful run that yielded nothing
+/// (#319).
+#[test]
+fn test_clip_csv_file_that_extracts_nothing_fails() {
+    let temp_dir = TempDir::new().unwrap();
+    let wav_path = temp_dir.path().join("rec.wav");
+    create_test_wav(&wav_path, 5, 48000);
+    // A finite, well-ordered range that simply lies beyond the 5s file.
+    let csv = write_results_csv(
+        temp_dir.path(),
+        "rec.wav.BirdNET.results.csv",
+        &["100.0,105.0,Parus major,Great Tit,0.85"],
+    );
+    let output_dir = temp_dir.path().join("clips");
+
+    let output = birda_cmd()
+        .args([
+            "clip",
+            csv.to_str().unwrap(),
+            "--output",
+            output_dir.to_str().unwrap(),
+            "--pre",
+            "0",
+            "--post",
+            "0",
+        ])
+        .output()
+        .expect("failed to execute birda clip");
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        !output.status.success(),
+        "a file that extracts nothing must fail: {stderr}"
+    );
+    assert!(
+        stderr.contains("no clips extracted"),
+        "the failure should name the empty file, not a source-resolution error: {stderr}"
+    );
+    assert!(
+        walk_wav_files(&output_dir).is_empty(),
+        "no clip should be written for an all-out-of-range file"
+    );
+}
+
+/// `--output-mode json` must stay a SINGLE JSON document even on the failure
+/// path. #319 added per-file `error` events; emitting them in plain `json` mode
+/// (rather than `ndjson`) would put N `error` objects ahead of the `result`,
+/// making stdout N+1 top-level objects that `json.loads` cannot parse. So json
+/// mode carries the failures only in the result's `failed_files`. A single
+/// object also proves the result reaches stdout despite the non-zero exit.
+#[test]
+fn test_clip_json_failure_is_a_single_document() {
+    let temp_dir = TempDir::new().unwrap();
+    let csv = write_results_csv(
+        temp_dir.path(),
+        "rec.wav.BirdNET.results.csv",
+        &["abc,3.0,Parus major,Great Tit,0.85"],
+    );
+    let output_dir = temp_dir.path().join("clips");
+
+    let output = birda_cmd()
+        .args([
+            "--output-mode",
+            "json",
+            "clip",
+            csv.to_str().unwrap(),
+            "--output",
+            output_dir.to_str().unwrap(),
+            "--pre",
+            "0",
+            "--post",
+            "0",
+        ])
+        .output()
+        .expect("failed to execute birda clip");
+
+    assert!(
+        !output.status.success(),
+        "a fully rejected batch must exit non-zero even in JSON mode"
+    );
+
+    let events = json_events(&output.stdout);
+    assert_eq!(
+        events.len(),
+        1,
+        "json mode must emit exactly one top-level object (the result), not a \
+         stream of error objects ahead of it: {events:?}"
+    );
+    let result = &events[0];
+    assert_eq!(result["event"], "result");
+    assert_eq!(result["payload"]["result_type"], "clip_extraction");
+    let failed = result["payload"]["failed_files"]
+        .as_array()
+        .unwrap_or_else(|| panic!("failed_files should be an array: {result}"));
+    assert_eq!(
+        failed.len(),
+        1,
+        "the rejected file should be listed in failed_files: {result}"
+    );
+}
+
+/// `--output-mode ndjson` is the streaming contract, so there a rejected batch
+/// is visible on both channels: a per-file `error` event as it happens, and
+/// `failed_files` in the final `result`. Before #319 the payload had no failure
+/// channel and nothing emitted the documented `error` event.
+#[test]
+fn test_clip_ndjson_streams_error_events() {
+    let temp_dir = TempDir::new().unwrap();
+    let csv = write_results_csv(
+        temp_dir.path(),
+        "rec.wav.BirdNET.results.csv",
+        &["abc,3.0,Parus major,Great Tit,0.85"],
+    );
+    let output_dir = temp_dir.path().join("clips");
+
+    let output = birda_cmd()
+        .args([
+            "--output-mode",
+            "ndjson",
+            "clip",
+            csv.to_str().unwrap(),
+            "--output",
+            output_dir.to_str().unwrap(),
+            "--pre",
+            "0",
+            "--post",
+            "0",
+        ])
+        .output()
+        .expect("failed to execute birda clip");
+
+    assert!(
+        !output.status.success(),
+        "a fully rejected batch must exit non-zero in ndjson mode"
+    );
+
+    let events = json_events(&output.stdout);
+    assert!(
+        events.iter().any(|e| e["event"] == "error"),
+        "ndjson mode should stream a per-file error event: {events:?}"
+    );
+    let result = events
+        .iter()
+        .find(|e| e["event"] == "result")
+        .unwrap_or_else(|| panic!("expected a result event, got: {events:?}"));
+    let failed = result["payload"]["failed_files"]
+        .as_array()
+        .unwrap_or_else(|| panic!("failed_files should be an array: {result}"));
+    assert_eq!(
+        failed.len(),
+        1,
+        "the rejected file should be listed: {result}"
+    );
+}
+
+/// A partial failure in json mode: one file succeeds, one is rejected. The run
+/// exits 0, stays a single document, and the result carries BOTH the extracted
+/// clip and the failure, which is the contract that lets a machine consumer
+/// tell "some recordings had no detections" from "some files failed".
+#[test]
+fn test_clip_json_partial_failure_lists_failed_files() {
+    let temp_dir = TempDir::new().unwrap();
+    let wav_path = temp_dir.path().join("good.wav");
+    create_test_wav(&wav_path, 5, 48000);
+    let good = write_results_csv(
+        temp_dir.path(),
+        "good.wav.BirdNET.results.csv",
+        &["0.0,3.0,Parus major,Great Tit,0.85"],
+    );
+    let bad = write_results_csv(
+        temp_dir.path(),
+        "bad.wav.BirdNET.results.csv",
+        &["abc,3.0,Parus major,Great Tit,0.85"],
+    );
+    let output_dir = temp_dir.path().join("clips");
+
+    let output = birda_cmd()
+        .args([
+            "--output-mode",
+            "json",
+            "clip",
+            good.to_str().unwrap(),
+            bad.to_str().unwrap(),
+            "--output",
+            output_dir.to_str().unwrap(),
+            "--pre",
+            "0",
+            "--post",
+            "0",
+        ])
+        .output()
+        .expect("failed to execute birda clip");
+
+    assert!(
+        output.status.success(),
+        "a partial failure must exit zero: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let events = json_events(&output.stdout);
+    assert_eq!(
+        events.len(),
+        1,
+        "json mode must stay a single document on a partial failure: {events:?}"
+    );
+    let payload = &events[0]["payload"];
+    assert_eq!(
+        payload["total_clips"].as_u64().unwrap(),
+        1,
+        "the good file's clip should be counted: {payload}"
+    );
+    assert_eq!(
+        payload["failed_files"].as_array().unwrap().len(),
+        1,
+        "the bad file should be listed even though a clip was produced: {payload}"
+    );
+}

@@ -709,6 +709,15 @@ pub struct ClipExtractionPayload {
     pub total_files: usize,
     /// List of extracted clips.
     pub clips: Vec<ClipExtractionEntry>,
+    /// Detection files that failed to process.
+    ///
+    /// Empty and omitted from the JSON when every file succeeded, so a consumer
+    /// that never sees a failure reads the same payload as before #319. A
+    /// non-empty list means the run had per-file failures even when `total_clips`
+    /// is non-zero; a total failure (no file produced anything) additionally
+    /// exits the process non-zero.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub failed_files: Vec<ClipExtractionFailure>,
 }
 
 /// A single extracted clip entry.
@@ -726,6 +735,15 @@ pub struct ClipExtractionEntry {
     pub end_time: f64,
     /// Output clip file path.
     pub output_file: PathBuf,
+}
+
+/// A detection file that failed during clip extraction.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ClipExtractionFailure {
+    /// The detection file that failed.
+    pub file: PathBuf,
+    /// Human-readable reason it failed.
+    pub error: String,
 }
 
 #[cfg(test)]

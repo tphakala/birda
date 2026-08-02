@@ -113,10 +113,11 @@ fn generate_filename(species: &str, confidence: f32, start_time: f64, end_time: 
 /// from a legitimately empty clip. Writing to a temporary and renaming means the
 /// clip appears at its path complete or not at all.
 ///
-/// Only half of that ambiguity closes here. Nothing checks the decoded result
-/// before writing it, so a range that decodes no audio still produces a valid
-/// 0-frame WAV and is still reported as an extracted clip; that is #319. Until
-/// both land, an empty clip and a crash-truncated one remain byte-identical.
+/// The other half of that ambiguity is closed upstream: `extract_clip` now
+/// rejects a range that decodes no audio with [`Error::EmptyExtraction`] (#319),
+/// so this helper is no longer reached with an empty clip through either
+/// extraction route, and a 0-frame WAV at a serving path can only mean a
+/// crash-truncated write.
 ///
 /// The cost, stated because it is paid per clip rather than once: this adds an
 /// fsync of the clip and an fsync of the species directory to every extraction,

@@ -41,8 +41,12 @@ jobs:
       # lib and the binary, and the test code drifts unchecked: this flag was
       # added against a backlog of 221 warnings that had accumulated entirely
       # in test code, none of which any CI run had ever reported.
+      #
+      # --features gen-registry so the feature-gated generator (src/gen_registry.rs,
+      # the gen-registry bin, and tests/registry_generation.rs) is linted too;
+      # without it that code carries production logic no CI clippy run ever sees.
       - name: Run clippy
-        run: cargo clippy --no-default-features --all-targets -- -D warnings
+        run: cargo clippy --no-default-features --features gen-registry --all-targets -- -D warnings
 
   test:
     name: Test
@@ -67,6 +71,19 @@ jobs:
 
       - name: Run tests
         run: cargo test --no-default-features --no-fail-fast
+
+      # The generator, its auto-bump unit tests, and the drift test all live
+      # behind the gen-registry feature, so the default test run above never
+      # touches them. This step covers both: the --lib run exercises the
+      # version auto-bump (the drift test only regenerates unchanged inputs, so
+      # it hits the no-op path and cannot catch a broken bump), and the
+      # --test run verifies registry.json matches what the generator produces
+      # (a manifest change committed without regenerating, or a hand-edit, would
+      # ship a stale registry). A bare --test would skip the lib unit tests.
+      - name: Check the generated registry and its version auto-bump
+        run: |
+          cargo test --no-default-features --features gen-registry --no-fail-fast --lib gen_registry
+          cargo test --no-default-features --features gen-registry --no-fail-fast --test registry_generation
 
   # Every other job installs @stable, which floats to whatever Rust shipped most
   # recently (1.97.1 at the time of writing). That left the `rust-version` floor

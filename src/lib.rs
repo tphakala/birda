@@ -759,10 +759,9 @@ fn process_all_files(
                 stats.total_audio_duration += result.audio_duration_secs;
             }
             Err(e) => {
-                error!("Failed to process {}: {}", file.display(), e);
-                reporter.file_completed_failure(file, "processing_error", &e.to_string());
-                stats.errors += 1;
-                if params.fail_fast {
+                if let Err(e) =
+                    record_file_failure(file, e, stats, reporter.as_ref(), params.fail_fast)
+                {
                     progress::finish_progress(file_progress, "Failed");
                     return Err(e);
                 }
@@ -772,6 +771,48 @@ fn process_all_files(
     }
 
     progress::finish_progress(file_progress, "Complete");
+    Ok(())
+}
+
+/// Reporter error code for a file that failed during processing; goes into the
+/// JSON envelope's `error.code` field.
+const PROCESSING_ERROR_CODE: &str = "processing_error";
+
+/// Fold a per-file processing failure into the run stats, distinguishing the
+/// check-to-use lock race (#344) from a genuine error.
+///
+/// `should_process` advisory-checks the per-input lock with `is_locked`, but the
+/// lock is only actually taken much later, in `process_file`. Two runs started
+/// on the same file can both pass the advisory check, and the loser then fails
+/// `FileLock::acquire` with `Error::FileLocked`. That is the graceful "skip
+/// locked" the pre-check exists to produce, not a processing failure: the
+/// check-to-use window is wide (collection to when the file is reached, minutes
+/// apart for a large batch), so counting it as an error, or aborting the whole
+/// batch under `--fail-fast`, is the wrong outcome. Count it as a skip, exactly
+/// as the pre-check does.
+///
+/// Returns `Err(e)` only when the run must abort: a genuine error under
+/// `fail_fast`. A lost-lock skip and every non-fatal error return `Ok(())`.
+fn record_file_failure(
+    file: &Path,
+    e: Error,
+    stats: &mut ProcessingStats,
+    reporter: &dyn ProgressReporter,
+    fail_fast: bool,
+) -> Result<()> {
+    if matches!(e, Error::FileLocked { .. }) {
+        info!("Skipping (locked): {}", file.display());
+        reporter.file_skipped(file, FileStatus::Locked);
+        stats.skipped += 1;
+        return Ok(());
+    }
+
+    error!("Failed to process {}: {}", file.display(), e);
+    reporter.file_completed_failure(file, PROCESSING_ERROR_CODE, &e.to_string());
+    stats.errors += 1;
+    if fail_fast {
+        return Err(e);
+    }
     Ok(())
 }
 
@@ -2342,6 +2383,179 @@ fn handle_geomodel_install(
 mod tests {
     use super::*;
     use std::collections::HashMap;
+
+    /// A stand-in audio path for the `record_file_failure` tests; only ever
+    /// displayed, never touched on disk.
+    const TEST_AUDIO_PATH: &str = "/x/rec.wav";
+    /// The lock path paired with [`TEST_AUDIO_PATH`].
+    const TEST_LOCK_PATH: &str = "/x/rec.wav.lock";
+    /// A stand-in message for a genuine (non-lock) processing error.
+    const TEST_DECODE_ERROR: &str = "decode blew up";
+
+    #[test]
+    fn test_record_file_failure_counts_a_lost_lock_as_a_skip() {
+        // #344: a file locked between should_process's advisory is_locked check
+        // and FileLock::acquire must be the graceful "skip locked", not an
+        // error, even under --fail-fast. Reverting the FileLocked special-case
+        // makes this errors=1 and returns Err, turning both assertions red.
+        let mut stats = ProcessingStats::default();
+        let reporter = crate::output::NullReporter;
+        let err = Error::FileLocked {
+            path: PathBuf::from(TEST_LOCK_PATH),
+        };
+
+        let outcome = record_file_failure(
+            Path::new(TEST_AUDIO_PATH),
+            err,
+            &mut stats,
+            &reporter,
+            true, // even under --fail-fast, a lost lock is not fatal
+        );
+
+        assert!(outcome.is_ok(), "a lost lock must not abort the run");
+        assert_eq!(stats.skipped, 1);
+        assert_eq!(stats.errors, 0);
+    }
+
+    #[test]
+    fn test_record_file_failure_counts_a_real_error_and_continues_without_fail_fast() {
+        let mut stats = ProcessingStats::default();
+        let reporter = crate::output::NullReporter;
+        let err = Error::Internal {
+            message: TEST_DECODE_ERROR.to_string(),
+        };
+
+        let outcome = record_file_failure(
+            Path::new(TEST_AUDIO_PATH),
+            err,
+            &mut stats,
+            &reporter,
+            false,
+        );
+
+        assert!(outcome.is_ok(), "without --fail-fast the run continues");
+        assert_eq!(stats.errors, 1);
+        assert_eq!(stats.skipped, 0);
+    }
+
+    #[test]
+    fn test_record_file_failure_aborts_a_real_error_under_fail_fast() {
+        let mut stats = ProcessingStats::default();
+        let reporter = crate::output::NullReporter;
+        let err = Error::Internal {
+            message: TEST_DECODE_ERROR.to_string(),
+        };
+
+        let outcome =
+            record_file_failure(Path::new(TEST_AUDIO_PATH), err, &mut stats, &reporter, true);
+
+        assert!(
+            outcome.is_err(),
+            "a real error under --fail-fast must abort"
+        );
+        assert_eq!(stats.errors, 1);
+    }
+
+    /// Records which terminal reporter callbacks fire, so a test can pin the
+    /// #344 fix to emitting a `locked` skip rather than a `failed` completion
+    /// (the machine-readable event birda-gui consumes). Every other callback is
+    /// a no-op, like `NullReporter`. Counters are atomic because the trait is
+    /// `Send + Sync`.
+    #[derive(Default)]
+    struct RecordingReporter {
+        skipped_locked: std::sync::atomic::AtomicUsize,
+        completed_failure: std::sync::atomic::AtomicUsize,
+    }
+
+    impl crate::output::ProgressReporter for RecordingReporter {
+        fn pipeline_started(
+            &self,
+            _total_files: usize,
+            _model: &str,
+            _min_confidence: f32,
+            _execution_provider: &crate::output::ExecutionProviderInfo,
+            _range_filter: Option<&crate::output::RangeFilterInfo>,
+        ) {
+        }
+        fn file_started(
+            &self,
+            _file: &Path,
+            _index: usize,
+            _estimated_segments: usize,
+            _duration_seconds: Option<f64>,
+        ) {
+        }
+        fn progress(
+            &self,
+            _batch: Option<&crate::output::BatchProgress>,
+            _file: Option<&crate::output::FileProgress>,
+        ) {
+        }
+        fn file_completed_success(&self, _file: &Path, _detections: usize, _duration_ms: u64) {}
+        fn file_completed_failure(&self, _file: &Path, _error_code: &str, _error_message: &str) {
+            self.completed_failure
+                .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        }
+        fn file_skipped(&self, _file: &Path, reason: crate::output::FileStatus) {
+            if matches!(reason, crate::output::FileStatus::Locked) {
+                self.skipped_locked
+                    .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            }
+        }
+        fn pipeline_completed(&self, _summary: &crate::output::PipelineSummary) {}
+        fn error(
+            &self,
+            _code: &str,
+            _severity: crate::output::ErrorSeverity,
+            _message: &str,
+            _suggestion: Option<&str>,
+        ) {
+        }
+        fn cancelled(
+            &self,
+            _reason: crate::output::CancelReason,
+            _files_completed: usize,
+            _files_total: usize,
+        ) {
+        }
+        fn detections(
+            &self,
+            _file: &Path,
+            _detections: &[crate::output::Detection],
+            _bsg_metadata: Option<&crate::output::BsgMetadata>,
+        ) {
+        }
+    }
+
+    #[test]
+    fn test_record_file_failure_emits_a_locked_skip_not_a_failure_event() {
+        // #344 on the machine-readable surface: a lost lock must reach the
+        // reporter as file_skipped(Locked) (the JSON "locked" event birda-gui
+        // consumes), never file_completed_failure ("failed"). The counter tests
+        // above use NullReporter and cannot see this: swapping the two reporter
+        // calls would keep them green while corrupting the event contract.
+        use std::sync::atomic::Ordering;
+        let mut stats = ProcessingStats::default();
+        let reporter = RecordingReporter::default();
+        let err = Error::FileLocked {
+            path: PathBuf::from(TEST_LOCK_PATH),
+        };
+
+        let outcome =
+            record_file_failure(Path::new(TEST_AUDIO_PATH), err, &mut stats, &reporter, true);
+
+        assert!(outcome.is_ok());
+        assert_eq!(
+            reporter.skipped_locked.load(Ordering::Relaxed),
+            1,
+            "a lost lock must emit a locked skip event"
+        );
+        assert_eq!(
+            reporter.completed_failure.load(Ordering::Relaxed),
+            0,
+            "a lost lock must not emit a failure event"
+        );
+    }
 
     /// Create a minimal Config with a named model.
     fn config_with_model(name: &str) -> Config {

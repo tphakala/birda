@@ -236,6 +236,10 @@ fn part_path(dest: &Path) -> Result<PathBuf> {
 
 /// Move a completed download onto its destination, consuming the part file.
 ///
+/// The part file is consumed whether or not the rename succeeds. It carries no
+/// value on its own, and `part_path` names it after this process, so a part file
+/// left behind by a failed publish is never reclaimed by anything.
+///
 /// What the directory fsync buys here, stated precisely because it is easy to
 /// overclaim: it stops a crash costing the user the download again. `stream_to_file`
 /// has already `sync_all`ed the part file, so the data behind the new name is
@@ -253,10 +257,20 @@ fn finalize_download(part: &Path, dest: &Path) -> Result<()> {
     // resource busy (os error 16)" with neither path in it. That EBUSY is a real
     // case: a destination bind-mounted as a file cannot be renamed over, and it is
     // the same failure this change documents for the registry one directory away.
-    std::fs::rename(part, dest).map_err(|source| Error::DownloadInstallFailed {
-        dest: dest.to_path_buf(),
-        source,
-    })?;
+    if let Err(source) = std::fs::rename(part, dest) {
+        // The part file is useless without the rename and nothing else will ever
+        // remove it: `part_path` qualifies the name with this process's id, so a
+        // retry picks a different one, and `find_obsolete_files` matches a fixed
+        // list of names that does not include it. Best effort, like the two
+        // cleanups on the earlier failure paths in `download_verified`: if the
+        // unlink also fails there is nothing useful left to say, and the rename
+        // error is the one the caller needs.
+        drop(std::fs::remove_file(part));
+        return Err(Error::DownloadInstallFailed {
+            dest: dest.to_path_buf(),
+            source,
+        });
+    }
     crate::utils::fs::sync_parent_directory(dest);
     Ok(())
 }
@@ -607,6 +621,41 @@ mod tests {
 
         assert_eq!(std::fs::read(&dest).unwrap(), b"right");
         assert!(!part.exists(), "the part file must be consumed");
+    }
+
+    #[test]
+    fn test_a_failed_publish_does_not_orphan_its_part_file() {
+        // download_verified cleans up on its stream-failed and checksum-failed
+        // paths and did not on this one, so a rename that failed left the part
+        // file behind forever: part_path qualifies the name with this process's
+        // id, so the next attempt picks a different name, and find_obsolete_files
+        // matches a fixed list that does not include it. Model files are tens to
+        // hundreds of MB, so the user silently loses that much disk per failed
+        // attempt with no way to find it short of `find`.
+        let dir = tempfile::tempdir().unwrap();
+
+        // A directory cannot be renamed over by a file: rename(2) gives EISDIR,
+        // and MoveFileEx fails the same way on Windows. It stands in for the real
+        // cases, which are awkward to provoke here but take this exact path: EXDEV
+        // when $TMPDIR is a different filesystem, and the documented EBUSY on a
+        // destination bind-mounted as a file.
+        let dest = dir.path().join("m.onnx");
+        std::fs::create_dir(&dest).unwrap();
+
+        let part = part_path(&dest).unwrap();
+        std::fs::write(&part, b"a hundred megabytes, pretend").unwrap();
+
+        let err = finalize_download(&part, &dest).unwrap_err();
+
+        assert!(
+            matches!(err, Error::DownloadInstallFailed { .. }),
+            "the caller must still be told the publish failed, got: {err}"
+        );
+        assert!(
+            !part.exists(),
+            "a failed publish must consume its part file; nothing else ever \
+             reclaims it"
+        );
     }
 
     #[test]

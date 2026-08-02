@@ -10,27 +10,58 @@ use std::path::PathBuf;
 /// the user registry is replaced with the bundled version.
 pub fn load_registry() -> Result<Registry> {
     let registry_path = registry_file_path()?;
-
-    // Load bundled registry
     let bundled_registry = load_bundled_registry()?;
 
-    // If user registry doesn't exist, bootstrap and return
+    Ok(load_registry_from(&registry_path, bundled_registry))
+}
+
+/// Resolve the registry to use, given where the user's copy lives.
+///
+/// Split out from [`load_registry`] so it can be tested against a temporary
+/// directory. [`load_registry`] resolves its path through
+/// `crate::config::config_dir()`, so driving it directly in a test reads and
+/// writes the developer's real config directory.
+///
+/// Infallible on purpose: every failure below is already a degradation to the
+/// bundled registry, which is in hand before this is called, so there is nothing
+/// left that could justify aborting the command that asked for it.
+fn load_registry_from(registry_path: &std::path::Path, bundled_registry: Registry) -> Registry {
     if !registry_path.exists() {
-        return Ok(bootstrap_registry(&registry_path, &bundled_registry));
+        return bootstrap_registry(registry_path, &bundled_registry);
     }
 
-    // Load user registry, falling back to bundled on error
-    let user_registry = match load_from_file(&registry_path) {
+    let user_registry = match load_from_file(registry_path) {
         Ok(registry) => registry,
-        Err(e) => {
+        // Definitively corrupt: nothing can be recovered from the bytes on disk,
+        // so replacing them with the bundled copy is the repair rather than a
+        // loss. This is the behaviour that has always been here.
+        Err(e @ Error::RegistryParse { .. }) => {
             tracing::warn!(
-                "Failed to load user registry at {}: {}. Using bundled registry.",
+                "The model registry at {} could not be parsed: {}. Replacing it \
+                 with the bundled registry.",
                 registry_path.display(),
                 e
             );
-            // Overwrite corrupted file with bundled registry
-            persist_registry(&registry_path, &bundled_registry);
-            return Ok(bundled_registry);
+            persist_registry(registry_path, &bundled_registry);
+            return bundled_registry;
+        }
+        // Could not be READ, which says nothing about the contents: EACCES, EIO,
+        // EMFILE, a flaky network mount, fd exhaustion during a parallel batch.
+        // The file is very possibly intact, so it is used from the bundled copy
+        // in memory and left untouched on disk. Overwriting here was "could not
+        // determine, so assume the destructive answer", and it silently discarded
+        // hand-maintained registries that birda-gui also reads.
+        //
+        // The destructive branch is the one that has to name its variant, so an
+        // error variant added to `load_from_file` later defaults to this arm.
+        Err(e) => {
+            tracing::warn!(
+                "The model registry at {} could not be read: {}. Continuing with \
+                 the bundled registry; the file on disk is unchanged.",
+                registry_path.display(),
+                e
+            );
+            return bundled_registry;
         }
     };
 
@@ -41,10 +72,10 @@ pub fn load_registry() -> Result<Registry> {
             user_registry.registry_version,
             bundled_registry.registry_version
         );
-        persist_registry(&registry_path, &bundled_registry);
-        Ok(bundled_registry)
+        persist_registry(registry_path, &bundled_registry);
+        bundled_registry
     } else {
-        Ok(user_registry)
+        user_registry
     }
 }
 
@@ -298,6 +329,103 @@ mod tests {
             strays.is_empty(),
             "a successful write must not litter the config directory, found: {strays:?}"
         );
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn test_a_registry_that_could_not_be_read_is_left_alone() {
+        // #323. Every failure to LOAD used to be treated as grounds to overwrite
+        // the file with the bundled copy, and `load_from_file` returns two
+        // semantically different errors. An unreadable file (EACCES, EIO, a flaky
+        // network mount, fd exhaustion during a parallel batch) may be perfectly
+        // intact, and replacing it destroys any user-local edits with no message.
+        // birda-gui reads this file straight off disk, so a hand-maintained
+        // registry disappearing is a user-visible outcome, not a cache miss.
+        //
+        // Mode 0000 blocks the read but not the rename: rename needs write and
+        // execute on the DIRECTORY, not on the file. So the buggy version really
+        // does replace this file, and this assertion really does distinguish them.
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("registry.json");
+        let sentinel = serde_json::to_string_pretty(&versioned_registry(1)).unwrap();
+        std::fs::write(&path, &sentinel).unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o000)).unwrap();
+
+        if std::fs::read_to_string(&path).is_ok() {
+            eprintln!(
+                "skipped: this process can read a mode-0000 file (running as root, \
+                 or a filesystem that ignores modes), so the read-failure arm \
+                 cannot be reached here"
+            );
+            return;
+        }
+
+        let loaded = load_registry_from(&path, versioned_registry(99));
+
+        assert_eq!(
+            loaded.registry_version, 99,
+            "the caller must still get a usable registry, from the bundled copy"
+        );
+
+        // Widen it again so the assertion below can read it back.
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
+        assert_eq!(
+            std::fs::read_to_string(&path).unwrap(),
+            sentinel,
+            "an intact but unreadable registry must survive byte for byte; \
+             rewriting it destroys user-local edits for an error that says \
+             nothing about the file's contents"
+        );
+    }
+
+    #[test]
+    fn test_a_corrupt_registry_is_still_replaced() {
+        // The other half of #323, pinned so the fix cannot overshoot. A file that
+        // does not parse holds nothing worth keeping, and leaving it would wedge
+        // every run behind a permanent fallback that never repairs itself.
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("registry.json");
+        std::fs::write(&path, b"{ this is not json").unwrap();
+
+        let loaded = load_registry_from(&path, versioned_registry(42));
+
+        assert_eq!(loaded.registry_version, 42);
+        assert_eq!(
+            version_at(&path),
+            42,
+            "a registry that cannot be parsed must be repaired on disk, not just \
+             in memory"
+        );
+    }
+
+    #[test]
+    fn test_a_newer_bundled_registry_replaces_the_cached_one() {
+        // The first launch after any upgrade that bumps the bundled registry
+        // takes this branch, so it is the most-travelled write path in the file.
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("registry.json");
+        write_registry_file(&path, &versioned_registry(1)).unwrap();
+
+        let loaded = load_registry_from(&path, versioned_registry(2));
+
+        assert_eq!(loaded.registry_version, 2);
+        assert_eq!(version_at(&path), 2, "the cached copy must be updated too");
+    }
+
+    #[test]
+    fn test_a_registry_newer_than_the_bundled_one_is_kept() {
+        // The downgrade guard: a user whose registry.json is ahead of the binary
+        // (a newer birda ran, or they edited it) must not have it rolled back.
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("registry.json");
+        write_registry_file(&path, &versioned_registry(9)).unwrap();
+
+        let loaded = load_registry_from(&path, versioned_registry(2));
+
+        assert_eq!(loaded.registry_version, 9);
+        assert_eq!(version_at(&path), 9, "the user's copy must survive");
     }
 
     #[test]

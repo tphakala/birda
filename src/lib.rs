@@ -1627,6 +1627,13 @@ fn handle_models_command(
             default,
         } => handle_models_add(name, path, labels, r#type, default),
         ModelsAction::Check => {
+            // Leftover <name>.<pid>.part files from a download interrupted
+            // before it finished, reported on both output paths so a directory
+            // that looks clean but holds an abandoned download stays visible.
+            let leftover_downloads = registry::models_dir()
+                .and_then(|dir| registry::find_stale_part_files(&dir))
+                .unwrap_or_default();
+
             // JSON/NDJSON output: collect all results then emit
             if output_mode.is_structured() {
                 let models: Vec<ModelCheckEntry> = config
@@ -1645,6 +1652,7 @@ fn handle_models_command(
                     result_type: ResultType::ModelCheck,
                     models,
                     geomodel: check_geomodel()?,
+                    leftover_downloads,
                 };
                 emit_json_result(&payload);
                 return Ok(());
@@ -1657,6 +1665,12 @@ fn handle_models_command(
             }
 
             report_geomodel_status(&check_geomodel()?);
+            for path in &leftover_downloads {
+                println!(
+                    "  {} is a leftover partial download (safe to remove if no download is running)",
+                    path.display()
+                );
+            }
             Ok(())
         }
         ModelsAction::Info { id, languages } => {

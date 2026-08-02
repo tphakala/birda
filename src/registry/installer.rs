@@ -403,6 +403,46 @@ pub fn find_obsolete_files(dir: &Path) -> Result<Vec<PathBuf>> {
     Ok(found)
 }
 
+/// Report leftover partial-download files in the models directory.
+///
+/// A download in progress is written to `<name>.<pid>.part` (see `part_path`)
+/// and renamed onto its destination only on success. A process killed
+/// mid-download leaves that part file behind: the Ctrl+C handler calls
+/// `std::process::exit`, which runs no cleanup, and because the name is
+/// pid-qualified nothing ever reuses or reclaims it. Model files run to hundreds
+/// of MB, so `models check` reporting the directory "clean" while it holds an
+/// abandoned download is a silent waste of disk.
+///
+/// This only reports; it never deletes, since another live birda may own a
+/// different pid's part file mid-transfer. A missing directory yields an empty
+/// list, matching [`find_obsolete_files`].
+pub fn find_stale_part_files(dir: &Path) -> Result<Vec<PathBuf>> {
+    let mut found = Vec::new();
+
+    let entries = match std::fs::read_dir(dir) {
+        Ok(entries) => entries,
+        Err(ref e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(found),
+        Err(e) => return Err(Error::Io(e)),
+    };
+
+    for entry in entries {
+        let path = entry.map_err(Error::Io)?.path();
+        // Compare the extension as an OsStr (handles a non-UTF-8 name) and gate
+        // the stat behind it, so only a `.part` file is ever stat-checked.
+        if path
+            .extension()
+            .is_some_and(|ext| ext.eq_ignore_ascii_case(crate::constants::download::PARTIAL_SUFFIX))
+            && path.is_file()
+        {
+            found.push(path);
+        }
+    }
+
+    // read_dir order is unspecified, so sort for deterministic reporting.
+    found.sort();
+    Ok(found)
+}
+
 /// Build the HTTP client used for every registry download.
 fn http_client() -> Result<Client> {
     Client::builder()
@@ -990,6 +1030,60 @@ mod tests {
 
         assert_eq!(found.len(), 1);
         assert!(found[0].ends_with("birdnet-v24-meta.onnx"));
+    }
+
+    #[test]
+    fn test_find_stale_part_files_detects_a_leftover_download() {
+        let dir = tempfile::tempdir().unwrap();
+        // A completed model and its labels must be ignored.
+        std::fs::write(dir.path().join("birdnet-v30.onnx"), b"x").unwrap();
+        std::fs::write(dir.path().join("birdnet-v30-labels.txt"), b"x").unwrap();
+        // A download interrupted mid-transfer leaves a pid-qualified part file.
+        let leftover = format!(
+            "birdnet-v30.onnx.{}.{}",
+            std::process::id(),
+            crate::constants::download::PARTIAL_SUFFIX
+        );
+        std::fs::write(dir.path().join(&leftover), b"partial").unwrap();
+        // A directory whose name ends in .part must not be reported; only
+        // regular files are leftover downloads.
+        std::fs::create_dir(dir.path().join("stale-cache.part")).unwrap();
+
+        let found = find_stale_part_files(dir.path()).unwrap();
+
+        assert_eq!(found.len(), 1);
+        assert!(found[0].ends_with(&leftover));
+    }
+
+    #[test]
+    fn test_find_stale_part_files_returns_all_leftovers_sorted() {
+        let dir = tempfile::tempdir().unwrap();
+        let suffix = crate::constants::download::PARTIAL_SUFFIX;
+        std::fs::write(dir.path().join(format!("b-model.onnx.10.{suffix}")), b"x").unwrap();
+        std::fs::write(dir.path().join(format!("a-model.onnx.20.{suffix}")), b"x").unwrap();
+
+        let found = find_stale_part_files(dir.path()).unwrap();
+
+        assert_eq!(found.len(), 2);
+        // read_dir order is unspecified; the result is sorted, so "a-" precedes "b-".
+        assert!(found[0].ends_with(format!("a-model.onnx.20.{suffix}")));
+        assert!(found[1].ends_with(format!("b-model.onnx.10.{suffix}")));
+    }
+
+    #[test]
+    fn test_find_stale_part_files_reports_nothing_on_a_clean_directory() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("birdnet-v30.onnx"), b"x").unwrap();
+
+        assert!(find_stale_part_files(dir.path()).unwrap().is_empty());
+    }
+
+    #[test]
+    fn test_find_stale_part_files_is_empty_for_a_missing_directory() {
+        let dir = tempfile::tempdir().unwrap();
+        let missing = dir.path().join("does-not-exist");
+
+        assert!(find_stale_part_files(&missing).unwrap().is_empty());
     }
 
     #[test]

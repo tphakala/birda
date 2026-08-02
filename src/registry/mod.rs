@@ -13,8 +13,8 @@ pub mod types;
 pub use cleanup::{orphaned_files, remove_orphans};
 pub use installer::{
     GEOMODEL_INSTALL_ID, InstallProvenance, InstalledRangeFilter, download_file,
-    find_obsolete_files, geomodel_paths, install_model, install_range_filter, install_variant,
-    models_dir,
+    find_obsolete_files, find_stale_part_files, geomodel_paths, install_model,
+    install_range_filter, install_variant, models_dir,
 };
 pub use license::{LicensedAsset, prompt_license_acceptance};
 pub use loader::{find_model, load_registry};

@@ -572,6 +572,12 @@ pub struct ModelCheckPayload {
     pub models: Vec<ModelCheckEntry>,
     /// Shared range filter status.
     pub geomodel: GeomodelInfo,
+    /// Leftover partial-download files (`<name>.<pid>.part`) in the models
+    /// directory, from a download interrupted before it finished. Reported so a
+    /// directory that looks clean but is holding an abandoned multi-hundred-MB
+    /// download is visible; birda never deletes these automatically.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub leftover_downloads: Vec<PathBuf>,
 }
 
 /// Status of the shared `BirdNET` Geomodel range filter.
@@ -948,6 +954,7 @@ mod tests {
                 labels_path: Some(PathBuf::from("/models/birdnet-geomodel-v3.0.2-labels.txt")),
                 obsolete_files: Vec::new(),
             },
+            leftover_downloads: vec![PathBuf::from("/models/birdnet-v30.onnx.4242.part")],
         };
         let json = serde_json::to_string(&payload).expect("serialize");
         let actual: serde_json::Value = serde_json::from_str(&json).expect("deserialize");
@@ -970,9 +977,31 @@ mod tests {
                     "valid": false,
                     "error": "model file not found"
                 }
-            ]
+            ],
+            "leftover_downloads": ["/models/birdnet-v30.onnx.4242.part"]
         });
         assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn test_model_check_payload_omits_empty_leftover_downloads() {
+        // skip_serializing_if keeps the key out of the JSON when there are no
+        // leftovers, so the common case is byte-identical to before the field.
+        let payload = ModelCheckPayload {
+            result_type: ResultType::ModelCheck,
+            models: Vec::new(),
+            geomodel: GeomodelInfo {
+                version: "3.0.2".to_string(),
+                installed: false,
+                species_count: 0,
+                model_path: None,
+                labels_path: None,
+                obsolete_files: Vec::new(),
+            },
+            leftover_downloads: Vec::new(),
+        };
+        let json = serde_json::to_string(&payload).expect("serialize");
+        assert!(!json.contains("leftover_downloads"));
     }
 
     #[test]

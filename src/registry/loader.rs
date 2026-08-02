@@ -50,10 +50,10 @@ fn load_registry_from(registry_path: &std::path::Path, bundled_registry: Registr
         // this arm is wider than malformed JSON. Nothing here sets
         // `deny_unknown_fields`, so a registry from a NEWER birda that ADDED a
         // field parses fine and is kept; what lands here is one that REMOVED or
-        // renamed a field this binary still requires, on a downgrade. Bytes in a
-        // text encoding other than UTF-8 land here too, since they cannot be a
-        // registry for any consumer. None of those is corruption, and all of them
-        // are replaced.
+        // renamed a field this binary still requires, on a downgrade. That is not
+        // corruption either, and it is replaced all the same. For where bytes in
+        // another text encoding land, and the one case that escapes this arm, see
+        // `load_from_file`.
         Err(e @ Error::RegistryParse { .. }) => {
             tracing::warn!(
                 "{e}{}. Replacing it with the bundled registry.",

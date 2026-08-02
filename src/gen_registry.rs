@@ -383,6 +383,29 @@ mod tests {
     }
 
     #[test]
+    fn test_next_registry_version_bumps_on_a_model_level_change() {
+        // The #329/#332 failure was a model-level change (a corrected class
+        // count), not a schema_version change, so pin that a difference inside
+        // `models` alone, with schema_version held constant, still bumps.
+        let root = env!("CARGO_MANIFEST_DIR");
+        let existing: Registry = serde_json::from_str(
+            &std::fs::read_to_string(Path::new(root).join(REGISTRY_FILE)).unwrap(),
+        )
+        .unwrap();
+        let mut generated = existing.clone();
+        let model = generated
+            .models
+            .first_mut()
+            .expect("the registry has at least one model");
+        model.version = format!("{}-changed", model.version);
+
+        assert_eq!(
+            next_registry_version(&generated, &existing),
+            existing.registry_version.saturating_add(1)
+        );
+    }
+
+    #[test]
     fn test_generate_bumps_the_version_when_the_content_changes() {
         // End-to-end through the real generator: a hermetic copy of its inputs
         // plus a stale on-disk registry proves a content change forces a bump.

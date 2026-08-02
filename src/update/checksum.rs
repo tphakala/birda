@@ -14,7 +14,9 @@ use std::path::Path;
 pub fn verify_sha256(path: &Path, expected_hex: &str) -> Result<()> {
     let actual_hex = hash_file(path)?;
 
-    if actual_hex != expected_hex.to_ascii_lowercase() {
+    // Case-insensitive compare, so an uppercase expected digest still matches
+    // without allocating a lowercased copy of it.
+    if !actual_hex.eq_ignore_ascii_case(expected_hex) {
         return Err(Error::UpdateChecksumMismatch {
             file: path.file_name().map_or_else(
                 || "unknown".to_string(),
@@ -73,12 +75,14 @@ fn hash_file(path: &Path) -> Result<String> {
 
 /// Format a hash digest as a lowercase hex string.
 fn format_hex(hash: &[u8]) -> String {
-    hash.iter()
-        .fold(String::with_capacity(64), |mut acc, byte| {
+    hash.iter().fold(
+        String::with_capacity(super::constants::SHA256_HEX_LEN),
+        |mut acc, byte| {
             use std::fmt::Write;
             let _ = write!(acc, "{byte:02x}");
             acc
-        })
+        },
+    )
 }
 
 #[cfg(test)]
@@ -121,6 +125,18 @@ mod tests {
         drop(f);
 
         let expected = sha256_hex(b"test content");
+        assert!(verify_sha256(&path, &expected).is_ok());
+    }
+
+    #[test]
+    fn test_verify_sha256_accepts_uppercase_expected() {
+        // The expected digest is compared case-insensitively, so an uppercase
+        // hex string must still verify.
+        let dir = tempfile::tempdir().expect("test setup failed");
+        let path = dir.path().join("test.bin");
+        std::fs::write(&path, b"test content").expect("test setup failed");
+
+        let expected = sha256_hex(b"test content").to_ascii_uppercase();
         assert!(verify_sha256(&path, &expected).is_ok());
     }
 

@@ -17,6 +17,18 @@ pub const UPDATE_TEMP_SUFFIX: &str = ".birda-update-new.tmp";
 /// Maximum manifest response size in bytes (1 MiB).
 pub const MANIFEST_MAX_BYTES: u64 = 1024 * 1024;
 
+/// Read-buffer size (64 KiB) for streaming a file through the SHA256 hasher.
+///
+/// Bounds peak memory during checksum verification to this size regardless of
+/// the file's length, so hashing a several-hundred-MB model does not first
+/// materialise the whole file in memory.
+pub const HASH_CHUNK_BYTES: usize = 64 * 1024;
+
+/// Length of a SHA-256 digest rendered as a lowercase hex string.
+///
+/// A SHA-256 digest is 32 bytes, and each byte becomes two hex characters.
+pub const SHA256_HEX_LEN: usize = 64;
+
 /// HTTP connect timeout in seconds for update requests.
 pub const CONNECT_TIMEOUT_SECS: u64 = 30;
 

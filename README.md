@@ -414,7 +414,9 @@ A configuration file birda creates for the first time is readable only by you (m
 
 `registry.json`, in the same directory, is written the same way, so the hardlink note above applies to it too, with three differences worth knowing. It is **not** created private: it holds the model catalogue, which ships inside the binary and is not secret, so it keeps whatever your umask gives it, exactly as before. A `registry.json` that is a **dangling** symlink is replaced by a regular file rather than written through, because only `config.toml` resolves a link whose target does not exist yet (an existing link is followed for both). And if it cannot be written at all, because the directory is read-only or the file itself is bind-mounted, birda warns and carries on with the built-in registry rather than failing the command; it will try again on the next run.
 
-It is rewritten whenever an upgrade ships a newer bundled registry, so any local edits to it are replaced at that point rather than merged.
+It is rewritten whenever an upgrade ships a newer bundled registry, so any local edits to it are replaced at that point rather than merged. It is also rewritten when it cannot be parsed, since a file birda cannot read as a registry holds nothing worth keeping.
+
+If it cannot be **read** at all, which is a different thing, birda leaves it exactly as it is and carries on with the built-in registry for that run. A permission or I/O error says nothing about the contents, so the file is very possibly intact and destroying it would take your local edits with it. The warning names the underlying cause, and birda tries again on every run, so fixing the permissions is enough to recover; note that while it persists, no registry upgrade is written either, and any tool reading `registry.json` off disk keeps seeing the old copy.
 
 ### Environment Variables
 

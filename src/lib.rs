@@ -774,6 +774,10 @@ fn process_all_files(
     Ok(())
 }
 
+/// Reporter error code for a file that failed during processing; goes into the
+/// JSON envelope's `error.code` field.
+const PROCESSING_ERROR_CODE: &str = "processing_error";
+
 /// Fold a per-file processing failure into the run stats, distinguishing the
 /// check-to-use lock race (#344) from a genuine error.
 ///
@@ -804,7 +808,7 @@ fn record_file_failure(
     }
 
     error!("Failed to process {}: {}", file.display(), e);
-    reporter.file_completed_failure(file, "processing_error", &e.to_string());
+    reporter.file_completed_failure(file, PROCESSING_ERROR_CODE, &e.to_string());
     stats.errors += 1;
     if fail_fast {
         return Err(e);
@@ -2380,6 +2384,14 @@ mod tests {
     use super::*;
     use std::collections::HashMap;
 
+    /// A stand-in audio path for the `record_file_failure` tests; only ever
+    /// displayed, never touched on disk.
+    const TEST_AUDIO_PATH: &str = "/x/rec.wav";
+    /// The lock path paired with [`TEST_AUDIO_PATH`].
+    const TEST_LOCK_PATH: &str = "/x/rec.wav.lock";
+    /// A stand-in message for a genuine (non-lock) processing error.
+    const TEST_DECODE_ERROR: &str = "decode blew up";
+
     #[test]
     fn test_record_file_failure_counts_a_lost_lock_as_a_skip() {
         // #344: a file locked between should_process's advisory is_locked check
@@ -2389,11 +2401,11 @@ mod tests {
         let mut stats = ProcessingStats::default();
         let reporter = crate::output::NullReporter;
         let err = Error::FileLocked {
-            path: PathBuf::from("/x/rec.wav.lock"),
+            path: PathBuf::from(TEST_LOCK_PATH),
         };
 
         let outcome = record_file_failure(
-            Path::new("/x/rec.wav"),
+            Path::new(TEST_AUDIO_PATH),
             err,
             &mut stats,
             &reporter,
@@ -2410,11 +2422,16 @@ mod tests {
         let mut stats = ProcessingStats::default();
         let reporter = crate::output::NullReporter;
         let err = Error::Internal {
-            message: "decode blew up".to_string(),
+            message: TEST_DECODE_ERROR.to_string(),
         };
 
-        let outcome =
-            record_file_failure(Path::new("/x/rec.wav"), err, &mut stats, &reporter, false);
+        let outcome = record_file_failure(
+            Path::new(TEST_AUDIO_PATH),
+            err,
+            &mut stats,
+            &reporter,
+            false,
+        );
 
         assert!(outcome.is_ok(), "without --fail-fast the run continues");
         assert_eq!(stats.errors, 1);
@@ -2426,11 +2443,11 @@ mod tests {
         let mut stats = ProcessingStats::default();
         let reporter = crate::output::NullReporter;
         let err = Error::Internal {
-            message: "decode blew up".to_string(),
+            message: TEST_DECODE_ERROR.to_string(),
         };
 
         let outcome =
-            record_file_failure(Path::new("/x/rec.wav"), err, &mut stats, &reporter, true);
+            record_file_failure(Path::new(TEST_AUDIO_PATH), err, &mut stats, &reporter, true);
 
         assert!(
             outcome.is_err(),
@@ -2521,11 +2538,11 @@ mod tests {
         let mut stats = ProcessingStats::default();
         let reporter = RecordingReporter::default();
         let err = Error::FileLocked {
-            path: PathBuf::from("/x/rec.wav.lock"),
+            path: PathBuf::from(TEST_LOCK_PATH),
         };
 
         let outcome =
-            record_file_failure(Path::new("/x/rec.wav"), err, &mut stats, &reporter, true);
+            record_file_failure(Path::new(TEST_AUDIO_PATH), err, &mut stats, &reporter, true);
 
         assert!(outcome.is_ok());
         assert_eq!(

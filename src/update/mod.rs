@@ -12,7 +12,7 @@ mod replace;
 use crate::error::{Error, Result};
 use constants::{
     BUILT_CUDA_TOOLKIT_VERSION, BUILT_CUDNN_VERSION, BUILT_ONNXRUNTIME_VERSION, GITHUB_REPO,
-    RELEASE_DOWNLOAD_URL, UPDATE_TEMP_SUFFIX,
+    RELEASE_DOWNLOAD_URL, UPDATE_TEMP_PREFIX,
 };
 use indicatif::{ProgressBar, ProgressStyle};
 use manifest::Manifest;
@@ -133,7 +133,15 @@ pub async fn perform_update(
             reason: "cannot determine parent directory of current binary".to_string(),
         })?;
 
-    let archive_path = parent_dir.join(format!("{}.download", asset.file));
+    // Unique per-run temp names. Two `birda update` runs sharing this directory,
+    // or an update racing anything else in it, would otherwise write the same two
+    // fixed paths and corrupt each other. The `.<file>.download` suffix is kept at
+    // the end because `extract_binary` selects the archive format from it.
+    let archive_path = reserve_temp_path(
+        parent_dir,
+        "birda-update-",
+        &format!(".{}.download", asset.file),
+    )?;
     if let Err(e) =
         download_with_progress(client, &download_url, &archive_path, &manifest.version).await
     {
@@ -150,7 +158,7 @@ pub async fn perform_update(
     }
 
     // 8. Extract to temp file in same directory (avoids EXDEV)
-    let temp_binary = parent_dir.join(UPDATE_TEMP_SUFFIX);
+    let temp_binary = reserve_temp_path(parent_dir, UPDATE_TEMP_PREFIX, ".tmp")?;
     if let Err(e) = extract_binary(&archive_path, &temp_binary) {
         let _ = std::fs::remove_file(&archive_path);
         let _ = std::fs::remove_file(&temp_binary);
@@ -260,6 +268,29 @@ fn ort_major_minor_changed(current: &str, required: &str) -> bool {
 }
 
 /// Download a file with a progress bar.
+/// Reserve a uniquely named path in `dir`, built as `<prefix><random><suffix>`.
+///
+/// Two concurrent `birda update` runs sharing this directory would otherwise
+/// collide on a fixed name and corrupt each other. This mirrors
+/// [`crate::utils::fs`]'s temporary naming: the kernel-provided random component
+/// is load-bearing, not cosmetic. The empty file is left in place for the caller
+/// to overwrite (both `download_with_progress` and `extract_binary` truncate with
+/// `File::create`); the caller removes it on every exit path, so it is persisted
+/// rather than deleted on drop.
+fn reserve_temp_path(dir: &Path, prefix: &str, suffix: &str) -> Result<PathBuf> {
+    let temp = tempfile::Builder::new()
+        .prefix(prefix)
+        .suffix(suffix)
+        .tempfile_in(dir)
+        .map_err(|e| Error::UpdateReplaceFailed {
+            reason: format!("cannot create temporary file in {}: {e}", dir.display()),
+        })?;
+    let (_file, path) = temp.keep().map_err(|e| Error::UpdateReplaceFailed {
+        reason: format!("cannot persist temporary file in {}: {e}", dir.display()),
+    })?;
+    Ok(path)
+}
+
 async fn download_with_progress(
     client: &reqwest::Client,
     url: &str,
@@ -478,6 +509,36 @@ fn extract_zip(archive_path: &Path, dest: &Path) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_reserve_temp_path_is_unique_per_call() {
+        let dir = tempfile::tempdir().unwrap();
+        let a = reserve_temp_path(dir.path(), "birda-update-", ".download").unwrap();
+        let b = reserve_temp_path(dir.path(), "birda-update-", ".download").unwrap();
+
+        assert_ne!(a, b, "two reservations must not collide on a name");
+        assert!(a.is_file() && b.is_file(), "both temporaries are created");
+        assert_eq!(a.parent(), Some(dir.path()));
+    }
+
+    #[test]
+    fn test_reserve_temp_path_keeps_archive_suffix_for_format_detection() {
+        // `extract_binary` selects the format from the trailing `.tar.gz.download`
+        // / `.zip.download`, so the random component must not land at the end.
+        let dir = tempfile::tempdir().unwrap();
+        let path = reserve_temp_path(
+            dir.path(),
+            "birda-update-",
+            ".birda-linux-x64.tar.gz.download",
+        )
+        .unwrap();
+
+        assert!(
+            path.to_string_lossy().ends_with(".tar.gz.download"),
+            "archive name must still end with the format-bearing suffix, got {}",
+            path.display()
+        );
+    }
 
     #[test]
     fn test_ort_major_minor_changed_same() {

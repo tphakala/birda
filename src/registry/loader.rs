@@ -47,11 +47,13 @@ fn load_registry_from(registry_path: &std::path::Path, bundled_registry: Registr
         // behaviour that has always been here.
         //
         // "Not usable by this binary" rather than "definitively corrupt", because
-        // this arm is wider than malformed JSON: every field of `ModelEntry` is
-        // required, so a registry.json written by a NEWER birda that added one
-        // also lands here and is replaced on a downgrade. That is the same
-        // outcome the version comparison below already gives an older binary, so
-        // it is consistent rather than surprising, but it is not corruption.
+        // this arm is wider than malformed JSON. Nothing here sets
+        // `deny_unknown_fields`, so a registry from a NEWER birda that ADDED a
+        // field parses fine and is kept; what lands here is one that REMOVED or
+        // renamed a field this binary still requires, on a downgrade. Bytes in a
+        // text encoding other than UTF-8 land here too, since they cannot be a
+        // registry for any consumer. None of those is corruption, and all of them
+        // are replaced.
         Err(e @ Error::RegistryParse { .. }) => {
             tracing::warn!(
                 "{e}{}. Replacing it with the bundled registry.",
@@ -112,10 +114,15 @@ fn load_registry_from(registry_path: &std::path::Path, bundled_registry: Registr
 /// every single run because the file on disk never gets updated.
 fn persist_registry(path: &std::path::Path, registry: &Registry) {
     if let Err(e) = write_registry_file(path, registry) {
+        // Through `cause_of` like the two arms above, and this is the site that
+        // needs it most: the doc below names a read-only config directory and a
+        // bind-mounted registry.json as real layouts, and EROFS, EBUSY and EACCES
+        // want three different responses from the user. Without the cause the
+        // message named the path twice and the reason not at all.
         tracing::warn!(
-            "Could not save the model registry to {}: {e}. Continuing with the bundled \
-             registry; this will be retried on the next run.",
-            path.display()
+            "{e}{}. Continuing with the bundled registry; this will be retried on \
+             the next run.",
+            cause_of(&e)
         );
     }
 }
@@ -155,9 +162,13 @@ fn registry_file_path() -> Result<PathBuf> {
 /// bundled registry carries; and a pre-atomic-write birda killed mid-write could
 /// truncate one mid-codepoint.
 ///
-/// `from_slice` validates UTF-8 as part of parsing, so those all surface as the
-/// parse errors they are. `RegistryRead` is then only ever a failure to obtain the
-/// bytes, which is what the caller's non-destructive arm assumes.
+/// `from_slice` validates UTF-8 in every string it materialises, so all of those
+/// surface as the parse errors they are, and `RegistryRead` is left meaning a
+/// failure to obtain the bytes, which is what the caller's non-destructive arm
+/// assumes. Measured limit, stated rather than glossed: a string in a field the
+/// deserializer IGNORES is skipped without a UTF-8 check, so bad bytes there are
+/// accepted instead of repaired. That is the harmless direction (nothing is
+/// destroyed), but a field promoted from ignored to used would inherit it.
 fn load_from_file(path: &std::path::Path) -> Result<Registry> {
     let content = std::fs::read(path).map_err(|e| Error::RegistryRead {
         path: path.to_path_buf(),
@@ -261,19 +272,21 @@ mod tests {
 
     /// The `registry_version` recorded in the file at `path`.
     ///
-    /// Panics with the load error and its cause rather than through a bare
-    /// `unwrap`, because for the repair tests the interesting failure IS the file
-    /// failing to load: an unwrap there reports this helper's frame and swallows
-    /// the caller's authored assertion message, which is the one that explains
-    /// what the test was pinning.
+    /// For the repair tests the interesting failure IS the file failing to load
+    /// back, so the panic has to carry which of the two failures it was. `{e}`
+    /// gives that plus the path (once), and `cause_of` gives the errno or the
+    /// serde detail. A bare `unwrap` reported the variant but no cause; panicking
+    /// without `{e}` reported the cause but lost the classification this whole
+    /// module exists to draw.
+    ///
+    /// `#[track_caller]` because the panic location is otherwise this helper
+    /// rather than the assertion that called it, which is what makes an `unwrap`
+    /// in a shared test helper hard to place.
+    #[track_caller]
     fn version_at(path: &std::path::Path) -> u32 {
         match load_from_file(path) {
             Ok(registry) => registry.registry_version,
-            Err(e) => panic!(
-                "{} could not be loaded back{}",
-                path.display(),
-                super::cause_of(&e)
-            ),
+            Err(e) => panic!("{e}{}", super::cause_of(&e)),
         }
     }
 
@@ -413,16 +426,15 @@ mod tests {
         std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o000)).unwrap();
 
         if std::fs::read(&path).is_ok() {
-            // A silent skip here is a green test that asserted nothing. On a
-            // developer's machine (a root shell, or a filesystem that ignores
-            // modes) that is worth tolerating; on a runner it means this arm has
-            // zero coverage and nobody would ever find out, so fail loudly there.
-            assert!(
-                std::env::var_os("CI").is_none(),
-                "this runner can read a mode-0000 file, so the read-failure arm is \
-                 not being exercised at all; the fixture needs rethinking for this \
-                 environment rather than reporting a pass"
-            );
+            // A silent skip: `cargo test` hides a passing test's output, so this
+            // reports ok while asserting nothing. Tolerated rather than made
+            // fatal, because the only discriminator available in here is ambient.
+            // Gating on `CI` was tried and reverted: act, GitLab, Drone and any
+            // `docker run -e CI=true` all set it AND run as root, so it reddened
+            // a contributor's suite over an environment fact that says nothing
+            // about their change, while never firing on this project's own
+            // ubuntu-latest runner, which is not root. Making the skip loud needs
+            // a marker this repo owns, set in ci.yml's test job.
             eprintln!(
                 "skipped: this process can read a mode-0000 file (running as root, \
                  or a filesystem that ignores modes), so the read-failure arm \
@@ -517,6 +529,39 @@ mod tests {
 
         assert_eq!(loaded.registry_version, 2);
         assert_eq!(version_at(&path), 2, "the cached copy must be updated too");
+    }
+
+    #[test]
+    fn test_cause_of_renders_the_source_rather_than_the_error_itself() {
+        // The three warnings in this file are the user's only account of what
+        // happened to their registry, and `thiserror` puts only the `#[error(..)]`
+        // string into Display, so without this the errno never reaches them:
+        // "Permission denied" wants a chmod and "Input/output error" wants a
+        // different disk. Asserted on the function, not on the emitted log line,
+        // because the crate carries no log-capture dev-dependency.
+        let source = || std::io::Error::from_raw_os_error(13);
+        let denied = Error::RegistryRead {
+            path: std::path::PathBuf::from("/tmp/registry.json"),
+            source: source(),
+        };
+
+        // Compared against a freshly built io::Error rather than a literal, so
+        // the assertion does not depend on the platform's wording for EACCES.
+        assert_eq!(
+            cause_of(&denied),
+            format!(": {}", source()),
+            "the cause must be the SOURCE, not the error's own Display, which \
+             names only the path"
+        );
+
+        // The empty branch, which nothing else reaches: an error with no
+        // `#[source]` must not leave a bare colon dangling on the message.
+        assert_eq!(
+            cause_of(&Error::Internal {
+                message: "no source behind this one".into()
+            }),
+            ""
+        );
     }
 
     #[test]

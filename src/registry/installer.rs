@@ -403,6 +403,25 @@ pub fn find_obsolete_files(dir: &Path) -> Result<Vec<PathBuf>> {
     Ok(found)
 }
 
+/// Does `path` match the `<name>.<pid>.part` shape that `part_path` writes?
+///
+/// Requiring the numeric pid segment keeps an unrelated `.part` file a user left
+/// in the models directory from being misreported as an interrupted download.
+fn is_part_download(path: &Path) -> bool {
+    if !path
+        .extension()
+        .is_some_and(|ext| ext.eq_ignore_ascii_case(crate::constants::download::PARTIAL_SUFFIX))
+    {
+        return false;
+    }
+    // With the `.part` extension removed the stem is `<name>.<pid>`; the segment
+    // after its last '.' must be the numeric pid.
+    path.file_stem()
+        .and_then(|stem| stem.to_str())
+        .and_then(|stem| stem.rsplit('.').next())
+        .is_some_and(|pid| !pid.is_empty() && pid.bytes().all(|b| b.is_ascii_digit()))
+}
+
 /// Report leftover partial-download files in the models directory.
 ///
 /// A download in progress is written to `<name>.<pid>.part` (see `part_path`)
@@ -427,13 +446,9 @@ pub fn find_stale_part_files(dir: &Path) -> Result<Vec<PathBuf>> {
 
     for entry in entries {
         let path = entry.map_err(Error::Io)?.path();
-        // Compare the extension as an OsStr (handles a non-UTF-8 name) and gate
-        // the stat behind it, so only a `.part` file is ever stat-checked.
-        if path
-            .extension()
-            .is_some_and(|ext| ext.eq_ignore_ascii_case(crate::constants::download::PARTIAL_SUFFIX))
-            && path.is_file()
-        {
+        // Gate the stat behind the name check, so only a matching name is
+        // ever stat-checked.
+        if is_part_download(&path) && path.is_file() {
             found.push(path);
         }
     }
@@ -1045,9 +1060,11 @@ mod tests {
             crate::constants::download::PARTIAL_SUFFIX
         );
         std::fs::write(dir.path().join(&leftover), b"partial").unwrap();
-        // A directory whose name ends in .part must not be reported; only
-        // regular files are leftover downloads.
-        std::fs::create_dir(dir.path().join("stale-cache.part")).unwrap();
+        // A directory matching the <name>.<pid>.part shape must still be
+        // excluded: only regular files are leftover downloads.
+        std::fs::create_dir(dir.path().join("interrupted.99999.part")).unwrap();
+        // A .part file with no numeric pid segment is not a birda download.
+        std::fs::write(dir.path().join("manual-notes.part"), b"x").unwrap();
 
         let found = find_stale_part_files(dir.path()).unwrap();
 

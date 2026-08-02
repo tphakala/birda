@@ -1001,7 +1001,8 @@ mod tests {
             leftover_downloads: Vec::new(),
         };
         let json = serde_json::to_string(&payload).expect("serialize");
-        assert!(!json.contains("leftover_downloads"));
+        let value: serde_json::Value = serde_json::from_str(&json).expect("deserialize");
+        assert!(value.get("leftover_downloads").is_none());
     }
 
     #[test]

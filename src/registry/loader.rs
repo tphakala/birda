@@ -36,8 +36,32 @@ pub fn load_registry() -> Result<Registry> {
 /// bundled registry, which is in hand before this is called, so there is nothing
 /// left that could justify aborting the command that asked for it.
 fn load_registry_from(registry_path: &std::path::Path, bundled_registry: Registry) -> Registry {
-    if !registry_path.exists() {
-        return bootstrap_registry(registry_path, &bundled_registry);
+    // `try_exists` rather than `exists`, which folds every stat failure into
+    // "absent" and would hand an intact registry to the branch that REPLACES it.
+    // That is the same two-way collapse the error arms below exist to undo, three
+    // lines earlier in the same function, so it gets the same three outcomes:
+    // present, definitively absent, or could not determine and therefore do not
+    // act.
+    //
+    // Only the third outcome changes. `Ok(true)` and `Ok(false)` behave exactly as
+    // before, including for a dangling symlink, which reports `Ok(false)` and is
+    // still bootstrapped over (the pre-existing behaviour `write_registry_file`
+    // documents). The reachable permission case was already self-protecting: an
+    // EACCES that breaks the stat breaks the subsequent write too, so the old code
+    // was saved by the write failing rather than by the check. What it did not
+    // cover is a failure that breaks stat on the inode but not create-and-rename in
+    // its directory, such as an ESTALE after an NFS server restart.
+    match registry_path.try_exists() {
+        Ok(true) => {}
+        Ok(false) => return bootstrap_registry(registry_path, &bundled_registry),
+        Err(e) => {
+            tracing::warn!(
+                "Could not determine whether the model registry at {} exists: {e}. \
+                 Continuing with the bundled registry; nothing on disk is touched.",
+                registry_path.display()
+            );
+            return bundled_registry;
+        }
     }
 
     let user_registry = match load_from_file(registry_path) {

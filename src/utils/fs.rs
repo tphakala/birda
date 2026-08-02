@@ -41,7 +41,7 @@
 
 use std::fs::File;
 use std::io::Write;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 /// The mode to create a file with, where the platform has one.
 ///
@@ -206,6 +206,13 @@ where
     }
 
     let dir = parent_dir(target);
+    // Which ancestors are about to be created. `create_dir_all` fsyncs nothing, so
+    // each directory it makes needs its own parent flushed below; otherwise a crash
+    // right after a first write on a fresh install (the first `config set`, or the
+    // first clip into a new output tree) can lose the directory entry along with
+    // the file, having reported success. Recorded before the call because after it
+    // they all exist.
+    let created_dirs = missing_ancestors(dir);
     std::fs::create_dir_all(dir)?;
 
     // Worth knowing when the next line fails: creating the temporary needs write
@@ -235,9 +242,33 @@ where
     // Drops the temporary on failure, so a rejected write leaves nothing behind.
     temp.persist(target).map_err(|e| e.error)?;
 
+    // The leaf directory holds the file's new entry.
     sync_directory(dir);
+    // Each directory `create_dir_all` created holds a new entry in ITS parent, so
+    // flush those too. The shallowest one's parent is the deepest pre-existing
+    // ancestor, which is what actually makes the new tree survive a crash.
+    for created in &created_dirs {
+        sync_parent_directory(created);
+    }
 
     Ok(())
+}
+
+/// The ancestors of `dir`, from deepest to shallowest, that do not exist yet.
+///
+/// Used to record what [`write_atomic_with`] is about to create so each new
+/// directory can be made durable afterwards. Best effort by nature: a peer
+/// creating one of these between this check and the create only means its own
+/// durability is that peer's responsibility, not a correctness bug here.
+fn missing_ancestors(dir: &Path) -> Vec<PathBuf> {
+    let mut missing = Vec::new();
+    for ancestor in dir.ancestors() {
+        if ancestor.as_os_str().is_empty() || ancestor.exists() {
+            break;
+        }
+        missing.push(ancestor.to_path_buf());
+    }
+    missing
 }
 
 /// `path` with a resolvable symlink followed, or `path` itself.
@@ -510,6 +541,34 @@ mod tests {
         write_atomic(&path, b"contents", NewFileMode::OwnerOnly).unwrap();
 
         assert_eq!(std::fs::read(&path).unwrap(), b"contents");
+    }
+
+    #[test]
+    fn test_missing_ancestors_lists_only_the_directories_to_be_created() {
+        let root = tempfile::tempdir().unwrap();
+        // root exists; a/b/c does not.
+        let target = root.path().join("a").join("b").join("c");
+
+        let missing = missing_ancestors(&target);
+
+        assert_eq!(
+            missing,
+            vec![
+                root.path().join("a").join("b").join("c"),
+                root.path().join("a").join("b"),
+                root.path().join("a"),
+            ],
+            "deepest-to-shallowest, stopping at the first existing ancestor"
+        );
+    }
+
+    #[test]
+    fn test_missing_ancestors_is_empty_when_the_directory_exists() {
+        let dir = tempfile::tempdir().unwrap();
+        assert!(
+            missing_ancestors(dir.path()).is_empty(),
+            "an existing directory needs no creation and so no parent flush"
+        );
     }
 
     #[test]

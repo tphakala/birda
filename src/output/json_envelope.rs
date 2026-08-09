@@ -90,6 +90,8 @@ pub enum ResultType {
     ModelRemoved,
     /// Model installed.
     ModelInstalled,
+    /// Documented projection of a registry model's manifest.
+    ModelManifest,
 }
 
 /// Error severity level.
@@ -422,6 +424,24 @@ pub struct ModelEntry {
     /// Path to the labels file.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub labels_path: Option<PathBuf>,
+    /// Registry id these files were installed from.
+    ///
+    /// `None` for a model added with `models add`, which has no registry
+    /// provenance, and for anything installed before provenance was recorded.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub registry_id: Option<String>,
+    /// Exact upstream version installed, for upgrade detection.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub installed_version: Option<String>,
+    /// Our conversion revision installed, for upgrade detection.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub installed_build: Option<u32>,
+    /// Region slug for a regional install.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub region: Option<String>,
+    /// Variant id installed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub variant: Option<String>,
 }
 
 /// Payload for model info result.
@@ -652,6 +672,101 @@ pub struct ModelInstalledPayload {
     pub model_path: PathBuf,
     /// Path to the installed labels file.
     pub labels_path: PathBuf,
+    /// Resolved region slug, `None` for a global or legacy install.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub region: Option<String>,
+    /// Resolved variant id, `None` for a single-file legacy model.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub variant: Option<String>,
+    /// Stable slug for why this variant was picked (see `SelectionReason`).
+    ///
+    /// The human "Selected variant" line lives behind a `!is_structured()`
+    /// guard, so this is the only way a structured consumer learns what
+    /// hardware selection chose after a download.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub selection_reason: Option<String>,
+}
+
+/// Payload for `birda models manifest <id>`: a documented projection of a
+/// registry model, not a verbatim `registry.json` dump.
+///
+/// The registry types omit fields as a version-negotiation guard (see
+/// `ModelEntry::is_variant_based`); serialising them directly would turn that
+/// internal mechanism into a public contract. This projection is built at
+/// runtime and carried in the output envelope, which a consumer feature-detects
+/// by field presence, so birda stays free to reshape its internals.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ModelManifestPayload {
+    /// Result type discriminator.
+    pub result_type: ResultType,
+    /// The projected manifest.
+    pub manifest: ModelManifest,
+}
+
+/// Projected manifest for one model family.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ModelManifest {
+    /// Registry id.
+    pub id: String,
+    /// Display name.
+    pub name: String,
+    /// Upstream version string.
+    pub version: String,
+    /// Our conversion revision of those weights.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub build: Option<u32>,
+    /// Model type identifier.
+    pub model_type: String,
+    /// Full licence record, including attribution and share-alike obligations.
+    pub license: crate::registry::LicenseInfo,
+    /// Variant id installed when no signal identifies a better one.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub default_variant: Option<String>,
+    /// Hardware key to variant id, as published in the manifest.
+    ///
+    /// A consumer need not evaluate these keys against the host: `models
+    /// install` echoes the resolved choice. They are exposed for completeness.
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub selection: std::collections::BTreeMap<String, String>,
+    /// Every downloadable region and variant combination.
+    ///
+    /// A legacy single-file model is projected as one synthetic `global`
+    /// variant so a consumer sees one uniform shape across old and new models.
+    pub variants: Vec<ManifestVariant>,
+}
+
+/// One projected variant: registry fields plus resolved URLs and countries.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ManifestVariant {
+    /// Publisher's variant identifier (`global` for a legacy single-file model).
+    pub id: String,
+    /// Region slug, or `None` for the global model.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub region: Option<String>,
+    /// Human-readable region name.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub region_name: Option<String>,
+    /// Continental group slug used to organise the region listing.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub group: Option<String>,
+    /// Human-readable continental group name.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub group_name: Option<String>,
+    /// Display order of the continental group.
+    pub group_order: u32,
+    /// Number of classes this variant scores, when the publisher states it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub classes: Option<usize>,
+    /// Model file size in bytes, when the publisher states it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub size_bytes: Option<u64>,
+    /// `HF_ENDPOINT`-resolved URL of the model file.
+    pub model_url: String,
+    /// `HF_ENDPOINT`-resolved URL of the labels file.
+    pub labels_url: String,
+    /// Countries this region covers, for a country-name search over the list.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub countries: Option<crate::registry::Countries>,
 }
 
 /// Payload for species list result.
@@ -1226,12 +1341,18 @@ mod tests {
 
     #[test]
     fn test_model_installed_payload() {
+        // Legacy single-file install: region/variant/selection_reason are None
+        // and, being skip_serializing_if, must not appear in the wire form. A
+        // consumer pinned to an older birda sees byte-identical output.
         let payload = ModelInstalledPayload {
             result_type: ResultType::ModelInstalled,
             id: "birdnet-v24".to_string(),
             set_as_default: true,
             model_path: PathBuf::from("/models/birdnet.onnx"),
             labels_path: PathBuf::from("/models/labels.txt"),
+            region: None,
+            variant: None,
+            selection_reason: None,
         };
         let json = serde_json::to_string(&payload).expect("serialize");
         let actual: serde_json::Value = serde_json::from_str(&json).expect("deserialize");
@@ -1243,5 +1364,27 @@ mod tests {
             "labels_path": "/models/labels.txt"
         });
         assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn test_model_installed_payload_echoes_resolved_variant() {
+        // A regional variant install must report what selection resolved, so a
+        // structured consumer learns region/variant/reason without parsing the
+        // human "Selected variant" line, which a structured run never prints.
+        let payload = ModelInstalledPayload {
+            result_type: ResultType::ModelInstalled,
+            id: "birdnet-v30-nordic".to_string(),
+            set_as_default: false,
+            model_path: PathBuf::from("/models/nordic.onnx"),
+            labels_path: PathBuf::from("/models/nordic.txt"),
+            region: Some("nordic".to_string()),
+            variant: Some("fp16".to_string()),
+            selection_reason: Some("detected_library".to_string()),
+        };
+        let json = serde_json::to_string(&payload).expect("serialize");
+        let actual: serde_json::Value = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(actual["region"], "nordic");
+        assert_eq!(actual["variant"], "fp16");
+        assert_eq!(actual["selection_reason"], "detected_library");
     }
 }

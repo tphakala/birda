@@ -100,6 +100,7 @@ The `result` event includes a `result_type` field:
 | `config` | `birda config show` |
 | `model_list` | `birda models list` |
 | `model_info` | `birda models info <id>` |
+| `model_manifest` | `birda models manifest <id>` |
 | `providers` | `birda providers` |
 | `species_list` | `birda species` |
 | `clip_extraction` | `birda clip` |
@@ -169,12 +170,93 @@ birda --output-mode json models list
         "is_default": true,
         "path": "/home/user/.local/share/birda/models/birdnet.onnx",
         "labels_path": "/home/user/.local/share/birda/models/labels.txt",
-        "has_meta_model": true
+        "registry_id": "birdnet-v24"
+      },
+      {
+        "id": "birdnet-v30-nordic",
+        "model_type": "birdnet-v30",
+        "is_default": false,
+        "path": "/home/user/.local/share/birda/models/birdnet-v3.0-preview3.1-nordic-fp16-b1.onnx",
+        "labels_path": "/home/user/.local/share/birda/models/birdnet-v3.0-preview3.1-nordic-labels-b1.txt",
+        "registry_id": "birdnet-v30",
+        "installed_version": "3.0-preview3.1",
+        "installed_build": 1,
+        "region": "nordic",
+        "variant": "fp16"
       }
     ]
   }
 }
 ```
+
+Install provenance (`registry_id`, `installed_version`, `installed_build`, `region`, `variant`) lets a consumer recover what a model was installed from, and detect when a newer build has superseded it, without parsing the id string. Each field is omitted when it does not apply: a model added with `models add` has no `registry_id`, and a global install has no `region` or `variant`. Feature-detect by field presence.
+
+### Model Manifest
+
+```bash
+birda --output-mode json models manifest birdnet-v30
+```
+
+A documented projection of one registry model, for building a region-aware model gallery. It lists every region and variant with class count, download size, resolved URLs, and the countries each region covers. A legacy single-file model (`birdnet-v24`) projects as one synthetic `global` variant, so a consumer never branches on an empty list.
+
+```json
+{
+  "spec_version": "1.1",
+  "timestamp": "2025-01-11T12:34:56.789Z",
+  "event": "result",
+  "payload": {
+    "result_type": "model_manifest",
+    "manifest": {
+      "id": "birdnet-v30",
+      "name": "BirdNET v3.0",
+      "version": "3.0-preview3.1",
+      "build": 1,
+      "model_type": "birdnet-v30",
+      "license": {
+        "type": "CC-BY-NC-SA-4.0",
+        "url": "https://creativecommons.org/licenses/by-nc-sa/4.0/",
+        "commercial_use": false,
+        "attribution_required": true,
+        "share_alike": true
+      },
+      "default_variant": "fp32",
+      "selection": { "cuda": "fp16", "tensorrt": "fp16" },
+      "variants": [
+        {
+          "id": "fp32",
+          "group_order": 0,
+          "classes": 11560,
+          "size_bytes": 123456789,
+          "model_url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/full/birdnet-v3.0-preview3.1-fp32-b1.onnx",
+          "labels_url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/full/birdnet-v3.0-preview3.1-labels-b1.txt"
+        },
+        {
+          "id": "fp32",
+          "region": "amazonia",
+          "region_name": "Amazonia",
+          "group": "south-america",
+          "group_name": "South America",
+          "group_order": 3,
+          "classes": 809,
+          "size_bytes": 156000000,
+          "model_url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/amazonia/birdnet-v3.0-preview3.1-amazonia-fp32-b1.onnx",
+          "labels_url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/amazonia/birdnet-v3.0-preview3.1-amazonia-labels-b1.txt",
+          "countries": {
+            "core": ["Brazil", "Colombia", "Ecuador", "Peru", "Venezuela"],
+            "partial": ["Bolivia", "Panama"]
+          }
+        }
+      ]
+    }
+  }
+}
+```
+
+Notes:
+
+- `model_url` and `labels_url` are resolved through `HF_ENDPOINT`, so a mirror rewrite happens once in birda rather than being reimplemented by every consumer. The per-region coverage map lives beside the model in the same directory, as `regional/<region>/coverage.png`.
+- `region`, `region_name`, `group`, `group_name`, and `countries` are absent on the global model, which is not a region. `countries` splits into `core` (wholly covered) and `partial`, each omitted when empty.
+- `selection` maps a hardware key to a variant id. A consumer need not evaluate these keys against the host: `models install` echoes the variant it resolved (`region`, `variant`, `selection_reason`) once the download completes.
 
 ### Providers
 

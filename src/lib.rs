@@ -1616,6 +1616,11 @@ fn handle_models_command(
                         is_default,
                         path: Some(model.path.clone()),
                         labels_path: Some(model.labels.clone()),
+                        registry_id: model.registry_id.clone(),
+                        installed_version: model.installed_version.clone(),
+                        installed_build: model.installed_build,
+                        region: model.region.clone(),
+                        variant: model.variant.clone(),
                     }
                 })
                 .collect();
@@ -1841,6 +1846,10 @@ fn handle_models_command(
         ModelsAction::Regions { id } => {
             let registry = registry::load_registry()?;
             registry::show_regions(&registry, &id)
+        }
+        ModelsAction::Manifest { id } => {
+            let registry = registry::load_registry()?;
+            registry::show_manifest(&registry, &id, output_mode)
         }
     }
 }
@@ -2248,6 +2257,17 @@ fn handle_models_install(
     let model_path = installed.model.clone();
     let labels_path = installed.labels.clone();
 
+    // Captured before the config closure below moves `installed.provenance` and
+    // consumes `installed`. `selection_reason` comes from `choice`, which
+    // records why the variant was picked; a legacy single-file install has no
+    // `choice` and no provenance, so all three stay `None`.
+    let resolved_region = installed.provenance.as_ref().and_then(|p| p.region.clone());
+    let resolved_variant = installed
+        .provenance
+        .as_ref()
+        .and_then(|p| p.variant.clone());
+    let selection_reason = choice.as_ref().map(|c| c.reason.slug().to_string());
+
     // A regional install occupies its own key, so a global and a regional model
     // coexist and both stay selectable with -m. Derived from the provenance,
     // never from user input.
@@ -2317,6 +2337,9 @@ fn handle_models_install(
             set_as_default: should_set_default,
             model_path,
             labels_path,
+            region: resolved_region,
+            variant: resolved_variant,
+            selection_reason,
         };
         emit_json_result(&payload);
     } else {

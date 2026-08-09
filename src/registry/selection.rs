@@ -51,6 +51,22 @@ impl SelectionReason {
             Self::FamilyDefault => "default, supported on every backend",
         }
     }
+
+    /// Stable machine token for the selection reason, for structured consumers.
+    ///
+    /// [`describe`](Self::describe) returns a human sentence that can be
+    /// reworded at will; this is a value a consumer switches on, so it must
+    /// stay stable across releases.
+    #[must_use]
+    pub const fn slug(self) -> &'static str {
+        match self {
+            Self::Explicit => "explicit",
+            Self::ConfiguredDevice => "configured_device",
+            Self::DetectedLibrary => "detected_library",
+            Self::ArchDefault => "arch_default",
+            Self::FamilyDefault => "family_default",
+        }
+    }
 }
 
 /// The variant to download and why.
@@ -310,6 +326,7 @@ mod tests {
             classes: Some(10),
             model: file(&format!("{id}.onnx")),
             labels: file("labels.txt"),
+            countries: None,
         }
     }
 
@@ -613,5 +630,20 @@ mod tests {
         e.selection.clear();
         let err = select_variant(&e, None, None, InferenceDevice::Auto, &cpu_probe()).unwrap_err();
         assert!(err.to_string().contains("default"));
+    }
+
+    #[test]
+    fn test_selection_reason_slug_is_stable() {
+        // A structured consumer switches on these tokens, so they are part of
+        // the wire contract; describe() is prose and may be reworded, these
+        // must not be.
+        assert_eq!(SelectionReason::Explicit.slug(), "explicit");
+        assert_eq!(
+            SelectionReason::ConfiguredDevice.slug(),
+            "configured_device"
+        );
+        assert_eq!(SelectionReason::DetectedLibrary.slug(), "detected_library");
+        assert_eq!(SelectionReason::ArchDefault.slug(), "arch_default");
+        assert_eq!(SelectionReason::FamilyDefault.slug(), "family_default");
     }
 }

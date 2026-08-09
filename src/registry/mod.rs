@@ -14,7 +14,7 @@ pub use cleanup::{orphaned_files, remove_orphans};
 pub use installer::{
     GEOMODEL_INSTALL_ID, InstallProvenance, InstalledRangeFilter, download_file,
     find_obsolete_files, find_stale_part_files, geomodel_paths, install_model,
-    install_range_filter, install_variant, models_dir,
+    install_range_filter, install_variant, models_dir, resolve_url,
 };
 pub use license::{LicensedAsset, prompt_license_acceptance};
 pub use loader::{find_model, load_registry};
@@ -24,8 +24,8 @@ pub use loader::{find_model, load_registry};
 // how a variant is chosen, not part of the gallery's surface.
 pub use selection::{SystemProbe, select_variant};
 pub use types::{
-    FileInfo, LabelsInfo, LanguageVariant, LicenseInfo, ModelEntry, ModelFiles, ModelVariant,
-    RangeFilterAsset, Registry,
+    Countries, FileInfo, LabelsInfo, LanguageVariant, LicenseInfo, ModelEntry, ModelFiles,
+    ModelVariant, RangeFilterAsset, Registry,
 };
 
 use crate::error::{Error, Result};
@@ -329,6 +329,181 @@ pub fn show_info(registry: &Registry, id: &str) -> Result<()> {
     Ok(())
 }
 
+/// Variant id used for the single synthetic variant of a legacy single-file
+/// model, which has no publisher variant id of its own.
+const LEGACY_VARIANT_ID: &str = "global";
+
+/// Emit the documented manifest projection for a model (`models manifest <id>`).
+///
+/// This is the machine-readable catalogue a consumer builds a region-aware
+/// model gallery on: every region and variant, each with its class count,
+/// download size, resolved model and labels URLs, and the countries the region
+/// covers. It is a deliberate projection, never a dump of `registry.json`,
+/// which uses field omission as a downgrade guard (see
+/// [`ModelEntry::is_variant_based`]) and must not become a public contract.
+///
+/// The human rendering is a short summary; the value here is the JSON.
+pub fn show_manifest(
+    registry: &Registry,
+    id: &str,
+    output_mode: crate::config::OutputMode,
+) -> Result<()> {
+    let model = find_model(registry, id)
+        .ok_or_else(|| Error::ModelNotFoundInRegistry { id: id.to_string() })?;
+
+    let manifest = project_manifest(model);
+
+    if output_mode.is_structured() {
+        use crate::output::{ModelManifestPayload, ResultType, emit_json_result};
+        let payload = ModelManifestPayload {
+            result_type: ResultType::ModelManifest,
+            manifest,
+        };
+        emit_json_result(&payload);
+        return Ok(());
+    }
+
+    print_manifest_human(&manifest);
+    Ok(())
+}
+
+/// Build the projection for one registry entry.
+///
+/// A variant-based entry projects every region and variant combination (unlike
+/// [`ModelEntry::regions`], which deduplicates to one tile per region). A legacy
+/// single-file entry has no variants, so it is projected as one synthetic
+/// `global` variant from its `files`, giving a consumer one uniform shape across
+/// old and new models.
+fn project_manifest(model: &ModelEntry) -> crate::output::ModelManifest {
+    let variants = if model.is_variant_based() {
+        model.variants.iter().map(project_variant).collect()
+    } else {
+        legacy_variant(model).into_iter().collect()
+    };
+
+    crate::output::ModelManifest {
+        id: model.id.clone(),
+        name: model.name.clone(),
+        version: model.version.clone(),
+        build: model.build,
+        model_type: model.model_type.clone(),
+        license: model.license.clone(),
+        default_variant: model.default_variant.clone(),
+        selection: model.selection.clone(),
+        variants,
+    }
+}
+
+/// Project one variant, resolving both URLs through `HF_ENDPOINT` once here so a
+/// consumer never reimplements mirror rewriting.
+///
+/// `ModelVariant` is destructured exhaustively on purpose: a field added to the
+/// registry type then fails to compile here until someone decides whether the
+/// projection should carry it, rather than silently dropping it from the public
+/// contract.
+fn project_variant(variant: &ModelVariant) -> crate::output::ManifestVariant {
+    let ModelVariant {
+        id,
+        region,
+        region_name,
+        group,
+        group_name,
+        group_order,
+        classes,
+        model,
+        labels,
+        countries,
+    } = variant;
+
+    crate::output::ManifestVariant {
+        id: id.clone(),
+        region: region.clone(),
+        region_name: region_name.clone(),
+        group: group.clone(),
+        group_name: group_name.clone(),
+        group_order: *group_order,
+        classes: *classes,
+        size_bytes: model.size_bytes,
+        model_url: resolve_url(&model.url),
+        labels_url: resolve_url(&labels.url),
+        countries: countries.clone(),
+    }
+}
+
+/// Synthesize a single `global` variant for a legacy single-file model.
+///
+/// A legacy entry carries `files` (one model file plus a per-language labels
+/// set), not `variants`. It projects to one variant so a consumer sees the same
+/// shape as a variant-based model; the labels URL is the default-language file,
+/// and there is no region, so no countries and no class count.
+fn legacy_variant(model: &ModelEntry) -> Option<crate::output::ManifestVariant> {
+    let files = model.files.as_ref()?;
+    let labels_url = files
+        .labels
+        .languages
+        .iter()
+        .find(|l| l.code == files.labels.default_language)
+        .or_else(|| files.labels.languages.first())
+        .map_or_else(String::new, |l| resolve_url(&l.url));
+
+    Some(crate::output::ManifestVariant {
+        id: LEGACY_VARIANT_ID.to_string(),
+        region: None,
+        region_name: None,
+        group: None,
+        group_name: None,
+        group_order: 0,
+        classes: None,
+        size_bytes: files.model.size_bytes,
+        model_url: resolve_url(&files.model.url),
+        labels_url,
+        countries: None,
+    })
+}
+
+/// Short human summary of a projected manifest, for parity with [`show_info`].
+///
+/// The full per-region detail is intentionally left to the JSON form; dumping
+/// 80 variants as text would bury the summary a person actually wants.
+fn print_manifest_human(manifest: &crate::output::ModelManifest) {
+    println!("Model: {}", manifest.name);
+    println!("ID: {}", manifest.id);
+    if let Some(build) = manifest.build {
+        println!("Version: {} (build {build})", manifest.version);
+    } else {
+        println!("Version: {}", manifest.version);
+    }
+    println!("Type: {}", manifest.model_type);
+    println!("License: {}", license_line(&manifest.license));
+    if let Some(default) = manifest.default_variant.as_deref() {
+        println!("Default variant: {default}");
+    }
+    println!();
+
+    let global: Vec<&str> = manifest
+        .variants
+        .iter()
+        .filter(|v| v.region.is_none())
+        .map(|v| v.id.as_str())
+        .collect();
+    if !global.is_empty() {
+        println!("Global variants: {}", global.join(", "));
+    }
+
+    let regions: std::collections::BTreeSet<&str> = manifest
+        .variants
+        .iter()
+        .filter_map(|v| v.region.as_deref())
+        .collect();
+    if !regions.is_empty() {
+        println!("Regions: {}", regions.len());
+    }
+
+    println!();
+    println!("Run with --output-mode json for the full machine-readable manifest,");
+    println!("including per-region country coverage and resolved download URLs.");
+}
+
 /// List the regional tiles a model publishes, grouped by continent.
 ///
 /// Regions are what a user picks; the variant is picked for them, so this lists
@@ -449,5 +624,157 @@ mod tests {
     #[test]
     fn test_license_line_adds_nothing_for_an_unrestricted_licence() {
         assert_eq!(license_line(&license(true, false)), "TEST-1.0");
+    }
+
+    fn projection_variant(id: &str, region: Option<&str>) -> ModelVariant {
+        ModelVariant {
+            id: id.to_string(),
+            region: region.map(str::to_string),
+            region_name: region.map(str::to_uppercase),
+            group: None,
+            group_name: None,
+            group_order: 0,
+            classes: Some(100),
+            model: FileInfo {
+                url: format!("https://huggingface.co/o/r/resolve/main/{id}.onnx"),
+                filename: format!("{id}.onnx"),
+                sha256: None,
+                size_bytes: Some(123),
+            },
+            labels: FileInfo {
+                url: "https://huggingface.co/o/r/resolve/main/labels.txt".to_string(),
+                filename: "labels.txt".to_string(),
+                sha256: None,
+                size_bytes: None,
+            },
+            countries: region.map(|_| Countries {
+                core: vec!["Brazil".to_string()],
+                partial: Vec::new(),
+            }),
+        }
+    }
+
+    fn projection_entry() -> ModelEntry {
+        ModelEntry {
+            id: "birdnet-v30".to_string(),
+            name: "BirdNET v3.0".to_string(),
+            description: "d".to_string(),
+            vendor: "v".to_string(),
+            version: "3.0".to_string(),
+            model_type: "birdnet-v30".to_string(),
+            license: license(false, true),
+            files: None,
+            build: Some(1),
+            default_variant: Some("fp32".to_string()),
+            selection: std::iter::once(("cuda".to_string(), "fp16".to_string())).collect(),
+            variants: vec![
+                projection_variant("fp32", None),
+                projection_variant("fp16", None),
+                projection_variant("fp32", Some("nordic")),
+                projection_variant("fp16", Some("nordic")),
+            ],
+            recommended: true,
+        }
+    }
+
+    fn legacy_projection_entry() -> ModelEntry {
+        ModelEntry {
+            id: "birdnet-v24".to_string(),
+            name: "BirdNET v2.4".to_string(),
+            description: "d".to_string(),
+            vendor: "v".to_string(),
+            version: "2.4".to_string(),
+            model_type: "birdnet-v24".to_string(),
+            license: license(false, true),
+            files: Some(ModelFiles {
+                model: FileInfo {
+                    url: "https://huggingface.co/o/r/resolve/main/birdnet.onnx".to_string(),
+                    filename: "birdnet.onnx".to_string(),
+                    sha256: None,
+                    size_bytes: Some(50),
+                },
+                labels: LabelsInfo {
+                    default_language: "en".to_string(),
+                    languages: vec![
+                        LanguageVariant {
+                            code: "fr".to_string(),
+                            name: "French".to_string(),
+                            url: "https://example.com/labels-fr.txt".to_string(),
+                            filename: "labels-fr.txt".to_string(),
+                        },
+                        LanguageVariant {
+                            code: "en".to_string(),
+                            name: "English".to_string(),
+                            url: "https://example.com/labels-en.txt".to_string(),
+                            filename: "labels-en.txt".to_string(),
+                        },
+                    ],
+                },
+                bsg_calibration: None,
+                bsg_migration: None,
+                bsg_distribution_maps: None,
+            }),
+            build: None,
+            default_variant: None,
+            selection: std::collections::BTreeMap::new(),
+            variants: Vec::new(),
+            recommended: false,
+        }
+    }
+
+    #[test]
+    fn test_project_manifest_keeps_every_region_variant_combination() {
+        // Unlike regions(), which lists one tile per region, the manifest keeps
+        // every combination so a consumer can enumerate every download.
+        let manifest = project_manifest(&projection_entry());
+        assert_eq!(manifest.variants.len(), 4);
+        assert_eq!(manifest.default_variant.as_deref(), Some("fp32"));
+        assert_eq!(
+            manifest.selection.get("cuda").map(String::as_str),
+            Some("fp16")
+        );
+        // A resolved URL is present; it is identity without a mirror, and the
+        // filename stem survives the rewrite either way.
+        assert!(manifest.variants[0].model_url.contains("fp32"));
+        assert!(manifest.variants[0].labels_url.contains("labels"));
+    }
+
+    #[test]
+    fn test_project_manifest_carries_countries_only_on_regional_variants() {
+        let manifest = project_manifest(&projection_entry());
+        let nordic = manifest
+            .variants
+            .iter()
+            .find(|v| v.region.as_deref() == Some("nordic"))
+            .unwrap();
+        assert_eq!(
+            nordic.countries.as_ref().unwrap().core,
+            vec!["Brazil".to_string()]
+        );
+        let global = manifest
+            .variants
+            .iter()
+            .find(|v| v.region.is_none())
+            .unwrap();
+        assert!(global.countries.is_none());
+    }
+
+    #[test]
+    fn test_project_manifest_synthesizes_one_global_variant_for_a_legacy_model() {
+        // birdnet-v24 has `files`, not `variants`; it must still project to one
+        // uniform variant so a consumer never branches on an empty list.
+        let manifest = project_manifest(&legacy_projection_entry());
+        assert_eq!(manifest.variants.len(), 1);
+        let only = &manifest.variants[0];
+        assert_eq!(only.id, LEGACY_VARIANT_ID);
+        assert!(only.region.is_none());
+        assert!(only.countries.is_none());
+        assert!(only.classes.is_none());
+        // The default-language labels file, not simply the first listed.
+        assert!(
+            only.labels_url.contains("labels-en"),
+            "should pick the default language, got: {}",
+            only.labels_url
+        );
     }
 }

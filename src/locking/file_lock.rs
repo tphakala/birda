@@ -1,5 +1,6 @@
 //! File locking for distributed processing.
 
+use super::registry::LockRegistry;
 use crate::constants::LOCK_FILE_EXTENSION;
 use crate::error::{Error, Result};
 use chrono::{DateTime, Utc};
@@ -23,6 +24,7 @@ pub struct LockInfo {
 }
 
 /// RAII guard for file locks.
+#[derive(Debug)]
 pub struct FileLock {
     lock_path: PathBuf,
 }
@@ -39,10 +41,6 @@ impl FileLock {
             path: output_dir.to_path_buf(),
             source: e,
         })?;
-
-        // Register for cleanup BEFORE file creation to avoid race condition
-        // if Ctrl+C occurs between creation and registration
-        register_lock(&lock_path);
 
         // Try to create lock file exclusively
         let file = OpenOptions::new()
@@ -66,19 +64,25 @@ impl FileLock {
                 let json = serde_json::to_string_pretty(&info).unwrap_or_else(|_| "{}".to_string());
                 let _ = f.write_all(json.as_bytes());
 
+                // Registered only AFTER we own the file, so a path we do not own is
+                // never in the registry and a Ctrl+C can never make
+                // `cleanup_all_locks` delete a peer's lock. The cost is a Ctrl+C in
+                // the create-then-register gap leaking our own lock, which is a
+                // manual delete, not lost data. Registering before the create (the
+                // old behaviour) meant an `AlreadyExists` create for a peer-owned
+                // path left that path registered until the error arm unregistered
+                // it, and a Ctrl+C in that window deleted the peer's live lock.
+                ACTIVE_FILE_LOCKS.register(&lock_path);
+
                 Ok(Self { lock_path })
             }
             Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
-                unregister_lock(&lock_path);
                 Err(Error::FileLocked { path: lock_path })
             }
-            Err(e) => {
-                unregister_lock(&lock_path);
-                Err(Error::LockCreate {
-                    path: lock_path,
-                    source: e,
-                })
-            }
+            Err(e) => Err(Error::LockCreate {
+                path: lock_path,
+                source: e,
+            }),
         }
     }
 
@@ -127,45 +131,20 @@ impl FileLock {
 
 impl Drop for FileLock {
     fn drop(&mut self) {
-        let _ = fs::remove_file(&self.lock_path);
-        unregister_lock(&self.lock_path);
+        // release() unregisters before it unlinks; see LockRegistry::release for
+        // why that ordering is what keeps a Ctrl+C from deleting a peer's lock.
+        ACTIVE_FILE_LOCKS.release(&self.lock_path);
     }
 }
 
-/// Global registry of active lock paths for cleanup on signal.
-static ACTIVE_LOCKS: std::sync::LazyLock<std::sync::Mutex<Vec<PathBuf>>> =
-    std::sync::LazyLock::new(|| std::sync::Mutex::new(Vec::new()));
+/// Active per-input-file lock paths, removed if the process is interrupted. A
+/// separate [`LockRegistry`] instance from the config lock's so neither type's
+/// cleanup can remove the other's lock file.
+static ACTIVE_FILE_LOCKS: LockRegistry = LockRegistry::new();
 
-/// Register a lock path for cleanup on signal.
-pub fn register_lock(path: &Path) {
-    if let Ok(mut locks) = ACTIVE_LOCKS.lock() {
-        locks.push(path.to_path_buf());
-    }
-}
-
-/// Unregister a lock path after normal cleanup.
-pub fn unregister_lock(path: &Path) {
-    if let Ok(mut locks) = ACTIVE_LOCKS.lock() {
-        locks.retain(|p| p != path);
-    }
-}
-
-/// Clean up all registered locks. Called on signal.
-///
-/// This function recovers from a poisoned mutex to ensure cleanup
-/// always runs even if another thread panicked while holding the lock.
-/// It drains the registry so each path is only cleaned up once.
+/// Clean up all registered file locks. Called from the Ctrl+C handler.
 pub fn cleanup_all_locks() {
-    // Take ownership of all paths, clearing the registry
-    let paths = {
-        let mut locks = ACTIVE_LOCKS
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        std::mem::take(&mut *locks)
-    };
-    for lock_path in paths {
-        let _ = fs::remove_file(&lock_path);
-    }
+    ACTIVE_FILE_LOCKS.cleanup();
 }
 
 #[cfg(test)]
@@ -225,7 +204,7 @@ mod tests {
         assert!(lock_path.exists());
 
         // Register this path and call cleanup
-        register_lock(&lock_path);
+        ACTIVE_FILE_LOCKS.register(&lock_path);
         cleanup_all_locks();
 
         // Our lock file should be removed
@@ -245,12 +224,52 @@ mod tests {
         File::create(&lock_path).unwrap();
 
         // Register and unregister - file should still exist
-        register_lock(&lock_path);
-        unregister_lock(&lock_path);
+        ACTIVE_FILE_LOCKS.register(&lock_path);
+        ACTIVE_FILE_LOCKS.unregister(&lock_path);
 
+        assert!(lock_path.exists(), "unregister should not delete files");
+    }
+
+    #[test]
+    fn test_acquire_registers_only_the_lock_it_owns() {
+        // This guards the ownership INVARIANT: a held lock is registered, a lost
+        // acquire registers nothing, and Drop unregisters. It does NOT prove the
+        // register-after-create or unregister-before-remove ORDERING; those differ
+        // from the old code only when a Ctrl+C lands inside a sub-instruction
+        // window, which a synchronous test cannot reach. Of the three fixes, only
+        // the poison recovery is deterministically red-green (see registry.rs).
+        let _guard = TEST_LOCK.lock().unwrap();
+        let temp_dir = TempDir::new().unwrap();
+        let input = temp_dir.path().join("test.wav");
+        let lock_path = FileLock::lock_path_for(&input, temp_dir.path());
+
+        // A peer's live lock: created out-of-band, so this process must never
+        // register it, even though its own acquire loses the race to create it.
+        File::create(&lock_path).unwrap();
+
+        let contended = FileLock::acquire(&input, temp_dir.path());
         assert!(
-            lock_path.exists(),
-            "unregister_lock should not delete files"
+            matches!(contended, Err(Error::FileLocked { .. })),
+            "acquiring an already-locked input must fail: {contended:?}"
+        );
+        assert!(
+            !ACTIVE_FILE_LOCKS.contains(&lock_path),
+            "a failed acquire must not register a path this process does not own, \
+             so a signal cleanup can never delete a peer's lock"
+        );
+
+        // With the peer's lock gone, winning the create registers the path we own.
+        std::fs::remove_file(&lock_path).unwrap();
+        let held = FileLock::acquire(&input, temp_dir.path()).unwrap();
+        assert!(
+            ACTIVE_FILE_LOCKS.contains(&lock_path),
+            "a successful acquire must register the lock it owns"
+        );
+
+        drop(held);
+        assert!(
+            !ACTIVE_FILE_LOCKS.contains(&lock_path),
+            "drop must unregister the lock it owned"
         );
     }
 

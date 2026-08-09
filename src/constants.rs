@@ -93,7 +93,7 @@ pub mod time {
 /// Three routes reach one setting: `--lat`/`--lon` and their `BIRDA_LATITUDE`/
 /// `BIRDA_LONGITUDE` variables, `birda config set defaults.latitude`, and a
 /// hand-edited config.toml. Before #340 each of `cli::validators`,
-/// `config::validate::validate_range_filter` and the `Error::InvalidLatitude`
+/// `config::validate::collect_range_filter_violations` and the `Error::InvalidLatitude`
 /// message text carried its own copy of these numbers, with nothing keeping
 /// them equal. `test_parse_latitude_matches_the_config_file_rule` and its
 /// longitude twin drive the flag and the file together and compare verdicts,

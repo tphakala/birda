@@ -108,11 +108,25 @@ fn write_error(path: &Path, source: std::io::Error) -> Error {
 /// This is only the validated atomic-write primitive, not the serialisation of a
 /// PAIR of writes. That is [`update_config`]'s job: it holds a lock across the
 /// whole load-mutate-save, so two concurrent writers cannot both load the same
-/// base and lose one of the two edits (#313). Reach for `update_config`, not
+/// base and lose one of the two edits (#313). Reach for `update_config` (or
+/// [`update_config_repairing`], the `config set` variant that may persist a
+/// still-invalid config to make forward progress on repairing it, #305), not
 /// `save_config` directly, for any read-modify-write of the live config.
 pub fn save_config(config: &Config, path: &Path) -> Result<()> {
     super::validate_config(config)?;
+    write_config_to_disk(config, path)
+}
 
+/// Serialise `config` and write it to `path` atomically, WITHOUT validating it.
+///
+/// Split out of [`save_config`] so the `config set` repair path can reuse the
+/// exact symlink resolution, serialisation and atomic write while making its own
+/// decision about validity (#305). Deliberately private: skipping validation is
+/// reserved for the two callers in this module. `save_config` reaches it only
+/// after validating, and [`update_config_repairing_at`] only after confirming
+/// the edit adds no new fault. Every other writer goes through `save_config`, so
+/// the "no writer persists an invalid config" invariant still holds for them.
+fn write_config_to_disk(config: &Config, path: &Path) -> Result<()> {
     // Rename replaces the name it is given, where a write follows it. A user
     // whose config.toml is a symlink into a dotfiles repository would have the
     // link replaced by a regular file and their real config left stale, so the
@@ -242,6 +256,75 @@ fn update_config_at<T>(
     })
 }
 
+/// Load-mutate-save for `config set`, permitting forward progress on a config
+/// that is already invalid.
+///
+/// Like [`update_config`], but where that (through [`save_config`]) refuses to
+/// write unless the whole config is valid, this one writes as long as the edit
+/// introduces no NEW rule failure: it may leave faults that were already present
+/// in place, but must not add one to a field that was clean (#305). It is the
+/// only writer allowed to persist an invalid config, and only when it is
+/// strictly no worse than the one it loaded, so the "no writer persists an
+/// invalid config" invariant still holds for every other caller.
+///
+/// Returns the mutate closure's value, the saved config, the path written, and a
+/// human-readable list of the rule failures that still stand after the edit, so
+/// the caller can tell the user what is left to fix.
+pub fn update_config_repairing<T>(
+    mutate: impl FnOnce(&mut Config) -> Result<T>,
+) -> Result<(T, Config, PathBuf, Vec<String>)> {
+    let path = super::config_file_path()?;
+    let (out, config, remaining) = update_config_repairing_at(&path, mutate)?;
+    Ok((out, config, path, remaining))
+}
+
+/// [`update_config_repairing`] against an explicit `path`.
+///
+/// Split out so a test can drive the real load-lock-mutate-save against a
+/// temporary file rather than the user's platform config path.
+fn update_config_repairing_at<T>(
+    path: &Path,
+    mutate: impl FnOnce(&mut Config) -> Result<T>,
+) -> Result<(T, Config, Vec<String>)> {
+    use std::collections::HashSet;
+
+    crate::locking::with_config_lock(path, || {
+        let mut config = load_config_file(path)?;
+
+        // The fields already in breach before the edit. A single `config set`
+        // changes exactly one field, so at most one field's verdict can flip;
+        // anything in `after` but not here was put there by this edit.
+        let before: HashSet<super::validate::ViolationField> =
+            super::validate::collect_violations(&config)
+                .into_iter()
+                .map(|violation| violation.field)
+                .collect();
+
+        let out = mutate(&mut config)?;
+
+        let mut after = super::validate::collect_violations(&config);
+        if let Some(index) = after
+            .iter()
+            .position(|violation| !before.contains(&violation.field))
+        {
+            // The edit added a fault to a field that was clean (which, on a
+            // valid config, is any fault at all): refuse it and report it
+            // exactly as `save_config` would have, leaving the file untouched.
+            return Err(after.swap_remove(index).error);
+        }
+
+        write_config_to_disk(&config, path)?;
+
+        // Whatever still stands: faults this edit deliberately left in place,
+        // for the caller to surface as "still to fix".
+        let remaining = after
+            .into_iter()
+            .map(|violation| violation.error.to_string())
+            .collect();
+        Ok((out, config, remaining))
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -292,7 +375,7 @@ min_confidence = 0.25
 
     /// A config that `config set` would reject, for the save-path tests.
     ///
-    /// `min_confidence` is used because `validate_defaults` checks it first, so
+    /// `min_confidence` is used because `collect_defaults_violations` checks it first, so
     /// these assert the whole chain runs and not just the range-filter half.
     fn invalid_config() -> Config {
         let mut config = Config::default();
@@ -774,5 +857,93 @@ min_confidence = 0.25
             "the overlap edit was lost to an interleaved save: {}",
             loaded.defaults.overlap
         );
+    }
+
+    /// The #305 core at unit level: repairing one of two standing faults writes,
+    /// leaves the untouched fault in place, and reports it in `remaining`.
+    #[test]
+    fn test_update_config_repairing_at_repairs_one_of_two_faults() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        std::fs::write(
+            &path,
+            "[defaults]\nlatitude = 200.0\nrange_threshold = nan\n",
+        )
+        .unwrap();
+
+        let ((), config, remaining) = update_config_repairing_at(&path, |config| {
+            config.defaults.latitude = Some(60.17);
+            Ok(())
+        })
+        .unwrap();
+
+        assert!((config.defaults.latitude.unwrap() - 60.17).abs() < f64::EPSILON);
+        assert_eq!(
+            remaining.len(),
+            1,
+            "only the untouched threshold fault should remain: {remaining:?}"
+        );
+        assert!(
+            remaining[0].contains("range threshold"),
+            "the standing fault should be the range threshold: {remaining:?}"
+        );
+
+        // The edit reached disk, and the standing fault did not block it.
+        let loaded = load_config_file(&path).unwrap();
+        assert!((loaded.defaults.latitude.unwrap() - 60.17).abs() < f64::EPSILON);
+    }
+
+    /// An edit that would newly break a clean field is refused, and the file is
+    /// left byte-for-byte as it was. `defaults.model` is the reachable case (no
+    /// `parse_*` bound), so an already-broken config plus a missing model is a
+    /// second, distinct fault.
+    #[test]
+    fn test_update_config_repairing_at_refuses_a_new_fault_and_leaves_the_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        let seeded = "[defaults]\nlatitude = 200.0\n";
+        std::fs::write(&path, seeded).unwrap();
+
+        let err = update_config_repairing_at(&path, |config| {
+            config.defaults.model = Some("no-such-model".to_string());
+            Ok(())
+        })
+        .unwrap_err();
+
+        assert!(
+            matches!(err, crate::error::Error::ModelNotFound { .. }),
+            "the newly-introduced fault should be reported, got {err:?}"
+        );
+        assert_eq!(
+            std::fs::read_to_string(&path).unwrap(),
+            seeded,
+            "a refused repair must leave the file byte-for-byte untouched"
+        );
+    }
+
+    /// An edit to an unrelated, valid field is allowed even though the fault
+    /// count does not drop, because it introduces no NEW faulty field. This is
+    /// the case a strict "the count must decrease" rule would wrongly refuse.
+    #[test]
+    fn test_update_config_repairing_at_allows_an_unrelated_edit_on_a_broken_config() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        std::fs::write(&path, "[defaults]\nrange_threshold = nan\n").unwrap();
+
+        let ((), config, remaining) = update_config_repairing_at(&path, |config| {
+            config.defaults.overlap = 0.5;
+            Ok(())
+        })
+        .unwrap();
+
+        assert!((config.defaults.overlap - 0.5).abs() < f32::EPSILON);
+        assert_eq!(
+            remaining.len(),
+            1,
+            "the threshold fault still stands: {remaining:?}"
+        );
+
+        let loaded = load_config_file(&path).unwrap();
+        assert!((loaded.defaults.overlap - 0.5).abs() < f32::EPSILON);
     }
 }

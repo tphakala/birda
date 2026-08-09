@@ -7,15 +7,79 @@ use crate::constants::{
 use crate::error::{Error, Result};
 
 /// Validate the entire configuration.
+///
+/// Fail-fast: returns the first rule failure, exactly as the individual rules
+/// below produce it, so every writer that persists a config through
+/// [`crate::config::save_config`] still refuses to write an invalid one. For
+/// every failure at once (and the one writer allowed to persist a config that
+/// is invalid but no worse than it already was, #305) see [`collect_violations`].
 pub fn validate_config(config: &Config) -> Result<()> {
-    validate_defaults(config)?;
-    validate_range_filter(config)?;
-    Ok(())
+    collect_violations(config)
+        .into_iter()
+        .next()
+        .map_or(Ok(()), |violation| Err(violation.error))
+}
+
+/// A single configuration rule failure.
+///
+/// [`collect_violations`] returns every one at once rather than stopping at the
+/// first. That is what lets `config set` tell "this edit left the existing
+/// faults alone" apart from "this edit introduced a new one" (#305), and what
+/// lets a diagnostic list them all instead of one per run.
+pub struct Violation {
+    /// Which configuration field the failure concerns.
+    pub field: ViolationField,
+    /// The exact error the fail-fast path raises for this rule, so a caller can
+    /// surface the message the user has always seen.
+    pub error: Error,
+}
+
+/// The configuration field a [`Violation`] concerns.
+///
+/// Identity is by field, not by value: two different out-of-range latitudes are
+/// the same violation here. That is the granularity `config set` compares on
+/// when it decides whether an edit added a fault to a field that was previously
+/// clean. A value-level identity is neither needed (the `parse_*` validators
+/// reject a malformed new value before the write) nor available (`Error` embeds
+/// `std::io::Error`, which is not `PartialEq`).
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub enum ViolationField {
+    /// `defaults.min_confidence`.
+    MinConfidence,
+    /// `defaults.overlap`.
+    Overlap,
+    /// `defaults.batch_size`.
+    BatchSize,
+    /// `defaults.day_of_year`.
+    DayOfYear,
+    /// `defaults.formats`.
+    Formats,
+    /// `defaults.csv_columns.include`.
+    CsvColumns,
+    /// `defaults.model`.
+    Model,
+    /// `defaults.latitude`.
+    Latitude,
+    /// `defaults.longitude`.
+    Longitude,
+    /// `defaults.range_threshold`.
+    RangeThreshold,
+}
+
+/// Collect every configuration rule failure rather than stopping at the first.
+///
+/// The rules are the ones [`validate_config`] enforces, in the same order, so
+/// the first element (if any) is exactly what the fail-fast path returns.
+pub fn collect_violations(config: &Config) -> Vec<Violation> {
+    let mut violations = Vec::new();
+    collect_defaults_violations(config, &mut violations);
+    collect_range_filter_violations(config, &mut violations);
+    violations
 }
 
 /// Recovery advice for the two keys `birda config set` cannot reach.
 ///
-/// Every other rule in `validate_defaults` guards a key with a `config set`
+/// Every other rule in `collect_defaults_violations` guards a key with a `config set`
 /// arm, so the tool can repair it and the message can stay short. `formats` and
 /// `csv_columns` have no arm, and a bad value in either is refused by
 /// `save_config` as well, so `config set` on any OTHER key is refused too until
@@ -24,19 +88,22 @@ pub fn validate_config(config: &Config) -> Result<()> {
 const EDIT_THE_FILE: &str = "This key has no 'birda config set' arm, so edit config.toml directly; \
      'birda config path' prints where it is.";
 
-/// Validate default settings.
-fn validate_defaults(config: &Config) -> Result<()> {
+/// Collect `[defaults]` rule failures into `violations`. See [`collect_violations`].
+fn collect_defaults_violations(config: &Config, violations: &mut Vec<Violation>) {
     let defaults = &config.defaults;
 
     // Validate min_confidence range
     if !(confidence::MIN..=confidence::MAX).contains(&defaults.min_confidence) {
-        return Err(Error::ConfigValidation {
-            message: format!(
-                "min_confidence must be between {} and {}, got {}",
-                confidence::MIN,
-                confidence::MAX,
-                defaults.min_confidence
-            ),
+        violations.push(Violation {
+            field: ViolationField::MinConfidence,
+            error: Error::ConfigValidation {
+                message: format!(
+                    "min_confidence must be between {} and {}, got {}",
+                    confidence::MIN,
+                    confidence::MAX,
+                    defaults.min_confidence
+                ),
+            },
         });
     }
 
@@ -44,7 +111,7 @@ fn validate_defaults(config: &Config) -> Result<()> {
     //
     // The `is_finite` half is what catches NaN, and NaN is the case that
     // matters: a bare `overlap < 0.0` is the hand-rolled comparison
-    // `validate_range_filter` warns against below, and `NaN < 0.0` is false, so
+    // `collect_range_filter_violations` warns against below, and `NaN < 0.0` is false, so
     // it was accepted. `overlap * sample_rate` is then cast to `usize`, and Rust
     // saturates that cast rather than trapping, so NaN became 0 and the setting
     // was silently ignored. That is the reported bug's signature exactly: a
@@ -70,11 +137,14 @@ fn validate_defaults(config: &Config) -> Result<()> {
     // upper bound here, for instance, fails that test rather than silently
     // making config.toml stricter than the flag.
     if !defaults.overlap.is_finite() || defaults.overlap < 0.0 {
-        return Err(Error::ConfigValidation {
-            message: format!(
-                "overlap must be a finite non-negative number, got {}",
-                defaults.overlap
-            ),
+        violations.push(Violation {
+            field: ViolationField::Overlap,
+            error: Error::ConfigValidation {
+                message: format!(
+                    "overlap must be a finite non-negative number, got {}",
+                    defaults.overlap
+                ),
+            },
         });
     }
 
@@ -105,10 +175,13 @@ fn validate_defaults(config: &Config) -> Result<()> {
     if let Some(batch_size) = defaults.batch_size
         && !(MIN_BATCH_SIZE..=MAX_BATCH_SIZE).contains(&batch_size)
     {
-        return Err(Error::ConfigValidation {
-            message: format!(
-                "batch_size must be between {MIN_BATCH_SIZE} and {MAX_BATCH_SIZE}, got {batch_size}"
-            ),
+        violations.push(Violation {
+            field: ViolationField::BatchSize,
+            error: Error::ConfigValidation {
+                message: format!(
+                    "batch_size must be between {MIN_BATCH_SIZE} and {MAX_BATCH_SIZE}, got {batch_size}"
+                ),
+            },
         });
     }
 
@@ -123,12 +196,15 @@ fn validate_defaults(config: &Config) -> Result<()> {
     if let Some(day) = defaults.day_of_year
         && !(day_of_year::MIN..=day_of_year::MAX).contains(&day)
     {
-        return Err(Error::ConfigValidation {
-            message: format!(
-                "day_of_year must be between {} and {}, got {day}",
-                day_of_year::MIN,
-                day_of_year::MAX
-            ),
+        violations.push(Violation {
+            field: ViolationField::DayOfYear,
+            error: Error::ConfigValidation {
+                message: format!(
+                    "day_of_year must be between {} and {}, got {day}",
+                    day_of_year::MIN,
+                    day_of_year::MAX
+                ),
+            },
         });
     }
 
@@ -171,11 +247,14 @@ fn validate_defaults(config: &Config) -> Result<()> {
     // have none, so a hand edit is the only way out and the message is the only
     // place to say so.
     if defaults.formats.is_empty() {
-        return Err(Error::ConfigValidation {
-            message: format!(
-                "defaults.formats must list at least one output format; with an empty list a \
-                 run writes no output at all\n\n{EDIT_THE_FILE}"
-            ),
+        violations.push(Violation {
+            field: ViolationField::Formats,
+            error: Error::ConfigValidation {
+                message: format!(
+                    "defaults.formats must list at least one output format; with an empty list a \
+                     run writes no output at all\n\n{EDIT_THE_FILE}"
+                ),
+            },
         });
     }
 
@@ -195,12 +274,15 @@ fn validate_defaults(config: &Config) -> Result<()> {
         .iter()
         .find(|column| !csv_columns::RECOGNISED.contains(&column.as_str()))
     {
-        return Err(Error::ConfigValidation {
-            message: format!(
-                "defaults.csv_columns.include has an unknown column '{unknown}'; the accepted \
-                 columns are {}\n\n{EDIT_THE_FILE}",
-                csv_columns::RECOGNISED.join(", ")
-            ),
+        violations.push(Violation {
+            field: ViolationField::CsvColumns,
+            error: Error::ConfigValidation {
+                message: format!(
+                    "defaults.csv_columns.include has an unknown column '{unknown}'; the accepted \
+                     columns are {}\n\n{EDIT_THE_FILE}",
+                    csv_columns::RECOGNISED.join(", ")
+                ),
+            },
         });
     }
 
@@ -208,12 +290,13 @@ fn validate_defaults(config: &Config) -> Result<()> {
     if let Some(ref model_name) = defaults.model
         && !config.models.contains_key(model_name)
     {
-        return Err(Error::ModelNotFound {
-            name: model_name.clone(),
+        violations.push(Violation {
+            field: ViolationField::Model,
+            error: Error::ModelNotFound {
+                name: model_name.clone(),
+            },
         });
     }
-
-    Ok(())
 }
 
 /// Validate a model configuration and check files exist.
@@ -268,8 +351,21 @@ pub fn get_model<'a>(config: &'a Config, name: &str) -> Result<&'a ModelConfig> 
     })
 }
 
-/// Validate range filter configuration.
-pub fn validate_range_filter(config: &Config) -> Result<()> {
+/// Fail-fast view of just the range-filter rules, for the unit tests that
+/// exercise them in isolation. Not needed outside tests: production always goes
+/// through [`validate_config`], which covers every rule.
+#[cfg(test)]
+fn validate_range_filter(config: &Config) -> Result<()> {
+    let mut violations = Vec::new();
+    collect_range_filter_violations(config, &mut violations);
+    violations
+        .into_iter()
+        .next()
+        .map_or(Ok(()), |violation| Err(violation.error))
+}
+
+/// Collect range filter rule failures into `violations`. See [`collect_violations`].
+fn collect_range_filter_violations(config: &Config, violations: &mut Vec<Violation>) {
     // Both bounds read `constants::coordinates`, which `cli::validators` and the
     // `Error` message text also read (#340). Those three were the copies of the
     // numbers; the routes to the setting are a different set, being the flag
@@ -278,13 +374,19 @@ pub fn validate_range_filter(config: &Config) -> Result<()> {
     if let Some(lat) = config.defaults.latitude
         && !(coordinates::LATITUDE_MIN..=coordinates::LATITUDE_MAX).contains(&lat)
     {
-        return Err(Error::InvalidLatitude { value: lat });
+        violations.push(Violation {
+            field: ViolationField::Latitude,
+            error: Error::InvalidLatitude { value: lat },
+        });
     }
 
     if let Some(lon) = config.defaults.longitude
         && !(coordinates::LONGITUDE_MIN..=coordinates::LONGITUDE_MAX).contains(&lon)
     {
-        return Err(Error::InvalidLongitude { value: lon });
+        violations.push(Violation {
+            field: ViolationField::Longitude,
+            error: Error::InvalidLongitude { value: lon },
+        });
     }
 
     // `--range-threshold` is bounds-checked by `parse_confidence`, but nothing
@@ -299,14 +401,15 @@ pub fn validate_range_filter(config: &Config) -> Result<()> {
     // hand-rolled `threshold < 0.0` test would let NaN straight through.
     let threshold = config.defaults.range_threshold;
     if !(confidence::MIN..=confidence::MAX).contains(&threshold) {
-        return Err(Error::InvalidRangeThreshold { value: threshold });
+        violations.push(Violation {
+            field: ViolationField::RangeThreshold,
+            error: Error::InvalidRangeThreshold { value: threshold },
+        });
     }
 
     // The geomodel is resolved and acquired at analysis time rather than
     // validated here: it is a shared asset that birda can offer to download,
     // so a missing file is not a configuration error.
-
-    Ok(())
 }
 
 #[cfg(test)]
@@ -438,7 +541,7 @@ mod tests {
 
     #[test]
     fn test_validate_rejects_out_of_range_day_of_year() {
-        // The field `validate_defaults` did not look at at all (#312). 999 is
+        // The field `collect_defaults_violations` did not look at at all (#312). 999 is
         // the value from the issue; it reached the BSG SDM path and was
         // rejected there by birdnet-onnx, far from the config key that set it.
         let err = validate_config(&config_with_day_of_year(999)).unwrap_err();

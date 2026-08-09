@@ -1417,7 +1417,7 @@ fn handle_config_command(action: cli::ConfigAction, output_mode: OutputMode) -> 
 /// an enum do not come through here and never parsed.
 ///
 /// The key prefix is not only for the reader. It is what tells this layer's
-/// rejection apart from `validate_defaults`', so a test for this arm cannot be
+/// rejection apart from `collect_defaults_violations`', so a test for this arm cannot be
 /// satisfied by the save-side check firing instead.
 fn parse_config_value<T>(
     key: &str,
@@ -1430,7 +1430,7 @@ fn parse_config_value<T>(
 }
 
 fn handle_config_set(key: &str, value: &str, output_mode: OutputMode) -> Result<()> {
-    let ((), config, config_path) = config::update_config(|config| {
+    let ((), config, config_path, remaining) = config::update_config_repairing(|config| {
         match key {
             "defaults.model" => {
                 config.defaults.model = if value.is_empty() {
@@ -1487,7 +1487,7 @@ fn handle_config_set(key: &str, value: &str, output_mode: OutputMode) -> Result<
                 };
             }
             // No arm existed for this key, so hand-editing config.toml was the only
-            // way to set it, and that was the one route `validate_defaults` did not
+            // way to set it, and that was the one route `collect_defaults_violations` did not
             // check either (#312). Both halves are closed now.
             "defaults.day_of_year" => {
                 config.defaults.day_of_year = if value.is_empty() {
@@ -1567,14 +1567,30 @@ fn handle_config_set(key: &str, value: &str, output_mode: OutputMode) -> Result<
         Ok(())
     })?;
 
-    // `update_config` validates the whole config inside `save_config` before
-    // writing, and holds the config lock across the load-mutate-save so a
-    // concurrent writer cannot lose this edit (#313).
+    // `update_config_repairing` holds the config lock across the load-mutate-save
+    // so a concurrent writer cannot lose this edit (#313). Unlike `update_config`
+    // it does not require the whole config to be valid: it writes as long as this
+    // edit introduces no new rule failure, so a file carrying two independent
+    // faults can be repaired one key at a time (#305). Any faults the edit left
+    // in place come back in `remaining` for us to report.
     //
-    // Note the validation covers the whole config, not just the key being set,
-    // so a file carrying two independent faults cannot be repaired one key at a
-    // time here. That predates #295 and is tracked separately; the load gate is
-    // scoped to analysis so it does not turn that into a lockout.
+    // The recovery hint goes to stderr with `eprintln!`, not through the
+    // `tracing` warn path, so it always shows (a user with `RUST_LOG=error` set
+    // still needs to see what is left to fix) and never lands on stdout, where a
+    // JSON consumer is reading the envelope.
+    if !remaining.is_empty() {
+        eprintln!(
+            "warning: '{key}' was saved, but the configuration still has {} unresolved problem(s):",
+            remaining.len()
+        );
+        for problem in &remaining {
+            eprintln!("  - {problem}");
+        }
+        eprintln!(
+            "Fix each with 'birda config set <key> <value>', or edit the file directly \
+             ('birda config path' prints where it is)."
+        );
+    }
 
     if output_mode.is_structured() {
         let config_json = serde_json::to_value(&config).map_err(|e| Error::ConfigValidation {

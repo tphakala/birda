@@ -458,7 +458,7 @@ pub struct AnalyzeArgs {
     //
     // The bound lives in `constants::day_of_year`. `parse_day_of_year` applies
     // it to this flag and to `BIRDA_DAY_OF_YEAR`, the same parser applies it
-    // through `config set`, and `validate_defaults` applies it to config.toml,
+    // through `config set`, and `collect_defaults_violations` applies it to config.toml,
     // which is the route that had no check at all before #312. The parser
     // replaced an inline `clap::value_parser!(u32).range(1..=366)`, whose bound
     // no other route could read.

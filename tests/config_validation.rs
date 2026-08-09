@@ -45,6 +45,14 @@ const OUT_OF_RANGE_LATITUDE: &str = "[defaults]\nlatitude = 200.0\n";
 /// "0 species in range".
 const NAN_RANGE_THRESHOLD: &str = "[defaults]\nrange_threshold = nan\n";
 
+/// Two independent faults on distinct keys (#305).
+///
+/// The lockout case: before the fix, each `config set` revalidated the whole
+/// file inside `save_config`, so with two faults present every single-key
+/// repair was rejected by the fault it was not touching, and the file could not
+/// be fixed one key at a time at all.
+const TWO_INDEPENDENT_FAULTS: &str = "[defaults]\nlatitude = 200.0\nrange_threshold = nan\n";
+
 /// An empty output-format list (#339).
 ///
 /// The reason this rule needs a binary-level test more than its siblings do:
@@ -298,7 +306,7 @@ const BATCH_SIZE_CLI_ADVICE: &str = "GPU memory exhaustion";
 /// The prefix `handle_config_set` puts on a value it refused itself.
 ///
 /// Same purpose as [`BATCH_SIZE_CLI_ADVICE`]: it names the key the user typed,
-/// which neither `validate_defaults` nor clap can do.
+/// which neither `collect_defaults_violations` nor clap can do.
 const CONFIG_SET_REJECTION: &str = "invalid value for";
 
 /// The exit code birda uses for an application error, as opposed to a clap
@@ -334,7 +342,7 @@ fn assert_command_succeeds(home: &Path, args: &[&str]) {
 
 #[test]
 fn test_out_of_range_latitude_is_rejected_on_load() {
-    // Accepted on load before the fix. `validate_range_filter` has checked
+    // Accepted on load before the fix. `collect_range_filter_violations` has checked
     // latitude since long before this change; nothing called it.
     let home = tempfile::tempdir().unwrap();
     seed_config(home.path(), OUT_OF_RANGE_LATITUDE);
@@ -368,11 +376,14 @@ fn test_an_unknown_csv_column_is_rejected_on_load() {
 
 #[test]
 fn test_neither_new_rule_has_a_config_set_arm_to_repair_it() {
-    // Pins the reason both messages carry recovery advice that the sibling
-    // rules do not. `config set` cannot reach either key, and because
-    // `save_config` validates the whole file, the fault also blocks `config
-    // set` on every OTHER key. Hand-editing config.toml is the only way out,
-    // and the README says so; this is what stops that becoming untrue quietly.
+    // `formats` and `csv_columns` have no `config set` arm, so editing the file
+    // is the only way to fix either; that is why both rule messages carry the
+    // extra recovery advice their siblings omit. Before #305 this fault also
+    // blocked `config set` on every OTHER key, and this test pinned that lockout.
+    // It no longer holds: an unrelated edit now goes through (a fault the tool
+    // cannot repair must not freeze the ones it can), and the standing fault
+    // comes back as a warning carrying the same recovery advice, so the pointer
+    // to the file is still surfaced, now on a write that succeeded.
     let home = tempfile::tempdir().unwrap();
     seed_config(home.path(), EMPTY_FORMATS);
 
@@ -390,22 +401,28 @@ fn test_neither_new_rule_has_a_config_set_arm_to_repair_it() {
         );
     }
 
+    // An unrelated, valid edit is no longer blocked by the unreachable fault
+    // (#305): it succeeds, leaving the formats fault in place.
     let other = run_in(
         home.path(),
         &["config", "set", "defaults.min_confidence", "0.2"],
     );
-    assert_eq!(other.status.code(), Some(APPLICATION_ERROR));
     assert!(
-        stderr_of(&other).contains(EMPTY_FORMATS_VIOLATION),
-        "an unrelated key must also be refused while the file is invalid, got: {}",
+        other.status.success(),
+        "an unrelated key must not be frozen by a fault it cannot repair, got: {}",
         stderr_of(&other)
     );
 
-    // The recovery advice itself is user-facing output with nothing else
-    // asserting a word of it.
+    // The fault it left in place is still reported, with the advice that points
+    // at the file, since editing it is the only route to clearing this one.
+    assert!(
+        stderr_of(&other).contains(EMPTY_FORMATS_VIOLATION),
+        "the standing formats fault must be reported, got: {}",
+        stderr_of(&other)
+    );
     assert!(
         stderr_of(&other).contains("birda config path"),
-        "the message must point at the file, got: {}",
+        "the message must still point at the file, got: {}",
         stderr_of(&other)
     );
 }
@@ -509,6 +526,222 @@ fn test_config_set_refuses_to_persist_an_invalid_value() {
 }
 
 #[test]
+fn test_config_set_repairs_a_config_with_two_independent_faults() {
+    // The #305 lockout, end to end. With two faults present, fixing either one
+    // must be accepted even though the other still stands, so the file can be
+    // repaired one key at a time. Before the fix, `save_config` revalidated the
+    // whole config and the untouched fault rejected every single-key write.
+    let home = tempfile::tempdir().unwrap();
+    seed_config(home.path(), TWO_INDEPENDENT_FAULTS);
+
+    // Fixing the first fault is accepted while the second remains.
+    let first = run_in(
+        home.path(),
+        &["config", "set", "defaults.latitude", "60.17"],
+    );
+    assert!(
+        first.status.success(),
+        "`config set` must repair one fault while another stands: {}",
+        stderr_of(&first)
+    );
+    assert_eq!(
+        config_value(home.path(), "latitude"),
+        60.17,
+        "the repaired latitude should have been written"
+    );
+
+    // Fixing the second returns the file to a fully valid state. 0.5 rather than
+    // an arbitrary threshold because it round-trips exactly through the f32
+    // field and the JSON envelope, so the equality assertion is not at the mercy
+    // of float widening.
+    let second = run_in(
+        home.path(),
+        &["config", "set", "defaults.range_threshold", "0.5"],
+    );
+    assert!(
+        second.status.success(),
+        "`config set` must repair the remaining fault: {}",
+        stderr_of(&second)
+    );
+    assert_eq!(
+        config_value(home.path(), "range_threshold"),
+        0.5,
+        "the repaired threshold should have been written"
+    );
+
+    // The end state now loads on the one path that validates on load.
+    assert_validation_did_not_reject(home.path());
+}
+
+#[test]
+fn test_config_set_warns_about_the_faults_it_left_unresolved() {
+    // Repairing one fault must not hide the others: the user is told, on stderr,
+    // which faults still stand, so a partial repair does not look complete.
+    let home = tempfile::tempdir().unwrap();
+    seed_config(home.path(), TWO_INDEPENDENT_FAULTS);
+
+    let repair = run_in(
+        home.path(),
+        &["config", "set", "defaults.latitude", "60.17"],
+    );
+    assert!(
+        repair.status.success(),
+        "the repair should be accepted: {}",
+        stderr_of(&repair)
+    );
+    assert!(
+        stderr_of(&repair).contains(THRESHOLD_VIOLATION),
+        "`config set` should warn about the range_threshold fault it did not fix, got: {}",
+        stderr_of(&repair)
+    );
+    // The fault it JUST FIXED must not be reported as still standing. This pins
+    // `remaining` to the POST-edit fault set: a regression that built it from the
+    // pre-edit set, or one that always warns, would list the repaired latitude
+    // here and still pass every other assertion, since before and after share
+    // the threshold fault.
+    assert!(
+        !stderr_of(&repair).contains(LATITUDE_VIOLATION),
+        "the repaired latitude must not be reported as still unresolved, got: {}",
+        stderr_of(&repair)
+    );
+
+    // The same warning goes to stderr in JSON mode, leaving stdout a clean
+    // envelope for a machine consumer.
+    let json_home = tempfile::tempdir().unwrap();
+    seed_config(json_home.path(), TWO_INDEPENDENT_FAULTS);
+    let json = run_in(
+        json_home.path(),
+        &[
+            "config",
+            "set",
+            "defaults.latitude",
+            "60.17",
+            "--output-mode",
+            "json",
+        ],
+    );
+    assert!(
+        json.status.success(),
+        "the JSON-mode repair should be accepted: {}",
+        stderr_of(&json)
+    );
+    serde_json::from_str::<serde_json::Value>(&String::from_utf8_lossy(&json.stdout))
+        .expect("stdout must stay a parseable JSON envelope, not carry the warning");
+    assert!(
+        stderr_of(&json).contains(THRESHOLD_VIOLATION),
+        "the warning belongs on stderr in JSON mode too, got: {}",
+        stderr_of(&json)
+    );
+
+    // A repair that leaves nothing unresolved says nothing. With the latitude
+    // its only fault, fixing it must NOT print an unresolved-problems warning,
+    // so a clean repair does not cry wolf (and an always-warn regression fails
+    // here).
+    let clean_home = tempfile::tempdir().unwrap();
+    seed_config(clean_home.path(), OUT_OF_RANGE_LATITUDE);
+    let clean = run_in(
+        clean_home.path(),
+        &["config", "set", "defaults.latitude", "60.17"],
+    );
+    assert!(
+        clean.status.success(),
+        "the clean repair should be accepted: {}",
+        stderr_of(&clean)
+    );
+    assert!(
+        !stderr_of(&clean).contains("unresolved problem"),
+        "resolving the last fault must not print an unresolved-problems warning, got: {}",
+        stderr_of(&clean)
+    );
+}
+
+#[test]
+fn test_config_set_edits_an_unrelated_key_while_the_config_is_broken() {
+    // The case a plain "write only when the fault count drops" rule gets wrong.
+    // Editing a DIFFERENT, valid key leaves the fault count unchanged, yet it
+    // must still be allowed, or an unrelated setting could not be touched until
+    // someone else's fault was fixed. The rule is "introduce no new fault", not
+    // "reduce the count".
+    let home = tempfile::tempdir().unwrap();
+    seed_config(home.path(), NAN_RANGE_THRESHOLD);
+
+    let output = run_in(home.path(), &["config", "set", "defaults.overlap", "0.5"]);
+    assert!(
+        output.status.success(),
+        "editing a valid unrelated key must be allowed while another fault stands: {}",
+        stderr_of(&output)
+    );
+    assert_eq!(
+        config_value(home.path(), "overlap"),
+        0.5,
+        "the unrelated edit should have been written"
+    );
+    assert!(
+        stderr_of(&output).contains(THRESHOLD_VIOLATION),
+        "the standing fault should still be reported, got: {}",
+        stderr_of(&output)
+    );
+}
+
+#[test]
+fn test_config_set_will_not_add_a_new_fault_to_a_broken_config() {
+    // The relaxation permits forward progress, never a fresh fault. With one
+    // fault already present, pointing `defaults.model` at a model that is not
+    // configured introduces a SECOND, distinct fault, so the write is refused
+    // and the file is left as it was. `defaults.model` is what makes this
+    // reachable: unlike the numeric keys it has no `parse_*` bound, so this rule
+    // is the only thing standing between it and a bad value.
+    let home = tempfile::tempdir().unwrap();
+    let path = seed_config(home.path(), OUT_OF_RANGE_LATITUDE);
+    let before = std::fs::read_to_string(&path).unwrap();
+
+    let output = run_in(
+        home.path(),
+        &["config", "set", "defaults.model", "no-such-model"],
+    );
+    assert_eq!(
+        output.status.code(),
+        Some(APPLICATION_ERROR),
+        "adding a new fault to a broken config must be refused as an application error, got: {}",
+        stderr_of(&output)
+    );
+    assert_eq!(
+        std::fs::read_to_string(&path).unwrap(),
+        before,
+        "a refused `config set` must leave the file untouched"
+    );
+}
+
+#[test]
+fn test_config_set_will_not_break_a_valid_config() {
+    // The empty-`before` boundary: on a config with NO faults the repair path
+    // must behave exactly like the strict one and refuse any edit that would
+    // introduce a fault, so `config set` can never silently turn a good config
+    // into a broken one. `defaults.model` is the reachable case (no `parse_*`
+    // bound), so pointing it at a model that is not configured must be rejected
+    // and leave the file untouched.
+    let home = tempfile::tempdir().unwrap();
+    let path = seed_config(home.path(), "[defaults]\nlatitude = 60.17\n");
+    let before = std::fs::read_to_string(&path).unwrap();
+
+    let output = run_in(
+        home.path(),
+        &["config", "set", "defaults.model", "no-such-model"],
+    );
+    assert_eq!(
+        output.status.code(),
+        Some(APPLICATION_ERROR),
+        "config set must not introduce a fault into a valid config, got: {}",
+        stderr_of(&output)
+    );
+    assert_eq!(
+        std::fs::read_to_string(&path).unwrap(),
+        before,
+        "a refused `config set` must leave the valid file untouched"
+    );
+}
+
+#[test]
 fn test_bare_invocation_prints_help_with_an_invalid_config() {
     // Refusing to print help because the config is wrong is the least useful
     // moment to refuse, so the no-command no-inputs path is exempt too.
@@ -564,9 +797,9 @@ fn test_repair_and_diagnostic_commands_are_not_gated() {
 
 #[test]
 fn test_an_overlap_rule_violation_is_rejected_on_load() {
-    // `validate_config` runs two halves and only `validate_range_filter` was
-    // reached end to end: swapping the gate call to `validate_range_filter`
-    // alone left the whole suite green. This drives a `validate_defaults` rule
+    // `validate_config` runs two halves and only `collect_range_filter_violations` was
+    // reached end to end: swapping the gate call to `collect_range_filter_violations`
+    // alone left the whole suite green. This drives a `collect_defaults_violations` rule
     // through the binary, so the gate is pinned to the full check rather than
     // half of it.
     //
@@ -740,7 +973,7 @@ fn test_an_oversized_batch_size_is_rejected_on_load() {
 
 #[test]
 fn test_an_out_of_range_day_of_year_is_rejected_on_load() {
-    // The other #312 field, and the wider hole of the two: `validate_defaults`
+    // The other #312 field, and the wider hole of the two: `collect_defaults_violations`
     // did not look at it at all and `config set` had no arm for it, so
     // config.toml was the only route to `defaults.day_of_year` and the only one
     // with no check. (`--day-of-year` and `BIRDA_DAY_OF_YEAR` set it for a
@@ -884,7 +1117,7 @@ fn test_config_set_writes_a_valid_day_of_year() {
 #[test]
 fn test_config_set_rejects_an_out_of_range_day_of_year() {
     // The rejecting half of the arm above. Pinned on CONFIG_SET_REJECTION
-    // because `validate_defaults` now emits the same rule message with the same
+    // because `collect_defaults_violations` now emits the same rule message with the same
     // exit code, so the key prefix is the only thing that tells the two apart.
     let home = tempfile::tempdir().unwrap();
     let path = seed_config(home.path(), VALID_SEED);
@@ -1038,7 +1271,7 @@ fn test_a_valid_config_still_loads() {
     // fail further on (no model is configured here), so this asserts only that
     // it got past validation.
     // `batch_size` and `day_of_year` are set at their inclusive maxima rather
-    // than left out. Omitted, `validate_defaults` short-circuits on `None` and
+    // than left out. Omitted, `collect_defaults_violations` short-circuits on `None` and
     // the two rule messages this control asserts absent could never have
     // appeared, so those assertions held by construction. At 512 and 366 they
     // are real, and the upper bounds get end-to-end coverage they otherwise

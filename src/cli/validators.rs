@@ -64,7 +64,7 @@ pub fn parse_bounded_float(s: &str, min: f64, max: f64, name: &str) -> Result<f6
 /// Parse and validate a latitude in degrees.
 ///
 /// Reads `coordinates::LATITUDE_MIN`/`MAX`, the same pair
-/// `config::validate::validate_range_filter` and `Error::InvalidLatitude` read.
+/// `config::validate::collect_range_filter_violations` and `Error::InvalidLatitude` read.
 /// `test_parse_latitude_matches_the_config_file_rule` drives this and the file
 /// rule together and compares verdicts (#340).
 pub fn parse_latitude(s: &str) -> Result<f64, String> {
@@ -91,7 +91,7 @@ pub fn parse_longitude(s: &str) -> Result<f64, String> {
 /// Parse and validate segment overlap in seconds (finite and non-negative).
 ///
 /// The rule is deliberately identical to the config-file one in
-/// `validate_defaults`, wording included, because the two are the same setting
+/// `collect_defaults_violations`, wording included, because the two are the same setting
 /// reached by different routes: `--overlap` and `BIRDA_OVERLAP` both win over
 /// `defaults.overlap`, so a rule enforced on the file alone left the channels
 /// disagreeing. `overlap = -1` in config.toml was a hard error while
@@ -132,7 +132,7 @@ pub fn parse_overlap(s: &str) -> Result<f32, String> {
 /// `MAX_BATCH_SIZE`).
 ///
 /// The same range is applied to `defaults.batch_size` by
-/// `config::validate::validate_defaults`, and
+/// `config::validate::collect_defaults_violations`, and
 /// `test_parse_batch_size_matches_the_config_file_rule` drives both and
 /// compares their verdicts. Before #312 only this side carried the upper
 /// bound, so `--batch-size 100000` was refused while the same value in
@@ -162,14 +162,14 @@ pub fn parse_batch_size(s: &str) -> Result<usize, String> {
 
 /// Parse and validate the day of year used for BSG SDM adjustment (1-366).
 ///
-/// Shared with the config-file rule in `validate_defaults` for the reason
+/// Shared with the config-file rule in `collect_defaults_violations` for the reason
 /// `parse_overlap` documents: `--day-of-year` and `BIRDA_DAY_OF_YEAR` both win
 /// over `defaults.day_of_year`, so a bound enforced on one route left the
 /// routes disagreeing about one setting.
 ///
 /// This replaces an inline `clap::value_parser!(u32).range(1..=366)` on the
 /// argument. That bounded the flag, but the bound was a literal only clap could
-/// read, so neither `handle_config_set` nor `validate_defaults` could apply it.
+/// read, so neither `handle_config_set` nor `collect_defaults_violations` could apply it.
 pub fn parse_day_of_year(s: &str) -> Result<u32, String> {
     // Trimmed; see `parse_confidence`. This one backs `--day-of-year` and
     // `BIRDA_DAY_OF_YEAR`.
@@ -373,8 +373,8 @@ mod tests {
         //
         // This drives BOTH rules and compares their verdicts, rather than
         // asserting `parse_overlap` against a list of inputs a comment claims
-        // `validate_defaults` agrees on. The list version was the shape this
-        // test had first, and it did not work: giving `validate_defaults` an
+        // `collect_defaults_violations` agrees on. The list version was the shape this
+        // test had first, and it did not work: giving `collect_defaults_violations` an
         // upper bound the CLI does not have left every config test green, so
         // the guard the doc comments on both sides advertise was not a guard at
         // all. Comparing verdicts means the two cannot diverge on any input
@@ -499,7 +499,7 @@ mod tests {
         // above. Three routes reach `defaults.latitude`: the flag, `config set`
         // (which routes through this parser), and a hand-edited config.toml.
         // Before this the bound was written out in `cli::validators`, in
-        // `config::validate::validate_range_filter` and a third time in the
+        // `config::validate::collect_range_filter_violations` and a third time in the
         // `Error::InvalidLatitude` message, with nothing keeping the three
         // equal. They agreed, so there was no live defect; this is what keeps
         // that true.
@@ -647,7 +647,7 @@ mod tests {
     #[test]
     fn test_parse_day_of_year_matches_the_config_file_rule() {
         // The other half of #312. `--day-of-year` carried an inline
-        // `range(1..=366)`, `validate_defaults` did not look at the field at
+        // `range(1..=366)`, `collect_defaults_violations` did not look at the field at
         // all, and `config set` had no arm for the key, so config.toml was the
         // only route that could set `defaults.day_of_year` and the only one
         // with no check. The flag and `BIRDA_DAY_OF_YEAR` could set the value

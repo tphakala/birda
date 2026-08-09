@@ -4480,8 +4480,8 @@ Used by:
   - anstyle-wincon 3.0.11
   - anstyle 1.0.14
   - assert_cmd 2.2.2
-  - clap 4.6.4
-  - clap_builder 4.6.2
+  - clap 4.6.5
+  - clap_builder 4.6.5
   - clap_derive 4.6.4
   - clap_lex 1.1.0
   - colorchoice 1.0.5

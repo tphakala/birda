@@ -58,7 +58,7 @@ Requirements:
 
 For maximum GPU performance, TensorRT provides ~2x speedup over CUDA. TensorRT is **not bundled** due to size constraints but can be installed separately:
 
-1. Download TensorRT for CUDA 12.9 from [NVIDIA TensorRT](https://github.com/NVIDIA/TensorRT#downloading-tensorrt-build)
+1. Download **TensorRT 10.x** for CUDA 12.x from [NVIDIA TensorRT](https://developer.nvidia.com/tensorrt) (a free NVIDIA Developer account is required). birda bundles ONNX Runtime 1.24, which links against TensorRT 10, so the newer 11.x builds are **not** compatible (this is why the library names in step 2 are the TensorRT 10 SONAMEs, `nvinfer_10.dll` / `libnvinfer.so.10`).
 2. Copy the TensorRT DLLs/libs to the birda installation directory:
    - Windows: `nvinfer_10.dll`, `nvinfer_plugin_10.dll`, `nvonnxparser_10.dll`
    - Linux: `libnvinfer.so.10`, `libnvinfer_plugin.so.10`, `libnvonnxparser.so.10`

@@ -444,7 +444,7 @@ fn part_download_pid(path: &Path) -> Option<u32> {
 /// deletes: a pid can be reused by an unrelated live process, a pid from another
 /// container's namespace can coincidentally match, and a `/proc` mounted
 /// `hidepid=1`/`2` hides another user's process (so it is reported as a leftover,
-/// the safe direction). The caller additionally excepts [`CONTAINER_INIT_PID`];
+/// the safe direction). The caller additionally excepts `CONTAINER_INIT_PID`;
 /// see [`find_stale_part_files`].
 #[cfg(target_os = "linux")]
 fn pid_is_running(pid: u32) -> bool {
@@ -456,12 +456,6 @@ fn pid_is_running(pid: u32) -> bool {
 const fn pid_is_running(_pid: u32) -> bool {
     false
 }
-
-/// The pid a container's entrypoint process carries. A part file tagged with it
-/// cannot be liveness-checked, because `/proc/1` always exists and reflects
-/// whatever init is now rather than this file's original writer, so
-/// [`find_stale_part_files`] reports such a file rather than skipping it.
-const CONTAINER_INIT_PID: u32 = 1;
 
 /// Report leftover partial-download files in the models directory.
 ///
@@ -478,8 +472,8 @@ const CONTAINER_INIT_PID: u32 = 1;
 /// list, matching [`find_obsolete_files`].
 ///
 /// A part file whose writer pid is still running on this host is skipped (best
-/// effort; see [`pid_is_running`]), so a concurrent birda's in-progress transfer
-/// is not reported as abandoned. [`CONTAINER_INIT_PID`] is excepted: `/proc/1`
+/// effort; see `pid_is_running`), so a concurrent birda's in-progress transfer
+/// is not reported as abandoned. `CONTAINER_INIT_PID` is excepted: `/proc/1`
 /// always exists and cannot attribute liveness to this file's writer, and a
 /// `<name>.1.part` is the common crashed-container leftover worth reporting.
 /// Only regular files are reported; a symlink named like a part file is neither
@@ -511,7 +505,7 @@ pub fn find_stale_part_files(dir: &Path) -> Result<Vec<PathBuf>> {
         // Skip a download still in progress by a live writer on this host, so a
         // concurrent birda's transfer is not reported as an abandoned leftover.
         // CONTAINER_INIT_PID is excepted; see its definition and this fn's doc.
-        if pid != CONTAINER_INIT_PID && pid_is_running(pid) {
+        if pid != crate::constants::download::CONTAINER_INIT_PID && pid_is_running(pid) {
             continue;
         }
         found.push(path);

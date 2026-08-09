@@ -293,6 +293,14 @@ pub mod download {
     /// truncated destination file behind.
     pub const PARTIAL_SUFFIX: &str = "part";
 
+    /// The pid a container's entrypoint process carries.
+    ///
+    /// A `.part` download file tagged with this pid cannot be liveness-checked,
+    /// because `/proc/1` always exists and reflects whatever init is now rather
+    /// than the file's original writer, so `find_stale_part_files` reports such a
+    /// file rather than skipping it.
+    pub const CONTAINER_INIT_PID: u32 = 1;
+
     /// Connection timeout for registry downloads, in seconds.
     pub const CONNECT_TIMEOUT_SECS: u64 = 30;
 

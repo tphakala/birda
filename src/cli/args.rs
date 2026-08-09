@@ -233,6 +233,15 @@ pub enum ModelsAction {
         /// Model ID from the registry.
         id: String,
     },
+    /// Show a model's full manifest as JSON (region-aware model catalogue).
+    ///
+    /// Best with `--output-mode json`: emits every region and variant with
+    /// class counts, download sizes, resolved URLs, and per-region country
+    /// coverage. The human form is a short summary.
+    Manifest {
+        /// Model ID from the registry.
+        id: String,
+    },
 }
 
 /// Arguments for the analyze command.

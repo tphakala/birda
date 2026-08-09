@@ -128,6 +128,13 @@ pub struct ModelVariant {
     pub model: FileInfo,
     /// Labels file matching this variant's class list.
     pub labels: FileInfo,
+    /// Countries this region covers, from the vendored region metadata.
+    ///
+    /// `None` on the global model, which has no region, and on any entry
+    /// generated before this field existed, so an older `registry.json` still
+    /// deserializes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub countries: Option<Countries>,
 }
 
 impl ModelEntry {
@@ -248,6 +255,22 @@ pub struct FileInfo {
     pub size_bytes: Option<u64>,
 }
 
+/// Countries a regional model covers, split by how completely.
+///
+/// Vendored per region in `manifests/<family>.regions.json` as
+/// `countries.core` / `countries.partial`. Carried through unchanged so a
+/// consumer can offer a country-name search over the region list: region slugs
+/// like `nordic` are not what a user with Finnish recordings would type.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct Countries {
+    /// Countries wholly inside this region's coverage.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub core: Vec<String>,
+    /// Countries only partially covered by this region.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub partial: Vec<String>,
+}
+
 /// Labels with language variants.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct LabelsInfo {
@@ -295,6 +318,10 @@ mod tests {
                 sha256: Some("def".to_string()),
                 size_bytes: Some(1),
             },
+            countries: region.map(|_| Countries {
+                core: vec!["Testland".to_string()],
+                partial: Vec::new(),
+            }),
         }
     }
 
@@ -445,6 +472,49 @@ mod tests {
     #[test]
     fn test_variant_ids_for_an_unknown_region_is_empty() {
         assert!(variant_entry().variant_ids_for(Some("atlantis")).is_empty());
+    }
+
+    #[test]
+    fn test_regional_variant_carries_countries_through_find_variant() {
+        let entry = variant_entry();
+        let nordic = entry.find_variant(Some("nordic"), "fp32").unwrap();
+        assert_eq!(
+            nordic
+                .countries
+                .as_ref()
+                .expect("a regional variant carries countries")
+                .core,
+            vec!["Testland".to_string()]
+        );
+        // The global model is not a region, so it carries no countries.
+        assert!(
+            entry
+                .find_variant(None, "fp32")
+                .unwrap()
+                .countries
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn test_countries_are_omitted_from_json_when_absent() {
+        // skip_serializing_if keeps the global model's variant free of an empty
+        // countries object, so a consumer pinned to an older birda that never
+        // knew the field sees unchanged bytes.
+        let global = variant("fp32", None, 11560);
+        assert!(
+            !serde_json::to_string(&global)
+                .unwrap()
+                .contains("countries"),
+            "the global variant must not carry a countries key"
+        );
+        let nordic = variant("fp32", Some("nordic"), 422);
+        assert!(
+            serde_json::to_string(&nordic)
+                .unwrap()
+                .contains("countries"),
+            "a regional variant must carry its countries"
+        );
     }
 
     #[test]

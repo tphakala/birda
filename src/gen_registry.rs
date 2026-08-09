@@ -9,7 +9,9 @@
 //! guards against drift are hermetic and need no network.
 
 use crate::error::{Error, Result};
-use crate::registry::types::{FileInfo, LicenseInfo, ModelEntry, ModelVariant, Registry};
+use crate::registry::types::{
+    Countries, FileInfo, LicenseInfo, ModelEntry, ModelVariant, Registry,
+};
 use serde::Deserialize;
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -66,6 +68,10 @@ struct RegionMetadata {
     /// Class count, where the manifest entry itself does not carry one.
     #[serde(default)]
     classes: Option<usize>,
+    /// Countries this region covers, carried through verbatim to the variant so
+    /// a consumer can offer a country-name search over the region list.
+    #[serde(default)]
+    countries: Option<Countries>,
 }
 
 /// Curation entry from `registry-sources.toml`.
@@ -249,6 +255,7 @@ fn build_entry(root: &Path, source: &SourceModel) -> Result<ModelEntry> {
                 sha256: None,
                 size_bytes: None,
             },
+            countries: region_meta.and_then(|m| m.countries.clone()),
         });
     }
 

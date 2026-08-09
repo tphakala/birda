@@ -121,6 +121,45 @@ fn test_every_regional_variant_has_display_metadata() {
 }
 
 #[test]
+fn test_every_regional_variant_carries_country_coverage() {
+    // The vendored region metadata declares core/partial countries, and the
+    // manifest projection exposes them as the search index for the region
+    // picker. If the generator drops them, that search has nothing to match.
+    for model in parsed().models.iter().filter(|m| m.is_variant_based()) {
+        for variant in model.variants.iter().filter(|v| v.region.is_some()) {
+            let countries = variant.countries.as_ref().unwrap_or_else(|| {
+                panic!(
+                    "{} region {:?} lost its countries",
+                    model.id, variant.region
+                )
+            });
+            assert!(
+                !countries.core.is_empty(),
+                "{} region {:?} has empty core country coverage",
+                model.id,
+                variant.region
+            );
+        }
+    }
+}
+
+#[test]
+fn test_global_variants_carry_no_country_coverage() {
+    // The global model is not a region, so it must not gain a countries object;
+    // that is what keeps the field a reliable regional/global discriminator.
+    for model in parsed().models.iter().filter(|m| m.is_variant_based()) {
+        for variant in model.variants.iter().filter(|v| v.region.is_none()) {
+            assert!(
+                variant.countries.is_none(),
+                "{} global variant {} must not carry countries",
+                model.id,
+                variant.id
+            );
+        }
+    }
+}
+
+#[test]
 fn test_every_variant_entry_declares_a_default_variant_that_exists() {
     // Selection falls back to this, so an entry naming a variant it does not
     // publish would fail at install time on exactly the hosts with no better

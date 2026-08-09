@@ -25,61 +25,27 @@
 //!   an advisory lock (`flock`/`LockFileEx`, released by the kernel on process
 //!   death) would restore automatic recovery without the race.
 //!
-//! The registry is deliberately separate from `file_lock`'s: one shared `Vec`
-//! would let either type's cleanup remove the other's lock file.
+//! The registry is a separate [`super::registry::LockRegistry`] instance from
+//! `file_lock`'s: the two lock types share the primitive but not the backing
+//! `Vec`, since one shared registry would let either type's cleanup remove the
+//! other's lock file.
 
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::sync::{LazyLock, Mutex, PoisonError};
 use std::time::{Duration, Instant};
 
+use super::registry::LockRegistry;
 use crate::constants::config_lock::{ACQUIRE_TIMEOUT, LOCK_SUFFIX, RETRY_INTERVAL};
 use crate::error::{Error, Result};
 
-/// Active config-lock paths, removed if the process is interrupted.
-static ACTIVE_CONFIG_LOCKS: LazyLock<Mutex<Vec<PathBuf>>> =
-    LazyLock::new(|| Mutex::new(Vec::new()));
-
-/// Register a held lock path for signal cleanup.
-///
-/// Recovers from a poisoned mutex (`unwrap_or_else(into_inner)`) rather than
-/// skipping the update, matching [`cleanup_all_config_locks`]. If a panic while
-/// holding the lock left `register`/`unregister` no-ops but cleanup still
-/// draining, an unregister could silently not happen and cleanup would later
-/// delete a peer's fresh lock at that path.
-fn register(path: &Path) {
-    let mut locks = ACTIVE_CONFIG_LOCKS
-        .lock()
-        .unwrap_or_else(PoisonError::into_inner);
-    locks.push(path.to_path_buf());
-}
-
-/// Unregister a lock path once it is released.
-///
-/// Poison-recovering for the same reason as [`register`].
-fn unregister(path: &Path) {
-    let mut locks = ACTIVE_CONFIG_LOCKS
-        .lock()
-        .unwrap_or_else(PoisonError::into_inner);
-    locks.retain(|p| p != path);
-}
+/// Active config-lock paths, removed if the process is interrupted. A separate
+/// [`LockRegistry`] instance from `file_lock`'s so neither type's cleanup can
+/// remove the other's lock file.
+static ACTIVE_CONFIG_LOCKS: LockRegistry = LockRegistry::new();
 
 /// Remove every held config lock. Called from the Ctrl+C handler.
-///
-/// Recovers from a poisoned mutex so cleanup still runs after a panic, and
-/// drains the registry so each path is removed once. Only paths this process has
-/// successfully acquired are ever registered, so this never removes a peer's
-/// lock.
 pub fn cleanup_all_config_locks() {
-    let paths = {
-        let mut locks = ACTIVE_CONFIG_LOCKS
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner);
-        std::mem::take(&mut *locks)
-    };
-    for path in paths {
-        let _ = std::fs::remove_file(&path);
-    }
+    ACTIVE_CONFIG_LOCKS.cleanup();
 }
 
 /// RAII guard serialising a config load-mutate-save against other processes.
@@ -120,7 +86,7 @@ impl ConfigLock {
                     // `cleanup_all_config_locks` delete a peer's lock. The cost is
                     // a Ctrl+C in the create-then-register gap leaking our own
                     // lock, which is a manual delete, not lost data.
-                    register(&lock_path);
+                    ACTIVE_CONFIG_LOCKS.register(&lock_path);
                     return Ok(Self { lock_path });
                 }
                 Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
@@ -142,17 +108,9 @@ impl ConfigLock {
 
 impl Drop for ConfigLock {
     fn drop(&mut self) {
-        // Unregister BEFORE removing the file, not after. A Ctrl+C landing
-        // between the two then leaks only our own lock file (a manual delete),
-        // never a peer's: once the path is out of the registry our signal cleanup
-        // ignores it, so a peer that re-creates a lock at this path right after
-        // our remove cannot be caught by our cleanup. The other order leaves a
-        // window where the path is still registered but the file at it is a
-        // peer's fresh lock, which cleanup would then delete.
-        unregister(&self.lock_path);
-        // Safe to remove by path: nothing breaks a held lock, so while we hold it
-        // the file at `lock_path` is always the one we created.
-        let _ = std::fs::remove_file(&self.lock_path);
+        // release() unregisters before it unlinks; see LockRegistry::release for
+        // why that ordering is what keeps a Ctrl+C from deleting a peer's lock.
+        ACTIVE_CONFIG_LOCKS.release(&self.lock_path);
     }
 }
 

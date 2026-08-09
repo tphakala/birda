@@ -216,9 +216,16 @@ pub async fn download_verified(
 /// Path of the in-progress download file for a destination.
 ///
 /// The name is qualified with this process's id so two concurrent birda
-/// processes downloading the same destination cannot write into one file. A
-/// shared part name lets their writes interleave, and lets one process's error
-/// cleanup unlink the other's in-progress transfer.
+/// processes on the same host downloading the same destination cannot write into
+/// one file: a shared part name lets their writes interleave, and lets one
+/// process's error cleanup unlink the other's in-progress transfer.
+///
+/// This holds within one pid namespace, not globally. Two birda containers that
+/// bind-mount the same models directory each see their own low pids, so their
+/// part names can still collide; kernel-unique naming (as in
+/// `crate::utils::fs::new_temp_in`) is the fix if that case ever needs to be
+/// safe. The pid form is kept because it lets `find_stale_part_files` liveness-
+/// check a leftover's writer.
 fn part_path(dest: &Path) -> Result<PathBuf> {
     let name = dest.file_name().ok_or_else(|| Error::Internal {
         message: format!("download destination has no file name: {}", dest.display()),
@@ -403,24 +410,58 @@ pub fn find_obsolete_files(dir: &Path) -> Result<Vec<PathBuf>> {
     Ok(found)
 }
 
-/// Does `path` match the `<name>.<pid>.part` shape that `part_path` writes?
+/// The pid embedded in a `<name>.<pid>.part` path, if it has that shape.
 ///
-/// Requiring the numeric pid segment keeps an unrelated `.part` file a user left
-/// in the models directory from being misreported as an interrupted download.
-fn is_part_download(path: &Path) -> bool {
+/// Returns the parsed pid so a caller can both recognise a part download and
+/// check whether the writing process is still alive. Requiring a numeric pid
+/// segment keeps an unrelated `.part` file a user left in the models directory
+/// from being misreported as an interrupted download.
+fn part_download_pid(path: &Path) -> Option<u32> {
     if !path
         .extension()
         .is_some_and(|ext| ext.eq_ignore_ascii_case(crate::constants::download::PARTIAL_SUFFIX))
     {
-        return false;
+        return None;
     }
     // With the `.part` extension removed the stem is `<name>.<pid>`; the segment
     // after its last '.' must be the numeric pid.
     path.file_stem()
         .and_then(|stem| stem.to_str())
         .and_then(|stem| stem.rsplit('.').next())
-        .is_some_and(|pid| !pid.is_empty() && pid.bytes().all(|b| b.is_ascii_digit()))
+        .filter(|pid| !pid.is_empty() && pid.bytes().all(|b| b.is_ascii_digit()))
+        .and_then(|pid| pid.parse::<u32>().ok())
 }
+
+/// Whether a process with `pid` is running on this host.
+///
+/// Best effort, used only to keep an in-progress download from being reported as
+/// a leftover. Determinable on Linux via `/proc/<pid>`, which is where the
+/// container-sharing case in [`part_path`] arises; other platforms return `false`
+/// (not known to be running), so a leftover is reported as before rather than
+/// hidden.
+///
+/// The signal is inexact and only ever narrows a report-only advisory, never
+/// deletes: a pid can be reused by an unrelated live process, a pid from another
+/// container's namespace can coincidentally match, and a `/proc` mounted
+/// `hidepid=1`/`2` hides another user's process (so it is reported as a leftover,
+/// the safe direction). The caller additionally excepts [`CONTAINER_INIT_PID`];
+/// see [`find_stale_part_files`].
+#[cfg(target_os = "linux")]
+fn pid_is_running(pid: u32) -> bool {
+    Path::new("/proc").join(pid.to_string()).exists()
+}
+
+/// See the Linux definition. Off Linux, liveness is not checked here.
+#[cfg(not(target_os = "linux"))]
+const fn pid_is_running(_pid: u32) -> bool {
+    false
+}
+
+/// The pid a container's entrypoint process carries. A part file tagged with it
+/// cannot be liveness-checked, because `/proc/1` always exists and reflects
+/// whatever init is now rather than this file's original writer, so
+/// [`find_stale_part_files`] reports such a file rather than skipping it.
+const CONTAINER_INIT_PID: u32 = 1;
 
 /// Report leftover partial-download files in the models directory.
 ///
@@ -435,6 +476,14 @@ fn is_part_download(path: &Path) -> bool {
 /// This only reports; it never deletes, since another live birda may own a
 /// different pid's part file mid-transfer. A missing directory yields an empty
 /// list, matching [`find_obsolete_files`].
+///
+/// A part file whose writer pid is still running on this host is skipped (best
+/// effort; see [`pid_is_running`]), so a concurrent birda's in-progress transfer
+/// is not reported as abandoned. [`CONTAINER_INIT_PID`] is excepted: `/proc/1`
+/// always exists and cannot attribute liveness to this file's writer, and a
+/// `<name>.1.part` is the common crashed-container leftover worth reporting.
+/// Only regular files are reported; a symlink named like a part file is neither
+/// followed nor listed.
 pub fn find_stale_part_files(dir: &Path) -> Result<Vec<PathBuf>> {
     let mut found = Vec::new();
 
@@ -445,12 +494,27 @@ pub fn find_stale_part_files(dir: &Path) -> Result<Vec<PathBuf>> {
     };
 
     for entry in entries {
-        let path = entry.map_err(Error::Io)?.path();
-        // Gate the stat behind the name check, so only a matching name is
-        // ever stat-checked.
-        if is_part_download(&path) && path.is_file() {
-            found.push(path);
+        let entry = entry.map_err(Error::Io)?;
+        let path = entry.path();
+        // Gate every stat behind the name check, so only a matching name is ever
+        // examined further.
+        let Some(pid) = part_download_pid(&path) else {
+            continue;
+        };
+        // DirEntry::file_type does not follow symlinks (like lstat) and on Linux is
+        // usually served from the readdir d_type with no extra syscall. A symlink
+        // named like a part file is therefore neither followed nor reported; only a
+        // regular file is a leftover download.
+        if !entry.file_type().is_ok_and(|ft| ft.is_file()) {
+            continue;
         }
+        // Skip a download still in progress by a live writer on this host, so a
+        // concurrent birda's transfer is not reported as an abandoned leftover.
+        // CONTAINER_INIT_PID is excepted; see its definition and this fn's doc.
+        if pid != CONTAINER_INIT_PID && pid_is_running(pid) {
+            continue;
+        }
+        found.push(path);
     }
 
     // read_dir order is unspecified, so sort for deterministic reporting.
@@ -1054,9 +1118,11 @@ mod tests {
         std::fs::write(dir.path().join("birdnet-v30.onnx"), b"x").unwrap();
         std::fs::write(dir.path().join("birdnet-v30-labels.txt"), b"x").unwrap();
         // A download interrupted mid-transfer leaves a pid-qualified part file.
+        // u32::MAX is above any Linux pid_max, so the liveness check treats its
+        // writer as dead and the file as a genuine leftover.
         let leftover = format!(
             "birdnet-v30.onnx.{}.{}",
-            std::process::id(),
+            u32::MAX,
             crate::constants::download::PARTIAL_SUFFIX
         );
         std::fs::write(dir.path().join(&leftover), b"partial").unwrap();
@@ -1076,15 +1142,18 @@ mod tests {
     fn test_find_stale_part_files_returns_all_leftovers_sorted() {
         let dir = tempfile::tempdir().unwrap();
         let suffix = crate::constants::download::PARTIAL_SUFFIX;
-        std::fs::write(dir.path().join(format!("b-model.onnx.10.{suffix}")), b"x").unwrap();
-        std::fs::write(dir.path().join(format!("a-model.onnx.20.{suffix}")), b"x").unwrap();
+        // Pids above any Linux pid_max, so both are treated as dead writers.
+        let b = format!("b-model.onnx.{}.{suffix}", u32::MAX);
+        let a = format!("a-model.onnx.{}.{suffix}", u32::MAX - 1);
+        std::fs::write(dir.path().join(&b), b"x").unwrap();
+        std::fs::write(dir.path().join(&a), b"x").unwrap();
 
         let found = find_stale_part_files(dir.path()).unwrap();
 
         assert_eq!(found.len(), 2);
         // read_dir order is unspecified; the result is sorted, so "a-" precedes "b-".
-        assert!(found[0].ends_with(format!("a-model.onnx.20.{suffix}")));
-        assert!(found[1].ends_with(format!("b-model.onnx.10.{suffix}")));
+        assert!(found[0].ends_with(&a));
+        assert!(found[1].ends_with(&b));
     }
 
     #[test]
@@ -1101,6 +1170,97 @@ mod tests {
         let missing = dir.path().join("does-not-exist");
 
         assert!(find_stale_part_files(&missing).unwrap().is_empty());
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn test_find_stale_part_files_skips_a_download_whose_writer_is_alive() {
+        // A part file tagged with this test process's own pid: its writer is
+        // provably alive, so it is a download in progress, not a leftover.
+        let dir = tempfile::tempdir().unwrap();
+        let suffix = crate::constants::download::PARTIAL_SUFFIX;
+        let live = format!("birdnet-v30.onnx.{}.{suffix}", std::process::id());
+        std::fs::write(dir.path().join(&live), b"partial").unwrap();
+
+        assert!(
+            find_stale_part_files(dir.path()).unwrap().is_empty(),
+            "a part file whose writer pid is still running must not be reported as a leftover"
+        );
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn test_find_stale_part_files_ignores_a_symlink_named_like_a_download() {
+        use std::os::unix::fs::symlink;
+
+        // A symlink whose name matches the <name>.<pid>.part shape must not be
+        // followed or reported: only a real regular file is a leftover download.
+        let dir = tempfile::tempdir().unwrap();
+        let suffix = crate::constants::download::PARTIAL_SUFFIX;
+        let target = dir.path().join("real-file");
+        std::fs::write(&target, b"x").unwrap();
+        // u32::MAX so that even if the symlink were wrongly followed the liveness
+        // check would not apply, isolating the regular-file check as the reason
+        // it is excluded.
+        let link = dir.path().join(format!("model.onnx.{}.{suffix}", u32::MAX));
+        symlink(&target, &link).unwrap();
+
+        assert!(
+            find_stale_part_files(dir.path()).unwrap().is_empty(),
+            "a symlink named like a part file must not be reported as a leftover"
+        );
+    }
+
+    #[test]
+    fn test_part_download_pid_parses_the_pid_and_rejects_non_downloads() {
+        // A well-formed part name yields its pid, taken from the last dot-segment
+        // of the multi-dot stem.
+        assert_eq!(
+            part_download_pid(std::path::Path::new("birdnet-v30.onnx.4321.part")),
+            Some(4321)
+        );
+        // Not a `.part` file at all.
+        assert_eq!(
+            part_download_pid(std::path::Path::new("birdnet-v30.onnx")),
+            None
+        );
+        // `.part` but no numeric pid segment.
+        assert_eq!(
+            part_download_pid(std::path::Path::new("manual-notes.part")),
+            None
+        );
+        // `.part` with an empty pid segment.
+        assert_eq!(
+            part_download_pid(std::path::Path::new("model.onnx..part")),
+            None
+        );
+        // A numeric segment that overflows u32 is not a real pid (std::process::id
+        // is a u32), so it is not recognised as a birda download.
+        assert_eq!(
+            part_download_pid(std::path::Path::new("model.onnx.99999999999999999999.part")),
+            None
+        );
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn test_find_stale_part_files_reports_a_pid_1_leftover() {
+        // A `<name>.1.part` only arises when birda ran as a container entrypoint
+        // (pid 1). /proc/1 always exists, so a naive liveness check would hide it,
+        // but it is the common crashed-container leftover and must be reported.
+        let dir = tempfile::tempdir().unwrap();
+        let suffix = crate::constants::download::PARTIAL_SUFFIX;
+        let leftover = format!("birdnet-v30.onnx.1.{suffix}");
+        std::fs::write(dir.path().join(&leftover), b"partial").unwrap();
+
+        let found = find_stale_part_files(dir.path()).unwrap();
+
+        assert_eq!(
+            found.len(),
+            1,
+            "a pid-1 (container-entrypoint) part file must be reported, not hidden by /proc/1"
+        );
+        assert!(found[0].ends_with(&leftover));
     }
 
     #[test]

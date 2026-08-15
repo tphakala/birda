@@ -220,7 +220,7 @@ where
     // the write bit on the file itself, so a file the user can plainly write can
     // now fail to be written. The `io::Error` names the temporary, and so the
     // directory with it.
-    let temp = new_temp_in(dir, mode)?;
+    let mut temp = new_temp_in(dir, mode)?;
 
     // Both modes are read once, here, because `fill` runs in between and the
     // target may be replaced by the time it returns.
@@ -240,7 +240,27 @@ where
     temp.as_file().sync_all()?;
 
     // Drops the temporary on failure, so a rejected write leaves nothing behind.
-    temp.persist(target).map_err(|e| e.error)?;
+    //
+    // Retried rather than persisted once: on Windows a concurrent reader holding
+    // the target open without FILE_SHARE_DELETE makes MoveFileExW fail with a
+    // transient sharing violation. `PersistError` hands the temporary back, so a
+    // failed attempt reclaims it and tries again; the mode and `sync_all` set
+    // above live on the inode and survive. On non-Windows the predicate is a
+    // compile-time false, so this persists exactly once.
+    let mut backoff = crate::constants::publish::BASE_BACKOFF;
+    let mut attempt = 1u32;
+    loop {
+        match temp.persist(target) {
+            Ok(_) => break,
+            Err(e) => {
+                if !backoff_after_transient_publish(&e.error, attempt, &mut backoff) {
+                    return Err(E::from(e.error));
+                }
+                temp = e.file;
+                attempt += 1;
+            }
+        }
+    }
 
     // The leaf directory holds the file's new entry.
     sync_directory(dir);
@@ -252,6 +272,69 @@ where
     }
 
     Ok(())
+}
+
+/// True for the transient Windows errors raised while another process briefly
+/// holds the publish destination open without `FILE_SHARE_DELETE` (antivirus,
+/// the search indexer, or birda-gui reading `registry.json`):
+/// `ERROR_ACCESS_DENIED` (5), `ERROR_SHARING_VIOLATION` (32), and
+/// `ERROR_LOCK_VIOLATION` (33). `MoveFileExW` returns 5 rather than 32 as often
+/// as not, so all three are needed. Retrying rides out that short window, which a
+/// plain `fs::write` used to survive.
+#[cfg(windows)]
+pub(crate) fn is_transient_publish_error(err: &std::io::Error) -> bool {
+    err.raw_os_error()
+        .is_some_and(|code| crate::constants::publish::TRANSIENT_PUBLISH_ERRORS.contains(&code))
+}
+
+/// Off Windows a rename or persist over an open file does not raise a sharing
+/// violation, so a publish is always a single attempt and never transient. A
+/// compile-time `false` lets the retry branch fold away entirely.
+#[cfg(not(windows))]
+pub(crate) fn is_transient_publish_error(_err: &std::io::Error) -> bool {
+    false
+}
+
+/// Decide whether a failed publish (a rename or a persist) should be retried,
+/// waiting first if so.
+///
+/// Returns `false` (stop, surface `err`) when `err` is not a transient publish
+/// error or `attempt` has reached [`crate::constants::publish::MAX_ATTEMPTS`].
+/// Otherwise sleeps for `backoff`, doubles it up to
+/// [`crate::constants::publish::MAX_BACKOFF`], and returns `true`.
+///
+/// Callers start `attempt` at 1 and increment it on each `true`. The wait is a
+/// `std::thread::sleep`, so an async caller must run the publish on a blocking
+/// thread (e.g. `tokio::task::spawn_blocking`) to avoid parking a worker. On
+/// non-Windows this always returns `false` on the first call, so the publish is a
+/// single attempt with no sleep, behaviour unchanged.
+pub(crate) fn backoff_after_transient_publish(
+    err: &std::io::Error,
+    attempt: u32,
+    backoff: &mut std::time::Duration,
+) -> bool {
+    if attempt >= crate::constants::publish::MAX_ATTEMPTS || !is_transient_publish_error(err) {
+        return false;
+    }
+
+    tracing::debug!(
+        "publish attempt {attempt} hit a transient sharing violation ({err}); retrying in {backoff:?}"
+    );
+    std::thread::sleep(*backoff);
+    advance_backoff(backoff);
+    true
+}
+
+/// Double the publish backoff, saturating at [`crate::constants::publish::MAX_BACKOFF`].
+///
+/// Pulled out of [`backoff_after_transient_publish`] so the exponential curve,
+/// which is the one platform-independent piece of the retry, can be unit-tested
+/// directly on every platform rather than only on a Windows runner where the
+/// transient predicate is live.
+fn advance_backoff(backoff: &mut std::time::Duration) {
+    *backoff = (*backoff)
+        .saturating_mul(2)
+        .min(crate::constants::publish::MAX_BACKOFF);
 }
 
 /// The ancestors of `dir`, from deepest to shallowest, that do not exist yet.
@@ -517,6 +600,95 @@ fn sync_directory(_dir: &Path) {}
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn transient_publish_error_matches_only_windows_sharing_violations() {
+        // The three MoveFileExW codes a concurrent reader raises. They are
+        // transient only on Windows; everywhere else the same publish never hits
+        // a sharing violation, so the predicate is false and the publish is a
+        // single attempt. `cfg!(windows)` is the expected answer per platform.
+        for code in crate::constants::publish::TRANSIENT_PUBLISH_ERRORS {
+            let err = std::io::Error::from_raw_os_error(code);
+            assert_eq!(
+                is_transient_publish_error(&err),
+                cfg!(windows),
+                "os error {code} should be transient exactly on Windows"
+            );
+        }
+
+        // Never transient on any platform: ERROR_FILE_NOT_FOUND / ENOENT (2) is a
+        // real failure, not a lock to wait out.
+        let not_found = std::io::Error::from_raw_os_error(2);
+        assert!(!is_transient_publish_error(&not_found));
+    }
+
+    #[test]
+    #[cfg(not(windows))]
+    fn publish_is_a_single_attempt_off_windows() {
+        // Even for a code Windows would retry, the first call must refuse to retry
+        // and must not sleep or advance the backoff: off Windows every publish
+        // stays one attempt, exactly as before this change.
+        let mut backoff = crate::constants::publish::BASE_BACKOFF;
+        let would_be_transient = std::io::Error::from_raw_os_error(5);
+        assert!(!backoff_after_transient_publish(
+            &would_be_transient,
+            1,
+            &mut backoff
+        ));
+        assert_eq!(
+            backoff,
+            crate::constants::publish::BASE_BACKOFF,
+            "a single-attempt publish must not have slept or advanced the backoff"
+        );
+    }
+
+    #[test]
+    fn backoff_stops_at_the_attempt_cap() {
+        // At the final attempt the loop must terminate rather than spin, even for
+        // an otherwise-transient error. The cap check precedes the sleep, so the
+        // last attempt never adds a wait.
+        let mut backoff = crate::constants::publish::BASE_BACKOFF;
+        let transient = std::io::Error::from_raw_os_error(32);
+        assert!(!backoff_after_transient_publish(
+            &transient,
+            crate::constants::publish::MAX_ATTEMPTS,
+            &mut backoff
+        ));
+    }
+
+    #[test]
+    fn advance_backoff_doubles_then_saturates_at_the_cap() {
+        use crate::constants::publish::{BASE_BACKOFF, MAX_BACKOFF};
+        use std::time::Duration;
+
+        // The exponential curve is the one platform-independent piece of the
+        // retry, so it is exercised directly here rather than only on a Windows
+        // runner where the transient predicate is live.
+        let mut backoff = BASE_BACKOFF;
+        let mut seen = vec![backoff];
+        for _ in 0..7 {
+            advance_backoff(&mut backoff);
+            seen.push(backoff);
+        }
+
+        assert_eq!(
+            seen,
+            vec![
+                Duration::from_millis(10),
+                Duration::from_millis(20),
+                Duration::from_millis(40),
+                Duration::from_millis(80),
+                Duration::from_millis(160),
+                MAX_BACKOFF, // 320ms doubled from 160ms, clamped to the 200ms cap
+                MAX_BACKOFF, // and it stays there
+                MAX_BACKOFF,
+            ]
+        );
+        assert!(
+            seen.iter().all(|d| *d <= MAX_BACKOFF),
+            "backoff must never exceed the cap"
+        );
+    }
 
     /// Every entry in `dir` that the caller did not expect to be there.
     ///

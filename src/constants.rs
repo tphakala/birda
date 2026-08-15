@@ -195,6 +195,55 @@ pub mod config_lock {
     pub const RETRY_INTERVAL: Duration = Duration::from_millis(50);
 }
 
+/// Retry policy for publishing a finished file over its final path by rename or
+/// persist (both call Windows `MoveFileExW`).
+///
+/// On Windows a concurrent reader that holds the destination open without
+/// `FILE_SHARE_DELETE` (antivirus, the search indexer, or birda-gui reading
+/// `registry.json`) makes the rename fail with a sharing violation for a moment.
+/// A bounded exponential backoff rides out that window, restoring what a plain
+/// `fs::write` used to survive. On non-Windows the transient-error predicate is a
+/// compile-time `false`, so only the first attempt ever runs.
+pub mod publish {
+    use std::time::Duration;
+
+    /// Total publish attempts, including the first. With the backoff below the
+    /// worst case is roughly 0.7s of waiting before a persistent sharing
+    /// violation is surfaced.
+    pub const MAX_ATTEMPTS: u32 = 8;
+
+    /// Backoff before the second attempt; doubles each retry up to `MAX_BACKOFF`.
+    pub const BASE_BACKOFF: Duration = Duration::from_millis(10);
+
+    /// Ceiling for the exponential backoff between attempts.
+    pub const MAX_BACKOFF: Duration = Duration::from_millis(200);
+
+    /// `MoveFileExW`'s access-denied code.
+    ///
+    /// Raised while another process holds the destination open without
+    /// `FILE_SHARE_DELETE`; in practice it comes up as often as the dedicated
+    /// sharing-violation code.
+    pub const ERROR_ACCESS_DENIED: i32 = 5;
+
+    /// `MoveFileExW`'s dedicated sharing-violation code.
+    pub const ERROR_SHARING_VIOLATION: i32 = 32;
+
+    /// `MoveFileExW` fails with `ERROR_LOCK_VIOLATION` when a byte-range lock is
+    /// held on the destination.
+    pub const ERROR_LOCK_VIOLATION: i32 = 33;
+
+    /// The Windows OS error codes a transient publish should retry.
+    ///
+    /// Raised by a concurrent reader (antivirus, the search indexer, or birda-gui
+    /// reading `registry.json`) holding the destination open without
+    /// `FILE_SHARE_DELETE`.
+    pub const TRANSIENT_PUBLISH_ERRORS: [i32; 3] = [
+        ERROR_ACCESS_DENIED,
+        ERROR_SHARING_VIOLATION,
+        ERROR_LOCK_VIOLATION,
+    ];
+}
+
 /// Output file extensions by format.
 pub mod output_extensions {
     /// CSV output extension.

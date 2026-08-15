@@ -6,6 +6,21 @@
 /// Application name used for config directories and user-facing messages.
 pub const APP_NAME: &str = "birda";
 
+/// Environment variable that redirects birda's config and data directories to a
+/// single root.
+///
+/// When set to a non-empty path, [`crate::config::config_dir`] (which holds
+/// `config.toml` and the cached `registry.json`) and [`crate::config::data_dir`]
+/// both resolve to it, so [`crate::registry::models_dir`] lands at `<root>/models`.
+/// The cache directory, holding only the regenerable `TensorRT` engine cache,
+/// is deliberately excluded.
+///
+/// This exists for test isolation. The integration suite must never read or
+/// write the developer's real config, and on Windows the `directories` crate
+/// resolves through `SHGetKnownFolderPath`, which ignores `HOME`/`XDG_*`; this
+/// override is the only redirection that works on every platform (issue #328).
+pub const CONFIG_DIR_ENV: &str = "BIRDA_CONFIG_DIR";
+
 /// Default minimum confidence threshold for detections.
 pub const DEFAULT_MIN_CONFIDENCE: f32 = 0.1;
 

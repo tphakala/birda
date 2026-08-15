@@ -31,6 +31,7 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use assert_cmd::cargo::cargo_bin_cmd;
+use birda::constants::CONFIG_DIR_ENV;
 
 /// These commands are local (no network, no ONNX runtime), so they should be
 /// quick. Bound them anyway so a hang fails rather than stalls the suite.
@@ -122,6 +123,10 @@ fn run_in_with_env(home: &Path, env: &[(&str, &str)], args: &[&str]) -> std::pro
     cmd.env("HOME", home)
         .env("XDG_CONFIG_HOME", home.join("config"))
         .env("XDG_DATA_HOME", home.join("data"))
+        // The override is what actually isolates on Windows, where `directories`
+        // ignores HOME/XDG_*; it points the config dir (config.toml and the
+        // cached registry.json) and the models dir at `home` (issue #328).
+        .env(CONFIG_DIR_ENV, home)
         .timeout(COMMAND_TIMEOUT);
     for var in BIRDA_ENV_VARS {
         cmd.env_remove(var);

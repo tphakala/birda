@@ -18,11 +18,66 @@
     clippy::float_cmp
 )]
 
-use assert_cmd::Command;
-use predicates::prelude::*;
+use std::sync::LazyLock;
 
+use assert_cmd::Command;
+use birda::constants::CONFIG_DIR_ENV;
+use predicates::prelude::*;
+use tempfile::TempDir;
+
+/// A throwaway config/data home shared by every test in this file.
+///
+/// Even the listing and reject-early cases reach `load_registry`, which
+/// bootstraps `registry.json` into the config directory on a cache miss and
+/// would otherwise read and write the developer's real profile (issue #328).
+/// The override isolates on every platform, unlike HOME/XDG which `directories`
+/// ignores on Windows.
+///
+/// The initializer primes the cache once, single-threaded, so the parallel
+/// tests below all find `registry.json` already present and none of them races
+/// to bootstrap it into the shared directory. The `TempDir` lives in the
+/// `LazyLock` so it outlives every command; that intentionally leaks one
+/// directory per test-binary run, which the OS temp reaper reclaims.
+///
+/// Every test here is read-only or rejects before writing, so one shared home
+/// is safe. A test that mutates state (a real install, `config set`) must use
+/// its own `TempDir` instead, or it would leak that state into its siblings.
+static ISOLATED_HOME: LazyLock<TempDir> = LazyLock::new(|| {
+    let home = TempDir::new().expect("create isolated home");
+    let primed = Command::cargo_bin("birda")
+        .expect("binary builds")
+        .env(CONFIG_DIR_ENV, home.path())
+        .env_remove("BIRDA_OUTPUT_MODE")
+        .args(["models", "list-available"])
+        .output()
+        .expect("birda should run");
+    assert!(
+        primed.status.success(),
+        "priming the registry cache failed: {}",
+        String::from_utf8_lossy(&primed.stderr)
+    );
+    // Priming exists for its side effect: registry.json must now be present
+    // under the override root (config_dir == home), or the parallel tests would
+    // each bootstrap it and race. Assert it landed, so a future change that made
+    // `list-available` stop caching fails loudly here instead of as an
+    // occasional torn-read flake.
+    assert!(
+        home.path().join("registry.json").exists(),
+        "priming did not create registry.json under the isolated home"
+    );
+    home
+});
+
+/// A birda invocation pinned to [`ISOLATED_HOME`].
+///
+/// `BIRDA_OUTPUT_MODE` is stripped because a developer with it exported would
+/// otherwise flip every human-output assertion in this file to JSON, the same
+/// scrub the sibling suites do.
 fn birda() -> Command {
-    Command::cargo_bin("birda").expect("binary builds")
+    let mut cmd = Command::cargo_bin("birda").expect("binary builds");
+    cmd.env(CONFIG_DIR_ENV, ISOLATED_HOME.path())
+        .env_remove("BIRDA_OUTPUT_MODE");
+    cmd
 }
 
 #[test]

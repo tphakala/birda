@@ -356,13 +356,12 @@ async fn stream_to_file(
 }
 
 /// Get models directory path.
+///
+/// The `models` subdirectory of the platform data directory, which honours the
+/// [`crate::constants::CONFIG_DIR_ENV`] override (see [`crate::config::data_dir`])
+/// so the integration suite can isolate model installs on any platform.
 pub fn models_dir() -> Result<PathBuf> {
-    let data_dir = directories::ProjectDirs::from("", "", "birda")
-        .ok_or(Error::ConfigDirNotFound)?
-        .data_dir()
-        .to_path_buf();
-
-    Ok(data_dir.join("models"))
+    Ok(crate::config::data_dir()?.join("models"))
 }
 
 /// Expected on-disk paths for the shared range filter asset. Performs no I/O.
@@ -1381,13 +1380,29 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_models_dir_path() {
         let result = models_dir();
         assert!(result.is_ok());
 
         let path = result.unwrap();
-        assert!(path.to_string_lossy().contains("birda"));
+        // Under the CONFIG_DIR_ENV override the root is the caller's temp dir,
+        // which need not carry the app name; only the default layout does.
+        if std::env::var_os(crate::constants::CONFIG_DIR_ENV).is_none() {
+            assert!(path.to_string_lossy().contains("birda"));
+        }
         assert!(path.to_string_lossy().ends_with("models"));
+    }
+
+    #[test]
+    #[serial]
+    fn models_dir_honors_override() {
+        // Pins models_dir's override branch on Linux CI (issue #328): a dropped
+        // short-circuit would resolve to the real data dir and fail this.
+        let root = tempfile::TempDir::new().unwrap();
+        temp_env::with_var(crate::constants::CONFIG_DIR_ENV, Some(root.path()), || {
+            assert_eq!(models_dir().unwrap(), root.path().join("models"));
+        });
     }
 
     #[test]

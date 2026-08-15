@@ -14,6 +14,10 @@ pub enum Error {
     #[error("could not determine configuration directory for this platform")]
     ConfigDirNotFound,
 
+    /// Data directory could not be determined.
+    #[error("could not determine data directory for this platform")]
+    DataDirNotFound,
+
     /// Cache directory could not be determined.
     #[error("could not determine cache directory for this platform")]
     CacheDirNotFound,

@@ -25,6 +25,7 @@
 use std::time::Duration;
 
 use assert_cmd::cargo::cargo_bin_cmd;
+use birda::constants::CONFIG_DIR_ENV;
 use serde_json::Value;
 
 /// Registry commands are local, but `load_registry` can rewrite the cached
@@ -48,6 +49,10 @@ fn run_in(home: &std::path::Path, args: &[&str]) -> std::process::Output {
     cmd.env("HOME", home)
         .env("XDG_CONFIG_HOME", home.join("config"))
         .env("XDG_DATA_HOME", home.join("data"))
+        // The override is what actually isolates on Windows, where `directories`
+        // ignores HOME/XDG_*; it points both the config dir (config.toml and the
+        // cached registry.json) and the models dir at `home` (issue #328).
+        .env(CONFIG_DIR_ENV, home)
         // `--output-mode` reads BIRDA_OUTPUT_MODE. A developer with that
         // exported turns every human-output assertion below into a failure, so
         // the isolation has to cover the environment, not just the filesystem.

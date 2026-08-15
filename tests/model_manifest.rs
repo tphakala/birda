@@ -8,17 +8,18 @@
 // would only hide which assertion fired. The crate-level deny still governs
 // everything birda ships.
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
-// Isolation here rides on HOME / XDG_*, which `directories` honours on Linux and
-// macOS only. On Windows it resolves the config and data directories through
-// SHGetKnownFolderPath, which reads no environment variable, so the command
-// under test would read and rewrite the developer's real registry cache
-// (issue #328). The redirection only holds on Unix, so gate the suite to it;
-// CI runs on Linux, so coverage is unaffected.
-#![cfg(unix)]
+// Isolation rides on the BIRDA_CONFIG_DIR override (see `run` below), which
+// points the config and data directories at a temp dir on every platform. It
+// replaced a `#![cfg(unix)]` gate this suite carried because HOME / XDG_*
+// redirect `directories` on Unix only: on Windows it resolves the config and
+// data directories through SHGetKnownFolderPath, which reads no environment
+// variable, so the command under test would have read and rewritten the
+// developer's real registry cache (issue #328).
 
 use std::time::Duration;
 
 use assert_cmd::cargo::cargo_bin_cmd;
+use birda::constants::CONFIG_DIR_ENV;
 use serde_json::Value;
 
 /// `load_registry` can rewrite the cached registry, so keep commands bounded.
@@ -35,6 +36,10 @@ fn run(extra_env: &[(&str, &str)], args: &[&str]) -> std::process::Output {
     cmd.env("HOME", home.path())
         .env("XDG_CONFIG_HOME", home.path().join("config"))
         .env("XDG_DATA_HOME", home.path().join("data"))
+        // The override is what actually isolates on Windows, where `directories`
+        // ignores HOME/XDG_*; it points the config dir (config.toml and the
+        // cached registry.json) and the models dir at `home` (issue #328).
+        .env(CONFIG_DIR_ENV, home.path())
         // `--output-mode` also reads BIRDA_OUTPUT_MODE; a developer with it
         // exported would flip the human-output assertions below.
         .env_remove("BIRDA_OUTPUT_MODE")

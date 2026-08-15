@@ -13,7 +13,7 @@ pub use file::{
     load_config_file, load_default_config, save_config, update_config, update_config_repairing,
 };
 pub use geomodel::{GeomodelRequest, GeomodelResolution, resolve_geomodel};
-pub use paths::{config_dir, config_file_path, tensorrt_cache_dir};
+pub use paths::{config_dir, config_file_path, data_dir, tensorrt_cache_dir};
 pub use types::{
     Config, CsvColumnsConfig, DefaultsConfig, InferenceConfig, InferenceDevice, ModelConfig,
     ModelType, OutputConfig, OutputFormat, OutputMode, UnmatchedPolicy,

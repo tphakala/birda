@@ -207,7 +207,15 @@ pub async fn download_verified(
         return Err(e);
     }
 
-    finalize_download(&part, dest)?;
+    // Run the publish on a blocking thread: its Windows sharing-violation backoff
+    // sleeps, which must not park this async worker. `part` is owned and unused
+    // afterwards, so it moves in; `dest` is cloned for the 'static closure.
+    let dest_owned = dest.to_path_buf();
+    tokio::task::spawn_blocking(move || finalize_download(&part, &dest_owned))
+        .await
+        .map_err(|e| Error::Internal {
+            message: format!("download finalization task failed to run: {e}"),
+        })??;
     pb.finish_with_message("Download complete");
 
     Ok(())
@@ -266,7 +274,32 @@ fn finalize_download(part: &Path, dest: &Path) -> Result<()> {
     // resource busy (os error 16)" with neither path in it. That EBUSY is a real
     // case: a destination bind-mounted as a file cannot be renamed over, and it is
     // the same failure this change documents for the registry one directory away.
-    if let Err(source) = std::fs::rename(part, dest) {
+    // Retried, not a single rename: on Windows a concurrent reader holding the
+    // destination open without FILE_SHARE_DELETE makes MoveFileExW fail with a
+    // transient sharing violation. The backoff rides that out; `roll_back` below
+    // fires only once the retries are exhausted, so the `.part` file survives to
+    // be renamed on a later attempt. On non-Windows this is a single rename.
+    let published = {
+        let mut backoff = crate::constants::publish::BASE_BACKOFF;
+        let mut attempt = 1u32;
+        loop {
+            match std::fs::rename(part, dest) {
+                Ok(()) => break Ok(()),
+                Err(source) => {
+                    if crate::utils::fs::backoff_after_transient_publish(
+                        &source,
+                        attempt,
+                        &mut backoff,
+                    ) {
+                        attempt += 1;
+                        continue;
+                    }
+                    break Err(source);
+                }
+            }
+        }
+    };
+    if let Err(source) = published {
         // The part file is useless without the rename, and nothing sweeps it up:
         // `find_obsolete_files` matches a fixed list of names that does not include
         // it, and `part_path` qualifies the name with this process's id, so the

@@ -11,8 +11,8 @@ SECTION 1: RUST DEPENDENCIES
 SUMMARY
 -------
 
-MIT License: 315 crate(s)
-Apache License 2.0: 26 crate(s)
+MIT License: 314 crate(s)
+Apache License 2.0: 27 crate(s)
 Unicode License v3: 19 crate(s)
 Mozilla Public License 2.0: 14 crate(s)
 BSD 3-Clause "New" or "Revised" License: 8 crate(s)
@@ -1306,6 +1306,7 @@ Apache License 2.0
 --------------------------------------------------------------------------------
 
 Used by:
+  - audio-codec-algorithms 0.8.1
   - aws-lc-sys 0.43.0
   - dunce 1.0.5
   - flatbuffers 25.12.19
@@ -4191,7 +4192,7 @@ MIT License
 --------------------------------------------------------------------------------
 
 Used by:
-  - rubato 4.0.0
+  - rubato 5.0.0
 
 Copyright (c) 2020 Henrik Enquist
 
@@ -4596,9 +4597,9 @@ MIT License
 --------------------------------------------------------------------------------
 
 Used by:
-  - audioadapter-buffers 4.0.0
-  - audioadapter-sample 4.0.0
-  - audioadapter 4.0.0
+  - audioadapter-buffers 5.2.0
+  - audioadapter-sample 5.2.0
+  - audioadapter 5.0.0
 
 Copyright (c) 2026 Henrik Enquist
 
@@ -5476,7 +5477,6 @@ MIT License
 --------------------------------------------------------------------------------
 
 Used by:
-  - audio-core 0.2.1
   - block2 0.6.2
   - brotli-decompressor 5.0.3
   - chrono 0.4.45

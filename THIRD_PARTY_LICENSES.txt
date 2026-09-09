@@ -11,11 +11,11 @@ SECTION 1: RUST DEPENDENCIES
 SUMMARY
 -------
 
-MIT License: 311 crate(s)
+MIT License: 317 crate(s)
 Apache License 2.0: 26 crate(s)
 Unicode License v3: 19 crate(s)
 Mozilla Public License 2.0: 14 crate(s)
-BSD 3-Clause "New" or "Revised" License: 7 crate(s)
+BSD 3-Clause "New" or "Revised" License: 8 crate(s)
 ISC License: 6 crate(s)
 Creative Commons Zero v1.0 Universal: 1 crate(s)
 Community Data License Agreement Permissive 2.0: 1 crate(s)
@@ -30,20 +30,20 @@ Apache License 2.0
 --------------------------------------------------------------------------------
 
 Used by:
-  - arrow-arith 59.1.0
-  - arrow-array 59.1.0
-  - arrow-buffer 59.1.0
-  - arrow-cast 59.1.0
-  - arrow-csv 59.1.0
-  - arrow-data 59.1.0
-  - arrow-ipc 59.1.0
-  - arrow-json 59.1.0
-  - arrow-ord 59.1.0
-  - arrow-row 59.1.0
-  - arrow-schema 59.1.0
-  - arrow-select 59.1.0
-  - arrow-string 59.1.0
-  - arrow 59.1.0
+  - arrow-arith 59.2.0
+  - arrow-array 59.2.0
+  - arrow-buffer 59.2.0
+  - arrow-cast 59.2.0
+  - arrow-csv 59.2.0
+  - arrow-data 59.2.0
+  - arrow-ipc 59.2.0
+  - arrow-json 59.2.0
+  - arrow-ord 59.2.0
+  - arrow-row 59.2.0
+  - arrow-schema 59.2.0
+  - arrow-select 59.2.0
+  - arrow-string 59.2.0
+  - arrow 59.2.0
   - hound 3.5.1
   - parquet 59.1.0
 
@@ -1392,6 +1392,69 @@ BSD 3-Clause "New" or "Revised" License
 --------------------------------------------------------------------------------
 
 Used by:
+  - encoding_rs 0.8.35
+
+// Copyright © WHATWG (Apple, Google, Mozilla, Microsoft).
+//
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
+//
+// 1. Redistributions of source code must retain the above copyright notice, this
+//    list of conditions and the following disclaimer.
+//
+// 2. Redistributions in binary form must reproduce the above copyright notice,
+//    this list of conditions and the following disclaimer in the documentation
+//    and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its
+//    contributors may be used to endorse or promote products derived from
+//    this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+// FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+// DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+// OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+/// The PUA code points special-cased in the GB18030 encoder.
+pub(crate) static GB18030_2022_OVERRIDE_PUA: [u16; 18] = [
+    0xE78D, 0xE78E, 0xE78F, 0xE790, 0xE791, 0xE792, 0xE793, 0xE794, 0xE795, 0xE796, 0xE81E, 0xE826,
+    0xE82B, 0xE82C, 0xE832, 0xE843, 0xE854, 0xE864,
+];
+
+/// The bytes corresponding to the PUA code points special-cased in the GB18030 encoder.
+pub(crate) static GB18030_2022_OVERRIDE_BYTES: [[u8; 2]; 18] = [
+    [0xA6, 0xD9],
+    [0xA6, 0xDA],
+    [0xA6, 0xDB],
+    [0xA6, 0xDC],
+    [0xA6, 0xDD],
+    [0xA6, 0xDE],
+    [0xA6, 0xDF],
+    [0xA6, 0xEC],
+    [0xA6, 0xED],
+    [0xA6, 0xF3],
+    [0xFE, 0x59],
+    [0xFE, 0x61],
+    [0xFE, 0x66],
+    [0xFE, 0x67],
+    [0xFE, 0x6D],
+    [0xFE, 0x7E],
+    [0xFE, 0x90],
+    [0xFE, 0xA0],
+];
+
+
+--------------------------------------------------------------------------------
+BSD 3-Clause "New" or "Revised" License
+--------------------------------------------------------------------------------
+
+Used by:
   - alloc-no-stdlib 2.0.4
   - brotli 8.0.4
 
@@ -1857,6 +1920,95 @@ MIT License
 --------------------------------------------------------------------------------
 
 Used by:
+  - cfg_aliases 0.2.2
+
+# 3rd Party Notices
+
+The `cfg_aliases!` macro uses a lot of the code from [`tectonic_cfg_support::target_cfg!`] macro which is under the following license:
+
+[`tectonic_cfg_support::target_cfg!`]: https://github.com/tectonic-typesetting/tectonic/blob/f2439b936470ad27bdf92882064bc4702ee01899/cfg_support/src/lib.rs#L166
+
+    tectonic_cfg_support is licensed under the MIT License.
+
+    Permission is hereby granted, free of charge, to any person obtaining a copy
+    of this software and associated documentation files (the “Software”), to deal
+    in the Software without restriction, including without limitation the rights
+    to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+    copies of the Software, and to permit persons to whom the Software is
+    furnished to do so, subject to the following conditions:
+
+    The above copyright notice and this permission notice shall be included in all
+    copies or substantial portions of the Software.
+
+    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+    LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+    SOFTWARE.
+---
+
+
+--------------------------------------------------------------------------------
+MIT License
+--------------------------------------------------------------------------------
+
+Used by:
+  - atomic-waker 1.1.2
+
+===============================================================================
+
+Copyright (c) 2016 Alex Crichton
+Copyright (c) 2017 The Tokio Authors
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+	http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+
+===============================================================================
+
+Copyright (c) 2016 Alex Crichton
+Copyright (c) 2017 The Tokio Authors
+
+Permission is hereby granted, free of charge, to any
+person obtaining a copy of this software and associated
+documentation files (the "Software"), to deal in the
+Software without restriction, including without
+limitation the rights to use, copy, modify, merge,
+publish, distribute, sublicense, and/or sell copies of
+the Software, and to permit persons to whom the Software
+is furnished to do so, subject to the following
+conditions:
+
+The above copyright notice and this permission notice
+shall be included in all copies or substantial portions
+of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
+ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
+TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
+SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
+IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+DEALINGS IN THE SOFTWARE.
+
+
+--------------------------------------------------------------------------------
+MIT License
+--------------------------------------------------------------------------------
+
+Used by:
   - brotli 8.0.4
 
 Copyright (c) 2009, 2010, 2013-2016 by the Brotli Authors.
@@ -2209,6 +2361,7 @@ Used by:
   - bitflags 2.13.1
   - log 0.4.33
   - num-bigint 0.4.8
+  - num-bigint 0.5.1
   - num-complex 0.4.6
   - num-integer 0.1.46
   - num-traits 0.2.19
@@ -2276,7 +2429,7 @@ MIT License
 --------------------------------------------------------------------------------
 
 Used by:
-  - flate2 1.1.9
+  - flate2 1.1.10
 
 Copyright (c) 2014-2026 Alex Crichton
 
@@ -2673,13 +2826,13 @@ MIT License
 
 Used by:
   - futures-channel 0.3.33
-  - futures-core 0.3.33
+  - futures-core 0.3.34
   - futures-executor 0.3.33
-  - futures-io 0.3.33
-  - futures-macro 0.3.33
-  - futures-sink 0.3.33
-  - futures-task 0.3.33
-  - futures-util 0.3.33
+  - futures-io 0.3.34
+  - futures-macro 0.3.34
+  - futures-sink 0.3.34
+  - futures-task 0.3.34
+  - futures-util 0.3.34
 
 Copyright (c) 2016 Alex Crichton
 Copyright (c) 2017 The Tokio Authors
@@ -4480,8 +4633,8 @@ Used by:
   - anstyle-wincon 3.0.11
   - anstyle 1.0.14
   - assert_cmd 2.2.2
-  - clap 4.6.5
-  - clap_builder 4.6.5
+  - clap 4.6.6
+  - clap_builder 4.6.6
   - clap_derive 4.6.4
   - clap_lex 1.1.0
   - colorchoice 1.0.5
@@ -5081,7 +5234,7 @@ MIT License
 --------------------------------------------------------------------------------
 
 Used by:
-  - arrow-array 59.1.0
+  - arrow-array 59.2.0
 
 MIT License
 
@@ -5446,7 +5599,7 @@ MIT License
 --------------------------------------------------------------------------------
 
 Used by:
-  - miniz_oxide 0.8.9
+  - miniz_oxide 0.9.1
 
 MIT License
 
@@ -5455,6 +5608,39 @@ Copyright 2010-2014 Rich Geldreich and Tenacious Software LLC
 Copyright (c) 2017 Frommi
 Copyright (c) 2017-2024 oyvindln
 
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+
+--------------------------------------------------------------------------------
+MIT License
+--------------------------------------------------------------------------------
+
+Used by:
+  - miniz_oxide 0.9.1
+
+MIT License
+
+Copyright 2013-2014 RAD Game Tools and Valve Software
+Copyright 2010-2014 Rich Geldreich and Tenacious Software LLC
+Copyright (c) 2017 Frommi
+Copyright (c) 2017-2024 oyvindln
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -5566,8 +5752,8 @@ Used by:
   - simd_cesu8 1.2.0
   - syn 2.0.119
   - syn 3.0.3
-  - thiserror-impl 2.0.19
-  - thiserror 2.0.19
+  - thiserror-impl 2.0.20
+  - thiserror 2.0.20
   - typed-path 0.12.3
   - unicode-ident 1.0.24
   - utf8-zero 0.8.1
@@ -5689,6 +5875,7 @@ MIT License
 --------------------------------------------------------------------------------
 
 Used by:
+  - tracing-core 0.1.36
   - zip 8.6.0
 
 The MIT License (MIT)
@@ -6186,6 +6373,36 @@ Used by:
 The MIT License (MIT)
 
 Copyright (c) 2021 Protocol Labs, Inc., Fabian Braun
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+
+
+--------------------------------------------------------------------------------
+MIT License
+--------------------------------------------------------------------------------
+
+Used by:
+  - base64 0.23.1
+
+The MIT License (MIT)
+
+Copyright (c) 2025 Alice Maz, Marshall Pierce
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal

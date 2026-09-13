@@ -188,14 +188,27 @@ fn resolve_model_config(args: &AnalyzeArgs, config: &Config) -> Result<(ModelCon
 /// [`Error::BatBackboneNotInstalled`] with the install command rather than
 /// letting `validate_model_files` report a bare missing-file path.
 fn resolve_bat_backbone_config(args: &AnalyzeArgs) -> Result<(ModelConfig, String)> {
-    // A custom backbone must bring its own labels; do not pair it with the
-    // registry's v2.4 labels.
-    if args.model_path.is_some() && args.labels_path.is_none() {
-        return Err(Error::ConfigValidation {
-            message: "--labels-path is required with --model-path in bat mode, because the \
-                      backbone's label count must match its prediction head"
-                .into(),
-        });
+    // In bat mode a custom backbone and its labels are all-or-nothing. Overriding
+    // only one is a config error: a custom model paired with the registry v2.4
+    // labels (or the registry backbone paired with custom labels) risks a
+    // label-count mismatch that fails classifier construction with a cryptic
+    // tensor-dimension error instead of this clean message.
+    match (args.model_path.is_some(), args.labels_path.is_some()) {
+        (true, false) => {
+            return Err(Error::ConfigValidation {
+                message: "--labels-path is required with --model-path in bat mode, because the \
+                          backbone's label count must match its prediction head"
+                    .into(),
+            });
+        }
+        (false, true) => {
+            return Err(Error::ConfigValidation {
+                message: "--model-path is required with --labels-path in bat mode; the registry \
+                          backbone's labels cannot be overridden on their own"
+                    .into(),
+            });
+        }
+        _ => {}
     }
 
     let registry = registry::load_registry()?;
@@ -474,8 +487,11 @@ pub fn run() -> Result<()> {
     let reporter: Arc<dyn ProgressReporter> = Arc::from(create_reporter(output_mode));
 
     // Initialize ONNX Runtime only for commands that will touch it. This keeps
-    // non-inference commands like `clip` working without a runtime install.
-    if command_requires_runtime(cli.command.as_ref(), cli.inputs.is_empty()) {
+    // non-inference commands like `clip` working without a runtime install. The
+    // analyze path is deliberately excluded here and initializes the runtime
+    // inside `analyze_files` AFTER validation, so config errors fail fast with
+    // an actionable message even without the runtime installed.
+    if command_requires_runtime(cli.command.as_ref()) {
         inference::ensure_runtime_available()?;
     }
 
@@ -551,17 +567,19 @@ fn command_requires_valid_config(command: Option<&Command>, has_no_inputs: bool)
     }
 }
 
-fn command_requires_runtime(command: Option<&Command>, has_no_inputs: bool) -> bool {
-    match command {
-        Some(
-            Command::Config { .. }
-            | Command::Models { .. }
-            | Command::Clip(_)
-            | Command::Update { .. },
-        ) => false,
-        Some(Command::Providers | Command::Species { .. }) => true,
-        None => !has_no_inputs,
-    }
+/// Whether the top-level command must initialize the ONNX runtime before it
+/// runs.
+///
+/// The default (analyze) path returns `false`: `analyze_files` initializes the
+/// runtime itself, AFTER model resolution and argument validation, so a config
+/// error (a missing bat backbone, or `--model-path` without `--labels-path`)
+/// surfaces with its actionable message even on a machine without the runtime,
+/// rather than a `libonnxruntime.so not found` error that hides the real cause.
+fn command_requires_runtime(command: Option<&Command>) -> bool {
+    // Only `providers` and `species` init the runtime up front. Everything else,
+    // including the default analyze path (`None`), does not: analyze defers to
+    // `analyze_files`, and config/clip/models/update never touch the runtime.
+    matches!(command, Some(Command::Providers | Command::Species { .. }))
 }
 
 fn validate_analyze_args_preflight(inputs: &[PathBuf], args: &AnalyzeArgs) -> Result<()> {
@@ -963,8 +981,10 @@ fn analyze_files(
     let (model_config, model_name) = resolve_model_config(args, config)?;
     validate_model_files(&model_config)?;
 
-    // Bat mode: validate backbone is BirdNET v2.4 and build custom classifier
-    let bat_classifier: Option<birdnet_onnx::CustomClassifier> = if let Some(region) = args.bat {
+    // Bat mode: validate the backbone family and resolve the region's files,
+    // BEFORE touching the runtime, so a wrong `-m` or an uninstalled region
+    // reports its own actionable error even on a machine without the runtime.
+    let bat_config: Option<crate::config::BatConfig> = if let Some(region) = args.bat {
         // Bat mode requires BirdNET v2.4 as the backbone (for embedding extraction)
         if model_config.model_type != ModelType::BirdnetV24 {
             return Err(Error::ConfigValidation {
@@ -980,7 +1000,7 @@ fn analyze_files(
         // A missing region head means that region was never installed; turn the
         // bare missing-file error into the actionable install hint, matching the
         // backbone's BatBackboneNotInstalled.
-        let bat_config = BatConfig::resolve(region, &bat_models_dir).map_err(|e| match e {
+        let resolved = BatConfig::resolve(region, &bat_models_dir).map_err(|e| match e {
             Error::ModelFileNotFound { .. } | Error::LabelsFileNotFound { .. } => {
                 Error::BatRegionNotInstalled {
                     region: region.slug().to_string(),
@@ -988,30 +1008,45 @@ fn analyze_files(
             }
             other => other,
         })?;
-
         info!(
             "Bat mode: region={}, classifier={}",
             region,
-            bat_config.classifier_path.display()
+            resolved.classifier_path.display()
         );
-
-        let cc = birdnet_onnx::CustomClassifier::builder()
-            .model_path(&bat_config.classifier_path)
-            .labels_path(&bat_config.labels_path)
-            .build()
-            .map_err(|e| Error::ClassifierBuild {
-                reason: format!("failed to build bat classifier: {e}"),
-            })?;
-
-        info!(
-            "Bat classifier loaded: {} classes, {}-dim embeddings",
-            cc.num_classes(),
-            cc.input_dim()
-        );
-
-        Some(cc)
+        Some(resolved)
     } else {
         None
+    };
+
+    // Initialize the ONNX runtime only after every cheap config, argument, and
+    // filesystem-presence check above has passed. Doing it here rather than in
+    // `run()` means a config error (a missing bat backbone, a wrong `-m` under
+    // `--bat`, an uninstalled region, `--model-path` without `--labels-path`)
+    // reports its actionable message even when the runtime is not installed,
+    // instead of a `libonnxruntime.so not found` error. Every classifier built
+    // below this line needs the runtime.
+    inference::ensure_runtime_available()?;
+
+    // Build the bat custom classifier from the already-resolved paths.
+    let bat_classifier: Option<birdnet_onnx::CustomClassifier> = match bat_config {
+        Some(bat_config) => {
+            let cc = birdnet_onnx::CustomClassifier::builder()
+                .model_path(&bat_config.classifier_path)
+                .labels_path(&bat_config.labels_path)
+                .build()
+                .map_err(|e| Error::ClassifierBuild {
+                    reason: format!("failed to build bat classifier: {e}"),
+                })?;
+
+            info!(
+                "Bat classifier loaded: {} classes, {}-dim embeddings",
+                cc.num_classes(),
+                cc.input_dim()
+            );
+
+            Some(cc)
+        }
+        None => None,
     };
 
     // Collect input files only after config is validated
@@ -2303,13 +2338,14 @@ fn handle_models_install(
     // report the id as an unknown model. An unrecognised region after the `bat-`
     // prefix gets a bat-specific error listing the valid regions.
     if let Some(slug) = id.strip_prefix(registry::BAT_INSTALL_PREFIX) {
+        // A registry predating bat support has no catalog at all; say so ("update
+        // birda") rather than reporting the region as unknown against an empty
+        // list.
+        let catalog = registry.bat.as_ref().ok_or(Error::BatCatalogMissing)?;
         let region =
             registry::parse_bat_install_id(id).ok_or_else(|| Error::BatRegionNotInRegistry {
                 region: slug.to_string(),
-                available: registry
-                    .bat
-                    .as_ref()
-                    .map_or_else(String::new, registry::BatCatalog::available_regions),
+                available: catalog.available_regions(),
             })?;
         return handle_bat_install(&registry, region, interactive, assume_yes, output_mode);
     }

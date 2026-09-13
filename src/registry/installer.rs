@@ -475,7 +475,6 @@ impl InstalledBat {
     }
 }
 
-/// Expected on-disk paths for the shared bat backbone. Performs no I/O.
 /// Paths to the shared bat embeddings backbone files. Performs no I/O.
 ///
 /// A named pair rather than a bare `(PathBuf, PathBuf)`, matching the
@@ -489,9 +488,31 @@ pub struct BatBackbonePaths {
     pub labels: PathBuf,
 }
 
+/// Reject a registry filename that is not a single, plain path component.
+///
+/// `FileInfo.filename` is deserialized from a user-writable `registry.json`, and
+/// [`bat_paths`]/[`bat_backbone_paths`] join it under `<models_dir>/bat`. A
+/// filename with an absolute root, a `..`, or nested components could otherwise
+/// steer a download destination outside that directory, where
+/// [`download_verified`] would create or replace a file. The registry is a local
+/// user-cache trust boundary, so this guards local file integrity, not a
+/// cross-user privilege bypass.
+fn validate_bat_filename(name: &str) -> Result<()> {
+    use std::path::Component;
+    let mut components = Path::new(name).components();
+    match (components.next(), components.next()) {
+        (Some(Component::Normal(_)), None) => Ok(()),
+        _ => Err(Error::ConfigValidation {
+            message: format!("invalid bat model filename in registry: {name:?}"),
+        }),
+    }
+}
+
 /// Expected on-disk paths for the shared bat backbone. Performs no I/O.
 pub fn bat_backbone_paths(backbone: &BatBackbone) -> Result<BatBackbonePaths> {
     let dir = bat_models_dir()?;
+    validate_bat_filename(&backbone.model.filename)?;
+    validate_bat_filename(&backbone.labels.filename)?;
     Ok(BatBackbonePaths {
         model: dir.join(&backbone.model.filename),
         labels: dir.join(&backbone.labels.filename),
@@ -509,6 +530,8 @@ pub fn bat_backbone_paths(backbone: &BatBackbone) -> Result<BatBackbonePaths> {
 /// [`BatConfig::resolve`]: crate::config::BatConfig::resolve
 pub fn bat_paths(catalog: &BatCatalog, region: &BatRegionEntry) -> Result<InstalledBat> {
     let dir = bat_models_dir()?;
+    validate_bat_filename(&region.model.filename)?;
+    validate_bat_filename(&region.labels.filename)?;
     let backbone = bat_backbone_paths(&catalog.backbone)?;
     Ok(InstalledBat {
         region_model: dir.join(&region.model.filename),
@@ -1321,6 +1344,27 @@ mod tests {
                 missing.display()
             );
             std::fs::write(missing, b"x").unwrap();
+        }
+    }
+
+    #[test]
+    fn test_validate_bat_filename_accepts_plain_and_rejects_traversal() {
+        assert!(validate_bat_filename("BattyBirdNET-EU-256kHz_fp32.onnx").is_ok());
+        assert!(validate_bat_filename("birdnet-v24-embeddings.onnx").is_ok());
+        // A tampered registry must not steer a download outside the bat dir.
+        for bad in [
+            "",
+            ".",
+            "..",
+            "../evil.onnx",
+            "/etc/passwd",
+            "sub/dir.onnx",
+            "a/../b.onnx",
+        ] {
+            assert!(
+                validate_bat_filename(bad).is_err(),
+                "{bad:?} must be rejected as a bat filename"
+            );
         }
     }
 

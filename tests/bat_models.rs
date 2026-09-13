@@ -98,6 +98,12 @@ fn run_in(home: &std::path::Path, args: &[&str]) -> std::process::Output {
         .env("XDG_DATA_HOME", home.join("data"))
         .env(CONFIG_DIR_ENV, home)
         .env_remove("BIRDA_OUTPUT_MODE")
+        // Point the runtime at a missing library so the analyze fail-fast tests
+        // are environment-independent: bat validation must surface its own error
+        // BEFORE the runtime is touched, on a machine with ORT installed as well
+        // as without. None of these tests build a classifier, so a missing
+        // runtime never breaks one that should pass; it only guards the ordering.
+        .env("ORT_DYLIB_PATH", "/definitely/missing/onnxruntime")
         .timeout(COMMAND_TIMEOUT);
     for arg in args {
         cmd.arg(arg);
@@ -175,6 +181,43 @@ fn bat_analyze_custom_model_path_requires_labels_path() {
     assert!(
         stderr.contains("--labels-path is required with --model-path"),
         "actionable labels-required error:\n{stderr}"
+    );
+}
+
+#[test]
+fn bat_analyze_custom_labels_path_requires_model_path() {
+    // The mirror of the previous test: overriding only the labels would pair
+    // custom labels with the registry backbone and risk a label-count mismatch.
+    let output = run(&["--bat", "eu", "--labels-path", "/tmp/custom.txt", "rec.wav"]);
+    assert!(!output.status.success(), "must reject a lone --labels-path");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("--model-path is required with --labels-path"),
+        "actionable model-path-required error:\n{stderr}"
+    );
+}
+
+#[test]
+fn bat_analyze_uninstalled_region_fails_fast_even_without_runtime() {
+    // Backbone present but the requested region head absent: the region-not-installed
+    // error must surface before the runtime is needed, so it is actionable even on
+    // a machine without libonnxruntime.so (the CI --no-default-features job).
+    let home = tempfile::tempdir().expect("temp home");
+    let bat_dir = home.path().join("models").join("bat");
+    std::fs::create_dir_all(&bat_dir).expect("create bat dir");
+    for name in [
+        "birdnet-v24-embeddings.onnx",
+        "birdnet-v24-embeddings-labels.txt",
+    ] {
+        std::fs::write(bat_dir.join(name), b"x").expect("seed backbone");
+    }
+
+    let output = run_in(home.path(), &["--bat", "uk", "recording.wav"]);
+    assert!(!output.status.success(), "uninstalled region must fail");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("bat region 'uk' is not installed"),
+        "actionable region-not-installed error:\n{stderr}"
     );
 }
 

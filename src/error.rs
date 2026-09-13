@@ -350,6 +350,45 @@ pub enum Error {
     #[error("registry does not describe a range filter asset; update birda to a newer version")]
     RangeFilterAssetMissing,
 
+    /// Registry does not describe the bat detection catalog.
+    #[error("registry does not describe bat models; update birda to a newer version")]
+    BatCatalogMissing,
+
+    /// Registry has no entry for the requested bat region.
+    #[error("bat region '{region}' is not in the registry. Available: {available}")]
+    BatRegionNotInRegistry {
+        /// Region slug the user asked for.
+        region: String,
+        /// Comma-separated list of valid region slugs.
+        available: String,
+    },
+
+    /// Bat mode was requested but the embeddings backbone is not installed.
+    #[error("bat mode needs the BirdNET v2.4 embeddings backbone, which is not installed: {hint}")]
+    BatBackboneNotInstalled {
+        /// What the user should do next.
+        hint: String,
+    },
+
+    /// A bat region was requested but its classifier is not installed.
+    #[error(
+        "bat region '{region}' is not installed. Install it with 'birda models install bat-{region}'"
+    )]
+    BatRegionNotInstalled {
+        /// Region slug that is not installed.
+        region: String,
+    },
+
+    /// The model used as a bat backbone does not expose an embeddings output.
+    #[error(
+        "model '{model}' has no embeddings output, so it cannot be a bat backbone. \
+         Install the backbone with 'birda models install bat-<region>'"
+    )]
+    BatBackboneNoEmbeddings {
+        /// Name of the offending model.
+        model: String,
+    },
+
     /// The geomodel is not installed and could not be acquired.
     #[error("BirdNET Geomodel v3.0.2 is not installed: {hint}")]
     GeomodelNotInstalled {

@@ -169,6 +169,10 @@ pub fn generate_from_repo_root(root: &str) -> Result<String> {
         registry_version: existing.registry_version,
         models,
         range_filter: existing.range_filter.clone(),
+        // Hand-maintained like `range_filter`: carried through verbatim so a
+        // `gen-registry` run never drops the bat catalog. Edits to it, including
+        // the `registry_version` bump, are made directly in `registry.json`.
+        bat: existing.bat.clone(),
     };
     registry.registry_version = next_registry_version(&registry, &existing);
 
@@ -357,6 +361,7 @@ mod tests {
             registry_version: version,
             models: Vec::new(),
             range_filter: None,
+            bat: None,
         }
     }
 

@@ -38,6 +38,28 @@ pub enum BatRegion {
 }
 
 impl BatRegion {
+    /// Region slug, matching the `--bat` value and the `bat-<slug>` install id.
+    ///
+    /// Kept in sync with the `#[value(name = ...)]` attributes above so a
+    /// `bat-<slug>` install id round-trips through
+    /// [`parse_bat_install_id`](crate::registry::parse_bat_install_id) and back.
+    #[must_use]
+    pub fn slug(&self) -> &'static str {
+        match self {
+            Self::Bavaria => "bavaria",
+            Self::BavariaHigh => "bavaria-high",
+            Self::Eu => "eu",
+            Self::Scotland => "scotland",
+            Self::SouthWales => "south-wales",
+            Self::Sweden => "sweden",
+            Self::Uk => "uk",
+            Self::Usa => "usa",
+            Self::UsaEast => "usa-east",
+            Self::UsaEastHigh => "usa-east-high",
+            Self::UsaWest => "usa-west",
+        }
+    }
+
     /// Model filename stem for this region.
     #[must_use]
     pub fn model_stem(&self) -> &'static str {
@@ -165,5 +187,32 @@ mod tests {
     fn test_bat_config_resolve_missing_model() {
         let result = BatConfig::resolve(BatRegion::Uk, std::path::Path::new("/nonexistent"));
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_slug_matches_clap_value_name_for_every_region() {
+        use clap::ValueEnum;
+        for region in BatRegion::value_variants() {
+            let name = region
+                .to_possible_value()
+                .expect("every region has a value")
+                .get_name()
+                .to_string();
+            assert_eq!(
+                region.slug(),
+                name,
+                "slug() must match the clap --bat value so bat-<slug> round-trips"
+            );
+        }
+    }
+
+    #[test]
+    fn test_slug_round_trips_through_clap_from_str() {
+        use clap::ValueEnum;
+        for region in BatRegion::value_variants() {
+            let parsed = BatRegion::from_str(region.slug(), false)
+                .expect("slug must parse back to its region");
+            assert_eq!(*region, parsed);
+        }
     }
 }

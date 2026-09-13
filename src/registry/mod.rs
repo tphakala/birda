@@ -12,9 +12,11 @@ pub mod types;
 // Re-export commonly used types and functions
 pub use cleanup::{orphaned_files, remove_orphans};
 pub use installer::{
-    GEOMODEL_INSTALL_ID, InstallProvenance, InstalledRangeFilter, download_file,
-    find_obsolete_files, find_stale_part_files, geomodel_paths, install_model,
-    install_range_filter, install_variant, models_dir, resolve_url,
+    BAT_INSTALL_PREFIX, BatBackbonePaths, GEOMODEL_INSTALL_ID, InstallProvenance, InstalledBat,
+    InstalledRangeFilter, bat_backbone_paths, bat_models_dir, bat_paths, download_file,
+    find_obsolete_files, find_stale_part_files, geomodel_paths, install_bat, install_bat_backbone,
+    install_model, install_range_filter, install_variant, models_dir, parse_bat_install_id,
+    resolve_url,
 };
 pub use license::{LicensedAsset, prompt_license_acceptance};
 pub use loader::{find_model, load_registry};
@@ -24,8 +26,8 @@ pub use loader::{find_model, load_registry};
 // how a variant is chosen, not part of the gallery's surface.
 pub use selection::{SystemProbe, select_variant};
 pub use types::{
-    Countries, FileInfo, LabelsInfo, LanguageVariant, LicenseInfo, ModelEntry, ModelFiles,
-    ModelVariant, RangeFilterAsset, Registry,
+    BatBackbone, BatCatalog, BatRegionEntry, Countries, FileInfo, LabelsInfo, LanguageVariant,
+    LicenseInfo, ModelEntry, ModelFiles, ModelVariant, RangeFilterAsset, Registry,
 };
 
 use crate::error::{Error, Result};
@@ -57,6 +59,7 @@ pub fn list_available(registry: &Registry, output_mode: crate::config::OutputMod
             result_type: ResultType::AvailableModels,
             models,
             available_range_filter: registry.range_filter.as_ref().map(available_range_filter),
+            available_bat: registry.bat.as_ref().map(available_bat),
         };
         emit_json_result(&payload);
         return;
@@ -97,7 +100,58 @@ pub fn list_available(registry: &Registry, output_mode: crate::config::OutputMod
         println!();
     }
 
+    // Bat classifiers live in `registry.bat`, not `registry.models`, and are
+    // selected with `--bat <region>`. Listing their `bat-<region>` install ids
+    // here is what makes them discoverable at all.
+    if let Some(catalog) = registry.bat.as_ref() {
+        println!("Bat classifiers (install with the id shown, then run with --bat <region>):");
+        println!();
+        for region in &catalog.regions {
+            println!("  {}{}", BAT_INSTALL_PREFIX, region.region);
+            println!("    {} ({} bat species)", region.name, region.species_count);
+        }
+        println!(
+            "    License: {} (shared embeddings backbone installed automatically)",
+            license_line(&catalog.license)
+        );
+        println!();
+    }
+
     println!("Run 'birda models info <id>' for details.");
+}
+
+/// Project the bat catalog into its structured-output shape.
+fn available_bat(catalog: &BatCatalog) -> crate::output::AvailableBatEntry {
+    let backbone_size_bytes = combined_size(
+        catalog.backbone.model.size_bytes,
+        catalog.backbone.labels.size_bytes,
+    );
+    let regions = catalog
+        .regions
+        .iter()
+        .map(|r| crate::output::AvailableBatRegionEntry {
+            id: format!("{BAT_INSTALL_PREFIX}{}", r.region),
+            region: r.region.clone(),
+            name: r.name.clone(),
+            species_count: r.species_count,
+            size_bytes: combined_size(r.model.size_bytes, r.labels.size_bytes),
+        })
+        .collect();
+    crate::output::AvailableBatEntry {
+        version: catalog.version.clone(),
+        license: catalog.license.r#type.clone(),
+        commercial_use: catalog.license.commercial_use,
+        share_alike: catalog.license.share_alike,
+        backbone_size_bytes,
+        regions,
+    }
+}
+
+/// Sum two optional file sizes, yielding `None` unless both are present and
+/// their sum fits in `u64`. A partial total would understate the download, so a
+/// missing part collapses the whole to `None`, matching `total_download_size`.
+pub(crate) fn combined_size(a: Option<u64>, b: Option<u64>) -> Option<u64> {
+    a.and_then(|x| b.and_then(|y| x.checked_add(y)))
 }
 
 /// Render a variant's class count, or say the publisher did not state one.
@@ -160,9 +214,7 @@ fn available_range_filter(asset: &RangeFilterAsset) -> crate::output::AvailableR
 /// about is the total. Returns `None` unless both sizes are declared, rather
 /// than reporting a half-total that reads as the whole.
 fn total_download_size(asset: &RangeFilterAsset) -> Option<u64> {
-    let model = asset.model.size_bytes?;
-    let labels = asset.labels.size_bytes?;
-    model.checked_add(labels)
+    combined_size(asset.model.size_bytes, asset.labels.size_bytes)
 }
 
 /// Render the shared range filter asset for `birda models info geomodel`.
@@ -228,6 +280,73 @@ pub fn show_range_filter_info(asset: &RangeFilterAsset) {
     println!();
 
     println!("To install: birda models install {GEOMODEL_INSTALL_ID}");
+}
+
+/// Render a bat region for `birda models info bat-<region>`.
+///
+/// Separate from [`show_info`] because a bat classifier is not a [`ModelEntry`]:
+/// it is a head selected with `--bat <region>`, not `-m`, and it runs on a
+/// shared embeddings backbone that installs alongside it.
+pub fn show_bat_info(catalog: &BatCatalog, entry: &BatRegionEntry) {
+    println!("Bat classifier: {}", entry.name);
+    println!("ID: {BAT_INSTALL_PREFIX}{}", entry.region);
+    println!("Version: {}", catalog.version);
+    println!();
+
+    println!("Description:");
+    println!(
+        "  Identifies {} bat species from ultrasonic recordings. Selected with",
+        entry.species_count
+    );
+    println!("  --bat {}; not selectable with -m.", entry.region);
+    println!();
+
+    println!("License:");
+    println!("  Type: {}", catalog.license.r#type);
+    println!("  URL: {}", catalog.license.url);
+    println!(
+        "  Commercial use: {}",
+        if catalog.license.commercial_use {
+            "Yes"
+        } else {
+            "No"
+        }
+    );
+    println!(
+        "  Attribution required: {}",
+        if catalog.license.attribution_required {
+            "Yes"
+        } else {
+            "No"
+        }
+    );
+    println!();
+
+    println!("Files:");
+    println!("  Classifier: {}", entry.model.url);
+    println!("  Labels: {}", entry.labels.url);
+    println!(
+        "  Shared backbone: {} ({})",
+        catalog.backbone.model.url,
+        crate::config::geomodel::human_size(combined_size(
+            catalog.backbone.model.size_bytes,
+            catalog.backbone.labels.size_bytes,
+        ))
+    );
+    println!(
+        "  Classifier download size: {}",
+        crate::config::geomodel::human_size(combined_size(
+            entry.model.size_bytes,
+            entry.labels.size_bytes,
+        ))
+    );
+    println!();
+
+    println!(
+        "To install: birda models install {BAT_INSTALL_PREFIX}{}",
+        entry.region
+    );
+    println!("Powered by BirdNET (https://birdnet.cornell.edu/)");
 }
 
 /// Show detailed information about a specific model.

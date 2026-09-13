@@ -290,6 +290,7 @@ mod tests {
             schema_version: "1.0".into(),
             registry_version: version,
             range_filter: None,
+            bat: None,
             models: vec![],
         }
     }
@@ -659,6 +660,7 @@ mod tests {
             schema_version: "1.0".into(),
             registry_version: 0,
             range_filter: None,
+            bat: None,
             models: vec![
                 ModelEntry {
                     id: "test-1".into(),

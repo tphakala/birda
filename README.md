@@ -573,28 +573,34 @@ Birda supports bat species detection using [BattyBirdNET](https://github.com/rdz
 
 Bat echolocation calls are ultrasonic (20-120 kHz). BattyBirdNET exploits a "slow-down trick": 256 kHz bat recordings are fed directly to BirdNET without resampling. BirdNET's spectrogram pipeline (trained on 48 kHz bird audio) treats the samples as 48 kHz, shifting ultrasonic frequencies into the audible range where its learned features can extract useful embeddings. Regional bat classifiers then map these 1024-dim embeddings to bat species.
 
-### Prerequisites
+### Setup
 
-1. **BirdNET v2.4 with embeddings**: A patched model that exposes the embedding layer. Create it with [birdnet-onnx-converter](https://github.com/tphakala/birdnet-onnx-converter):
+Install a regional bat classifier. birda downloads the classifier and, on the
+first bat install, the shared BirdNET v2.4 embeddings backbone it runs on. Both
+are verified against published checksums. There is nothing to convert or place
+by hand.
 
-   ```bash
-   python expose_embeddings.py --input birdnet-v24.onnx --output birdnet-v24-embeddings.onnx
-   ```
+```bash
+# Downloads the EU classifier plus the shared embeddings backbone
+birda models install bat-eu
+```
 
-2. **Regional bat classifier models**: ONNX models converted from BattyBirdNET. Place them in the birda models directory:
-   - Linux: `~/.local/share/birda/models/bat/`
-   - macOS: `~/Library/Application Support/birda/models/bat/`
-   - Windows: `%APPDATA%\birda\models\bat\`
+List every region with `birda models list-available` (they appear under "Bat
+classifiers"), and see one with `birda models info bat-eu`. The install ids are
+`bat-<region>` (for example `bat-bavaria`, `bat-usa-east-high`).
 
 ### Usage
 
+Once a region is installed, `--bat <region>` is all you need: birda resolves the
+embeddings backbone automatically, so no `-m` is required.
+
 ```bash
 # Analyze bat recordings with the Bavaria classifier
-birda -m birdnet-v24-embeddings --bat bavaria bat_recording.wav
+birda --bat bavaria bat_recording.wav
 
-# Other available regions
-birda -m birdnet-v24-embeddings --bat uk bat_recording.wav
-birda -m birdnet-v24-embeddings --bat eu bat_recording.wav
+# Other installed regions
+birda --bat uk bat_recording.wav
+birda --bat eu bat_recording.wav
 ```
 
 ### Available Regions
@@ -622,7 +628,8 @@ birda -m birdnet-v24-embeddings --bat eu bat_recording.wav
 ### Notes
 
 - Bat mode overrides segment duration to 0.5625s (144,000 samples at 256 kHz) with 25% overlap
-- The backbone model must be BirdNET v2.4 with the embedding output exposed
+- The shared BirdNET v2.4 embeddings backbone installs automatically with the first bat region and is reused by the rest
+- Bat models are licensed CC-BY-NC-SA-4.0 (non-commercial); crediting BirdNET is required wherever they are used
 - All standard output formats are supported (CSV, Raven, Audacity, JSON, Parquet, Kaleidoscope)
 
 ## Performance Tips

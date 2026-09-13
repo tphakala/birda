@@ -1,6 +1,8 @@
 //! Model download and installation logic.
 
-use super::types::{ModelEntry, ModelVariant, RangeFilterAsset};
+use super::types::{
+    BatBackbone, BatCatalog, BatRegionEntry, FileInfo, ModelEntry, ModelVariant, RangeFilterAsset,
+};
 use crate::error::{Error, Result};
 use futures_util::StreamExt;
 use indicatif::{ProgressBar, ProgressStyle};
@@ -423,6 +425,189 @@ fn verify_or_remove(paths: &InstalledRangeFilter, asset: &RangeFilterAsset) -> R
         return Err(e);
     }
     Ok(())
+}
+
+/// Prefix on a `models install` id that selects a bat regional classifier,
+/// e.g. `bat-bavaria` or `bat-usa-east-high`.
+pub const BAT_INSTALL_PREFIX: &str = "bat-";
+
+/// Parse a `models install` id of the form `bat-<region>` into a [`BatRegion`].
+///
+/// Returns `None` for ids without the `bat-` prefix and for a prefix followed by
+/// an unknown region, so the caller can fall through to normal model resolution
+/// or report the unknown region.
+///
+/// [`BatRegion`]: crate::config::BatRegion
+#[must_use]
+pub fn parse_bat_install_id(id: &str) -> Option<crate::config::BatRegion> {
+    use clap::ValueEnum;
+    let slug = id.strip_prefix(BAT_INSTALL_PREFIX)?;
+    crate::config::BatRegion::from_str(slug, false).ok()
+}
+
+/// The directory holding installed bat models: `<models_dir>/bat/`.
+pub fn bat_models_dir() -> Result<PathBuf> {
+    Ok(models_dir()?.join("bat"))
+}
+
+/// Paths to an installed bat region and its shared backbone, all under
+/// `<models_dir>/bat/`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InstalledBat {
+    /// Regional classifier head ONNX file.
+    pub region_model: PathBuf,
+    /// Regional classifier labels file.
+    pub region_labels: PathBuf,
+    /// Shared embeddings backbone ONNX file.
+    pub backbone_model: PathBuf,
+    /// Backbone (v2.4) labels file.
+    pub backbone_labels: PathBuf,
+}
+
+impl InstalledBat {
+    /// Whether all four files are present on disk.
+    #[must_use]
+    pub fn is_installed(&self) -> bool {
+        self.region_model.is_file()
+            && self.region_labels.is_file()
+            && self.backbone_model.is_file()
+            && self.backbone_labels.is_file()
+    }
+}
+
+/// Paths to the shared bat embeddings backbone files. Performs no I/O.
+///
+/// A named pair rather than a bare `(PathBuf, PathBuf)`, matching the
+/// [`InstalledRangeFilter`] sibling, so callers cannot silently transpose the
+/// model and labels (both are `PathBuf`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BatBackbonePaths {
+    /// Backbone ONNX file.
+    pub model: PathBuf,
+    /// Backbone (v2.4) labels file.
+    pub labels: PathBuf,
+}
+
+/// Reject a registry filename that is not a single, plain path component.
+///
+/// `FileInfo.filename` is deserialized from a user-writable `registry.json`, and
+/// [`bat_paths`]/[`bat_backbone_paths`] join it under `<models_dir>/bat`. A
+/// filename with an absolute root, a `..`, or nested components could otherwise
+/// steer a download destination outside that directory, where
+/// [`download_verified`] would create or replace a file. The registry is a local
+/// user-cache trust boundary, so this guards local file integrity, not a
+/// cross-user privilege bypass.
+fn validate_bat_filename(name: &str) -> Result<()> {
+    use std::path::Component;
+    let mut components = Path::new(name).components();
+    match (components.next(), components.next()) {
+        (Some(Component::Normal(_)), None) => Ok(()),
+        _ => Err(Error::ConfigValidation {
+            message: format!("invalid bat model filename in registry: {name:?}"),
+        }),
+    }
+}
+
+/// Expected on-disk paths for the shared bat backbone. Performs no I/O.
+pub fn bat_backbone_paths(backbone: &BatBackbone) -> Result<BatBackbonePaths> {
+    let dir = bat_models_dir()?;
+    validate_bat_filename(&backbone.model.filename)?;
+    validate_bat_filename(&backbone.labels.filename)?;
+    Ok(BatBackbonePaths {
+        model: dir.join(&backbone.model.filename),
+        labels: dir.join(&backbone.labels.filename),
+    })
+}
+
+/// Expected on-disk paths for a bat region and the shared backbone. No I/O.
+///
+/// The region filenames come from the registry and are chosen to match
+/// [`BatRegion::model_filename`]/[`BatRegion::labels_filename`], so the files
+/// this installs are the exact ones [`BatConfig::resolve`] later looks for.
+///
+/// [`BatRegion::model_filename`]: crate::config::BatRegion::model_filename
+/// [`BatRegion::labels_filename`]: crate::config::BatRegion::labels_filename
+/// [`BatConfig::resolve`]: crate::config::BatConfig::resolve
+pub fn bat_paths(catalog: &BatCatalog, region: &BatRegionEntry) -> Result<InstalledBat> {
+    let dir = bat_models_dir()?;
+    validate_bat_filename(&region.model.filename)?;
+    validate_bat_filename(&region.labels.filename)?;
+    let backbone = bat_backbone_paths(&catalog.backbone)?;
+    Ok(InstalledBat {
+        region_model: dir.join(&region.model.filename),
+        region_labels: dir.join(&region.labels.filename),
+        backbone_model: backbone.model,
+        backbone_labels: backbone.labels,
+    })
+}
+
+/// Verify a downloaded file against its registry checksum, if one is declared.
+///
+/// A file whose entry carries no checksum is accepted as-is, matching
+/// [`InstalledRangeFilter::verify`].
+fn verify_bat_file(path: &Path, info: &FileInfo) -> Result<()> {
+    if let Some(sum) = info.sha256.as_deref() {
+        crate::update::checksum::verify_sha256(path, sum)?;
+    }
+    Ok(())
+}
+
+/// Download `file` to `dest` unless a valid copy is already there.
+///
+/// Skips the download when `dest` exists and its checksum matches, so a repeat
+/// install, or a partial install where only some files are missing, re-fetches
+/// only what is absent or corrupt rather than everything (a missing tiny labels
+/// file no longer forces a fresh ~56 MB backbone download). A read error on an
+/// existing file is surfaced rather than treated as corruption, since
+/// re-downloading will not fix a failing disk; only a genuine checksum mismatch
+/// forces a fresh download. [`download_verified`] verifies the part file before
+/// the atomic rename, so a corrupt download never overwrites a good file.
+async fn download_if_needed(client: &Client, file: &FileInfo, dest: &Path) -> Result<()> {
+    if dest.is_file() {
+        match verify_bat_file(dest, file) {
+            Ok(()) => return Ok(()),
+            Err(e) if !crate::update::checksum::is_checksum_mismatch(&e) => return Err(e),
+            Err(_) => {}
+        }
+    }
+    download_verified(client, &file.url, dest, file.sha256.as_deref()).await
+}
+
+/// Download and verify the shared bat embeddings backbone.
+///
+/// Idempotent per file: a valid model or labels file already on disk is left
+/// untouched (see [`download_if_needed`]), so a partial install re-fetches only
+/// the missing part.
+pub async fn install_bat_backbone(backbone: &BatBackbone) -> Result<BatBackbonePaths> {
+    let paths = bat_backbone_paths(backbone)?;
+    let dir = bat_models_dir()?;
+    std::fs::create_dir_all(&dir).map_err(Error::Io)?;
+    let client = http_client()?;
+
+    download_if_needed(&client, &backbone.model, &paths.model).await?;
+    download_if_needed(&client, &backbone.labels, &paths.labels).await?;
+
+    Ok(paths)
+}
+
+/// Install a bat regional classifier and its shared embeddings backbone.
+///
+/// The backbone is installed first (and idempotently, so a second region reuses
+/// the one ~56 MB download). Every file, backbone and head alike, goes through
+/// [`download_if_needed`], which skips a file already present and valid and
+/// re-fetches only what is missing or corrupt, so a repeat or partial install is
+/// cheap and self-healing.
+pub async fn install_bat(catalog: &BatCatalog, region: &BatRegionEntry) -> Result<InstalledBat> {
+    // Also creates the bat models directory that the region files land in.
+    install_bat_backbone(&catalog.backbone).await?;
+
+    let paths = bat_paths(catalog, region)?;
+    let client = http_client()?;
+
+    download_if_needed(&client, &region.model, &paths.region_model).await?;
+    download_if_needed(&client, &region.labels, &paths.region_labels).await?;
+
+    Ok(paths)
 }
 
 /// Report files in the models directory that birda no longer uses.
@@ -1019,6 +1204,189 @@ mod tests {
             paths.labels.parent(),
             "both files live in the models directory"
         );
+    }
+
+    fn test_bat_catalog() -> BatCatalog {
+        let nc = LicenseInfo {
+            r#type: "CC-BY-NC-SA-4.0".into(),
+            url: "https://creativecommons.org/licenses/by-nc-sa/4.0/".into(),
+            commercial_use: false,
+            attribution_required: true,
+            share_alike: true,
+        };
+        let file = |name: &str| FileInfo {
+            url: format!("https://example.com/{name}"),
+            filename: name.into(),
+            sha256: Some(RIGHT_SHA256.into()),
+            size_bytes: Some(1),
+        };
+        BatCatalog {
+            backbone: BatBackbone {
+                id: "birdnet-v24-embeddings".into(),
+                name: "BirdNET v2.4 (embeddings backbone)".into(),
+                version: "2.4".into(),
+                vendor: "Cornell Lab".into(),
+                license: nc.clone(),
+                model: file("birdnet-v24-embeddings.onnx"),
+                labels: file("birdnet-v24-embeddings-labels.txt"),
+            },
+            version: "1.0".into(),
+            license: nc,
+            regions: vec![BatRegionEntry {
+                region: "eu".into(),
+                name: "BattyBirdNET EU".into(),
+                species_count: 30,
+                model: file("BattyBirdNET-EU-256kHz_fp32.onnx"),
+                labels: file("BattyBirdNET-EU-256kHz_Labels.txt"),
+            }],
+        }
+    }
+
+    #[test]
+    fn test_parse_bat_install_id() {
+        use crate::config::BatRegion;
+        assert_eq!(parse_bat_install_id("bat-eu"), Some(BatRegion::Eu));
+        assert_eq!(
+            parse_bat_install_id("bat-usa-east-high"),
+            Some(BatRegion::UsaEastHigh),
+            "a multi-hyphen region slug must parse whole, not stop at the first dash"
+        );
+        assert_eq!(parse_bat_install_id("bat-nope"), None);
+        assert_eq!(parse_bat_install_id("bat-"), None);
+        assert_eq!(parse_bat_install_id("perch-v2"), None);
+        assert_eq!(parse_bat_install_id(GEOMODEL_INSTALL_ID), None);
+    }
+
+    #[test]
+    fn test_bat_paths_use_registry_filenames_under_bat_dir() {
+        let catalog = test_bat_catalog();
+        let entry = &catalog.regions[0];
+        let paths = bat_paths(&catalog, entry).unwrap();
+
+        // Region filenames must match what BatConfig::resolve looks for.
+        assert!(
+            paths
+                .region_model
+                .ends_with("BattyBirdNET-EU-256kHz_fp32.onnx")
+        );
+        assert!(
+            paths
+                .region_labels
+                .ends_with("BattyBirdNET-EU-256kHz_Labels.txt")
+        );
+        assert!(
+            paths
+                .backbone_model
+                .ends_with("birdnet-v24-embeddings.onnx")
+        );
+        assert!(
+            paths
+                .backbone_labels
+                .ends_with("birdnet-v24-embeddings-labels.txt")
+        );
+
+        // All four files live in <models_dir>/bat/.
+        for p in [
+            &paths.region_model,
+            &paths.region_labels,
+            &paths.backbone_model,
+            &paths.backbone_labels,
+        ] {
+            assert_eq!(
+                p.parent().and_then(|d| d.file_name()),
+                Some(std::ffi::OsStr::new("bat")),
+                "{} must be under the bat directory",
+                p.display()
+            );
+        }
+    }
+
+    #[test]
+    fn test_bat_region_model_filenames_match_batregion_naming() {
+        // The registry filenames the installer writes must be exactly what
+        // BatConfig::resolve later reads, or an install would look successful yet
+        // never be found. Assert the two derivations agree for the fixture region.
+        let catalog = test_bat_catalog();
+        let entry = &catalog.regions[0];
+        let region = crate::config::BatRegion::Eu;
+        assert_eq!(entry.model.filename, region.model_filename());
+        assert_eq!(entry.labels.filename, region.labels_filename());
+    }
+
+    #[test]
+    fn test_installed_bat_is_installed_requires_all_four_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = |name: &str| dir.path().join(name);
+        let installed = InstalledBat {
+            region_model: p("head.onnx"),
+            region_labels: p("head_labels.txt"),
+            backbone_model: p("backbone.onnx"),
+            backbone_labels: p("backbone_labels.txt"),
+        };
+        let all = [
+            installed.region_model.clone(),
+            installed.region_labels.clone(),
+            installed.backbone_model.clone(),
+            installed.backbone_labels.clone(),
+        ];
+        for f in &all {
+            std::fs::write(f, b"x").unwrap();
+        }
+        assert!(installed.is_installed(), "all four present");
+        // Each file individually absent must read as not installed, so a region
+        // is never reported ready with the shared backbone (or its own labels)
+        // missing.
+        for missing in &all {
+            std::fs::remove_file(missing).unwrap();
+            assert!(
+                !installed.is_installed(),
+                "{} missing must read as not installed",
+                missing.display()
+            );
+            std::fs::write(missing, b"x").unwrap();
+        }
+    }
+
+    #[test]
+    fn test_validate_bat_filename_accepts_plain_and_rejects_traversal() {
+        assert!(validate_bat_filename("BattyBirdNET-EU-256kHz_fp32.onnx").is_ok());
+        assert!(validate_bat_filename("birdnet-v24-embeddings.onnx").is_ok());
+        // A tampered registry must not steer a download outside the bat dir.
+        for bad in [
+            "",
+            ".",
+            "..",
+            "../evil.onnx",
+            "/etc/passwd",
+            "sub/dir.onnx",
+            "a/../b.onnx",
+        ] {
+            assert!(
+                validate_bat_filename(bad).is_err(),
+                "{bad:?} must be rejected as a bat filename"
+            );
+        }
+    }
+
+    #[test]
+    fn test_verify_bat_file_matches_mismatches_and_accepts_absent_checksum() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("f");
+        std::fs::write(&file, b"right").unwrap();
+        let info = |sha: Option<&str>| FileInfo {
+            url: "https://example.com/f".into(),
+            filename: "f".into(),
+            sha256: sha.map(String::from),
+            size_bytes: None,
+        };
+
+        // Declared checksum matches the bytes.
+        assert!(verify_bat_file(&file, &info(Some(RIGHT_SHA256))).is_ok());
+        // Declared checksum does not match -> a checksum-mismatch error.
+        let err = verify_bat_file(&file, &info(Some(&"0".repeat(64)))).unwrap_err();
+        assert!(crate::update::checksum::is_checksum_mismatch(&err));
+        // No checksum declared -> accepted as-is.
+        assert!(verify_bat_file(&file, &info(None)).is_ok());
     }
 
     #[test]

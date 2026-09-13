@@ -527,6 +527,13 @@ pub struct AvailableModelsPayload {
     /// `None` when the registry predates the geomodel.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub available_range_filter: Option<AvailableRangeFilterEntry>,
+    /// The bat detection catalog, which is not one of `models`.
+    ///
+    /// Its own field for the same reason as `available_range_filter`: bat
+    /// classifiers are selected with `--bat <region>`, not `-m`. `None` when the
+    /// registry predates bat support.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub available_bat: Option<AvailableBatEntry>,
 }
 
 /// The shared range filter asset, as offered by `birda models list-available`.
@@ -558,6 +565,51 @@ pub struct AvailableRangeFilterEntry {
     /// would read as the whole download and understate it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub size_bytes: Option<u64>,
+}
+
+/// A single bat classifier region offered by `birda models list-available`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AvailableBatRegionEntry {
+    /// The id to pass to `birda models install`, e.g. `bat-eu`.
+    pub id: String,
+    /// Region slug, e.g. `eu`, matching the `--bat` value.
+    pub region: String,
+    /// Display name.
+    pub name: String,
+    /// Number of bat species the head classifies.
+    pub species_count: usize,
+    /// Download size of the region head's model and labels, in bytes.
+    ///
+    /// The shared backbone is not counted here; see
+    /// [`AvailableBatEntry::backbone_size_bytes`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub size_bytes: Option<u64>,
+}
+
+/// The bat detection catalog offered by `birda models list-available`.
+///
+/// Kept in its own field rather than folded into `models` for the same reason
+/// as [`AvailableRangeFilterEntry`]: bat classifiers are not selectable with
+/// `-m` (they are chosen with `--bat <region>`), so a consumer building a model
+/// picker from `models` must not offer them.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AvailableBatEntry {
+    /// Upstream `BattyBirdNET-Analyzer` version.
+    pub version: String,
+    /// License type (SPDX identifier).
+    pub license: String,
+    /// Whether commercial use is allowed.
+    pub commercial_use: bool,
+    /// Whether derivatives must be shared under the same license.
+    pub share_alike: bool,
+    /// One-time download size of the shared embeddings backbone, in bytes.
+    ///
+    /// Installed once and reused by every region, so it is reported apart from
+    /// the per-region sizes rather than added into each.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub backbone_size_bytes: Option<u64>,
+    /// Installable regions.
+    pub regions: Vec<AvailableBatRegionEntry>,
 }
 
 /// A single available model from the registry.
@@ -598,6 +650,13 @@ pub struct ModelCheckPayload {
     /// download is visible; birda never deletes these automatically.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub leftover_downloads: Vec<PathBuf>,
+    /// Install ids of the bat classifiers present on disk, e.g. `bat-eu`.
+    ///
+    /// Bat classifiers are not `config.models` entries, so they never appear in
+    /// `models`. Reported here, like `geomodel`, so `models check` reflects a bat
+    /// install. Empty when none are installed.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub installed_bat: Vec<String>,
 }
 
 /// Status of the shared `BirdNET` Geomodel range filter.
@@ -1043,6 +1102,7 @@ mod tests {
                 commercial_use: false,
             }],
             available_range_filter: None,
+            available_bat: None,
         };
         let json = serde_json::to_string(&payload).expect("serialize");
         let actual: serde_json::Value = serde_json::from_str(&json).expect("deserialize");
@@ -1088,6 +1148,7 @@ mod tests {
                 obsolete_files: Vec::new(),
             },
             leftover_downloads: vec![PathBuf::from("/models/birdnet-v30.onnx.4242.part")],
+            installed_bat: Vec::new(),
         };
         let json = serde_json::to_string(&payload).expect("serialize");
         let actual: serde_json::Value = serde_json::from_str(&json).expect("deserialize");
@@ -1132,6 +1193,7 @@ mod tests {
                 obsolete_files: Vec::new(),
             },
             leftover_downloads: Vec::new(),
+            installed_bat: Vec::new(),
         };
         let json = serde_json::to_string(&payload).expect("serialize");
         let value: serde_json::Value = serde_json::from_str(&json).expect("deserialize");

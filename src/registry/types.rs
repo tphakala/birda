@@ -18,6 +18,12 @@ pub struct Registry {
     /// Optional so a registry written by an older birda still deserializes.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub range_filter: Option<RangeFilterAsset>,
+    /// Bat detection catalog: the shared embeddings backbone plus the regional
+    /// `BattyBirdNET` classifiers.
+    ///
+    /// Optional so a registry written by an older birda still deserializes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bat: Option<BatCatalog>,
 }
 
 /// Shared range filter asset available to every classifier.
@@ -42,6 +48,87 @@ pub struct RangeFilterAsset {
     /// ONNX model file.
     pub model: FileInfo,
     /// Labels file, one `Scientific name_Common name` per line.
+    pub labels: FileInfo,
+}
+
+/// Bat detection catalog: a shared embeddings backbone plus the regional
+/// `BattyBirdNET` classifier heads.
+///
+/// Kept separate from [`Registry::models`] because bat classifiers are not
+/// standalone `-m` models: each one is a small head that runs on top of the
+/// backbone's embeddings, selected with `--bat <region>`. Hand-maintained in
+/// `registry.json` and preserved across `gen-registry` runs, exactly like
+/// [`RangeFilterAsset`].
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct BatCatalog {
+    /// Shared `BirdNET` v2.4 embeddings backbone, installed once and reused by
+    /// every regional bat classifier.
+    pub backbone: BatBackbone,
+    /// Upstream `BattyBirdNET-Analyzer` version the heads were converted from.
+    pub version: String,
+    /// License shared by all regional classifier heads.
+    pub license: LicenseInfo,
+    /// Regional classifier heads.
+    pub regions: Vec<BatRegionEntry>,
+}
+
+impl BatCatalog {
+    /// The regional entry whose slug matches `region`, if any.
+    #[must_use]
+    pub fn region(&self, region: &str) -> Option<&BatRegionEntry> {
+        self.regions.iter().find(|r| r.region == region)
+    }
+
+    /// Comma-separated list of the region slugs, for error messages.
+    #[must_use]
+    pub fn available_regions(&self) -> String {
+        self.regions
+            .iter()
+            .map(|r| r.region.as_str())
+            .collect::<Vec<_>>()
+            .join(", ")
+    }
+}
+
+/// The shared `BirdNET` v2.4 embeddings backbone for bat detection.
+///
+/// This is a v2.4 model exported with its embedding layer exposed as a second
+/// output. Bat mode discards its species predictions and feeds the embeddings
+/// to a regional head, but the classifier still loads the v2.4 labels, so the
+/// backbone ships them as a companion file.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct BatBackbone {
+    /// Stable identifier, e.g. `birdnet-v24-embeddings`.
+    pub id: String,
+    /// Display name. Always includes "`BirdNET`" for attribution.
+    pub name: String,
+    /// Upstream model version, e.g. "2.4".
+    pub version: String,
+    /// Organization/author.
+    pub vendor: String,
+    /// License information.
+    pub license: LicenseInfo,
+    /// ONNX model file (two outputs: predictions and embeddings).
+    pub model: FileInfo,
+    /// v2.4 labels file, required to construct the classifier.
+    pub labels: FileInfo,
+}
+
+/// A single regional `BattyBirdNET` classifier head.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct BatRegionEntry {
+    /// Region slug matching the `--bat` value, e.g. `bavaria`, `usa-east-high`.
+    pub region: String,
+    /// Human-readable region name shown in listings.
+    pub name: String,
+    /// Number of bat species the head classifies.
+    pub species_count: usize,
+    /// ONNX classifier head file. Its filename matches
+    /// `BatRegion::model_filename()` so the installed file is found by
+    /// `BatConfig::resolve`.
+    pub model: FileInfo,
+    /// Labels file, one bat species per line. Its filename matches
+    /// `BatRegion::labels_filename()`.
     pub labels: FileInfo,
 }
 

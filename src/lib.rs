@@ -130,6 +130,18 @@ fn resolve_model_config(args: &AnalyzeArgs, config: &Config) -> Result<(ModelCon
         return Ok((model_config, ADHOC_MODEL_NAME.to_string()));
     }
 
+    // Bat mode with no explicit model: the primary model is the shared BirdNET
+    // v2.4 embeddings backbone, resolved from the bat models directory. This
+    // runs BEFORE the config default on purpose. `defaults.model` is set by
+    // essentially every normal install, and a v2.4 or v3.0 default there would
+    // otherwise be loaded as the bat backbone and fail deep in inference (a
+    // plain v2.4 exposes no embeddings; v3.0/Perch fail the model-type check).
+    // Auto-resolving here is what makes `birda --bat <region> file.wav` work
+    // with nothing but the install.
+    if args.bat.is_some() {
+        return resolve_bat_backbone_config(args);
+    }
+
     // Priority 3: Implicit default model from config
     if let Some(ref name) = config.defaults.model {
         let mut model_config = config::get_model(config, name)?.clone();
@@ -158,6 +170,99 @@ fn resolve_model_config(args: &AnalyzeArgs, config: &Config) -> Result<(ModelCon
     Err(Error::ConfigValidation {
         message: "no model specified (use -m, set defaults.model in config, or provide --model-path with --labels-path and --model-type)".into(),
     })
+}
+
+/// Build the model configuration for bat mode's shared v2.4 embeddings backbone.
+///
+/// Bat detection is a two-stage pipeline whose primary model is a `BirdNET` v2.4
+/// export with its embedding layer exposed. The user never names it: installing
+/// any bat region places it at `<models_dir>/bat/`, and this resolves it from
+/// the registry so `--bat <region>` needs no `-m`.
+///
+/// A power user can still point `--model-path` at a custom backbone, but must
+/// then also pass `--labels-path`: the backbone's label count is model-specific
+/// (a stripped embeddings-only export has a different prediction head than the
+/// stock 6522-class v2.4), so silently pairing a custom model with the registry
+/// labels would crash at load with a tensor-dimension mismatch. When neither
+/// override is set and the backbone is not installed, this returns
+/// [`Error::BatBackboneNotInstalled`] with the install command rather than
+/// letting `validate_model_files` report a bare missing-file path.
+fn resolve_bat_backbone_config(args: &AnalyzeArgs) -> Result<(ModelConfig, String)> {
+    // A custom backbone must bring its own labels; do not pair it with the
+    // registry's v2.4 labels.
+    if args.model_path.is_some() && args.labels_path.is_none() {
+        return Err(Error::ConfigValidation {
+            message: "--labels-path is required with --model-path in bat mode, because the \
+                      backbone's label count must match its prediction head"
+                .into(),
+        });
+    }
+
+    let registry = registry::load_registry()?;
+    let catalog = registry.bat.as_ref().ok_or(Error::BatCatalogMissing)?;
+    let backbone = &catalog.backbone;
+    let paths = registry::bat_backbone_paths(backbone)?;
+
+    // Only vouch for the registry-managed backbone; a custom --model-path is the
+    // caller's responsibility and is checked by validate_model_files.
+    if args.model_path.is_none() && (!paths.model.is_file() || !paths.labels.is_file()) {
+        return Err(Error::BatBackboneNotInstalled {
+            hint: "run 'birda models install bat-<region>' (for example, bat-eu)".to_string(),
+        });
+    }
+
+    let mut model_config = ModelConfig {
+        registry_id: Some(backbone.id.clone()),
+        installed_version: Some(backbone.version.clone()),
+        installed_build: None,
+        region: None,
+        variant: None,
+        path: paths.model,
+        labels: paths.labels,
+        model_type: ModelType::BirdnetV24,
+        meta_model: None,
+        bsg_calibration: None,
+        bsg_migration: None,
+        bsg_distribution_maps: None,
+    };
+    apply_model_overrides(&mut model_config, args);
+    Ok((model_config, backbone.id.clone()))
+}
+
+/// Ensure a bat run's backbone actually exposes an embeddings output.
+///
+/// Bat mode discards the backbone's species predictions and classifies its
+/// embeddings, so a backbone with no embeddings output cannot work. Checking it
+/// the moment the classifier is built turns the cryptic per-segment "got 0 of N
+/// segments" failure from deep in the pipeline into one clear message before any
+/// audio is decoded. A no-op when bat mode is not requested.
+fn ensure_bat_backbone_has_embeddings(
+    bat_requested: bool,
+    config: &birdnet_onnx::ModelConfig,
+    model_name: &str,
+) -> Result<()> {
+    if bat_requested && config.embeddings_index.is_none() {
+        return Err(Error::BatBackboneNoEmbeddings {
+            model: model_name.to_string(),
+        });
+    }
+    Ok(())
+}
+
+/// Look up a bat region entry by slug, or return the actionable
+/// [`Error::BatRegionNotInRegistry`] that names the bad region and lists the
+/// valid ones. Shared by the install, info, and analyze paths so they report an
+/// unknown region the same way.
+fn require_bat_region<'a>(
+    catalog: &'a registry::BatCatalog,
+    slug: &str,
+) -> Result<&'a registry::BatRegionEntry> {
+    catalog
+        .region(slug)
+        .ok_or_else(|| Error::BatRegionNotInRegistry {
+            region: slug.to_string(),
+            available: catalog.available_regions(),
+        })
 }
 
 /// Resolve the shared geomodel for range filtering, if it is wanted at all.
@@ -871,8 +976,18 @@ fn analyze_files(
         }
 
         // Resolve bat models directory: <data_dir>/models/bat/
-        let bat_models_dir = registry::models_dir()?.join("bat");
-        let bat_config = BatConfig::resolve(region, &bat_models_dir)?;
+        let bat_models_dir = registry::bat_models_dir()?;
+        // A missing region head means that region was never installed; turn the
+        // bare missing-file error into the actionable install hint, matching the
+        // backbone's BatBackboneNotInstalled.
+        let bat_config = BatConfig::resolve(region, &bat_models_dir).map_err(|e| match e {
+            Error::ModelFileNotFound { .. } | Error::LabelsFileNotFound { .. } => {
+                Error::BatRegionNotInstalled {
+                    region: region.slug().to_string(),
+                }
+            }
+            other => other,
+        })?;
 
         info!(
             "Bat mode: region={}, classifier={}",
@@ -1029,6 +1144,14 @@ fn analyze_files(
         range_filter_config,
         species_list,
     )?;
+
+    // Fail fast if bat mode's backbone exposes no embeddings output. Without
+    // this the run warms up, decodes, and only then dies per-file with the
+    // cryptic "bat mode requires embeddings from backbone, but got 0 of N
+    // segments" (see pipeline::processor). The backbone install guarantees a
+    // 2-output model; this catches a user who pointed --model-path at a plain
+    // single-output v2.4.
+    ensure_bat_backbone_has_embeddings(args.bat.is_some(), classifier.config(), &model_name)?;
 
     // Determine final batch size: user choice > smart default based on actual EP
     let batch_size = requested_batch_size.unwrap_or_else(|| {
@@ -1690,6 +1813,10 @@ fn handle_models_command(
                 .and_then(|dir| registry::find_stale_part_files(&dir))
                 .unwrap_or_default();
 
+            // Loaded once and shared by both the geomodel and bat checks below,
+            // rather than each re-parsing the ~200 KB registry.json.
+            let reg = registry::load_registry()?;
+
             // JSON/NDJSON output: collect all results then emit
             if output_mode.is_structured() {
                 let models: Vec<ModelCheckEntry> = config
@@ -1707,8 +1834,9 @@ fn handle_models_command(
                 let payload = ModelCheckPayload {
                     result_type: ResultType::ModelCheck,
                     models,
-                    geomodel: check_geomodel()?,
+                    geomodel: check_geomodel(&reg)?,
                     leftover_downloads,
+                    installed_bat: installed_bat_region_ids(&reg),
                 };
                 emit_json_result(&payload);
                 return Ok(());
@@ -1720,7 +1848,11 @@ fn handle_models_command(
                 println!("  {name}: OK");
             }
 
-            report_geomodel_status(&check_geomodel()?);
+            report_geomodel_status(&check_geomodel(&reg)?);
+            let installed_bat = installed_bat_region_ids(&reg);
+            if !installed_bat.is_empty() {
+                println!("  Bat classifiers: {} installed", installed_bat.join(", "));
+            }
             for path in &leftover_downloads {
                 println!(
                     "  {} is a leftover partial download (safe to remove if no download is running)",
@@ -1785,6 +1917,32 @@ fn handle_models_command(
                     );
                 } else {
                     registry::show_range_filter_info(asset);
+                }
+                return Ok(());
+            }
+
+            // Bat regions install under `bat-<region>` ids and live in
+            // `registry.bat`, so `find_model` below never matches them. Intercept
+            // the `bat-` prefix here (mirroring the install branch) so
+            // `models info bat-eu` works and `models info bat-<typo>` reports the
+            // valid regions rather than a generic unknown-model error.
+            if let Some(slug) = id.strip_prefix(registry::BAT_INSTALL_PREFIX) {
+                let catalog = registry.bat.as_ref().ok_or(Error::BatCatalogMissing)?;
+                let entry = require_bat_region(catalog, slug)?;
+                if output_mode.is_structured() {
+                    let payload = ModelInfoPayload {
+                        result_type: ResultType::ModelInfo,
+                        model: ModelDetails {
+                            id: format!("{}{}", registry::BAT_INSTALL_PREFIX, entry.region),
+                            model_type: "bat".to_string(),
+                            path: None,
+                            labels_path: None,
+                            source: "registry".to_string(),
+                        },
+                    };
+                    emit_json_result(&payload);
+                } else {
+                    registry::show_bat_info(catalog, entry);
                 }
                 return Ok(());
             }
@@ -1996,6 +2154,14 @@ fn handle_models_remove(
 ) -> Result<()> {
     use std::io::Write;
 
+    // Bat classifiers are not `config.models` entries (they install under
+    // `<models_dir>/bat/` and are selected with `--bat`), so the config-based
+    // removal below would fail for a `bat-<region>` id. Intercept it, mirroring
+    // the install and info dispatch.
+    if let Some(slug) = name.strip_prefix(registry::BAT_INSTALL_PREFIX) {
+        return handle_bat_remove(slug, output_mode, assume_yes);
+    }
+
     // Confirm before deleting files (skip in structured mode).
     //
     // `--yes` is honoured here because the flag is global and therefore appears
@@ -2130,6 +2296,22 @@ fn handle_models_install(
     // is used by every classifier rather than belonging to any one of them.
     if id == registry::GEOMODEL_INSTALL_ID {
         return handle_geomodel_install(&registry, interactive, assume_yes, output_mode);
+    }
+
+    // Bat regions install under `bat-<region>` ids. Intercepted before
+    // `find_model`, which knows nothing of the bat catalog and would otherwise
+    // report the id as an unknown model. An unrecognised region after the `bat-`
+    // prefix gets a bat-specific error listing the valid regions.
+    if let Some(slug) = id.strip_prefix(registry::BAT_INSTALL_PREFIX) {
+        let region =
+            registry::parse_bat_install_id(id).ok_or_else(|| Error::BatRegionNotInRegistry {
+                region: slug.to_string(),
+                available: registry
+                    .bat
+                    .as_ref()
+                    .map_or_else(String::new, registry::BatCatalog::available_regions),
+            })?;
+        return handle_bat_install(&registry, region, interactive, assume_yes, output_mode);
     }
 
     let model = registry::find_model(&registry, id)
@@ -2379,8 +2561,7 @@ fn handle_models_install(
 }
 
 /// Collect the status of the shared range filter for `birda models check`.
-fn check_geomodel() -> Result<output::GeomodelInfo> {
-    let registry = registry::load_registry()?;
+fn check_geomodel(registry: &registry::Registry) -> Result<output::GeomodelInfo> {
     let asset = registry
         .range_filter
         .as_ref()
@@ -2400,6 +2581,27 @@ fn check_geomodel() -> Result<output::GeomodelInfo> {
         labels_path: installed.then(|| paths.labels.clone()),
         obsolete_files,
     })
+}
+
+/// Install ids (`bat-<region>`) of the bat classifiers present on disk.
+///
+/// A region counts as installed only when its head, its labels, and the shared
+/// backbone are all present, which is what `--bat` needs to run. Returns empty
+/// when the registry has no bat catalog or none are installed.
+fn installed_bat_region_ids(registry: &registry::Registry) -> Vec<String> {
+    let Some(catalog) = registry.bat.as_ref() else {
+        return Vec::new();
+    };
+    catalog
+        .regions
+        .iter()
+        .filter_map(|region| {
+            let paths = registry::bat_paths(catalog, region).ok()?;
+            paths
+                .is_installed()
+                .then(|| format!("{}{}", registry::BAT_INSTALL_PREFIX, region.region))
+        })
+        .collect()
 }
 
 /// Print the shared range filter status for `birda models check`.
@@ -2476,10 +2678,215 @@ fn handle_geomodel_install(
     Ok(())
 }
 
+/// Install a bat regional classifier and its shared embeddings backbone.
+///
+/// Unlike a normal model install this writes nothing to `config.models` and
+/// never touches `defaults.model`: bat classifiers are selected with
+/// `--bat <region>`, which resolves the backbone and the head from
+/// `<models_dir>/bat/` directly. The backbone is installed once and reused by
+/// every region.
+fn handle_bat_install(
+    registry: &registry::Registry,
+    region: crate::config::BatRegion,
+    interactive: bool,
+    assume_yes: bool,
+    output_mode: OutputMode,
+) -> Result<()> {
+    let catalog = registry.bat.as_ref().ok_or(Error::BatCatalogMissing)?;
+    let entry = require_bat_region(catalog, region.slug())?;
+
+    // Bat heads and the backbone share BirdNET's CC BY-NC-SA terms; prompt once.
+    let vendor = "rdz-oss (BattyBirdNET-Analyzer), built on BirdNET";
+    let licensed = registry::LicensedAsset {
+        name: &entry.name,
+        vendor,
+        version: &catalog.version,
+        license: &catalog.license,
+    };
+    if !registry::prompt_license_acceptance(licensed, interactive, assume_yes)? {
+        if !output_mode.is_structured() {
+            println!("Installation cancelled.");
+        }
+        return Ok(());
+    }
+
+    if !output_mode.is_structured() {
+        // The backbone is a one-time ~56 MB download; only charge the user for it
+        // when it is not already present from an earlier region install.
+        let backbone_installed = registry::bat_backbone_paths(&catalog.backbone)
+            .is_ok_and(|p| p.model.is_file() && p.labels.is_file());
+        let head_size = registry::combined_size(entry.model.size_bytes, entry.labels.size_bytes);
+        let total = if backbone_installed {
+            head_size
+        } else {
+            let backbone_size = registry::combined_size(
+                catalog.backbone.model.size_bytes,
+                catalog.backbone.labels.size_bytes,
+            );
+            registry::combined_size(head_size, backbone_size)
+        };
+        println!(
+            "Installing {} ({} bat species, {} download).",
+            entry.name,
+            entry.species_count,
+            config::geomodel::human_size(total)
+        );
+        if !backbone_installed {
+            println!("  Includes the shared BirdNET v2.4 embeddings backbone.");
+        }
+        println!();
+    }
+
+    let runtime = tokio::runtime::Runtime::new().map_err(|e| Error::Internal {
+        message: format!("Failed to create async runtime: {e}"),
+    })?;
+    let installed = runtime.block_on(registry::install_bat(catalog, entry))?;
+
+    if output_mode.is_structured() {
+        let payload = ModelInstalledPayload {
+            result_type: ResultType::ModelInstalled,
+            id: format!("{}{}", registry::BAT_INSTALL_PREFIX, region.slug()),
+            set_as_default: false,
+            model_path: installed.region_model,
+            labels_path: installed.region_labels,
+            region: Some(region.slug().to_string()),
+            variant: None,
+            selection_reason: None,
+        };
+        emit_json_result(&payload);
+    } else {
+        println!("Installation complete!");
+        println!();
+        println!("Model files saved to:");
+        println!("  {}", installed.region_model.display());
+        println!("  {}", installed.region_labels.display());
+        println!("  {}", installed.backbone_model.display());
+        println!("  {}", installed.backbone_labels.display());
+        println!();
+        println!("Ready to analyze:");
+        println!("  birda --bat {} recording.wav", region.slug());
+        println!();
+        println!("Powered by BirdNET (https://birdnet.cornell.edu/)");
+    }
+
+    Ok(())
+}
+
+/// Remove an installed bat regional classifier's files.
+///
+/// Bat classifiers write nothing to `config.models`, so removal is purely file
+/// deletion: the region head and its labels, plus the shared embeddings backbone
+/// when no other region still needs it. Confirms first unless `--yes` or a
+/// structured output mode is in effect, matching `handle_models_remove`.
+fn handle_bat_remove(slug: &str, output_mode: OutputMode, assume_yes: bool) -> Result<()> {
+    use std::io::Write;
+
+    let registry = registry::load_registry()?;
+    let catalog = registry.bat.as_ref().ok_or(Error::BatCatalogMissing)?;
+    let entry = require_bat_region(catalog, slug)?;
+    let paths = registry::bat_paths(catalog, entry)?;
+
+    if !output_mode.is_structured() && !assume_yes {
+        print!("This will delete bat classifier files for '{slug}' from disk. Continue? [y/N]: ");
+        std::io::stdout().flush()?;
+        let mut input = String::new();
+        std::io::stdin().read_line(&mut input)?;
+        if !input.trim().eq_ignore_ascii_case("y") {
+            println!("Removal cancelled.");
+            return Ok(());
+        }
+    }
+
+    // The shared backbone is deleted only when this was the last region using it,
+    // so removing one region never breaks another.
+    let backbone_still_needed = catalog.regions.iter().any(|r| {
+        r.region != entry.region
+            && registry::bat_paths(catalog, r)
+                .is_ok_and(|p| p.region_model.is_file() && p.region_labels.is_file())
+    });
+
+    let mut targets = vec![&paths.region_model, &paths.region_labels];
+    if !backbone_still_needed {
+        targets.push(&paths.backbone_model);
+        targets.push(&paths.backbone_labels);
+    }
+
+    let mut removed: Vec<PathBuf> = Vec::new();
+    let mut first_error: Option<(PathBuf, std::io::Error)> = None;
+    for file in targets {
+        if !file.is_file() {
+            continue;
+        }
+        match std::fs::remove_file(file) {
+            Ok(()) => {
+                if !output_mode.is_structured() {
+                    println!("  Deleted: {}", file.display());
+                }
+                removed.push(file.clone());
+            }
+            Err(e) if first_error.is_none() => first_error = Some((file.clone(), e)),
+            Err(_) => {}
+        }
+    }
+
+    if let Some((path, source)) = first_error {
+        return Err(Error::FileDeletionFailed { path, source });
+    }
+
+    if output_mode.is_structured() {
+        let payload = ModelRemovedPayload {
+            result_type: ResultType::ModelRemoved,
+            id: format!("{}{}", registry::BAT_INSTALL_PREFIX, entry.region),
+            purge_requested: true,
+            new_default: None,
+        };
+        emit_json_result(&payload);
+    } else if removed.is_empty() {
+        println!("Bat region '{slug}' was not installed; nothing to remove.");
+    } else {
+        println!("Removed bat region '{slug}'.");
+    }
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::collections::HashMap;
+
+    /// A `birdnet_onnx::ModelConfig` shaped like the v2.4 backbone, with the
+    /// embeddings output present or absent.
+    fn backbone_model_config(embeddings_index: Option<usize>) -> birdnet_onnx::ModelConfig {
+        birdnet_onnx::ModelConfig {
+            model_type: birdnet_onnx::ModelType::BirdNetV24,
+            sample_rate: 48_000,
+            segment_duration: 3.0,
+            sample_count: 144_000,
+            num_species: 6522,
+            embedding_dim: embeddings_index.map(|_| 1024),
+            predictions_index: 0,
+            embeddings_index,
+        }
+    }
+
+    #[test]
+    fn test_ensure_bat_backbone_has_embeddings() {
+        // A 2-output backbone (embeddings present) is accepted in bat mode.
+        let with = backbone_model_config(Some(1));
+        assert!(ensure_bat_backbone_has_embeddings(true, &with, "backbone").is_ok());
+
+        // A 1-output v2.4 (no embeddings) fails fast in bat mode with the
+        // actionable error, instead of the cryptic per-segment failure later.
+        let without = backbone_model_config(None);
+        assert!(matches!(
+            ensure_bat_backbone_has_embeddings(true, &without, "backbone"),
+            Err(Error::BatBackboneNoEmbeddings { .. })
+        ));
+
+        // Outside bat mode the check is a no-op, even without embeddings.
+        assert!(ensure_bat_backbone_has_embeddings(false, &without, "backbone").is_ok());
+    }
 
     #[test]
     fn test_reclaim_stale_lock_removes_an_aged_lock_when_enabled() {

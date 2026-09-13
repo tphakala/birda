@@ -1,6 +1,6 @@
 {
   "schema_version": "2.0",
-  "registry_version": 7,
+  "registry_version": 8,
   "models": [
     {
       "id": "birdnet-v24",
@@ -5122,5 +5122,229 @@
       "sha256": "92cdca7ca95beb7ed16a0a39f4010fa9a8b468b854b6e8083f732647f136ee1c",
       "size_bytes": 479350
     }
+  },
+  "bat": {
+    "backbone": {
+      "id": "birdnet-v24-embeddings",
+      "name": "BirdNET v2.4 (embeddings backbone)",
+      "version": "2.4",
+      "vendor": "Cornell Lab of Ornithology & Chemnitz University of Technology",
+      "license": {
+        "type": "CC-BY-NC-SA-4.0",
+        "url": "https://creativecommons.org/licenses/by-nc-sa/4.0/",
+        "commercial_use": false,
+        "attribution_required": true,
+        "share_alike": true
+      },
+      "model": {
+        "url": "https://huggingface.co/tphakala/BattyBirdNET-onnx/resolve/main/birdnet-v2.4-embeddings-fp32-dfttrunc.onnx",
+        "filename": "birdnet-v24-embeddings.onnx",
+        "sha256": "b91139d3c63d55d742779a56531078bc88366a09bcc9bd6a9b703d425914c380",
+        "size_bytes": 58763257
+      },
+      "labels": {
+        "url": "https://github.com/tphakala/birda/raw/main/data/labels/birdnet_v2.4/BirdNET_GLOBAL_6K_V2.4_Labels_en_uk.txt",
+        "filename": "birdnet-v24-embeddings-labels.txt",
+        "sha256": "487937b6ad132b8506215523209a87b86adc9dce8e5ed3048ce9268189dddd3d",
+        "size_bytes": 259894
+      }
+    },
+    "version": "1.0",
+    "license": {
+      "type": "CC-BY-NC-SA-4.0",
+      "url": "https://creativecommons.org/licenses/by-nc-sa/4.0/",
+      "commercial_use": false,
+      "attribution_required": true,
+      "share_alike": true
+    },
+    "regions": [
+      {
+        "region": "bavaria",
+        "name": "BattyBirdNET Bavaria",
+        "species_count": 32,
+        "model": {
+          "url": "https://huggingface.co/tphakala/BattyBirdNET-onnx/resolve/main/fp32/BattyBirdNET-Bavaria-256kHz_fp32.onnx",
+          "filename": "BattyBirdNET-Bavaria-256kHz_fp32.onnx",
+          "sha256": "7ee3936621d180b9fe42f3732703339662b154135ce205f711797bca7daa44ea",
+          "size_bytes": 131827
+        },
+        "labels": {
+          "url": "https://huggingface.co/tphakala/BattyBirdNET-onnx/resolve/main/labels/BattyBirdNET-Bavaria-256kHz_Labels.txt",
+          "filename": "BattyBirdNET-Bavaria-256kHz_Labels.txt",
+          "sha256": "ff4a3f9a351f202c8712c807c6bb8b29df0b1c75ddab48e543ec76a88a42715c",
+          "size_bytes": 966
+        }
+      },
+      {
+        "region": "bavaria-high",
+        "name": "BattyBirdNET Bavaria (high confidence)",
+        "species_count": 24,
+        "model": {
+          "url": "https://huggingface.co/tphakala/BattyBirdNET-onnx/resolve/main/fp32/BattyBirdNET-Bavaria-256kHz-high_fp32.onnx",
+          "filename": "BattyBirdNET-Bavaria-256kHz-high_fp32.onnx",
+          "sha256": "3d1d5bc174ed70bfc22a53439fe468a2a4aa317b755600d1e193cefbae307a30",
+          "size_bytes": 99026
+        },
+        "labels": {
+          "url": "https://huggingface.co/tphakala/BattyBirdNET-onnx/resolve/main/labels/BattyBirdNET-Bavaria-256kHz-high_Labels.txt",
+          "filename": "BattyBirdNET-Bavaria-256kHz-high_Labels.txt",
+          "sha256": "26bc12ecf6c5ca9ce8837cd1bebe6e1cb2ce95f0261355a827383c85a0dd9d96",
+          "size_bytes": 904
+        }
+      },
+      {
+        "region": "eu",
+        "name": "BattyBirdNET EU",
+        "species_count": 30,
+        "model": {
+          "url": "https://huggingface.co/tphakala/BattyBirdNET-onnx/resolve/main/fp32/BattyBirdNET-EU-256kHz_fp32.onnx",
+          "filename": "BattyBirdNET-EU-256kHz_fp32.onnx",
+          "sha256": "f316073482ab95f48d65ca76e8b2aaa572019b3d286ab07a68ba57cea52d12f7",
+          "size_bytes": 123626
+        },
+        "labels": {
+          "url": "https://huggingface.co/tphakala/BattyBirdNET-onnx/resolve/main/labels/BattyBirdNET-EU-256kHz_Labels.txt",
+          "filename": "BattyBirdNET-EU-256kHz_Labels.txt",
+          "sha256": "9ad705d4bcd93040929a059854df968acebefee9f7513e97a558871c3997e65e",
+          "size_bytes": 1081
+        }
+      },
+      {
+        "region": "scotland",
+        "name": "BattyBirdNET Scotland",
+        "species_count": 11,
+        "model": {
+          "url": "https://huggingface.co/tphakala/BattyBirdNET-onnx/resolve/main/fp32/BattyBirdNET-Scotland-256kHz_fp32.onnx",
+          "filename": "BattyBirdNET-Scotland-256kHz_fp32.onnx",
+          "sha256": "003e3da16d3607d52dd5c963d71eec89fdfd58224dccc02bc6a27d58d21cbd85",
+          "size_bytes": 45725
+        },
+        "labels": {
+          "url": "https://huggingface.co/tphakala/BattyBirdNET-onnx/resolve/main/labels/BattyBirdNET-Scotland-256kHz_Labels.txt",
+          "filename": "BattyBirdNET-Scotland-256kHz_Labels.txt",
+          "sha256": "3dc657a38f691c20f351fa19e36b9919927aec2e30dc32f61ae9fd9bb319331b",
+          "size_bytes": 356
+        }
+      },
+      {
+        "region": "south-wales",
+        "name": "BattyBirdNET South Wales",
+        "species_count": 29,
+        "model": {
+          "url": "https://huggingface.co/tphakala/BattyBirdNET-onnx/resolve/main/fp32/BattyBirdNET-SouthWales-256kHz_fp32.onnx",
+          "filename": "BattyBirdNET-SouthWales-256kHz_fp32.onnx",
+          "sha256": "14534d34fc54b0bc267ba07a6eaddc10e360195b11d0c4b5f47460a4f1d5aea4",
+          "size_bytes": 119526
+        },
+        "labels": {
+          "url": "https://huggingface.co/tphakala/BattyBirdNET-onnx/resolve/main/labels/BattyBirdNET-SouthWales-256kHz_Labels.txt",
+          "filename": "BattyBirdNET-SouthWales-256kHz_Labels.txt",
+          "sha256": "fc7ed8bd55c28b66cdcecc8d8acb8ea05850d9301aa65467fd5d192ee00e8214",
+          "size_bytes": 1072
+        }
+      },
+      {
+        "region": "sweden",
+        "name": "BattyBirdNET Sweden",
+        "species_count": 23,
+        "model": {
+          "url": "https://huggingface.co/tphakala/BattyBirdNET-onnx/resolve/main/fp32/BattyBirdNET-Sweden-256kHz_fp32.onnx",
+          "filename": "BattyBirdNET-Sweden-256kHz_fp32.onnx",
+          "sha256": "85fe47431c275b5370e0c8d0aa9b049f54d32035f736afcec4ac5d62c1adb591",
+          "size_bytes": 94926
+        },
+        "labels": {
+          "url": "https://huggingface.co/tphakala/BattyBirdNET-onnx/resolve/main/labels/BattyBirdNET-Sweden-256kHz_Labels.txt",
+          "filename": "BattyBirdNET-Sweden-256kHz_Labels.txt",
+          "sha256": "c43042ebd458eed4cc7258fcd6526e0299a61e27146e3ca989300f696d1f2e02",
+          "size_bytes": 737
+        }
+      },
+      {
+        "region": "uk",
+        "name": "BattyBirdNET UK",
+        "species_count": 20,
+        "model": {
+          "url": "https://huggingface.co/tphakala/BattyBirdNET-onnx/resolve/main/fp32/BattyBirdNET-UK-256kHz_fp32.onnx",
+          "filename": "BattyBirdNET-UK-256kHz_fp32.onnx",
+          "sha256": "aa9d45a5e3e64b6c28a131d16a98346ee1095c2d4c9f4785e2ff1d5a6e4b27b6",
+          "size_bytes": 82625
+        },
+        "labels": {
+          "url": "https://huggingface.co/tphakala/BattyBirdNET-onnx/resolve/main/labels/BattyBirdNET-UK-256kHz_Labels.txt",
+          "filename": "BattyBirdNET-UK-256kHz_Labels.txt",
+          "sha256": "4cc63b7cfd0a8e4380857fc3f5d576e8ec48d80cbdc9060873abb20c4ef78740",
+          "size_bytes": 649
+        }
+      },
+      {
+        "region": "usa",
+        "name": "BattyBirdNET USA",
+        "species_count": 38,
+        "model": {
+          "url": "https://huggingface.co/tphakala/BattyBirdNET-onnx/resolve/main/fp32/BattyBirdNET-USA-256kHz_fp32.onnx",
+          "filename": "BattyBirdNET-USA-256kHz_fp32.onnx",
+          "sha256": "9230fb49c87b9953f311fa1d408eac8359a1c8761264204f51b796406bcfcc63",
+          "size_bytes": 156427
+        },
+        "labels": {
+          "url": "https://huggingface.co/tphakala/BattyBirdNET-onnx/resolve/main/labels/BattyBirdNET-USA-256kHz_Labels.txt",
+          "filename": "BattyBirdNET-USA-256kHz_Labels.txt",
+          "sha256": "3cf597702b5f0f558b227df3a01648da7eb52cc632ec70a148fd159763ba4399",
+          "size_bytes": 1222
+        }
+      },
+      {
+        "region": "usa-east",
+        "name": "BattyBirdNET USA East",
+        "species_count": 23,
+        "model": {
+          "url": "https://huggingface.co/tphakala/BattyBirdNET-onnx/resolve/main/fp32/BattyBirdNET-USA-EAST-256kHz_fp32.onnx",
+          "filename": "BattyBirdNET-USA-EAST-256kHz_fp32.onnx",
+          "sha256": "403901ce25c3daecdbd4d83017da8ff54c802f0feb78fc66355677f5c8905241",
+          "size_bytes": 94926
+        },
+        "labels": {
+          "url": "https://huggingface.co/tphakala/BattyBirdNET-onnx/resolve/main/labels/BattyBirdNET-USA-EAST-256kHz_Labels.txt",
+          "filename": "BattyBirdNET-USA-EAST-256kHz_Labels.txt",
+          "sha256": "db88ade98f2680af786911f1de49e5c29425335bbbc814c4a40c1e71ef888713",
+          "size_bytes": 663
+        }
+      },
+      {
+        "region": "usa-east-high",
+        "name": "BattyBirdNET USA East (high confidence)",
+        "species_count": 17,
+        "model": {
+          "url": "https://huggingface.co/tphakala/BattyBirdNET-onnx/resolve/main/fp32/BattyBirdNET-USA-EAST-256kHz-high_fp32.onnx",
+          "filename": "BattyBirdNET-USA-EAST-256kHz-high_fp32.onnx",
+          "sha256": "cb3fd538fb8adc87f775fad4fe5f9b3e1f56e78c5c7acd9abed4da7034e39772",
+          "size_bytes": 70325
+        },
+        "labels": {
+          "url": "https://huggingface.co/tphakala/BattyBirdNET-onnx/resolve/main/labels/BattyBirdNET-USA-EAST-256kHz-high_Labels.txt",
+          "filename": "BattyBirdNET-USA-EAST-256kHz-high_Labels.txt",
+          "sha256": "438b01d917b3833f707cdf9e9d13f0b13eee2318ad23eeb34089b76b9f22e566",
+          "size_bytes": 613
+        }
+      },
+      {
+        "region": "usa-west",
+        "name": "BattyBirdNET USA West",
+        "species_count": 28,
+        "model": {
+          "url": "https://huggingface.co/tphakala/BattyBirdNET-onnx/resolve/main/fp32/BattyBirdNET-USA-WEST-256kHz_fp32.onnx",
+          "filename": "BattyBirdNET-USA-WEST-256kHz_fp32.onnx",
+          "sha256": "d1d3573a379e9e8561a66dc27ab768342d7d3823268440ec9ab624b8fb4640fa",
+          "size_bytes": 115426
+        },
+        "labels": {
+          "url": "https://huggingface.co/tphakala/BattyBirdNET-onnx/resolve/main/labels/BattyBirdNET-USA-WEST-256kHz_Labels.txt",
+          "filename": "BattyBirdNET-USA-WEST-256kHz_Labels.txt",
+          "sha256": "f01a993b749f455636de5811e6ab9de96537f05dc191ec1919acf4365a6e6386",
+          "size_bytes": 867
+        }
+      }
+    ]
   }
 }

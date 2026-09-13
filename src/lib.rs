@@ -193,38 +193,60 @@ fn resolve_bat_backbone_config(args: &AnalyzeArgs) -> Result<(ModelConfig, Strin
     // labels (or the registry backbone paired with custom labels) risks a
     // label-count mismatch that fails classifier construction with a cryptic
     // tensor-dimension error instead of this clean message.
-    match (args.model_path.is_some(), args.labels_path.is_some()) {
-        (true, false) => {
+    match (args.model_path.as_ref(), args.labels_path.as_ref()) {
+        (Some(_), None) => {
             return Err(Error::ConfigValidation {
                 message: "--labels-path is required with --model-path in bat mode, because the \
                           backbone's label count must match its prediction head"
                     .into(),
             });
         }
-        (false, true) => {
+        (None, Some(_)) => {
             return Err(Error::ConfigValidation {
                 message: "--model-path is required with --labels-path in bat mode; the registry \
                           backbone's labels cannot be overridden on their own"
                     .into(),
             });
         }
-        _ => {}
+        (Some(path), Some(labels)) => {
+            // A fully specified custom backbone. Do NOT touch the registry: the
+            // user supplied both files, so requiring a bat catalog here would
+            // wrongly reject a power user on a registry that predates bat support
+            // (the custom paths are all this run needs). `validate_model_files`
+            // checks the paths exist; `ensure_bat_backbone_has_embeddings`
+            // confirms the model exposes embeddings.
+            let model_config = ModelConfig {
+                registry_id: None,
+                installed_version: None,
+                installed_build: None,
+                region: None,
+                variant: None,
+                path: path.clone(),
+                labels: labels.clone(),
+                model_type: ModelType::BirdnetV24,
+                meta_model: None,
+                bsg_calibration: None,
+                bsg_migration: None,
+                bsg_distribution_maps: None,
+            };
+            return Ok((model_config, ADHOC_MODEL_NAME.to_string()));
+        }
+        (None, None) => {}
     }
 
+    // No overrides: use the registry-managed backbone.
     let registry = registry::load_registry()?;
     let catalog = registry.bat.as_ref().ok_or(Error::BatCatalogMissing)?;
     let backbone = &catalog.backbone;
     let paths = registry::bat_backbone_paths(backbone)?;
 
-    // Only vouch for the registry-managed backbone; a custom --model-path is the
-    // caller's responsibility and is checked by validate_model_files.
-    if args.model_path.is_none() && (!paths.model.is_file() || !paths.labels.is_file()) {
+    if !paths.model.is_file() || !paths.labels.is_file() {
         return Err(Error::BatBackboneNotInstalled {
             hint: "run 'birda models install bat-<region>' (for example, bat-eu)".to_string(),
         });
     }
 
-    let mut model_config = ModelConfig {
+    let model_config = ModelConfig {
         registry_id: Some(backbone.id.clone()),
         installed_version: Some(backbone.version.clone()),
         installed_build: None,
@@ -238,7 +260,6 @@ fn resolve_bat_backbone_config(args: &AnalyzeArgs) -> Result<(ModelConfig, Strin
         bsg_migration: None,
         bsg_distribution_maps: None,
     };
-    apply_model_overrides(&mut model_config, args);
     Ok((model_config, backbone.id.clone()))
 }
 
@@ -3177,6 +3198,60 @@ mod tests {
     /// Create default `AnalyzeArgs` (all None/false).
     fn default_args() -> AnalyzeArgs {
         AnalyzeArgs::default()
+    }
+
+    #[test]
+    fn test_resolve_bat_backbone_custom_paths_skip_the_registry() {
+        // Both overrides given: the custom backbone is used directly, with no
+        // registry lookup. `registry_id: None` proves the registry-managed
+        // backbone was not resolved, so this works even on a registry that
+        // predates bat support (the misleading BatCatalogMissing the reviewer
+        // flagged).
+        let args = AnalyzeArgs {
+            bat: Some(crate::config::BatRegion::Eu),
+            model_path: Some(std::path::PathBuf::from("/custom/backbone.onnx")),
+            labels_path: Some(std::path::PathBuf::from("/custom/labels.txt")),
+            ..default_args()
+        };
+        let (config, name) =
+            resolve_bat_backbone_config(&args).expect("a fully specified custom backbone resolves");
+        assert_eq!(
+            config.path,
+            std::path::PathBuf::from("/custom/backbone.onnx")
+        );
+        assert_eq!(
+            config.labels,
+            std::path::PathBuf::from("/custom/labels.txt")
+        );
+        assert_eq!(config.model_type, ModelType::BirdnetV24);
+        assert!(
+            config.registry_id.is_none(),
+            "a custom backbone is not a registry-managed model"
+        );
+        assert_eq!(name, ADHOC_MODEL_NAME);
+    }
+
+    #[test]
+    fn test_resolve_bat_backbone_rejects_a_lone_override() {
+        let only_model = AnalyzeArgs {
+            bat: Some(crate::config::BatRegion::Eu),
+            model_path: Some(std::path::PathBuf::from("/custom/backbone.onnx")),
+            ..default_args()
+        };
+        assert!(matches!(
+            resolve_bat_backbone_config(&only_model),
+            Err(Error::ConfigValidation { .. })
+        ));
+
+        let only_labels = AnalyzeArgs {
+            bat: Some(crate::config::BatRegion::Eu),
+            labels_path: Some(std::path::PathBuf::from("/custom/labels.txt")),
+            ..default_args()
+        };
+        assert!(matches!(
+            resolve_bat_backbone_config(&only_labels),
+            Err(Error::ConfigValidation { .. })
+        ));
     }
 
     #[test]

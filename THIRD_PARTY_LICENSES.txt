@@ -11,11 +11,11 @@ SECTION 1: RUST DEPENDENCIES
 SUMMARY
 -------
 
-MIT License: 314 crate(s)
+MIT License: 316 crate(s)
 Apache License 2.0: 27 crate(s)
 Unicode License v3: 19 crate(s)
 Mozilla Public License 2.0: 14 crate(s)
-BSD 3-Clause "New" or "Revised" License: 8 crate(s)
+BSD 3-Clause "New" or "Revised" License: 12 crate(s)
 ISC License: 6 crate(s)
 Creative Commons Zero v1.0 Universal: 1 crate(s)
 Community Data License Agreement Permissive 2.0: 1 crate(s)
@@ -30,22 +30,22 @@ Apache License 2.0
 --------------------------------------------------------------------------------
 
 Used by:
-  - arrow-arith 59.2.0
-  - arrow-array 59.2.0
-  - arrow-buffer 59.2.0
-  - arrow-cast 59.2.0
-  - arrow-csv 59.2.0
-  - arrow-data 59.2.0
-  - arrow-ipc 59.2.0
-  - arrow-json 59.2.0
-  - arrow-ord 59.2.0
-  - arrow-row 59.2.0
-  - arrow-schema 59.2.0
-  - arrow-select 59.2.0
-  - arrow-string 59.2.0
-  - arrow 59.2.0
+  - arrow-arith 59.3.0
+  - arrow-array 59.3.0
+  - arrow-buffer 59.3.0
+  - arrow-cast 59.3.0
+  - arrow-csv 59.3.0
+  - arrow-data 59.3.0
+  - arrow-ipc 59.3.0
+  - arrow-json 59.3.0
+  - arrow-ord 59.3.0
+  - arrow-row 59.3.0
+  - arrow-schema 59.3.0
+  - arrow-select 59.3.0
+  - arrow-string 59.3.0
+  - arrow 59.3.0
   - hound 3.5.1
-  - parquet 59.2.0
+  - parquet 59.3.0
 
 
                                  Apache License
@@ -1307,7 +1307,7 @@ Apache License 2.0
 
 Used by:
   - audio-codec-algorithms 0.8.1
-  - aws-lc-sys 0.43.0
+  - aws-lc-sys 0.45.0
   - dunce 1.0.5
   - flatbuffers 25.12.19
   - ryu 1.0.23
@@ -1393,7 +1393,7 @@ BSD 3-Clause "New" or "Revised" License
 --------------------------------------------------------------------------------
 
 Used by:
-  - encoding_rs 0.8.35
+  - encoding_rs 0.8.41
 
 // Copyright © WHATWG (Apple, Google, Mozilla, Microsoft).
 //
@@ -1449,6 +1449,83 @@ pub(crate) static GB18030_2022_OVERRIDE_BYTES: [[u8; 2]; 18] = [
     [0xFE, 0x90],
     [0xFE, 0xA0],
 ];
+
+
+--------------------------------------------------------------------------------
+BSD 3-Clause "New" or "Revised" License
+--------------------------------------------------------------------------------
+
+Used by:
+  - zstd-safe 7.3.0
+  - zstd-sys 2.1.0+zstd.1.5.7
+
+BSD 3-Clause License
+
+Copyright (c) 2026, Alexandre Bury
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+
+1. Redistributions of source code must retain the above copyright notice, this
+   list of conditions and the following disclaimer.
+
+2. Redistributions in binary form must reproduce the above copyright notice,
+   this list of conditions and the following disclaimer in the documentation
+   and/or other materials provided with the distribution.
+
+3. Neither the name of the copyright holder nor the names of its
+   contributors may be used to endorse or promote products derived from
+   this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+
+--------------------------------------------------------------------------------
+BSD 3-Clause "New" or "Revised" License
+--------------------------------------------------------------------------------
+
+Used by:
+  - zstd-sys 2.1.0+zstd.1.5.7
+
+BSD License
+
+For Zstandard software
+
+Copyright (c) Meta Platforms, Inc. and affiliates. All rights reserved.
+
+Redistribution and use in source and binary forms, with or without modification,
+are permitted provided that the following conditions are met:
+
+ * Redistributions of source code must retain the above copyright notice, this
+   list of conditions and the following disclaimer.
+
+ * Redistributions in binary form must reproduce the above copyright notice,
+   this list of conditions and the following disclaimer in the documentation
+   and/or other materials provided with the distribution.
+
+ * Neither the name Facebook, nor Meta, nor the names of its contributors may
+   be used to endorse or promote products derived from this software without
+   specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR
+ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+(INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON
+ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
 --------------------------------------------------------------------------------
@@ -1517,7 +1594,7 @@ BSD 3-Clause "New" or "Revised" License
 
 Used by:
   - alloc-stdlib 0.2.4
-  - aws-lc-sys 0.43.0
+  - aws-lc-sys 0.45.0
 
 Copyright (c) <year> <owner>. 
 
@@ -1573,7 +1650,7 @@ BSD 3-Clause "New" or "Revised" License
 --------------------------------------------------------------------------------
 
 Used by:
-  - encoding_rs 0.8.35
+  - encoding_rs 0.8.41
 
 Copyright © WHATWG (Apple, Google, Mozilla, Microsoft).
 
@@ -1601,6 +1678,47 @@ SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
 CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
 OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+
+--------------------------------------------------------------------------------
+BSD 3-Clause "New" or "Revised" License
+--------------------------------------------------------------------------------
+
+Used by:
+  - zstd-sys 2.1.0+zstd.1.5.7
+
+The auto-generated bindings are under the 3-clause BSD license:
+
+BSD License
+
+For Zstandard software
+
+Copyright (c) Meta Platforms, Inc. and affiliates. All rights reserved.
+
+Redistribution and use in source and binary forms, with or without modification,
+are permitted provided that the following conditions are met:
+
+ * Redistributions of source code must retain the above copyright notice, this
+   list of conditions and the following disclaimer.
+
+ * Redistributions in binary form must reproduce the above copyright notice,
+   this list of conditions and the following disclaimer in the documentation
+   and/or other materials provided with the distribution.
+
+ * Neither the name Facebook, nor Meta, nor the names of its contributors may
+   be used to endorse or promote products derived from this software without
+   specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR
+ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+(INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON
+ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
 --------------------------------------------------------------------------------
@@ -1851,7 +1969,7 @@ ISC License
 --------------------------------------------------------------------------------
 
 Used by:
-  - rustls-webpki 0.103.13
+  - rustls-webpki 0.103.15
 
 Except as otherwise noted, this project is licensed under the following
 (ISC-style) terms:
@@ -1903,8 +2021,8 @@ ISC License
 --------------------------------------------------------------------------------
 
 Used by:
-  - aws-lc-rs 1.17.3
-  - aws-lc-sys 0.43.0
+  - aws-lc-rs 1.18.1
+  - aws-lc-sys 0.45.0
 
 ISC License:
 
@@ -2177,24 +2295,24 @@ MIT License
 --------------------------------------------------------------------------------
 
 Used by:
-  - cc 1.4.0
-  - cfg-if 1.0.4
+  - cc 1.4.7
+  - cfg-if 1.0.5
   - cmake 0.1.58
   - filetime 0.2.29
-  - find-msvc-tools 0.1.9
+  - find-msvc-tools 0.1.13
   - jobserver 0.1.35
-  - js-sys 0.3.103
+  - js-sys 0.3.105
   - openssl-probe 0.2.1
   - openssl-sys 0.9.117
-  - pkg-config 0.3.33
+  - pkg-config 0.3.34
   - socket2 0.6.5
   - wait-timeout 0.2.1
-  - wasm-bindgen-futures 0.4.76
-  - wasm-bindgen-macro-support 0.2.126
-  - wasm-bindgen-macro 0.2.126
-  - wasm-bindgen-shared 0.2.126
-  - wasm-bindgen 0.2.126
-  - web-sys 0.3.103
+  - wasm-bindgen-futures 0.4.78
+  - wasm-bindgen-macro-support 0.2.128
+  - wasm-bindgen-macro 0.2.128
+  - wasm-bindgen-shared 0.2.128
+  - wasm-bindgen 0.2.128
+  - web-sys 0.3.105
 
 Copyright (c) 2014 Alex Crichton
 
@@ -2228,7 +2346,7 @@ MIT License
 --------------------------------------------------------------------------------
 
 Used by:
-  - mio 1.2.2
+  - mio 1.2.3
 
 Copyright (c) 2014 Carl Lerche and other MIO contributors
 
@@ -2359,13 +2477,13 @@ MIT License
 
 Used by:
   - bitflags 1.3.2
-  - bitflags 2.13.1
-  - log 0.4.33
+  - bitflags 2.13.2
+  - log 0.4.34
   - num-bigint 0.5.1
   - num-complex 0.4.6
-  - num-integer 0.1.46
+  - num-integer 0.1.47
   - num-traits 0.2.19
-  - regex-automata 0.4.16
+  - regex-automata 0.4.18
   - regex-syntax 0.8.11
   - regex 1.13.1
 
@@ -2463,7 +2581,7 @@ MIT License
 --------------------------------------------------------------------------------
 
 Used by:
-  - hyper 1.11.0
+  - hyper 1.11.1
 
 Copyright (c) 2014-2026 Sean McArthur
 
@@ -2825,9 +2943,9 @@ MIT License
 --------------------------------------------------------------------------------
 
 Used by:
-  - futures-channel 0.3.33
+  - futures-channel 0.3.34
   - futures-core 0.3.34
-  - futures-executor 0.3.33
+  - futures-executor 0.3.34
   - futures-io 0.3.34
   - futures-macro 0.3.34
   - futures-sink 0.3.34
@@ -2937,9 +3055,9 @@ MIT License
 --------------------------------------------------------------------------------
 
 Used by:
-  - hyper-rustls 0.27.9
+  - hyper-rustls 0.27.10
   - rustls-native-certs 0.8.4
-  - rustls 0.23.42
+  - rustls 0.23.45
 
 Copyright (c) 2016 Joseph Birr-Pixton <jpixton@gmail.com>
 
@@ -3039,7 +3157,7 @@ MIT License
 --------------------------------------------------------------------------------
 
 Used by:
-  - indexmap 2.14.0
+  - indexmap 2.14.2
 
 Copyright (c) 2016--2017
 
@@ -3141,7 +3259,7 @@ MIT License
 --------------------------------------------------------------------------------
 
 Used by:
-  - reqwest 0.13.4
+  - reqwest 0.13.5
 
 Copyright (c) 2016-2026 Sean McArthur
 
@@ -3335,7 +3453,7 @@ MIT License
 --------------------------------------------------------------------------------
 
 Used by:
-  - http 1.4.2
+  - http 1.5.0
 
 Copyright (c) 2017 http-rs authors
 
@@ -3369,9 +3487,43 @@ MIT License
 --------------------------------------------------------------------------------
 
 Used by:
-  - tokio-rustls 0.26.4
+  - tokio-rustls 0.26.5
 
 Copyright (c) 2017 quininer kel
+
+Permission is hereby granted, free of charge, to any
+person obtaining a copy of this software and associated
+documentation files (the "Software"), to deal in the
+Software without restriction, including without
+limitation the rights to use, copy, modify, merge,
+publish, distribute, sublicense, and/or sell copies of
+the Software, and to permit persons to whom the Software
+is furnished to do so, subject to the following
+conditions:
+
+The above copyright notice and this permission notice
+shall be included in all copies or substantial portions
+of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
+ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
+TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
+SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
+IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+DEALINGS IN THE SOFTWARE.
+
+
+--------------------------------------------------------------------------------
+MIT License
+--------------------------------------------------------------------------------
+
+Used by:
+  - core_detect 1.0.0
+
+Copyright (c) 2017-2020 The Rust Project Developers
 
 Permission is hereby granted, free of charge, to any
 person obtaining a copy of this software and associated
@@ -3506,7 +3658,7 @@ MIT License
 --------------------------------------------------------------------------------
 
 Used by:
-  - smallvec 1.15.2
+  - smallvec 1.16.1
 
 Copyright (c) 2018 The Servo Project Developers
 
@@ -4122,7 +4274,7 @@ MIT License
 --------------------------------------------------------------------------------
 
 Used by:
-  - http-body-util 0.1.4
+  - http-body-util 0.1.5
   - http-body 1.1.0
 
 Copyright (c) 2019-2026 Sean McArthur & Hyper Contributors
@@ -4219,42 +4371,9 @@ MIT License
 --------------------------------------------------------------------------------
 
 Used by:
-  - cpufeatures 0.3.0
-
-Copyright (c) 2020-2025 The RustCrypto Project Developers
-
-Permission is hereby granted, free of charge, to any
-person obtaining a copy of this software and associated
-documentation files (the "Software"), to deal in the
-Software without restriction, including without
-limitation the rights to use, copy, modify, merge,
-publish, distribute, sublicense, and/or sell copies of
-the Software, and to permit persons to whom the Software
-is furnished to do so, subject to the following
-conditions:
-
-The above copyright notice and this permission notice
-shall be included in all copies or substantial portions
-of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
-ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
-TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
-PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
-SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
-CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
-OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
-IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
-DEALINGS IN THE SOFTWARE.
-
-
---------------------------------------------------------------------------------
-MIT License
---------------------------------------------------------------------------------
-
-Used by:
   - const-oid 0.10.2
-  - der 0.8.1
+  - cpufeatures 0.3.1
+  - der 0.8.2
 
 Copyright (c) 2020-2026 The RustCrypto Project Developers
 
@@ -4418,7 +4537,7 @@ MIT License
 --------------------------------------------------------------------------------
 
 Used by:
-  - hybrid-array 0.4.13
+  - hybrid-array 0.4.15
 
 Copyright (c) 2022-2026 The RustCrypto Project Developers
 
@@ -4633,10 +4752,10 @@ Used by:
   - anstyle-wincon 3.0.11
   - anstyle 1.0.14
   - assert_cmd 2.2.2
-  - clap 4.6.6
-  - clap_builder 4.6.6
-  - clap_derive 4.6.4
-  - clap_lex 1.1.0
+  - clap 4.6.7
+  - clap_builder 4.6.7
+  - clap_derive 4.6.7
+  - clap_lex 1.1.1
   - colorchoice 1.0.5
   - is_terminal_polyfill 1.70.2
   - once_cell_polyfill 1.70.2
@@ -4645,7 +4764,7 @@ Used by:
   - predicates 3.1.4
   - serde_spanned 1.1.1
   - termtree 0.5.1
-  - toml 1.1.4+spec-1.1.0
+  - toml 1.1.6+spec-1.1.0
   - toml_datetime 1.1.1+spec-1.1.0
   - toml_parser 1.1.3+spec-1.1.0
   - toml_writer 1.1.2+spec-1.1.0
@@ -4705,7 +4824,7 @@ MIT License
 
 Used by:
   - time-core 0.1.9
-  - time 0.3.54
+  - time 0.3.55
 
 Copyright (c) Jacob Pratt et al.
 
@@ -4869,7 +4988,7 @@ MIT License
 --------------------------------------------------------------------------------
 
 Used by:
-  - synstructure 0.13.2
+  - synstructure 0.14.0
 
 Copyright 2016 Nika Layzell
 
@@ -4885,9 +5004,26 @@ MIT License
 --------------------------------------------------------------------------------
 
 Used by:
-  - ipnet 2.12.0
+  - ipnet 2.12.2
 
 Copyright 2017 Juniper Networks, Inc.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+
+--------------------------------------------------------------------------------
+MIT License
+--------------------------------------------------------------------------------
+
+Used by:
+  - multiversion-macros 0.9.0
+  - multiversion 0.9.0
+
+Copyright 2019 Caleb Zulawski
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
 
@@ -4929,7 +5065,7 @@ MIT License
 --------------------------------------------------------------------------------
 
 Used by:
-  - ureq-proto 0.6.0
+  - ureq-proto 0.6.4
 
 Copyright 2022 Martin Algesten
 
@@ -4945,8 +5081,8 @@ MIT License
 --------------------------------------------------------------------------------
 
 Used by:
-  - zerocopy-derive 0.8.55
-  - zerocopy 0.8.55
+  - zerocopy-derive 0.8.58
+  - zerocopy 0.8.58
 
 Copyright 2023 The Fuchsia Authors
 
@@ -4981,7 +5117,8 @@ MIT License
 --------------------------------------------------------------------------------
 
 Used by:
-  - encoding_rs 0.8.35
+  - encoding_rs 0.8.41
+  - multiversion_no_op 1.0.0
   - utf8_iter 1.0.4
 
 Copyright Mozilla Foundation
@@ -5107,7 +5244,7 @@ MIT License
 --------------------------------------------------------------------------------
 
 Used by:
-  - crc32fast 1.5.0
+  - crc32fast 1.5.2
 
 MIT License
 
@@ -5155,7 +5292,7 @@ MIT License
 --------------------------------------------------------------------------------
 
 Used by:
-  - ureq 3.3.0
+  - ureq 3.4.2
 
 MIT License
 
@@ -5185,7 +5322,7 @@ MIT License
 --------------------------------------------------------------------------------
 
 Used by:
-  - tokio-macros 2.7.1
+  - tokio-macros 2.7.2
 
 MIT License
 
@@ -5234,7 +5371,7 @@ MIT License
 --------------------------------------------------------------------------------
 
 Used by:
-  - arrow-array 59.2.0
+  - arrow-array 59.3.0
 
 MIT License
 
@@ -5294,7 +5431,7 @@ MIT License
 --------------------------------------------------------------------------------
 
 Used by:
-  - libredox 0.1.18
+  - libredox 0.1.25
 
 MIT License
 
@@ -5735,11 +5872,11 @@ Used by:
   - linux-raw-sys 0.12.1
   - once_cell 1.21.4
   - pin-project-lite 0.2.17
-  - portable-atomic-util 0.2.7
-  - portable-atomic 1.14.0
+  - portable-atomic-util 0.2.8
+  - portable-atomic 1.15.0
   - proc-macro2 1.0.107
   - quote 1.0.47
-  - rustix 1.1.4
+  - rustix 1.1.5
   - rustversion 1.0.23
   - semver 1.0.28
   - seq-macro 0.3.6
@@ -5749,11 +5886,11 @@ Used by:
   - serde_json 1.0.151
   - simd_cesu8 1.2.0
   - syn 2.0.119
-  - syn 3.0.3
-  - thiserror-impl 2.0.20
-  - thiserror 2.0.20
+  - syn 3.0.6
+  - thiserror-impl 2.0.21
+  - thiserror 2.0.21
   - typed-path 0.12.3
-  - unicode-ident 1.0.24
+  - unicode-ident 1.0.26
   - utf8-zero 0.8.1
   - wasi 0.11.1+wasi-snapshot-preview1
   - wasip2 1.0.4+wasi-0.2.12
@@ -5844,7 +5981,7 @@ MIT License
 --------------------------------------------------------------------------------
 
 Used by:
-  - android_system_properties 0.1.5
+  - android_system_properties 0.1.6
 
 The MIT License (MIT)
 
@@ -5964,7 +6101,7 @@ MIT License
 --------------------------------------------------------------------------------
 
 Used by:
-  - aho-corasick 1.1.4
+  - aho-corasick 1.1.5
   - byteorder 1.5.0
   - csv-core 0.1.13
   - csv 1.4.0
@@ -6061,7 +6198,7 @@ MIT License
 --------------------------------------------------------------------------------
 
 Used by:
-  - twox-hash 2.1.3
+  - twox-hash 2.1.4
 
 The MIT License (MIT)
 
@@ -6091,7 +6228,7 @@ MIT License
 --------------------------------------------------------------------------------
 
 Used by:
-  - combine 4.6.7
+  - combine 4.6.8
 
 The MIT License (MIT)
 
@@ -6182,7 +6319,7 @@ MIT License
 --------------------------------------------------------------------------------
 
 Used by:
-  - aws-lc-sys 0.43.0
+  - aws-lc-sys 0.45.0
 
 The MIT License (MIT)
 
@@ -6244,7 +6381,7 @@ MIT License
 --------------------------------------------------------------------------------
 
 Used by:
-  - console 0.16.4
+  - console 0.16.6
   - indicatif 0.18.6
 
 The MIT License (MIT)
@@ -6276,7 +6413,7 @@ MIT License
 --------------------------------------------------------------------------------
 
 Used by:
-  - redox_users 0.5.2
+  - redox_users 0.5.3
 
 The MIT License (MIT)
 
@@ -6307,7 +6444,7 @@ MIT License
 --------------------------------------------------------------------------------
 
 Used by:
-  - bstr 1.13.0
+  - bstr 1.13.1
 
 The MIT License (MIT)
 
@@ -6456,8 +6593,6 @@ MIT License
 --------------------------------------------------------------------------------
 
 Used by:
-  - zstd-safe 7.2.4
-  - zstd-sys 2.0.16+zstd.1.5.7
   - zstd 0.13.3
 
 The MIT License (MIT)
@@ -7309,7 +7444,7 @@ Unicode License v3
 --------------------------------------------------------------------------------
 
 Used by:
-  - unicode-ident 1.0.24
+  - unicode-ident 1.0.26
 
 UNICODE LICENSE V3
 
@@ -7357,24 +7492,24 @@ Unicode License v3
 --------------------------------------------------------------------------------
 
 Used by:
-  - icu_collections 2.2.0
-  - icu_locale_core 2.2.0
-  - icu_normalizer 2.2.0
-  - icu_normalizer_data 2.2.0
-  - icu_properties 2.2.0
-  - icu_properties_data 2.2.0
-  - icu_provider 2.2.0
-  - litemap 0.8.2
-  - potential_utf 0.1.5
-  - tinystr 0.8.3
-  - writeable 0.6.3
-  - yoke-derive 0.8.2
+  - icu_collections 2.3.0
+  - icu_locale_core 2.3.0
+  - icu_normalizer 2.3.0
+  - icu_normalizer_data 2.3.0
+  - icu_properties 2.3.0
+  - icu_properties_data 2.3.0
+  - icu_provider 2.3.1
+  - litemap 0.8.3
+  - potential_utf 0.1.6
+  - tinystr 0.8.4
+  - writeable 0.6.4
+  - yoke-derive 0.8.3
   - yoke 0.8.3
-  - zerofrom-derive 0.1.7
+  - zerofrom-derive 0.1.8
   - zerofrom 0.1.8
-  - zerotrie 0.2.4
-  - zerovec-derive 0.11.3
-  - zerovec 0.11.6
+  - zerotrie 0.2.5
+  - zerovec-derive 0.11.6
+  - zerovec 0.11.8
 
 UNICODE LICENSE V3
 
@@ -7429,7 +7564,7 @@ zlib License
 --------------------------------------------------------------------------------
 
 Used by:
-  - zlib-rs 0.6.6
+  - zlib-rs 0.6.8
 
 (C) 2024 Trifecta Tech Foundation 
 

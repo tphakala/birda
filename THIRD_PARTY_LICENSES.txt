@@ -11,11 +11,11 @@ SECTION 1: RUST DEPENDENCIES
 SUMMARY
 -------
 
-MIT License: 316 crate(s)
-Apache License 2.0: 27 crate(s)
+MIT License: 315 crate(s)
+Apache License 2.0: 28 crate(s)
 Unicode License v3: 19 crate(s)
 Mozilla Public License 2.0: 14 crate(s)
-BSD 3-Clause "New" or "Revised" License: 12 crate(s)
+BSD 3-Clause "New" or "Revised" License: 13 crate(s)
 ISC License: 6 crate(s)
 Creative Commons Zero v1.0 Universal: 1 crate(s)
 Community Data License Agreement Permissive 2.0: 1 crate(s)
@@ -30,22 +30,23 @@ Apache License 2.0
 --------------------------------------------------------------------------------
 
 Used by:
-  - arrow-arith 59.3.0
-  - arrow-array 59.3.0
-  - arrow-buffer 59.3.0
-  - arrow-cast 59.3.0
-  - arrow-csv 59.3.0
-  - arrow-data 59.3.0
-  - arrow-ipc 59.3.0
-  - arrow-json 59.3.0
-  - arrow-ord 59.3.0
-  - arrow-row 59.3.0
-  - arrow-schema 59.3.0
-  - arrow-select 59.3.0
-  - arrow-string 59.3.0
-  - arrow 59.3.0
+  - arrow-arith 60.0.0
+  - arrow-array 60.0.0
+  - arrow-buffer 60.0.0
+  - arrow-cast 60.0.0
+  - arrow-cmp 60.0.0
+  - arrow-csv 60.0.0
+  - arrow-data 60.0.0
+  - arrow-ipc 60.0.0
+  - arrow-json 60.0.0
+  - arrow-ord 60.0.0
+  - arrow-row 60.0.0
+  - arrow-schema 60.0.0
+  - arrow-select 60.0.0
+  - arrow-string 60.0.0
+  - arrow 60.0.0
   - hound 3.5.1
-  - parquet 59.3.0
+  - parquet 60.0.0
 
 
                                  Apache License
@@ -1456,8 +1457,9 @@ BSD 3-Clause "New" or "Revised" License
 --------------------------------------------------------------------------------
 
 Used by:
-  - zstd-safe 7.3.0
+  - zstd-safe 8.0.0
   - zstd-sys 2.1.0+zstd.1.5.7
+  - zstd 0.14.0
 
 BSD 3-Clause License
 
@@ -1533,8 +1535,8 @@ BSD 3-Clause "New" or "Revised" License
 --------------------------------------------------------------------------------
 
 Used by:
-  - alloc-no-stdlib 2.0.4
-  - brotli 8.0.4
+  - alloc-no-stdlib 3.0.0
+  - brotli 9.0.0
 
 Copyright (c) 2016 Dropbox, Inc.
 All rights reserved.
@@ -1593,7 +1595,7 @@ BSD 3-Clause "New" or "Revised" License
 --------------------------------------------------------------------------------
 
 Used by:
-  - alloc-stdlib 0.2.4
+  - alloc-stdlib 0.3.0
   - aws-lc-sys 0.45.0
 
 Copyright (c) <year> <owner>. 
@@ -2128,7 +2130,7 @@ MIT License
 --------------------------------------------------------------------------------
 
 Used by:
-  - brotli 8.0.4
+  - brotli 9.0.0
 
 Copyright (c) 2009, 2010, 2013-2016 by the Brotli Authors.
 
@@ -5184,7 +5186,7 @@ MIT License
 --------------------------------------------------------------------------------
 
 Used by:
-  - atoi 2.0.0
+  - atoi 3.1.0
 
 MIT License
 
@@ -5371,7 +5373,7 @@ MIT License
 --------------------------------------------------------------------------------
 
 Used by:
-  - arrow-array 59.3.0
+  - arrow-array 60.0.0
 
 MIT License
 
@@ -5615,7 +5617,7 @@ MIT License
 
 Used by:
   - block2 0.6.2
-  - brotli-decompressor 5.0.3
+  - brotli-decompressor 6.0.1
   - chrono 0.4.45
   - difflib 0.4.0
   - dispatch2 0.3.1
@@ -6586,23 +6588,6 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
-
-
---------------------------------------------------------------------------------
-MIT License
---------------------------------------------------------------------------------
-
-Used by:
-  - zstd 0.13.3
-
-The MIT License (MIT)
-Copyright (c) 2016 Alexandre Bury
-
-Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 
 --------------------------------------------------------------------------------

@@ -11,7 +11,7 @@ SECTION 1: RUST DEPENDENCIES
 SUMMARY
 -------
 
-MIT License: 315 crate(s)
+MIT License: 312 crate(s)
 Apache License 2.0: 28 crate(s)
 Unicode License v3: 19 crate(s)
 Mozilla Public License 2.0: 14 crate(s)
@@ -1394,7 +1394,7 @@ BSD 3-Clause "New" or "Revised" License
 --------------------------------------------------------------------------------
 
 Used by:
-  - encoding_rs 0.8.41
+  - encoding_rs 0.8.42
 
 // Copyright © WHATWG (Apple, Google, Mozilla, Microsoft).
 //
@@ -1652,7 +1652,7 @@ BSD 3-Clause "New" or "Revised" License
 --------------------------------------------------------------------------------
 
 Used by:
-  - encoding_rs 0.8.41
+  - encoding_rs 0.8.42
 
 Copyright © WHATWG (Apple, Google, Mozilla, Microsoft).
 
@@ -1999,7 +1999,7 @@ ISC License
 --------------------------------------------------------------------------------
 
 Used by:
-  - hmac-sha256 1.1.14
+  - hmac-sha256 1.1.15
 
 ISC License
 
@@ -2297,24 +2297,24 @@ MIT License
 --------------------------------------------------------------------------------
 
 Used by:
-  - cc 1.4.7
+  - cc 1.5.1
   - cfg-if 1.0.5
   - cmake 0.1.58
   - filetime 0.2.29
-  - find-msvc-tools 0.1.13
+  - find-msvc-tools 0.1.14
   - jobserver 0.1.35
-  - js-sys 0.3.105
+  - js-sys 0.3.106
   - openssl-probe 0.2.1
   - openssl-sys 0.9.117
   - pkg-config 0.3.34
   - socket2 0.6.5
   - wait-timeout 0.2.1
-  - wasm-bindgen-futures 0.4.78
-  - wasm-bindgen-macro-support 0.2.128
-  - wasm-bindgen-macro 0.2.128
-  - wasm-bindgen-shared 0.2.128
-  - wasm-bindgen 0.2.128
-  - web-sys 0.3.105
+  - wasm-bindgen-futures 0.4.79
+  - wasm-bindgen-macro-support 0.2.129
+  - wasm-bindgen-macro 0.2.129
+  - wasm-bindgen-shared 0.2.129
+  - wasm-bindgen 0.2.129
+  - web-sys 0.3.106
 
 Copyright (c) 2014 Alex Crichton
 
@@ -3660,7 +3660,7 @@ MIT License
 --------------------------------------------------------------------------------
 
 Used by:
-  - smallvec 1.16.1
+  - smallvec 1.16.2
 
 Copyright (c) 2018 The Servo Project Developers
 
@@ -4635,7 +4635,7 @@ MIT License
 --------------------------------------------------------------------------------
 
 Used by:
-  - hyper-util 0.1.20
+  - hyper-util 0.1.21
 
 Copyright (c) 2023-2025 Sean McArthur
 
@@ -5022,23 +5022,6 @@ MIT License
 --------------------------------------------------------------------------------
 
 Used by:
-  - multiversion-macros 0.9.0
-  - multiversion 0.9.0
-
-Copyright 2019 Caleb Zulawski
-
-Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-
-
---------------------------------------------------------------------------------
-MIT License
---------------------------------------------------------------------------------
-
-Used by:
   - extended 0.1.0
 
 Copyright 2022 Dietrich Epp
@@ -5083,8 +5066,8 @@ MIT License
 --------------------------------------------------------------------------------
 
 Used by:
-  - zerocopy-derive 0.8.58
-  - zerocopy 0.8.58
+  - zerocopy-derive 0.8.59
+  - zerocopy 0.8.59
 
 Copyright 2023 The Fuchsia Authors
 
@@ -5119,7 +5102,7 @@ MIT License
 --------------------------------------------------------------------------------
 
 Used by:
-  - encoding_rs 0.8.41
+  - encoding_rs 0.8.42
   - multiversion_no_op 1.0.0
   - utf8_iter 1.0.4
 
@@ -5403,7 +5386,7 @@ MIT License
 --------------------------------------------------------------------------------
 
 Used by:
-  - rustls-platform-verifier 0.7.0
+  - rustls-platform-verifier 0.7.1
 
 MIT License
 
@@ -5630,7 +5613,7 @@ Used by:
   - r-efi 5.3.0
   - r-efi 6.0.0
   - realfft 3.5.0
-  - rustls-platform-verifier-android 0.1.1
+  - rustls-platform-verifier-android 0.2.0
   - winapi-i686-pc-windows-gnu 0.4.0
   - winapi-x86_64-pc-windows-gnu 0.4.0
   - windows-core 0.62.2
@@ -6066,36 +6049,6 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
-
-
---------------------------------------------------------------------------------
-MIT License
---------------------------------------------------------------------------------
-
-Used by:
-  - base64 0.22.1
-
-The MIT License (MIT)
-
-Copyright (c) 2015 Alice Maz
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in
-all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-THE SOFTWARE.
 
 
 --------------------------------------------------------------------------------

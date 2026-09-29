@@ -409,10 +409,30 @@ fn home_with_classifier_and_geomodel(
     home
 }
 
+/// Whether an ONNX Runtime can be loaded here.
+///
+/// `birda species` initialises the runtime before it reads any labels, so the
+/// three `species` tests below fail on a machine without one (a CI runner)
+/// before reaching the check they exist to pin.
+fn onnx_runtime_available() -> bool {
+    static AVAILABLE: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *AVAILABLE.get_or_init(|| birda::inference::ensure_runtime_available().is_ok())
+}
+
+macro_rules! require_onnx_runtime {
+    () => {
+        if !onnx_runtime_available() {
+            eprintln!("skipping: ONNX Runtime not available in this environment");
+            return;
+        }
+    };
+}
+
 const SPECIES_ARGS: [&str; 6] = ["species", "--lat", "60.17", "--lon", "24.94", "--week=20"];
 
 #[test]
 fn test_species_rejects_a_geomodel_labels_file_of_the_wrong_size() {
+    require_onnx_runtime!();
     // The fixture's labels file has 5 lines, not the geomodel's 12,012. `species`
     // used to skip this check and let birdnet-onnx report a bare count mismatch.
     let home = home_with_classifier_and_geomodel(
@@ -432,6 +452,7 @@ fn test_species_rejects_a_geomodel_labels_file_of_the_wrong_size() {
 
 #[test]
 fn test_species_rejects_an_empty_geomodel_labels_file() {
+    require_onnx_runtime!();
     let home = tempfile::tempdir().unwrap();
     let empty = home.path().join("empty-labels.txt");
     std::fs::write(&empty, b"").unwrap();
@@ -451,6 +472,7 @@ fn test_species_rejects_an_empty_geomodel_labels_file() {
 
 #[test]
 fn test_species_rejects_an_empty_classifier_labels_file() {
+    require_onnx_runtime!();
     // `read_labels_file` returned Ok(vec![]) here, so `species` carried on with no
     // labels and reported zero coverage instead of naming the empty file.
     let home = home_with_classifier_and_geomodel("\n  \n", &fixture("fixture-geomodel-labels.txt"));

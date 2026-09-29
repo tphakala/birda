@@ -896,9 +896,8 @@ fn test_a_registry_filename_that_leaves_the_models_dir_is_rejected() {
         outside.is_file(),
         "a file outside the models dir must survive"
     );
-    assert!(
-        String::from_utf8_lossy(&output.stderr).contains("../escaped.onnx"),
-        "got: {}",
-        String::from_utf8_lossy(&output.stderr)
+    assert_eq!(
+        String::from_utf8_lossy(&output.stderr).trim(),
+        "error: configuration validation failed: invalid model filename in registry: \"../escaped.onnx\""
     );
 }

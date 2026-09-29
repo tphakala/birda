@@ -539,7 +539,7 @@ fn validate_registry_filename(name: &str) -> Result<()> {
     match (components.next(), components.next()) {
         (Some(Component::Normal(_)), None) => Ok(()),
         _ => Err(Error::ConfigValidation {
-            message: format!("invalid bat model filename in registry: {name:?}"),
+            message: format!("invalid model filename in registry: {name:?}"),
         }),
     }
 }

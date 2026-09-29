@@ -18,7 +18,10 @@ const COMMAND_TIMEOUT: Duration = Duration::from_secs(30);
 /// Run birda against an isolated config and data directory.
 fn run_in(home: &Path, args: &[&str]) -> std::process::Output {
     let mut cmd = cargo_bin_cmd!("birda");
-    cmd.env("HOME", home)
+    // Commands such as `species` write a default output file into the working
+    // directory, which must not be the repository.
+    cmd.current_dir(home)
+        .env("HOME", home)
         .env("XDG_CONFIG_HOME", home.join("config"))
         .env("XDG_DATA_HOME", home.join("data"))
         .env(CONFIG_DIR_ENV, home)
@@ -370,4 +373,160 @@ fn test_remove_geomodel_purge_removes_a_symlink_but_not_its_target() {
 
     assert!(link.symlink_metadata().is_err(), "the link must be removed");
     assert!(target.is_file(), "the link's target must survive");
+}
+
+/// A home with one classifier configured (its labels file holds `classifier_labels`)
+/// and the geomodel pair recorded in the config.
+fn home_with_classifier_and_geomodel(
+    classifier_labels: &str,
+    geomodel_labels: &Path,
+) -> tempfile::TempDir {
+    let home = tempfile::tempdir().unwrap();
+    let model = home.path().join("classifier.onnx");
+    let labels = home.path().join("classifier-labels.txt");
+    std::fs::write(&model, b"not run: species stops at the labels check").unwrap();
+    std::fs::write(&labels, classifier_labels).unwrap();
+    ok_in(
+        home.path(),
+        &[
+            "models",
+            "add",
+            "test-classifier",
+            "--path",
+            path_str(&model),
+            "--labels",
+            path_str(&labels),
+            "--type",
+            "birdnet-v24",
+            "--default",
+        ],
+    );
+    configure_geomodel(
+        home.path(),
+        &fixture("fixture-geomodel.onnx"),
+        geomodel_labels,
+    );
+    home
+}
+
+const SPECIES_ARGS: [&str; 6] = ["species", "--lat", "60.17", "--lon", "24.94", "--week=20"];
+
+#[test]
+fn test_species_rejects_a_geomodel_labels_file_of_the_wrong_size() {
+    // The fixture's labels file has 5 lines, not the geomodel's 12,012. `species`
+    // used to skip this check and let birdnet-onnx report a bare count mismatch.
+    let home = home_with_classifier_and_geomodel(
+        "Parus major_Great Tit\n",
+        &fixture("fixture-geomodel-labels.txt"),
+    );
+
+    let output = run_in(home.path(), &SPECIES_ARGS);
+
+    assert!(!output.status.success());
+    assert_eq!(
+        String::from_utf8_lossy(&output.stderr).trim(),
+        "error: BirdNET Geomodel v3.0.2 labels file has 5 labels, expected 12012; \
+         reinstall with 'birda models install geomodel'"
+    );
+}
+
+#[test]
+fn test_species_rejects_an_empty_geomodel_labels_file() {
+    let home = tempfile::tempdir().unwrap();
+    let empty = home.path().join("empty-labels.txt");
+    std::fs::write(&empty, b"").unwrap();
+    let home = home_with_classifier_and_geomodel("Parus major_Great Tit\n", &empty);
+
+    let output = run_in(home.path(), &SPECIES_ARGS);
+
+    assert!(!output.status.success());
+    assert_eq!(
+        String::from_utf8_lossy(&output.stderr).trim(),
+        format!(
+            "error: failed to load labels from {}: file contains no labels",
+            empty.display()
+        )
+    );
+}
+
+#[test]
+fn test_species_rejects_an_empty_classifier_labels_file() {
+    // `read_labels_file` returned Ok(vec![]) here, so `species` carried on with no
+    // labels and reported zero coverage instead of naming the empty file.
+    let home = home_with_classifier_and_geomodel("\n  \n", &fixture("fixture-geomodel-labels.txt"));
+
+    let output = run_in(home.path(), &SPECIES_ARGS);
+
+    assert!(!output.status.success());
+    assert_eq!(
+        String::from_utf8_lossy(&output.stderr).trim(),
+        format!(
+            "error: failed to load labels from {}: file contains no labels",
+            home.path().join("classifier-labels.txt").display()
+        )
+    );
+}
+
+#[test]
+fn test_install_geomodel_emits_its_result_and_reports_ignored_path_flags() {
+    let home = tempfile::tempdir().unwrap();
+    let (model, labels) = seed_installed_registry_geomodel(home.path());
+
+    let output = ok_in(
+        home.path(),
+        &[
+            "--output-mode",
+            "json",
+            "--geomodel-path",
+            "/ignored/model.onnx",
+            "--geomodel-labels-path",
+            "/ignored/labels.txt",
+            "models",
+            "install",
+            "geomodel",
+        ],
+    );
+
+    // stdout is what birda-gui parses: it used to be empty.
+    let payload = payload_of(&output);
+    assert_eq!(payload["result_type"], "model_installed");
+    assert_eq!(payload["id"], "geomodel");
+    assert_eq!(payload["set_as_default"], false);
+    assert_eq!(payload["model_path"], path_str(&model));
+    assert_eq!(payload["labels_path"], path_str(&labels));
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains(
+            "--geomodel-path and --geomodel-labels-path are ignored by 'models install geomodel'"
+        ),
+        "the ignored flags must be reported, got: {stderr}"
+    );
+
+    // The install records the models-directory paths, not the flags.
+    let config = config_text(home.path());
+    assert!(config.contains(path_str(&model)), "got:\n{config}");
+    assert!(!config.contains("/ignored/"), "got:\n{config}");
+}
+
+#[test]
+fn test_config_set_warns_for_labels_without_the_model_too() {
+    let home = tempfile::tempdir().unwrap();
+
+    let output = ok_in(
+        home.path(),
+        &[
+            "config",
+            "set",
+            "defaults.geomodel_labels",
+            path_str(&fixture("fixture-geomodel-labels.txt")),
+        ],
+    );
+
+    assert!(
+        String::from_utf8_lossy(&output.stderr)
+            .starts_with("warning: 'defaults.geomodel_labels' is set without 'defaults.geomodel'"),
+        "got: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
 }

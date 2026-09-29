@@ -381,12 +381,41 @@ pub fn models_dir() -> Result<PathBuf> {
 }
 
 /// Expected on-disk paths for the shared range filter asset. Performs no I/O.
+///
+/// # Errors
+/// A filename in the registry that is not a single plain path component.
 pub fn geomodel_paths(asset: &RangeFilterAsset) -> Result<InstalledRangeFilter> {
+    validate_registry_filename(&asset.model.filename)?;
+    validate_registry_filename(&asset.labels.filename)?;
     let dir = models_dir()?;
     Ok(InstalledRangeFilter {
         model: dir.join(&asset.model.filename),
         labels: dir.join(&asset.labels.filename),
     })
+}
+
+/// Whether [`install_range_filter`] would download anything for `paths`.
+///
+/// The one decision both the installer and the licence notice shown before it
+/// use: files that are missing, or present but failing their checksum, are
+/// fetched again, and the user is owed the terms for that.
+///
+/// # Errors
+/// A read error on an installed file. It is not proof the file is wrong, and
+/// re-downloading will not fix a failing disk, so it is surfaced (mirroring
+/// `resolve_geomodel`) rather than turned into a download.
+pub fn range_filter_needs_download(
+    paths: &InstalledRangeFilter,
+    asset: &RangeFilterAsset,
+) -> Result<bool> {
+    if !paths.is_installed() {
+        return Ok(true);
+    }
+    match paths.verify(asset) {
+        Ok(()) => Ok(false),
+        Err(e) if crate::update::checksum::is_checksum_mismatch(&e) => Ok(true),
+        Err(e) => Err(e),
+    }
 }
 
 /// Download and verify the shared range filter asset.
@@ -396,16 +425,8 @@ pub fn geomodel_paths(asset: &RangeFilterAsset) -> Result<InstalledRangeFilter> 
 /// likeliest cause is a file left behind by an older birda version.
 pub async fn install_range_filter(asset: &RangeFilterAsset) -> Result<InstalledRangeFilter> {
     let paths = geomodel_paths(asset)?;
-    if paths.is_installed() {
-        match paths.verify(asset) {
-            Ok(()) => return Ok(paths),
-            // A read error on an installed file is not proof it is wrong, and
-            // re-downloading hundreds of MB will not fix a failing disk. Surface
-            // it, mirroring `resolve_geomodel`, rather than silently redownload
-            // a copy that is fine. Only a genuine mismatch falls through.
-            Err(e) if !crate::update::checksum::is_checksum_mismatch(&e) => return Err(e),
-            Err(_) => {}
-        }
+    if !range_filter_needs_download(&paths, asset)? {
+        return Ok(paths);
     }
 
     let dir = models_dir()?;
@@ -505,13 +526,14 @@ pub struct BatBackbonePaths {
 /// Reject a registry filename that is not a single, plain path component.
 ///
 /// `FileInfo.filename` is deserialized from a user-writable `registry.json`, and
-/// [`bat_paths`]/[`bat_backbone_paths`] join it under `<models_dir>/bat`. A
+/// [`bat_paths`]/[`bat_backbone_paths`] join it under `<models_dir>/bat`, and
+/// [`geomodel_paths`] under `<models_dir>`. A
 /// filename with an absolute root, a `..`, or nested components could otherwise
 /// steer a download destination outside that directory, where
 /// [`download_verified`] would create or replace a file. The registry is a local
 /// user-cache trust boundary, so this guards local file integrity, not a
 /// cross-user privilege bypass.
-fn validate_bat_filename(name: &str) -> Result<()> {
+fn validate_registry_filename(name: &str) -> Result<()> {
     use std::path::Component;
     let mut components = Path::new(name).components();
     match (components.next(), components.next()) {
@@ -525,8 +547,8 @@ fn validate_bat_filename(name: &str) -> Result<()> {
 /// Expected on-disk paths for the shared bat backbone. Performs no I/O.
 pub fn bat_backbone_paths(backbone: &BatBackbone) -> Result<BatBackbonePaths> {
     let dir = bat_models_dir()?;
-    validate_bat_filename(&backbone.model.filename)?;
-    validate_bat_filename(&backbone.labels.filename)?;
+    validate_registry_filename(&backbone.model.filename)?;
+    validate_registry_filename(&backbone.labels.filename)?;
     Ok(BatBackbonePaths {
         model: dir.join(&backbone.model.filename),
         labels: dir.join(&backbone.labels.filename),
@@ -544,8 +566,8 @@ pub fn bat_backbone_paths(backbone: &BatBackbone) -> Result<BatBackbonePaths> {
 /// [`BatConfig::resolve`]: crate::config::BatConfig::resolve
 pub fn bat_paths(catalog: &BatCatalog, region: &BatRegionEntry) -> Result<InstalledBat> {
     let dir = bat_models_dir()?;
-    validate_bat_filename(&region.model.filename)?;
-    validate_bat_filename(&region.labels.filename)?;
+    validate_registry_filename(&region.model.filename)?;
+    validate_registry_filename(&region.labels.filename)?;
     let backbone = bat_backbone_paths(&catalog.backbone)?;
     Ok(InstalledBat {
         region_model: dir.join(&region.model.filename),
@@ -1207,6 +1229,19 @@ mod tests {
     }
 
     #[test]
+    fn test_geomodel_paths_reject_a_filename_that_leaves_the_models_dir() {
+        for bad in ["../escape.onnx", "/etc/passwd", "sub/dir.onnx", ""] {
+            let mut asset = test_asset();
+            asset.model.filename = bad.to_string();
+            assert!(geomodel_paths(&asset).is_err(), "model filename {bad:?}");
+
+            let mut asset = test_asset();
+            asset.labels.filename = bad.to_string();
+            assert!(geomodel_paths(&asset).is_err(), "labels filename {bad:?}");
+        }
+    }
+
+    #[test]
     fn test_geomodel_paths_use_asset_filenames() {
         let asset = test_asset();
         let paths = geomodel_paths(&asset).unwrap();
@@ -1362,9 +1397,9 @@ mod tests {
     }
 
     #[test]
-    fn test_validate_bat_filename_accepts_plain_and_rejects_traversal() {
-        assert!(validate_bat_filename("BattyBirdNET-EU-256kHz_fp32.onnx").is_ok());
-        assert!(validate_bat_filename("birdnet-v24-embeddings.onnx").is_ok());
+    fn test_validate_registry_filename_accepts_plain_and_rejects_traversal() {
+        assert!(validate_registry_filename("BattyBirdNET-EU-256kHz_fp32.onnx").is_ok());
+        assert!(validate_registry_filename("birdnet-v24-embeddings.onnx").is_ok());
         // A tampered registry must not steer a download outside the bat dir.
         for bad in [
             "",
@@ -1376,7 +1411,7 @@ mod tests {
             "a/../b.onnx",
         ] {
             assert!(
-                validate_bat_filename(bad).is_err(),
+                validate_registry_filename(bad).is_err(),
                 "{bad:?} must be rejected as a bat filename"
             );
         }
@@ -1440,6 +1475,66 @@ mod tests {
         let paths = InstalledRangeFilter { model, labels };
 
         paths.verify(&test_asset()).unwrap();
+    }
+
+    fn range_filter_files(
+        model: &[u8],
+        labels: &[u8],
+    ) -> (tempfile::TempDir, InstalledRangeFilter) {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = InstalledRangeFilter {
+            model: dir.path().join("m.onnx"),
+            labels: dir.path().join("l.txt"),
+        };
+        std::fs::write(&paths.model, model).unwrap();
+        std::fs::write(&paths.labels, labels).unwrap();
+        (dir, paths)
+    }
+
+    #[test]
+    fn test_needs_download_when_the_files_are_missing() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = InstalledRangeFilter {
+            model: dir.path().join("m.onnx"),
+            labels: dir.path().join("l.txt"),
+        };
+
+        assert!(range_filter_needs_download(&paths, &test_asset()).unwrap());
+    }
+
+    #[test]
+    fn test_needs_no_download_when_both_files_match_their_checksums() {
+        let (_dir, paths) = range_filter_files(b"right", b"right");
+
+        assert!(!range_filter_needs_download(&paths, &test_asset()).unwrap());
+    }
+
+    #[test]
+    fn test_needs_download_when_either_file_fails_its_checksum() {
+        // Present but wrong is fetched again by the installer, so it is a download.
+        let (_dir, wrong_model) = range_filter_files(b"wrong", b"right");
+        let (_dir2, wrong_labels) = range_filter_files(b"right", b"wrong");
+
+        assert!(range_filter_needs_download(&wrong_model, &test_asset()).unwrap());
+        assert!(range_filter_needs_download(&wrong_labels, &test_asset()).unwrap());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_a_read_error_is_surfaced_not_turned_into_a_download() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let (_dir, paths) = range_filter_files(b"right", b"right");
+        std::fs::set_permissions(&paths.model, std::fs::Permissions::from_mode(0o000)).unwrap();
+        // Root reads through the missing permission bits, so there is no error to see.
+        let unreadable = std::fs::read(&paths.model).is_err();
+        let verdict = range_filter_needs_download(&paths, &test_asset());
+        std::fs::set_permissions(&paths.model, std::fs::Permissions::from_mode(0o644)).unwrap();
+        if !unreadable {
+            return;
+        }
+
+        assert!(verdict.is_err(), "got: {verdict:?}");
     }
 
     #[test]

@@ -16,7 +16,7 @@ pub use installer::{
     InstalledRangeFilter, bat_backbone_paths, bat_models_dir, bat_paths, download_file,
     find_obsolete_files, find_stale_part_files, geomodel_paths, install_bat, install_bat_backbone,
     install_model, install_range_filter, install_variant, models_dir, parse_bat_install_id,
-    resolve_url,
+    range_filter_needs_download, resolve_url,
 };
 pub use license::{
     LicensedAsset, disclosure_line, license_details, license_line, prompt_license_acceptance,

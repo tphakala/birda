@@ -817,3 +817,88 @@ fn test_a_failed_purge_with_no_config_change_reports_no_removal() {
     );
     assert!(model.is_file());
 }
+
+#[test]
+fn test_structured_plain_remove_warns_on_stderr_that_the_files_are_still_used() {
+    let home = tempfile::tempdir().unwrap();
+    let (model, labels) = seed_installed_registry_geomodel(home.path());
+    configure_geomodel(home.path(), &model, &labels);
+
+    let output = ok_in(
+        home.path(),
+        &["--output-mode", "json", "models", "remove", "geomodel"],
+    );
+
+    assert_eq!(payload_of(&output)["result_type"], "model_removed");
+    assert!(
+        String::from_utf8_lossy(&output.stderr).contains(STILL_IN_USE_NOTE),
+        "got: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[test]
+fn test_purge_that_finds_nothing_inside_the_models_dir_says_so() {
+    // Both recorded paths are hand-placed elsewhere, so nothing is birda's to delete.
+    let home = tempfile::tempdir().unwrap();
+    configure_geomodel(
+        home.path(),
+        &fixture("fixture-geomodel.onnx"),
+        &fixture("fixture-geomodel-labels.txt"),
+    );
+
+    let output = ok_in(
+        home.path(),
+        &["models", "remove", "geomodel", "--purge", "--yes"],
+    );
+
+    let lines = lines_of(&output);
+    assert!(
+        lines.iter().any(|l| l == "No geomodel files were deleted."),
+        "got: {lines:?}"
+    );
+    // The models directory does not exist here, so the files are outside it and
+    // present: not "not found".
+    assert!(
+        lines
+            .iter()
+            .any(|l| l.starts_with("  Skipped (outside the models directory): ")),
+        "got: {lines:?}"
+    );
+    assert!(
+        !lines.iter().any(|l| l.contains("not found")),
+        "got: {lines:?}"
+    );
+    assert!(!lines.iter().any(|l| l == "Geomodel files deleted."));
+    assert!(fixture("fixture-geomodel.onnx").is_file());
+}
+
+#[test]
+fn test_a_registry_filename_that_leaves_the_models_dir_is_rejected() {
+    // registry.json is user-writable. A filename with `..` must not point purge, or
+    // the install, at a file outside the models directory.
+    let home = tempfile::tempdir().unwrap();
+    seed_installed_registry_geomodel(home.path());
+    let path = home.path().join("registry.json");
+    let mut registry: Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+    registry["range_filter"]["model"]["filename"] = Value::from("../escaped.onnx");
+    std::fs::write(&path, registry.to_string()).unwrap();
+    let outside = home.path().join("escaped.onnx");
+    std::fs::write(&outside, b"not birda's").unwrap();
+
+    let output = run_in(
+        home.path(),
+        &["models", "remove", "geomodel", "--purge", "--yes"],
+    );
+
+    assert!(!output.status.success());
+    assert!(
+        outside.is_file(),
+        "a file outside the models dir must survive"
+    );
+    assert!(
+        String::from_utf8_lossy(&output.stderr).contains("../escaped.onnx"),
+        "got: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}

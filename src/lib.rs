@@ -1315,7 +1315,7 @@ fn handle_command(
     match command {
         Command::Config { action } => handle_config_command(action, output_mode),
         Command::Models { action } => {
-            handle_models_command(action, config, output_mode, geomodel_request.assume_yes)
+            handle_models_command(action, config, output_mode, geomodel_request)
         }
         Command::Providers => {
             handle_providers_command(output_mode);
@@ -1771,6 +1771,14 @@ fn handle_config_set(key: &str, value: &str, output_mode: OutputMode) -> Result<
         );
     }
 
+    // `config set` writes one key per call, so the first half of the geomodel
+    // pair is always saved alone and a hard error would make the pair
+    // unwritable. Name the missing sibling instead. Stderr, for the same reason
+    // as the hint above.
+    if let Some(note) = half_configured_geomodel(&config.defaults) {
+        eprintln!("warning: {note}");
+    }
+
     if output_mode.is_structured() {
         let config_json = serde_json::to_value(&config).map_err(|e| Error::ConfigValidation {
             message: format!("failed to serialize config to JSON: {e}"),
@@ -1793,9 +1801,11 @@ fn handle_models_command(
     action: cli::ModelsAction,
     config: &config::Config,
     output_mode: OutputMode,
-    assume_yes: bool,
+    geomodel_request: config::GeomodelRequest<'_>,
 ) -> Result<()> {
     use cli::ModelsAction;
+
+    let assume_yes = geomodel_request.assume_yes;
 
     match action {
         ModelsAction::List => {
@@ -1890,7 +1900,7 @@ fn handle_models_command(
                 let payload = ModelCheckPayload {
                     result_type: ResultType::ModelCheck,
                     models,
-                    geomodel: check_geomodel(&reg)?,
+                    geomodel: check_geomodel(&reg, config, geomodel_request)?,
                     leftover_downloads,
                     installed_bat: installed_bat_region_ids(&reg),
                 };
@@ -1904,7 +1914,7 @@ fn handle_models_command(
                 println!("  {name}: OK");
             }
 
-            report_geomodel_status(&check_geomodel(&reg)?);
+            report_geomodel_status(&check_geomodel(&reg, config, geomodel_request)?);
             let installed_bat = installed_bat_region_ids(&reg);
             if !installed_bat.is_empty() {
                 println!("  Bat classifiers: {} installed", installed_bat.join(", "));
@@ -2071,7 +2081,7 @@ fn handle_models_command(
             variant.as_deref(),
             default,
             output_mode,
-            assume_yes,
+            geomodel_request,
         ),
         ModelsAction::Regions { id } => {
             let registry = registry::load_registry()?;
@@ -2082,6 +2092,27 @@ fn handle_models_command(
             registry::show_manifest(&registry, &id, output_mode)
         }
     }
+}
+
+/// Describe a half-configured geomodel pair, if `defaults` holds one.
+///
+/// `defaults.geomodel` and `defaults.geomodel_labels` only mean something
+/// together (see `config::configured_paths`). Left half-set, the failure shows
+/// up later, on a different command: `analyze` skips range filtering and
+/// `species` fails.
+fn half_configured_geomodel(defaults: &config::DefaultsConfig) -> Option<String> {
+    let (set, missing) = match (
+        defaults.geomodel.is_some(),
+        defaults.geomodel_labels.is_some(),
+    ) {
+        (true, false) => ("defaults.geomodel", "defaults.geomodel_labels"),
+        (false, true) => ("defaults.geomodel_labels", "defaults.geomodel"),
+        _ => return None,
+    };
+    Some(format!(
+        "'{set}' is set without '{missing}'; the two only work as a pair, so range \
+         filtering is skipped (or 'birda species' fails) until you set '{missing}' too"
+    ))
 }
 
 /// Handle the `models add` command.
@@ -2218,6 +2249,13 @@ fn handle_models_remove(
         return handle_bat_remove(slug, output_mode, assume_yes);
     }
 
+    // Likewise the shared geomodel: it lives in `defaults.geomodel` and
+    // `defaults.geomodel_labels`, where `models install geomodel` writes it, not
+    // in `config.models`.
+    if name == registry::GEOMODEL_INSTALL_ID {
+        return handle_geomodel_remove(purge, output_mode, assume_yes);
+    }
+
     // Confirm before deleting files (skip in structured mode).
     //
     // `--yes` is honoured here because the flag is global and therefore appears
@@ -2331,9 +2369,11 @@ fn handle_models_install(
     variant: Option<&str>,
     set_default: bool,
     output_mode: OutputMode,
-    assume_yes: bool,
+    geomodel_request: config::GeomodelRequest<'_>,
 ) -> Result<()> {
     use std::io::{IsTerminal, Write};
+
+    let assume_yes = geomodel_request.assume_yes;
 
     // `interactive` means "a human is present and can be asked", nothing more.
     //
@@ -2351,7 +2391,7 @@ fn handle_models_install(
     // The shared range filter asset is installable under its own id, since it
     // is used by every classifier rather than belonging to any one of them.
     if id == registry::GEOMODEL_INSTALL_ID {
-        return handle_geomodel_install(&registry, interactive, assume_yes, output_mode);
+        return handle_geomodel_install(&registry, interactive, geomodel_request, output_mode);
     }
 
     // Bat regions install under `bat-<region>` ids. Intercepted before
@@ -2618,13 +2658,24 @@ fn handle_models_install(
 }
 
 /// Collect the status of the shared range filter for `birda models check`.
-fn check_geomodel(registry: &registry::Registry) -> Result<output::GeomodelInfo> {
+///
+/// Reports the copy `analyze` would actually use: paths given by flag or set in
+/// `defaults.geomodel` win over the registry's own install location, exactly as
+/// in [`config::resolve_geomodel`]. Without that, a valid geomodel at a
+/// configured custom path reads as "not installed", and the advice to install
+/// it downloads a second copy and overwrites the user's setting.
+fn check_geomodel(
+    registry: &registry::Registry,
+    config: &config::Config,
+    request: config::GeomodelRequest<'_>,
+) -> Result<output::GeomodelInfo> {
     let asset = registry
         .range_filter
         .as_ref()
         .ok_or(Error::RangeFilterAssetMissing)?;
 
-    let paths = registry::geomodel_paths(asset)?;
+    let paths = config::configured_paths(request, config)?
+        .map_or_else(|| registry::geomodel_paths(asset), Ok)?;
     let installed = paths.is_installed();
     let obsolete_files = registry::models_dir()
         .and_then(|dir| registry::find_obsolete_files(&dir))
@@ -2689,13 +2740,25 @@ fn report_geomodel_status(info: &output::GeomodelInfo) {
 fn handle_geomodel_install(
     registry: &registry::Registry,
     interactive: bool,
-    assume_yes: bool,
+    request: config::GeomodelRequest<'_>,
     output_mode: OutputMode,
 ) -> Result<()> {
+    let assume_yes = request.assume_yes;
     let asset = registry
         .range_filter
         .as_ref()
         .ok_or(Error::RangeFilterAssetMissing)?;
+
+    // The path flags are global, so they parse here, but an install always
+    // writes to the models directory and then records those paths in the
+    // config. Say so rather than dropping them without a word.
+    if request.model_path.is_some() || request.labels_path.is_some() {
+        warn!(
+            "--geomodel-path and --geomodel-labels-path are ignored by 'models install {}': \
+             it installs to the models directory and records those paths in the config",
+            registry::GEOMODEL_INSTALL_ID
+        );
+    }
 
     let licensed = registry::LicensedAsset {
         name: &asset.name,
@@ -2722,7 +2785,18 @@ fn handle_geomodel_install(
         Ok(())
     })?;
 
-    if !output_mode.is_structured() {
+    if output_mode.is_structured() {
+        emit_json_result(&ModelInstalledPayload {
+            result_type: ResultType::ModelInstalled,
+            id: registry::GEOMODEL_INSTALL_ID.to_string(),
+            set_as_default: false,
+            model_path: installed.model,
+            labels_path: installed.labels,
+            region: None,
+            variant: None,
+            selection_reason: None,
+        });
+    } else {
         println!();
         println!("{} installed.", asset.name);
         println!("  {}", installed.model.display());
@@ -2902,6 +2976,98 @@ fn handle_bat_remove(slug: &str, output_mode: OutputMode, assume_yes: bool) -> R
         println!("Bat region '{slug}' was not installed; nothing to remove.");
     } else {
         println!("Removed bat region '{slug}'.");
+    }
+
+    Ok(())
+}
+
+/// Remove the shared geomodel from the configuration, and its files with `--purge`.
+///
+/// The geomodel is recorded in `defaults.geomodel` and `defaults.geomodel_labels`
+/// rather than `config.models`, so [`remove_model_from_config`] cannot see it.
+/// Only files inside the models directory are ever deleted: a path the user
+/// pointed at by hand is theirs, and `--purge` says "delete birda's copy".
+fn handle_geomodel_remove(purge: bool, output_mode: OutputMode, assume_yes: bool) -> Result<()> {
+    use std::io::Write;
+
+    if purge && !output_mode.is_structured() && !assume_yes {
+        print!("This will delete the geomodel files from disk. Continue? [y/N]: ");
+        std::io::stdout().flush()?;
+        let mut input = String::new();
+        std::io::stdin().read_line(&mut input)?;
+        if !input.trim().eq_ignore_ascii_case("y") {
+            println!("Removal cancelled.");
+            return Ok(());
+        }
+    }
+
+    // Serialised load-mutate-save (#313); the files are deleted after the lock.
+    let (recorded, _config, config_path) = config::update_config(|config| {
+        let model = config.defaults.geomodel.take();
+        let labels = config.defaults.geomodel_labels.take();
+        if model.is_none() && labels.is_none() {
+            return Err(Error::ModelNotFound {
+                name: registry::GEOMODEL_INSTALL_ID.to_string(),
+            });
+        }
+        Ok((model, labels))
+    })?;
+
+    let structured_payload = ModelRemovedPayload {
+        result_type: ResultType::ModelRemoved,
+        id: registry::GEOMODEL_INSTALL_ID.to_string(),
+        purge_requested: purge,
+        new_default: None,
+    };
+
+    if purge {
+        let models_dir = registry::models_dir()?;
+        let mut first_error: Option<(PathBuf, std::io::Error)> = None;
+        for file in [recorded.0, recorded.1].into_iter().flatten() {
+            if !file.starts_with(&models_dir) {
+                if !output_mode.is_structured() {
+                    println!(
+                        "  Skipped (outside the models directory): {}",
+                        file.display()
+                    );
+                }
+                continue;
+            }
+            match std::fs::remove_file(&file) {
+                Ok(()) => {
+                    if !output_mode.is_structured() {
+                        println!("  Deleted: {}", file.display());
+                    }
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                    if !output_mode.is_structured() {
+                        println!("  Skipped (not found): {}", file.display());
+                    }
+                }
+                Err(e) => {
+                    if !output_mode.is_structured() {
+                        println!("  Failed to delete: {}", file.display());
+                    }
+                    if first_error.is_none() {
+                        first_error = Some((file, e));
+                    }
+                }
+            }
+        }
+        if let Some((path, source)) = first_error {
+            // The config change succeeded even though the cleanup did not.
+            if output_mode.is_structured() {
+                emit_json_result(&structured_payload);
+            }
+            return Err(Error::FileDeletionFailed { path, source });
+        }
+    }
+
+    if output_mode.is_structured() {
+        emit_json_result(&structured_payload);
+    } else {
+        println!("Geomodel removed from configuration.");
+        println!("Configuration saved to: {}", config_path.display());
     }
 
     Ok(())

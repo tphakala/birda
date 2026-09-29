@@ -405,6 +405,14 @@ pub enum Error {
         given: String,
     },
 
+    /// The geomodel is installed but the config does not record it.
+    #[error(
+        "the geomodel is not recorded in the configuration, but a copy is installed in the \
+         models directory and birda finds it there; delete it with \
+         'birda models remove geomodel --purge'"
+    )]
+    GeomodelNotRecorded,
+
     /// The geomodel labels file does not match the model's output size.
     #[error(
         "BirdNET Geomodel v3.0.2 labels file has {actual} labels, expected {expected}; \

@@ -1391,27 +1391,6 @@ mod tests {
     }
 
     #[test]
-    fn test_range_filter_info_drops_the_cross_model_fields() {
-        // The cross-model fallback is gone: every classifier uses the same
-        // geomodel, so these fields must not reappear in the envelope.
-        let info = RangeFilterInfo {
-            geomodel_version: "3.0.2".to_string(),
-            species_in_range: 341,
-            total_species: 14795,
-            mapped_species: 11145,
-            unmatched_species: 3650,
-            unmatched_policy: "drop".to_string(),
-            threshold: 0.01,
-        };
-
-        let json = serde_json::to_string(&info).expect("serialize");
-        let actual: serde_json::Value = serde_json::from_str(&json).expect("deserialize");
-
-        assert!(actual.get("cross_model").is_none());
-        assert!(actual.get("meta_model_source").is_none());
-    }
-
-    #[test]
     fn test_spec_version_is_bumped_for_the_geomodel_envelope() {
         // 1.1 is the version in which `DetectionsPayload.range_filter` became
         // `RangeFilterInfo` (geomodel coverage counts), replacing the

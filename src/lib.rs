@@ -2695,9 +2695,14 @@ fn check_geomodel(
     let paths = config::configured_paths(request, config)?
         .map_or_else(|| registry::geomodel_paths(asset), Ok)?;
     let installed = paths.is_installed();
+    // Advisory only, so a failure must not fail the check, but it is logged: an
+    // empty list here would otherwise read as "nothing left over".
     let obsolete_files = registry::models_dir()
         .and_then(|dir| registry::find_obsolete_files(&dir))
-        .unwrap_or_default();
+        .unwrap_or_else(|e| {
+            tracing::debug!("could not look for obsolete model files: {e}");
+            Vec::new()
+        });
 
     Ok(output::GeomodelInfo {
         version: asset.version.clone(),

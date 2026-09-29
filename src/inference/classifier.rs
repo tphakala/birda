@@ -69,44 +69,6 @@ impl MappingSummary {
     }
 }
 
-/// Validate that a geomodel labels file matches the model's output size.
-///
-/// A mismatch means the labels and the ONNX file came from different versions,
-/// which `birdnet_onnx` would otherwise report as a bare label-count error.
-fn validate_geomodel_labels(labels: &[String], expected: usize) -> Result<()> {
-    if labels.len() == expected {
-        return Ok(());
-    }
-
-    Err(Error::GeomodelLabelCount {
-        expected,
-        actual: labels.len(),
-    })
-}
-
-/// Read a geomodel labels file, one `Scientific name_Common name` per line.
-fn read_geomodel_labels(path: &std::path::Path) -> Result<Vec<String>> {
-    let content = std::fs::read_to_string(path).map_err(|e| Error::LabelLoad {
-        path: path.display().to_string(),
-        reason: e.to_string(),
-    })?;
-
-    let labels: Vec<String> = content
-        .lines()
-        .map(|line| line.trim().to_string())
-        .filter(|line| !line.is_empty())
-        .collect();
-
-    if labels.is_empty() {
-        return Err(Error::LabelLoad {
-            path: path.display().to_string(),
-            reason: "file contains no labels".to_string(),
-        });
-    }
-
-    Ok(labels)
-}
-
 /// Query the geomodel once and project its scores onto the classifier's labels.
 ///
 /// The filter is built from the geomodel's own labels rather than the
@@ -120,11 +82,8 @@ fn build_range_filter_data(
 ) -> Result<RangeFilterData> {
     use crate::inference::range_filter::RangeFilter;
 
-    let geomodel_labels = read_geomodel_labels(&rf_config.geomodel_labels_path)?;
-    validate_geomodel_labels(
-        &geomodel_labels,
-        crate::constants::range_filter::GEOMODEL_SPECIES_COUNT,
-    )?;
+    let geomodel_labels =
+        super::range_filter::read_geomodel_labels(&rf_config.geomodel_labels_path)?;
 
     let filter = RangeFilter::from_config(
         &rf_config.geomodel_path,
@@ -1110,6 +1069,45 @@ fn provider_unavailable_error(provider_name: &str, available: &[ExecutionProvide
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_mapping_summary_counts_coverage_and_in_range_species() {
+        use birdnet_onnx::LocationScore;
+
+        let score = |species: &str, score: f32, index: usize| LocationScore {
+            species: species.to_string(),
+            score,
+            index,
+        };
+        let geomodel: Vec<String> = ["Aaa aaa_X", "Bbb bbb_Y", "Ccc ccc_Z"]
+            .map(String::from)
+            .to_vec();
+        // Two of the classifier's three species are in the geomodel.
+        let classifier: Vec<String> = ["Aaa aaa_X", "Bbb bbb_Y", "Ddd ddd_W"]
+            .map(String::from)
+            .to_vec();
+        let mapping = SpeciesMapping::build(&geomodel, &classifier);
+        let scores = GeomodelScores::project(
+            &[
+                score("Aaa aaa_X", 0.9, 0),
+                score("Bbb bbb_Y", 0.001, 1),
+                score("Ccc ccc_Z", 0.9, 2),
+            ],
+            &mapping,
+        );
+
+        let summary = MappingSummary::new(&mapping, &scores, 0.01);
+
+        assert_eq!(
+            (
+                summary.mapped,
+                summary.unmatched,
+                summary.total,
+                summary.in_range
+            ),
+            (2, 1, 3, 1)
+        );
+    }
 
     #[test]
     fn warmup_registry_starts_cold_for_every_size() {

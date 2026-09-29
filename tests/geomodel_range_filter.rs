@@ -117,9 +117,12 @@ fn test_classifier_labels_are_rejected_as_geomodel_labels() {
         0.0,
     );
 
-    assert!(
-        result.is_err(),
-        "a 1-label set must not build against a 5-output model"
+    // The whole message, not `is_err()`: the failure this guards is specifically
+    // a label-count mismatch, and `is_err()` stays green if the call starts
+    // failing for an unrelated reason (a missing runtime, a moved fixture).
+    assert_eq!(
+        result.err().map(|e| e.to_string()).as_deref(),
+        Some("failed to build range filter: label count mismatch: model expects 5, got 1")
     );
 }
 
@@ -309,4 +312,43 @@ fn test_a_different_location_produces_different_scores() {
         .any(|(a, b)| (a.score - b.score).abs() > 1e-6);
 
     assert!(differs, "coordinates must affect the predicted scores");
+}
+
+/// sha256 of each committed fixture, as produced by
+/// `tests/fixtures/make_fixture_geomodel.py`.
+///
+/// The generator is deterministic, but nothing else ties the committed binary to
+/// it: an edit to the script without a regenerate, or a regenerate with a
+/// different `onnx` version, would leave the two out of step and the suite green.
+/// When you deliberately regenerate a fixture, update its hash here in the same
+/// commit.
+const FIXTURE_HASHES: [(&str, &str); 2] = [
+    (
+        "fixture-geomodel.onnx",
+        "9730b0a4f50b84786cb67939fbe7f880acd6fd52368adc492793f763afacdd55",
+    ),
+    (
+        "fixture-geomodel-labels.txt",
+        "34597d5990f2537726e31c3c7d340c059a0c3726df91553fb9967fca64c6f413",
+    ),
+];
+
+#[test]
+fn test_fixture_geomodel_files_match_their_recorded_hashes() {
+    use sha2::{Digest, Sha256};
+    use std::fmt::Write as _;
+
+    for (name, expected) in FIXTURE_HASHES {
+        let bytes = std::fs::read(fixture_path(name)).unwrap();
+        let actual = Sha256::digest(&bytes)
+            .iter()
+            .fold(String::new(), |mut hex, byte| {
+                let _ = write!(hex, "{byte:02x}");
+                hex
+            });
+        assert_eq!(
+            actual, expected,
+            "{name} changed; if you regenerated it on purpose, update FIXTURE_HASHES"
+        );
+    }
 }

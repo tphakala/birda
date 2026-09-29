@@ -7,7 +7,6 @@ use crate::inference::SpeciesMapping;
 use crate::inference::range_filter::RangeFilter;
 use crate::output::{ResultType, SpeciesEntry, SpeciesListPayload, emit_json_result};
 use crate::utils::date::{date_to_week, day_of_year_to_date, week_to_start_day};
-use std::fs::File;
 use std::path::PathBuf;
 
 /// Default output file name.
@@ -83,7 +82,7 @@ pub fn generate_species_list(
             model_config.labels.display()
         );
     }
-    let labels = read_labels_file(&model_config.labels)?;
+    let labels = crate::utils::labels::read_label_lines(&model_config.labels)?;
     if !is_json {
         println!("Loaded {} species labels", labels.len());
     }
@@ -115,7 +114,7 @@ pub fn generate_species_list(
             geomodel.model.display()
         );
     }
-    let geomodel_labels = read_labels_file(&geomodel.labels)?;
+    let geomodel_labels = crate::inference::range_filter::read_geomodel_labels(&geomodel.labels)?;
     let range_filter = RangeFilter::from_config(
         &geomodel.model,
         &geomodel_labels,
@@ -239,34 +238,6 @@ fn week_to_date(week: u32) -> (u32, u32) {
     day_of_year_to_date(week_to_start_day(week))
 }
 
-/// Read labels file.
-fn read_labels_file(path: &std::path::Path) -> Result<Vec<String>> {
-    use std::io::BufRead;
-
-    let file = File::open(path).map_err(|e| {
-        if e.kind() == std::io::ErrorKind::NotFound {
-            Error::LabelsFileNotFound {
-                path: path.to_path_buf(),
-            }
-        } else {
-            Error::Io(e)
-        }
-    })?;
-
-    let reader = std::io::BufReader::new(file);
-    let mut labels = Vec::new();
-
-    for line in reader.lines() {
-        let line = line.map_err(Error::Io)?;
-        let trimmed = line.trim();
-        if !trimmed.is_empty() {
-            labels.push(trimmed.to_string());
-        }
-    }
-
-    Ok(labels)
-}
-
 /// Write species list to file, atomically.
 ///
 /// Format: `Genus species_Common Name` (one per line)
@@ -373,7 +344,7 @@ mod tests {
         // rather than against a literal 0o644, which would fail for anyone whose
         // umask is 0o077 or 0o002.
         let reference = dir.path().join("reference.txt");
-        drop(File::create(&reference).unwrap());
+        drop(std::fs::File::create(&reference).unwrap());
 
         let mode_of =
             |p: &std::path::Path| std::fs::metadata(p).unwrap().permissions().mode() & 0o777;

@@ -226,7 +226,7 @@ fn download_prompt_text(asset: &crate::registry::RangeFilterAsset) -> String {
         asset.name,
         human_size(asset.model.size_bytes),
         human_size(asset.labels.size_bytes),
-        crate::registry::license_line(&asset.license),
+        crate::registry::disclosure_line(&asset.license, &asset.vendor),
         asset.license.url
     )
 }
@@ -430,7 +430,7 @@ mod tests {
             download_prompt_text(&test_asset()),
             "Range filtering needs the BirdNET Geomodel v3.0.2, which is not installed.\n  \
              Model: 14.0 MB    Labels: 468 KB\n  \
-             Licence: CC-BY-SA-4.0 (share-alike)\n  \
+             Licence: CC-BY-SA-4.0 (share-alike, attribution to Cornell Lab required)\n  \
              Terms: https://creativecommons.org/licenses/by-sa/4.0/\n"
         );
     }

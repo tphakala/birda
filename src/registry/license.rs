@@ -127,14 +127,36 @@ pub fn license_details(license: &LicenseInfo) -> String {
 /// both carry that obligation. Whichever restrictions apply are now named on
 /// every entry.
 pub fn license_line(license: &LicenseInfo) -> String {
+    render_line(license, &restriction_notes(license))
+}
+
+/// [`license_line`] plus the attribution obligation, for the places that tell a
+/// user what accepting the licence commits them to.
+///
+/// The list lines leave attribution out on purpose: every licence in the registry
+/// requires it, so naming it on each entry would add noise and no information.
+/// A disclosure exists to state obligations, so it names who must be credited.
+#[must_use]
+pub fn disclosure_line(license: &LicenseInfo, vendor: &str) -> String {
+    let mut notes = restriction_notes(license);
+    if license.attribution_required {
+        notes.push(format!("attribution to {vendor} required"));
+    }
+    render_line(license, &notes)
+}
+
+fn restriction_notes(license: &LicenseInfo) -> Vec<String> {
     let mut notes = Vec::new();
     if !license.commercial_use {
-        notes.push("non-commercial");
+        notes.push("non-commercial".to_string());
     }
     if license.share_alike {
-        notes.push("share-alike");
+        notes.push("share-alike".to_string());
     }
+    notes
+}
 
+fn render_line(license: &LicenseInfo, notes: &[String]) -> String {
     if notes.is_empty() {
         license.r#type.clone()
     } else {
@@ -157,7 +179,7 @@ pub fn side_install_notice(asset: LicensedAsset<'_>) -> String {
         "Also installing {} ({}), which is licensed separately: {}.\nTerms: {}\n",
         asset.name,
         asset.vendor,
-        license_line(asset.license),
+        disclosure_line(asset.license, asset.vendor),
         asset.license.url
     )
 }
@@ -390,7 +412,7 @@ mod tests {
         assert_eq!(
             notice,
             "Also installing BirdNET Geomodel v3.0.2 (Cornell Lab of Ornithology), which is \
-             licensed separately: CC-BY-SA-4.0 (share-alike).\n\
+             licensed separately: CC-BY-SA-4.0 (share-alike, attribution to Cornell Lab of Ornithology required).\n\
              Terms: https://creativecommons.org/licenses/by-sa/4.0/\n"
         );
     }
@@ -403,5 +425,21 @@ mod tests {
         assert!(details.commercial_use);
         assert!(details.attribution_required);
         assert!(details.share_alike);
+    }
+
+    #[test]
+    fn test_disclosure_line_names_who_must_be_credited() {
+        assert_eq!(
+            disclosure_line(&geomodel_license(), "Cornell Lab of Ornithology"),
+            "CC-BY-SA-4.0 (share-alike, attribution to Cornell Lab of Ornithology required)"
+        );
+    }
+
+    #[test]
+    fn test_disclosure_line_omits_attribution_when_the_licence_does_not_require_it() {
+        let mut licence = license(true, false);
+        licence.attribution_required = false;
+
+        assert_eq!(disclosure_line(&licence, "Any Vendor"), "TEST-1.0");
     }
 }

@@ -109,6 +109,8 @@ The `result` event includes a `result_type` field:
 | `providers` | `birda providers` |
 | `species_list` | `birda species` |
 | `clip_extraction` | `birda clip` |
+| `update_check` | `birda update --check` (and `birda update` when already current); carries `status` (`up_to_date` or `available`) and the versions |
+| `update_result` | `birda update`, after installing; carries `old_version`, `new_version`, `backup_path` and `warnings` |
 
 ## Example: Real-Time Progress with NDJSON
 

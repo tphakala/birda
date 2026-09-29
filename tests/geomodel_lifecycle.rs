@@ -299,3 +299,75 @@ fn test_check_reports_the_registry_copy_when_nothing_is_configured() {
     assert_eq!(geomodel["model_path"], path_str(&model));
     assert_eq!(geomodel["labels_path"], path_str(&labels));
 }
+
+#[test]
+fn test_remove_geomodel_purge_skips_a_path_that_climbs_out_of_the_models_dir() {
+    let home = tempfile::tempdir().unwrap();
+    let models = home.path().join("models");
+    std::fs::create_dir_all(&models).unwrap();
+
+    // Lexically under the models directory, but `..` puts it in the directory
+    // above: a file the user never handed to birda.
+    let outside = home.path().join("outside.txt");
+    std::fs::write(&outside, b"not birda's").unwrap();
+    let climbing = models.join("..").join("outside.txt");
+
+    let managed_labels = models.join("labels.txt");
+    std::fs::write(&managed_labels, b"labels").unwrap();
+
+    configure_geomodel(home.path(), &climbing, &managed_labels);
+    ok_in(
+        home.path(),
+        &[
+            "--output-mode",
+            "json",
+            "models",
+            "remove",
+            "geomodel",
+            "--purge",
+        ],
+    );
+
+    assert!(
+        outside.is_file(),
+        "a file outside the models dir must survive"
+    );
+    assert!(
+        !managed_labels.exists(),
+        "the managed file is still deleted"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn test_remove_geomodel_purge_removes_a_symlink_but_not_its_target() {
+    let home = tempfile::tempdir().unwrap();
+    let models = home.path().join("models");
+    std::fs::create_dir_all(&models).unwrap();
+
+    // A model kept on another volume and linked into the models directory: the
+    // link is birda's to remove, the file it points at is not.
+    let elsewhere = tempfile::tempdir().unwrap();
+    let target = elsewhere.path().join("model.onnx");
+    std::fs::write(&target, b"model").unwrap();
+    let link = models.join("model.onnx");
+    std::os::unix::fs::symlink(&target, &link).unwrap();
+    let labels = models.join("labels.txt");
+    std::fs::write(&labels, b"labels").unwrap();
+
+    configure_geomodel(home.path(), &link, &labels);
+    ok_in(
+        home.path(),
+        &[
+            "--output-mode",
+            "json",
+            "models",
+            "remove",
+            "geomodel",
+            "--purge",
+        ],
+    );
+
+    assert!(link.symlink_metadata().is_err(), "the link must be removed");
+    assert!(target.is_file(), "the link's target must survive");
+}

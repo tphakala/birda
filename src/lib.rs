@@ -3016,6 +3016,25 @@ fn handle_bat_remove(slug: &str, output_mode: OutputMode, assume_yes: bool) -> R
     Ok(())
 }
 
+/// Whether `file` sits directly or transitively inside `dir`, after resolving
+/// symlinks and `..` in the directory part of both.
+///
+/// A lexical `starts_with` says yes to `<dir>/../elsewhere/file` and to a file
+/// reached through a symlinked subdirectory, and `--purge` would then delete
+/// something birda never installed. Only the parent of `file` is resolved, not
+/// `file` itself: a symlink that lives in `dir` is birda's to remove as a link,
+/// and `remove_file` does not follow it to the target.
+///
+/// # Errors
+/// The I/O error from resolving either directory, `NotFound` when one is missing.
+fn is_within_dir(dir: &Path, file: &Path) -> std::io::Result<bool> {
+    let parent = match file.parent() {
+        Some(parent) if !parent.as_os_str().is_empty() => parent,
+        _ => Path::new("."),
+    };
+    Ok(std::fs::canonicalize(parent)?.starts_with(std::fs::canonicalize(dir)?))
+}
+
 /// Remove the shared geomodel from the configuration, and its files with `--purge`.
 ///
 /// The geomodel is recorded in `defaults.geomodel` and `defaults.geomodel_labels`
@@ -3059,14 +3078,32 @@ fn handle_geomodel_remove(purge: bool, output_mode: OutputMode, assume_yes: bool
         let models_dir = registry::models_dir()?;
         let mut first_error: Option<(PathBuf, std::io::Error)> = None;
         for file in [recorded.0, recorded.1].into_iter().flatten() {
-            if !file.starts_with(&models_dir) {
-                if !output_mode.is_structured() {
-                    println!(
-                        "  Skipped (outside the models directory): {}",
-                        file.display()
-                    );
+            match is_within_dir(&models_dir, &file) {
+                Ok(true) => {}
+                Ok(false) => {
+                    if !output_mode.is_structured() {
+                        println!(
+                            "  Skipped (outside the models directory): {}",
+                            file.display()
+                        );
+                    }
+                    continue;
                 }
-                continue;
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                    if !output_mode.is_structured() {
+                        println!("  Skipped (not found): {}", file.display());
+                    }
+                    continue;
+                }
+                Err(e) => {
+                    if !output_mode.is_structured() {
+                        println!("  Failed to delete: {}", file.display());
+                    }
+                    if first_error.is_none() {
+                        first_error = Some((file, e));
+                    }
+                    continue;
+                }
             }
             match std::fs::remove_file(&file) {
                 Ok(()) => {

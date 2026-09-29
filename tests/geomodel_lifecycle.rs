@@ -552,3 +552,352 @@ fn test_config_set_warns_for_labels_without_the_model_too() {
         String::from_utf8_lossy(&output.stderr)
     );
 }
+
+const NOT_RECORDED_ERROR: &str = "error: the geomodel is not recorded in the configuration, but a copy is installed in the models directory and birda finds it there; delete it with 'birda models remove geomodel --purge'";
+
+#[test]
+fn test_purge_deletes_an_unrecorded_registry_copy() {
+    // A classifier install and the implicit download on `analyze` fetch the
+    // geomodel without recording it in the config, which is the common case.
+    let home = tempfile::tempdir().unwrap();
+    let (model, labels) = seed_installed_registry_geomodel(home.path());
+
+    let output = ok_in(
+        home.path(),
+        &[
+            "--output-mode",
+            "json",
+            "models",
+            "remove",
+            "geomodel",
+            "--purge",
+        ],
+    );
+
+    let payload = payload_of(&output);
+    assert_eq!(payload["result_type"], "model_removed");
+    assert_eq!(payload["id"], "geomodel");
+    assert_eq!(payload["purge_requested"], true);
+    assert!(!model.exists(), "the model file must be deleted");
+    assert!(!labels.exists(), "the labels file must be deleted");
+    assert_eq!(
+        config_text(home.path()),
+        "",
+        "an unrecorded copy has nothing to change in the config"
+    );
+}
+
+#[test]
+fn test_plain_remove_of_an_unrecorded_registry_copy_says_to_purge() {
+    let home = tempfile::tempdir().unwrap();
+    let (model, labels) = seed_installed_registry_geomodel(home.path());
+
+    let output = run_in(home.path(), &["models", "remove", "geomodel"]);
+
+    assert!(!output.status.success());
+    assert_eq!(
+        String::from_utf8_lossy(&output.stderr).trim(),
+        NOT_RECORDED_ERROR
+    );
+    assert!(
+        model.is_file() && labels.is_file(),
+        "nothing may be deleted"
+    );
+}
+
+#[test]
+fn test_plain_remove_says_the_files_are_still_in_use() {
+    // `models install geomodel` records the registry paths, so clearing the keys
+    // leaves the files where `analyze` finds them again.
+    let home = tempfile::tempdir().unwrap();
+    let (model, labels) = seed_installed_registry_geomodel(home.path());
+    configure_geomodel(home.path(), &model, &labels);
+
+    let output = ok_in(home.path(), &["models", "remove", "geomodel"]);
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.lines().any(|line| line
+            == "The geomodel files are still in the models directory and birda still uses them; add --purge to delete them."),
+        "got:\n{stdout}"
+    );
+    assert!(model.is_file() && labels.is_file());
+}
+
+#[test]
+fn test_purge_reports_a_recorded_path_that_no_longer_exists() {
+    let home = tempfile::tempdir().unwrap();
+    let models = home.path().join("models");
+    std::fs::create_dir_all(&models).unwrap();
+    // The parent directory is gone as well, so resolving it fails with NotFound.
+    let gone = models.join("removed-subdir").join("model.onnx");
+    let labels = models.join("labels.txt");
+    std::fs::write(&labels, b"labels").unwrap();
+    configure_geomodel(home.path(), &gone, &labels);
+
+    let output = ok_in(
+        home.path(),
+        &["models", "remove", "geomodel", "--purge", "--yes"],
+    );
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout
+            .lines()
+            .any(|line| line == format!("  Skipped (not found): {}", gone.display())),
+        "got:\n{stdout}"
+    );
+    assert!(!labels.exists(), "the existing file is still deleted");
+}
+
+#[test]
+fn test_check_says_why_a_half_configured_geomodel_is_not_installed() {
+    let home = tempfile::tempdir().unwrap();
+    ok_in(
+        home.path(),
+        &[
+            "config",
+            "set",
+            "defaults.geomodel",
+            "/elsewhere/model.onnx",
+        ],
+    );
+
+    let output = ok_in(home.path(), &["--output-mode", "json", "models", "check"]);
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains(
+            "geomodel path and geomodel labels path must be given together (received only defaults.geomodel)"
+        ),
+        "the missing key must be named, got: {stderr}"
+    );
+}
+
+const STILL_IN_USE_NOTE: &str = "The geomodel files are still in the models directory and birda still uses them; add --purge to delete them.";
+
+fn lines_of(output: &std::process::Output) -> Vec<String> {
+    String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .map(str::to_string)
+        .collect()
+}
+
+#[test]
+fn test_purge_of_a_recorded_registry_copy_deletes_each_file_once() {
+    // `models install geomodel` records the registry paths, so the recorded and
+    // the registry copy are the same two files and must not be handled twice.
+    let home = tempfile::tempdir().unwrap();
+    let (model, labels) = seed_installed_registry_geomodel(home.path());
+    configure_geomodel(home.path(), &model, &labels);
+
+    let output = ok_in(
+        home.path(),
+        &["models", "remove", "geomodel", "--purge", "--yes"],
+    );
+
+    let lines = lines_of(&output);
+    assert_eq!(
+        lines
+            .iter()
+            .filter(|l| l.starts_with("  Deleted: "))
+            .collect::<Vec<_>>(),
+        [
+            &format!("  Deleted: {}", model.display()),
+            &format!("  Deleted: {}", labels.display())
+        ]
+    );
+    assert!(
+        !lines.iter().any(|l| l.contains("Skipped")),
+        "got: {lines:?}"
+    );
+    assert!(!lines.iter().any(|l| l == STILL_IN_USE_NOTE));
+}
+
+#[test]
+fn test_plain_remove_of_a_hand_placed_geomodel_does_not_claim_it_is_still_used() {
+    // No copy at the registry location, so nothing is left for birda to use.
+    let home = tempfile::tempdir().unwrap();
+    configure_geomodel(
+        home.path(),
+        &fixture("fixture-geomodel.onnx"),
+        &fixture("fixture-geomodel-labels.txt"),
+    );
+
+    let output = ok_in(home.path(), &["models", "remove", "geomodel"]);
+
+    let lines = lines_of(&output);
+    assert_eq!(lines[0], "Geomodel removed from configuration.");
+    assert!(
+        lines[1].starts_with("Configuration saved to: "),
+        "got: {lines:?}"
+    );
+    assert_eq!(lines.len(), 2, "got: {lines:?}");
+}
+
+#[test]
+fn test_purge_with_nothing_recorded_or_installed_is_not_found() {
+    let home = tempfile::tempdir().unwrap();
+
+    let output = run_in(
+        home.path(),
+        &["models", "remove", "geomodel", "--purge", "--yes"],
+    );
+
+    assert!(!output.status.success());
+    assert_eq!(
+        String::from_utf8_lossy(&output.stderr).trim(),
+        "error: model 'geomodel' not found in configuration"
+    );
+}
+
+#[test]
+fn test_a_lone_registry_file_is_purged_but_not_reported_as_installed() {
+    // Resolution needs both files, so one leftover is not "installed": a plain
+    // remove has nothing to say about it, and --purge still cleans it up.
+    let home = tempfile::tempdir().unwrap();
+    let (model, labels) = seed_installed_registry_geomodel(home.path());
+    std::fs::remove_file(&labels).unwrap();
+
+    let plain = run_in(home.path(), &["models", "remove", "geomodel"]);
+    assert!(!plain.status.success());
+    assert_eq!(
+        String::from_utf8_lossy(&plain.stderr).trim(),
+        "error: model 'geomodel' not found in configuration"
+    );
+    assert!(model.is_file());
+
+    ok_in(
+        home.path(),
+        &[
+            "--output-mode",
+            "json",
+            "models",
+            "remove",
+            "geomodel",
+            "--purge",
+        ],
+    );
+    assert!(!model.exists());
+}
+
+#[cfg(unix)]
+#[test]
+fn test_a_failed_purge_with_no_config_change_reports_no_removal() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let home = tempfile::tempdir().unwrap();
+    let (model, _labels) = seed_installed_registry_geomodel(home.path());
+    let models = home.path().join("models");
+    std::fs::set_permissions(&models, std::fs::Permissions::from_mode(0o555)).unwrap();
+
+    // Root ignores directory permissions, so the deletion would succeed.
+    let denied = std::fs::write(models.join("probe"), b"").is_err();
+    let output = run_in(
+        home.path(),
+        &[
+            "--output-mode",
+            "json",
+            "models",
+            "remove",
+            "geomodel",
+            "--purge",
+        ],
+    );
+    std::fs::set_permissions(&models, std::fs::Permissions::from_mode(0o755)).unwrap();
+    if !denied {
+        return;
+    }
+
+    assert!(!output.status.success());
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "",
+        "no config changed and no file was deleted, so no removal may be reported"
+    );
+    assert!(model.is_file());
+}
+
+#[test]
+fn test_structured_plain_remove_warns_on_stderr_that_the_files_are_still_used() {
+    let home = tempfile::tempdir().unwrap();
+    let (model, labels) = seed_installed_registry_geomodel(home.path());
+    configure_geomodel(home.path(), &model, &labels);
+
+    let output = ok_in(
+        home.path(),
+        &["--output-mode", "json", "models", "remove", "geomodel"],
+    );
+
+    assert_eq!(payload_of(&output)["result_type"], "model_removed");
+    assert!(
+        String::from_utf8_lossy(&output.stderr).contains(STILL_IN_USE_NOTE),
+        "got: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[test]
+fn test_purge_that_finds_nothing_inside_the_models_dir_says_so() {
+    // Both recorded paths are hand-placed elsewhere, so nothing is birda's to delete.
+    let home = tempfile::tempdir().unwrap();
+    configure_geomodel(
+        home.path(),
+        &fixture("fixture-geomodel.onnx"),
+        &fixture("fixture-geomodel-labels.txt"),
+    );
+
+    let output = ok_in(
+        home.path(),
+        &["models", "remove", "geomodel", "--purge", "--yes"],
+    );
+
+    let lines = lines_of(&output);
+    assert!(
+        lines.iter().any(|l| l == "No geomodel files were deleted."),
+        "got: {lines:?}"
+    );
+    // The models directory does not exist here, so the files are outside it and
+    // present: not "not found".
+    assert!(
+        lines
+            .iter()
+            .any(|l| l.starts_with("  Skipped (outside the models directory): ")),
+        "got: {lines:?}"
+    );
+    assert!(
+        !lines.iter().any(|l| l.contains("not found")),
+        "got: {lines:?}"
+    );
+    assert!(!lines.iter().any(|l| l == "Geomodel files deleted."));
+    assert!(fixture("fixture-geomodel.onnx").is_file());
+}
+
+#[test]
+fn test_a_registry_filename_that_leaves_the_models_dir_is_rejected() {
+    // registry.json is user-writable. A filename with `..` must not point purge, or
+    // the install, at a file outside the models directory.
+    let home = tempfile::tempdir().unwrap();
+    seed_installed_registry_geomodel(home.path());
+    let path = home.path().join("registry.json");
+    let mut registry: Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+    registry["range_filter"]["model"]["filename"] = Value::from("../escaped.onnx");
+    std::fs::write(&path, registry.to_string()).unwrap();
+    let outside = home.path().join("escaped.onnx");
+    std::fs::write(&outside, b"not birda's").unwrap();
+
+    let output = run_in(
+        home.path(),
+        &["models", "remove", "geomodel", "--purge", "--yes"],
+    );
+
+    assert!(!output.status.success());
+    assert!(
+        outside.is_file(),
+        "a file outside the models dir must survive"
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&output.stderr).trim(),
+        "error: configuration validation failed: invalid model filename in registry: \"../escaped.onnx\""
+    );
+}

@@ -2098,6 +2098,31 @@ fn handle_models_command(
     }
 }
 
+/// The licence notice for the geomodel a classifier install is about to fetch.
+///
+/// `needs_download` is the installer's own decision
+/// ([`registry::range_filter_needs_download`]), so the notice appears exactly
+/// when a download follows, a checksum-triggered re-download included. `None`
+/// when nothing is fetched (a copy is installed and verified, and its terms were
+/// shown when it arrived), when the decision could not be made (`None`: the
+/// install itself will report why), and under structured output, where human
+/// text on stdout would sit ahead of the JSON envelope.
+fn geomodel_side_install_notice(
+    asset: &registry::RangeFilterAsset,
+    structured: bool,
+    needs_download: Option<bool>,
+) -> Option<String> {
+    if structured || !needs_download? {
+        return None;
+    }
+    Some(registry::side_install_notice(registry::LicensedAsset {
+        name: &asset.name,
+        vendor: &asset.vendor,
+        version: &asset.version,
+        license: &asset.license,
+    }))
+}
+
 /// Describe a half-configured geomodel pair, if `defaults` holds one.
 ///
 /// `defaults.geomodel` and `defaults.geomodel_labels` only mean something
@@ -2491,23 +2516,23 @@ fn handle_models_install(
         None => runtime.block_on(async { registry::install_model(model, language).await })?,
     };
 
+    // The geomodel is about to be fetched as a side effect, and its licence is not
+    // the one the user just accepted, so say what it is first.
+    if let Some(asset) = registry.range_filter.as_ref()
+        && let Some(notice) = geomodel_side_install_notice(
+            asset,
+            output_mode.is_structured(),
+            registry::geomodel_paths(asset)
+                .and_then(|paths| registry::range_filter_needs_download(&paths, asset))
+                .ok(),
+        )
+    {
+        println!("{notice}");
+    }
+
     // Ensure the shared range filter is present so a fresh install can range
     // filter immediately. A failure here is a warning, not an error: the
     // classifier itself installed fine and works without range filtering.
-    if let Some(asset) = registry.range_filter.as_ref()
-        && !output_mode.is_structured()
-        && registry::geomodel_paths(asset).is_ok_and(|paths| !paths.is_installed())
-    {
-        println!(
-            "{}",
-            registry::side_install_notice(registry::LicensedAsset {
-                name: &asset.name,
-                vendor: &asset.vendor,
-                version: &asset.version,
-                license: &asset.license,
-            })
-        );
-    }
     if let Some(asset) = registry.range_filter.as_ref()
         && let Err(e) = runtime.block_on(registry::install_range_filter(asset))
     {
@@ -3026,23 +3051,82 @@ fn handle_bat_remove(slug: &str, output_mode: OutputMode, assume_yes: bool) -> R
 /// and `remove_file` does not follow it to the target.
 ///
 /// # Errors
-/// The I/O error from resolving either directory, `NotFound` when one is missing.
+/// The I/O error from resolving the file's directory (`NotFound` when it is missing), or
+/// from resolving `dir` for any reason other than it not existing.
 fn is_within_dir(dir: &Path, file: &Path) -> std::io::Result<bool> {
     let parent = match file.parent() {
         Some(parent) if !parent.as_os_str().is_empty() => parent,
         _ => Path::new("."),
     };
-    Ok(std::fs::canonicalize(parent)?.starts_with(std::fs::canonicalize(dir)?))
+    let parent = std::fs::canonicalize(parent)?;
+    // A models directory that does not exist has no files in it: everything is
+    // outside, which is not the same as the file being missing.
+    match std::fs::canonicalize(dir) {
+        Ok(dir) => Ok(parent.starts_with(dir)),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Err(e) => Err(e),
+    }
 }
+
+/// What a plain `models remove geomodel` says when a copy remains at the registry
+/// location, where resolution finds it again.
+const GEOMODEL_STILL_IN_USE_NOTE: &str = "The geomodel files are still in the models directory and birda still uses them; add --purge to delete them.";
 
 /// Remove the shared geomodel from the configuration, and its files with `--purge`.
 ///
 /// The geomodel is recorded in `defaults.geomodel` and `defaults.geomodel_labels`
 /// rather than `config.models`, so [`remove_model_from_config`] cannot see it.
+/// Two copies can exist: the one those keys point at, and the one at the
+/// registry's install location, which is what a classifier install or the
+/// implicit download on `analyze` leaves without recording anything. Clearing
+/// the keys does not stop birda using the second (resolution falls back to it),
+/// so only `--purge` really removes the geomodel, and it deletes both.
 /// Only files inside the models directory are ever deleted: a path the user
 /// pointed at by hand is theirs, and `--purge` says "delete birda's copy".
 fn handle_geomodel_remove(purge: bool, output_mode: OutputMode, assume_yes: bool) -> Result<()> {
     use std::io::Write;
+
+    let config = load_default_config()?;
+    let recorded_in_config =
+        config.defaults.geomodel.is_some() || config.defaults.geomodel_labels.is_some();
+
+    // The registry only tells where a second copy would be. Clearing recorded
+    // keys must not depend on it, so a failure to read it is a debug line there;
+    // with nothing recorded it is the whole answer, so the error is returned.
+    let registry_copy = registry::load_registry()
+        .and_then(|loaded| {
+            loaded
+                .range_filter
+                .as_ref()
+                .map(registry::geomodel_paths)
+                .transpose()
+        })
+        .or_else(|e| {
+            if recorded_in_config {
+                tracing::debug!("could not look for a geomodel at the registry location: {e}");
+                Ok(None)
+            } else {
+                Err(e)
+            }
+        })?;
+    // "Installed" is what resolution needs: both files. A lone leftover file is
+    // not used by anything, but `--purge` still removes it.
+    let registry_installed = registry_copy
+        .as_ref()
+        .is_some_and(registry::InstalledRangeFilter::is_installed);
+    let registry_has_files = registry_copy
+        .as_ref()
+        .is_some_and(|copy| copy.model.is_file() || copy.labels.is_file());
+
+    if !(recorded_in_config || purge && registry_has_files) {
+        return Err(if registry_installed {
+            Error::GeomodelNotRecorded
+        } else {
+            Error::ModelNotFound {
+                name: registry::GEOMODEL_INSTALL_ID.to_string(),
+            }
+        });
+    }
 
     if purge && !output_mode.is_structured() && !assume_yes {
         print!("This will delete the geomodel files from disk. Continue? [y/N]: ");
@@ -3056,16 +3140,26 @@ fn handle_geomodel_remove(purge: bool, output_mode: OutputMode, assume_yes: bool
     }
 
     // Serialised load-mutate-save (#313); the files are deleted after the lock.
-    let (recorded, _config, config_path) = config::update_config(|config| {
-        let model = config.defaults.geomodel.take();
-        let labels = config.defaults.geomodel_labels.take();
-        if model.is_none() && labels.is_none() {
-            return Err(Error::ModelNotFound {
-                name: registry::GEOMODEL_INSTALL_ID.to_string(),
-            });
+    let mut targets: Vec<PathBuf> = Vec::new();
+    let config_path = if recorded_in_config {
+        let (recorded, _config, path) = config::update_config(|config| {
+            Ok((
+                config.defaults.geomodel.take(),
+                config.defaults.geomodel_labels.take(),
+            ))
+        })?;
+        targets.extend([recorded.0, recorded.1].into_iter().flatten());
+        Some(path)
+    } else {
+        None
+    };
+    if let Some(copy) = registry_copy {
+        for file in [copy.model, copy.labels] {
+            if file.is_file() && !targets.contains(&file) {
+                targets.push(file);
+            }
         }
-        Ok((model, labels))
-    })?;
+    }
 
     let structured_payload = ModelRemovedPayload {
         result_type: ResultType::ModelRemoved,
@@ -3074,10 +3168,11 @@ fn handle_geomodel_remove(purge: bool, output_mode: OutputMode, assume_yes: bool
         new_default: None,
     };
 
+    let mut deleted = 0_usize;
     if purge {
         let models_dir = registry::models_dir()?;
         let mut first_error: Option<(PathBuf, std::io::Error)> = None;
-        for file in [recorded.0, recorded.1].into_iter().flatten() {
+        for file in targets {
             match is_within_dir(&models_dir, &file) {
                 Ok(true) => {}
                 Ok(false) => {
@@ -3107,6 +3202,7 @@ fn handle_geomodel_remove(purge: bool, output_mode: OutputMode, assume_yes: bool
             }
             match std::fs::remove_file(&file) {
                 Ok(()) => {
+                    deleted += 1;
                     if !output_mode.is_structured() {
                         println!("  Deleted: {}", file.display());
                     }
@@ -3127,19 +3223,39 @@ fn handle_geomodel_remove(purge: bool, output_mode: OutputMode, assume_yes: bool
             }
         }
         if let Some((path, source)) = first_error {
-            // The config change succeeded even though the cleanup did not.
-            if output_mode.is_structured() {
+            // With a config change behind it the result says what did take effect.
+            // With none (only files were to go) nothing was removed, so a result
+            // would report a removal that did not happen.
+            if output_mode.is_structured() && config_path.is_some() {
                 emit_json_result(&structured_payload);
             }
             return Err(Error::FileDeletionFailed { path, source });
         }
     }
 
+    let deleted_any = deleted > 0;
     if output_mode.is_structured() {
         emit_json_result(&structured_payload);
+        // Stderr, so the result on stdout stays the same shape: a consumer that
+        // reads only it cannot tell this from a geomodel that is really gone.
+        if !purge && registry_installed {
+            warn!("{GEOMODEL_STILL_IN_USE_NOTE}");
+        }
     } else {
-        println!("Geomodel removed from configuration.");
-        println!("Configuration saved to: {}", config_path.display());
+        if let Some(path) = config_path {
+            println!("Geomodel removed from configuration.");
+            println!("Configuration saved to: {}", path.display());
+        }
+        if purge {
+            if deleted_any {
+                println!("Geomodel files deleted.");
+            } else {
+                println!("No geomodel files were deleted.");
+            }
+        }
+        if !purge && registry_installed {
+            println!("{GEOMODEL_STILL_IN_USE_NOTE}");
+        }
     }
 
     Ok(())
@@ -4231,5 +4347,70 @@ mod tests {
                 "birda", "species", "--lat", "60.17", "--lon", "24.94", "--week", "24"
             ]));
         }
+    }
+
+    fn geomodel_asset() -> registry::RangeFilterAsset {
+        registry::RangeFilterAsset {
+            id: "birdnet-geomodel-v3".into(),
+            name: "BirdNET Geomodel v3.0.2".into(),
+            version: "3.0.2".into(),
+            vendor: "Cornell Lab".into(),
+            license: registry::LicenseInfo {
+                r#type: "CC-BY-SA-4.0".into(),
+                url: "https://creativecommons.org/licenses/by-sa/4.0/".into(),
+                commercial_use: true,
+                attribution_required: true,
+                share_alike: true,
+            },
+            species_count: 12012,
+            model: registry::FileInfo {
+                url: "https://example.invalid/m.onnx".into(),
+                filename: "m.onnx".into(),
+                sha256: None,
+                size_bytes: Some(1),
+            },
+            labels: registry::FileInfo {
+                url: "https://example.invalid/l.txt".into(),
+                filename: "l.txt".into(),
+                sha256: None,
+                size_bytes: Some(1),
+            },
+        }
+    }
+
+    #[test]
+    fn test_side_install_notice_is_shown_when_the_geomodel_is_about_to_be_fetched() {
+        assert_eq!(
+            geomodel_side_install_notice(&geomodel_asset(), false, Some(true)).as_deref(),
+            Some(
+                "Also installing BirdNET Geomodel v3.0.2 (Cornell Lab), which is licensed \
+                 separately: CC-BY-SA-4.0 (share-alike, attribution to Cornell Lab required).\n\
+                 Terms: https://creativecommons.org/licenses/by-sa/4.0/\n"
+            )
+        );
+    }
+
+    #[test]
+    fn test_side_install_notice_is_silent_when_nothing_will_be_fetched() {
+        assert_eq!(
+            geomodel_side_install_notice(&geomodel_asset(), false, Some(false)),
+            None
+        );
+    }
+
+    #[test]
+    fn test_side_install_notice_is_silent_under_structured_output() {
+        assert_eq!(
+            geomodel_side_install_notice(&geomodel_asset(), true, Some(true)),
+            None
+        );
+    }
+
+    #[test]
+    fn test_side_install_notice_is_silent_when_the_decision_could_not_be_made() {
+        assert_eq!(
+            geomodel_side_install_notice(&geomodel_asset(), false, None),
+            None
+        );
     }
 }

@@ -13,7 +13,6 @@ categories = ["science", "multimedia::audio", "command-line-utilities"]
 [features]
 default = ["cuda"]
 cuda = ["birdnet-onnx/cuda"]
-load-dynamic = ["birdnet-onnx/load-dynamic"]
 # Maintenance tool that regenerates registry.json from the vendored manifests.
 # Off by default: it is not part of the shipped CLI.
 gen-registry = []
@@ -28,6 +27,9 @@ path = "src/bin/gen-registry.rs"
 required-features = ["gen-registry"]
 
 [dependencies]
+# ONNX Runtime is always loaded at run time (src/inference/runtime.rs calls
+# ort::init_from, which exists only with load-dynamic), so the feature is
+# requested here unconditionally rather than exposed as a crate feature.
 birdnet-onnx = { version = "2.0.0-rc.16", features = ["load-dynamic"] }
 ort = { version = "2.0.0-rc.12", default-features = false, features = ["load-dynamic"] }
 symphonia = { git = "https://github.com/tphakala/Symphonia", branch = "feature/rf64-support", features = ["aac", "mp3", "flac", "wav", "pcm"] }

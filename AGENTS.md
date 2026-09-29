@@ -20,8 +20,9 @@ Birda is a Rust CLI tool for analyzing audio files using BirdNET and Google Perc
 ## Cargo Features
 
 - `cuda` (default): CUDA support in `birdnet-onnx`.
-- `load-dynamic`: forwards to `birdnet-onnx/load-dynamic`. The dependency declarations already enable it, so ONNX Runtime is always loaded at run time.
 - `gen-registry`: builds the `gen-registry` maintenance binary that regenerates `registry.json`. It is not part of the shipped CLI.
+
+There is no `load-dynamic` feature: ONNX Runtime is always loaded at run time, because both dependencies request `load-dynamic` unconditionally and `src/inference/runtime.rs` needs `ort::init_from`.
 
 CI builds with `--no-default-features`.
 

@@ -519,7 +519,7 @@ Error severities:
 - `fatal` - Operation cannot continue
 - `warning` - Operation continues with issues
 
-A command that fails outright is not reported as a JSON event. This covers an unknown model id as much as an invalid argument. birda prints `error: <message>` to stderr, writes nothing to stdout and exits non-zero: 1 for a failed command, 2 for a command-line usage error. Treat a non-zero exit with an empty stdout as a failure and show stderr.
+A command that fails outright is not reported as a JSON event. birda prints `error: <message>` to stderr and exits non-zero: 1 for a failed command, 2 for a command-line usage error. Treat every non-zero exit as a failure and show stderr; a result already written to stdout before the failure describes what completed.
 
 Warnings such as "Range filtering disabled" also go to stderr, not into the JSON envelope. A `null` `range_filter` in a detections payload therefore does not say whether range filtering was never requested or was requested and skipped; check stderr for the reason.
 

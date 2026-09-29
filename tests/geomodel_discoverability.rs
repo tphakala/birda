@@ -318,3 +318,51 @@ fn test_models_info_geomodel_on_a_registry_without_the_asset() {
          `models install geomodel` reports for the same state. stderr: {stderr}"
     );
 }
+
+#[test]
+fn test_list_available_json_reports_share_alike_for_every_classifier() {
+    let stdout = stdout_of(&["--output-mode", "json", "models", "list-available"]);
+    let value: Value = serde_json::from_str(&stdout).expect("valid JSON envelope");
+    let models = value["payload"]["models"].as_array().expect("models array");
+
+    // Every entry must carry the field, not just the ones that are share-alike:
+    // a consumer cannot tell "false" from "not reported" on an absent key.
+    for model in models {
+        assert!(
+            model["share_alike"].is_boolean(),
+            "share_alike missing on: {model}"
+        );
+    }
+
+    // birdnet-v24 is CC BY-NC-SA: the case where dropping the field hid an
+    // obligation the entry does carry.
+    let v24 = models
+        .iter()
+        .find(|m| m["id"] == "birdnet-v24")
+        .expect("birdnet-v24 is in the bundled registry");
+    assert_eq!(v24["share_alike"], true);
+}
+
+#[test]
+fn test_models_info_json_carries_the_licence_terms() {
+    let geomodel = stdout_of(&["--output-mode", "json", "models", "info", "geomodel"]);
+    let value: Value = serde_json::from_str(&geomodel).expect("valid JSON envelope");
+    assert_eq!(
+        value["payload"]["model"]["license"],
+        serde_json::json!({
+            "type": "CC-BY-SA-4.0",
+            "url": "https://creativecommons.org/licenses/by-sa/4.0/",
+            "commercial_use": true,
+            "attribution_required": true,
+            "share_alike": true
+        })
+    );
+
+    let classifier = stdout_of(&["--output-mode", "json", "models", "info", "birdnet-v24"]);
+    let value: Value = serde_json::from_str(&classifier).expect("valid JSON envelope");
+    assert_eq!(
+        value["payload"]["model"]["license"]["commercial_use"],
+        false
+    );
+    assert_eq!(value["payload"]["model"]["license"]["share_alike"], true);
+}

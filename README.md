@@ -875,10 +875,12 @@ The shared range filter, used by every classifier. It predicts an occurrence pro
 - **License**: CC BY-SA 4.0
 - **Vendor**: Cornell Lab of Ornithology & Chemnitz University of Technology
 - **Species**: 12,012 scored classes, covering birds plus mammals, insects, amphibians and reptiles
-- **Size**: 14.7 MB
+- **Size**: 14.5 MB (model and labels together)
 - **Source**: [BirdNET-Geomodel on Hugging Face](https://huggingface.co/tphakala/BirdNET-Geomodel)
 
 Installed automatically alongside any classifier, or downloaded on first use when you pass `--lat`/`--lon`. See [docs/species-list-usage.md](docs/species-list-usage.md) for coverage details and the `--range-unmatched` option.
+
+Remove it with `birda models remove geomodel`; add `--purge` to delete its files as well.
 
 Powered by [BirdNET](https://birdnet.cornell.edu/).
 

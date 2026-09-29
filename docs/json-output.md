@@ -57,7 +57,7 @@ All JSON output follows a consistent envelope structure:
 
 ```json
 {
-  "spec_version": "1.0",
+  "spec_version": "1.1",
   "timestamp": "2025-01-11T12:34:56.789Z",
   "event": "result",
   "payload": { ... }
@@ -97,13 +97,20 @@ The `result` event includes a `result_type` field:
 
 | Result Type | Command |
 |-------------|---------|
-| `config` | `birda config show` |
+| `config` | `birda config show`, `birda config set` |
+| `config_path` | `birda config path` |
 | `model_list` | `birda models list` |
+| `available_models` | `birda models list-available` |
 | `model_info` | `birda models info <id>` |
 | `model_manifest` | `birda models manifest <id>` |
+| `model_check` | `birda models check` |
+| `model_installed` | `birda models install <id>` (classifiers, `geomodel` and `bat-<region>`) |
+| `model_removed` | `birda models remove <id>` (classifiers, `geomodel` and `bat-<region>`) |
 | `providers` | `birda providers` |
 | `species_list` | `birda species` |
 | `clip_extraction` | `birda clip` |
+| `update_check` | `birda update --check` (and `birda update` when already current); carries `status` (`up_to_date` or `available`) and the versions |
+| `update_result` | `birda update`, after installing; carries `old_version`, `new_version`, `backup_path` and `warnings` |
 
 ## Example: Real-Time Progress with NDJSON
 
@@ -116,11 +123,11 @@ birda --output-mode ndjson recording.wav 2>/dev/null
 Output (one JSON object per line):
 
 ```json
-{"spec_version":"1.0","timestamp":"...","event":"pipeline_started","payload":{"total_files":1,"model":"birdnet-v24","min_confidence":0.1}}
-{"spec_version":"1.0","timestamp":"...","event":"file_started","payload":{"file":"recording.wav","index":0,"estimated_segments":100}}
-{"spec_version":"1.0","timestamp":"...","event":"progress","payload":{"file":{"path":"recording.wav","segments_done":50,"segments_total":100,"percent":50.0}}}
-{"spec_version":"1.0","timestamp":"...","event":"file_completed","payload":{"file":"recording.wav","status":"processed","detections":42,"duration_ms":1234}}
-{"spec_version":"1.0","timestamp":"...","event":"pipeline_completed","payload":{"status":"success","files_processed":1,"files_failed":0,"total_detections":42,"duration_ms":1234,"realtime_factor":85.2}}
+{"spec_version":"1.1","timestamp":"...","event":"pipeline_started","payload":{"total_files":1,"model":"birdnet-v24","min_confidence":0.1}}
+{"spec_version":"1.1","timestamp":"...","event":"file_started","payload":{"file":"recording.wav","index":0,"estimated_segments":100}}
+{"spec_version":"1.1","timestamp":"...","event":"progress","payload":{"file":{"path":"recording.wav","segments_done":50,"segments_total":100,"percent":50.0}}}
+{"spec_version":"1.1","timestamp":"...","event":"file_completed","payload":{"file":"recording.wav","status":"processed","detections":42,"duration_ms":1234}}
+{"spec_version":"1.1","timestamp":"...","event":"pipeline_completed","payload":{"status":"success","files_processed":1,"files_failed":0,"total_detections":42,"duration_ms":1234,"realtime_factor":85.2}}
 ```
 
 ## Example: Command Results
@@ -133,7 +140,7 @@ birda --output-mode json config show
 
 ```json
 {
-  "spec_version": "1.0",
+  "spec_version": "1.1",
   "timestamp": "2025-01-11T12:34:56.789Z",
   "event": "result",
   "payload": {
@@ -158,7 +165,7 @@ birda --output-mode json models list
 
 ```json
 {
-  "spec_version": "1.0",
+  "spec_version": "1.1",
   "timestamp": "2025-01-11T12:34:56.789Z",
   "event": "result",
   "payload": {
@@ -190,6 +197,60 @@ birda --output-mode json models list
 ```
 
 Install provenance (`registry_id`, `installed_version`, `installed_build`, `region`, `variant`) lets a consumer recover what a model was installed from, and detect when a newer build has superseded it, without parsing the id string. Each field is omitted when it does not apply: a model added with `models add` has no `registry_id`, and a global install has no `region` or `variant`. Feature-detect by field presence.
+
+### Available Models
+
+```bash
+birda --output-mode json models list-available
+```
+
+`available_models` lists the installable classifiers under `models`. Each entry carries `license` (the SPDX identifier), `commercial_use` and `share_alike`, so a consumer can show the obligations a classifier binds you to without a second call.
+
+The shared range filter is reported apart from the classifiers, in `available_range_filter`, because it is not selectable with `-m`. It has the same licence fields, plus `species_count` and `size_bytes` (the model and labels files together). Bat regions are listed in `available_bat`. Both keys are omitted when the registry has no such asset.
+
+### Model Info
+
+```bash
+birda --output-mode json models info geomodel
+```
+
+`model_info` carries a `model` object with `id`, `model_type`, `source` and, for a configured model, `path` and `labels_path`. Registry entries (a classifier, `geomodel`, `bat-<region>`) also carry a `license` object:
+
+```json
+{
+  "type": "CC-BY-SA-4.0",
+  "url": "https://creativecommons.org/licenses/by-sa/4.0/",
+  "commercial_use": true,
+  "attribution_required": true,
+  "share_alike": true
+}
+```
+
+A model added with `models add` has no registry record, so it has no `license`. The geomodel reports `"model_type": "range-filter"`; do not offer it as a selectable model.
+
+### Model Check
+
+```bash
+birda --output-mode json models check
+```
+
+`model_check` reports each configured model in `models` (`id`, `valid`, and `error` when invalid) and the shared range filter in `geomodel`:
+
+| Field | Description |
+|-------|-------------|
+| `geomodel.version` | Geomodel version, for example `3.0.2` |
+| `geomodel.installed` | Whether both files are present |
+| `geomodel.species_count` | Species the geomodel scores |
+| `geomodel.model_path`, `geomodel.labels_path` | Present when installed. These are the files `analyze` would use: paths set with `--geomodel-path` and `--geomodel-labels-path`, or `defaults.geomodel` and `defaults.geomodel_labels`, win over the default install location |
+| `geomodel.obsolete_files` | Files from earlier versions that can be deleted |
+
+`leftover_downloads` (interrupted partial downloads) and `installed_bat` (installed bat regions, such as `bat-eu`) are omitted when empty.
+
+### Install and Remove
+
+`model_installed` carries `id`, `set_as_default`, `model_path` and `labels_path`, and `region`, `variant` and `selection_reason` when they apply. `models install geomodel` emits it with `id` `geomodel`; the two paths are the files it recorded in `defaults.geomodel` and `defaults.geomodel_labels`.
+
+`model_removed` carries `id`, `purge_requested` and `new_default`. `models remove geomodel` clears `defaults.geomodel` and `defaults.geomodel_labels`; with `--purge` it deletes those files only when they are inside birda's models directory.
 
 ### Model Manifest
 
@@ -266,7 +327,7 @@ birda --output-mode json providers
 
 ```json
 {
-  "spec_version": "1.0",
+  "spec_version": "1.1",
   "timestamp": "2025-01-11T12:34:56.789Z",
   "event": "result",
   "payload": {
@@ -287,7 +348,7 @@ birda --output-mode json species --lat 60.17 --lon 24.94 --week 24
 
 ```json
 {
-  "spec_version": "1.0",
+  "spec_version": "1.1",
   "timestamp": "2025-01-11T12:34:56.789Z",
   "event": "result",
   "payload": {
@@ -313,7 +374,7 @@ birda --output-mode json clip results.csv -c 0.7
 
 ```json
 {
-  "spec_version": "1.0",
+  "spec_version": "1.1",
   "timestamp": "2025-01-11T12:34:56.789Z",
   "event": "result",
   "payload": {
@@ -440,11 +501,11 @@ birda --output-mode json species --lat 60.17 --lon 24.94 --week 24 | \
 
 ## Error Handling
 
-Errors are reported as JSON events:
+An error raised after a command has started, such as a failure while analyzing a file, is reported as a JSON event:
 
 ```json
 {
-  "spec_version": "1.0",
+  "spec_version": "1.1",
   "timestamp": "2025-01-11T12:34:56.789Z",
   "event": "error",
   "payload": {
@@ -459,6 +520,10 @@ Errors are reported as JSON events:
 Error severities:
 - `fatal` - Operation cannot continue
 - `warning` - Operation continues with issues
+
+A command that fails outright is not reported as a JSON event. birda prints `error: <message>` to stderr and exits non-zero: 1 for a failed command, 2 for a command-line usage error. Treat every non-zero exit as a failure and show stderr; a result already written to stdout before the failure describes what completed.
+
+Warnings such as "Range filtering disabled" also go to stderr, not into the JSON envelope. A `null` `range_filter` in a detections payload therefore does not say whether range filtering was never requested or was requested and skipped; check stderr for the reason.
 
 ## Notes
 

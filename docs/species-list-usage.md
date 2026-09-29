@@ -85,6 +85,8 @@ birda recording.wav --lat 60.1699 --lon 24.9384 --week 24 --rerank
 
 **Note:** You must provide either `--week` OR `--month`+`--day`, but not both.
 
+`--geomodel-path`, `--geomodel-labels-path` and `--yes` are global options, so they parse on every command, but only commands that use the geomodel read them (`analyze`, `species`, `models check` and `models install`). Given to any other command they are accepted and do nothing. `models install geomodel` always installs to birda's models directory and ignores the two path flags.
+
 ### How It Works
 
 1. The BirdNET Geomodel predicts an occurrence probability for each of its 12,012 species at your location and date
@@ -328,10 +330,14 @@ type = "birdnet-v24"
 
 [defaults]
 model = "birdnet-v24"
-geomodel = "~/.local/share/birda/models/birdnet-geomodel-v3.0.2.onnx"
-geomodel_labels = "~/.local/share/birda/models/birdnet-geomodel-v3.0.2-labels.txt"
+geomodel = "/home/user/.local/share/birda/models/birdnet-geomodel-v3.0.2.onnx"
+geomodel_labels = "/home/user/.local/share/birda/models/birdnet-geomodel-v3.0.2-labels.txt"
 range_unmatched = "keep"
 ```
+
+`geomodel` and `geomodel_labels` only work as a pair. If one is set without the other, `analyze` skips range filtering with a warning and `birda species` fails; `birda config set` prints a warning naming the missing key after it saves the first one. Paths are used exactly as written, so give absolute paths: a leading `~` is not expanded.
+
+`birda models check` reports the geomodel at these configured paths, the same files `analyze` would load. To stop using an installed geomodel, run `birda models remove geomodel` (add `--purge` to delete its files from birda's models directory too).
 
 The old per-model `meta_model` key is ignored. birda warns once when it sees one and drops it the next time the config is written.
 

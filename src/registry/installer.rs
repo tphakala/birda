@@ -120,6 +120,20 @@ pub fn resolve_url(url: &str) -> String {
         .map_or_else(|| url.to_string(), |rest| format!("{endpoint}{rest}"))
 }
 
+/// Remove a partial download, logging why when it cannot be removed.
+///
+/// Best effort: the caller is already returning the real error, so a failure
+/// here must not replace it. It is logged rather than swallowed, because a stale
+/// `.part` file left on a read-only or cross-filesystem path is otherwise
+/// undiagnosable.
+async fn discard_part_file(part: &Path) {
+    if let Err(e) = tokio::fs::remove_file(part).await
+        && e.kind() != std::io::ErrorKind::NotFound
+    {
+        tracing::debug!("could not remove partial download {}: {e}", part.display());
+    }
+}
+
 /// Download a file with progress bar.
 pub async fn download_file(client: &Client, url: &str, dest: &Path) -> Result<()> {
     download_verified(client, url, dest, None).await
@@ -196,7 +210,7 @@ pub async fn download_verified(
     if let Err(e) = result {
         // Best effort cleanup: the part file is useless without the rename,
         // and leaving it behind would waste disk on a retry loop.
-        drop(tokio::fs::remove_file(&part).await);
+        discard_part_file(&part).await;
         return Err(e);
     }
 
@@ -205,7 +219,7 @@ pub async fn download_verified(
     if let Some(sum) = expected_sha256
         && let Err(e) = crate::update::checksum::verify_sha256(&part, sum)
     {
-        drop(tokio::fs::remove_file(&part).await);
+        discard_part_file(&part).await;
         return Err(e);
     }
 

@@ -18,7 +18,10 @@ pub use installer::{
     install_model, install_range_filter, install_variant, models_dir, parse_bat_install_id,
     resolve_url,
 };
-pub use license::{LicensedAsset, prompt_license_acceptance};
+pub use license::{
+    LicensedAsset, disclosure_line, license_details, license_line, prompt_license_acceptance,
+    side_install_notice,
+};
 pub use loader::{find_model, load_registry};
 // Only what callers outside this module actually name. `HardwareProbe`,
 // `VariantChoice` and `SelectionReason` stay reachable as
@@ -53,6 +56,7 @@ pub fn list_available(registry: &Registry, output_mode: crate::config::OutputMod
                 recommended: m.recommended,
                 license: m.license.r#type.clone(),
                 commercial_use: m.license.commercial_use,
+                share_alike: m.license.share_alike,
             })
             .collect();
         let payload = AvailableModelsPayload {
@@ -168,30 +172,6 @@ pub fn species_count_label(classes: Option<usize>) -> String {
     )
 }
 
-/// Render a licence identifier with the restrictions that apply to it.
-///
-/// One renderer for classifiers and the range filter alike. Listing them
-/// separately taught a falsehood: the classifier loop showed only
-/// `(non-commercial)` and the range filter showed only `(share-alike)`, so
-/// `birdnet-v24` and `bsg-fi-v44` listed without a share-alike note even though
-/// both carry that obligation. Whichever restrictions apply are now named on
-/// every entry.
-fn license_line(license: &LicenseInfo) -> String {
-    let mut notes = Vec::new();
-    if !license.commercial_use {
-        notes.push("non-commercial");
-    }
-    if license.share_alike {
-        notes.push("share-alike");
-    }
-
-    if notes.is_empty() {
-        license.r#type.clone()
-    } else {
-        format!("{} ({})", license.r#type, notes.join(", "))
-    }
-}
-
 /// Project the shared range filter asset into its structured-output shape.
 fn available_range_filter(asset: &RangeFilterAsset) -> crate::output::AvailableRangeFilterEntry {
     crate::output::AvailableRangeFilterEntry {
@@ -241,34 +221,7 @@ pub fn show_range_filter_info(asset: &RangeFilterAsset) {
     println!("  classifier; it is not selectable with -m.");
     println!();
 
-    println!("License:");
-    println!("  Type: {}", asset.license.r#type);
-    println!("  URL: {}", asset.license.url);
-    println!(
-        "  Commercial use: {}",
-        if asset.license.commercial_use {
-            "Yes"
-        } else {
-            "No"
-        }
-    );
-    println!(
-        "  Attribution required: {}",
-        if asset.license.attribution_required {
-            "Yes"
-        } else {
-            "No"
-        }
-    );
-    println!(
-        "  Share-alike required: {}",
-        if asset.license.share_alike {
-            "Yes"
-        } else {
-            "No"
-        }
-    );
-    println!();
+    print!("{}", license_details(&asset.license));
 
     println!("Files:");
     println!("  Model: {}", asset.model.url);
@@ -301,26 +254,7 @@ pub fn show_bat_info(catalog: &BatCatalog, entry: &BatRegionEntry) {
     println!("  --bat {}; not selectable with -m.", entry.region);
     println!();
 
-    println!("License:");
-    println!("  Type: {}", catalog.license.r#type);
-    println!("  URL: {}", catalog.license.url);
-    println!(
-        "  Commercial use: {}",
-        if catalog.license.commercial_use {
-            "Yes"
-        } else {
-            "No"
-        }
-    );
-    println!(
-        "  Attribution required: {}",
-        if catalog.license.attribution_required {
-            "Yes"
-        } else {
-            "No"
-        }
-    );
-    println!();
+    print!("{}", license_details(&catalog.license));
 
     println!("Files:");
     println!("  Classifier: {}", entry.model.url);
@@ -371,34 +305,7 @@ pub fn show_info(registry: &Registry, id: &str) -> Result<()> {
     println!("  {}", model.description);
     println!();
 
-    println!("License:");
-    println!("  Type: {}", model.license.r#type);
-    println!("  URL: {}", model.license.url);
-    println!(
-        "  Commercial use: {}",
-        if model.license.commercial_use {
-            "Yes"
-        } else {
-            "No"
-        }
-    );
-    println!(
-        "  Attribution required: {}",
-        if model.license.attribution_required {
-            "Yes"
-        } else {
-            "No"
-        }
-    );
-    println!(
-        "  Share-alike required: {}",
-        if model.license.share_alike {
-            "Yes"
-        } else {
-            "No"
-        }
-    );
-    println!();
+    print!("{}", license_details(&model.license));
 
     if let Some(files) = model.files.as_ref() {
         println!("Files:");
@@ -716,33 +623,6 @@ mod tests {
             attribution_required: true,
             share_alike,
         }
-    }
-
-    #[test]
-    fn test_license_line_names_every_restriction_that_applies() {
-        // The defect this replaced: the classifier loop showed only
-        // "(non-commercial)" and the range filter only "(share-alike)", so
-        // birdnet-v24 and bsg-fi-v44 listed with no share-alike note despite
-        // carrying that obligation. Both restrictions must show together.
-        let line = license_line(&license(false, true));
-
-        assert!(line.contains("non-commercial"), "got: {line}");
-        assert!(line.contains("share-alike"), "got: {line}");
-    }
-
-    #[test]
-    fn test_license_line_names_share_alike_on_a_commercial_licence() {
-        // The geomodel's shape: CC BY-SA permits commercial use but still binds
-        // share-alike, so the note must not be suppressed by commercial_use.
-        let line = license_line(&license(true, true));
-
-        assert!(!line.contains("non-commercial"), "got: {line}");
-        assert!(line.contains("share-alike"), "got: {line}");
-    }
-
-    #[test]
-    fn test_license_line_adds_nothing_for_an_unrestricted_licence() {
-        assert_eq!(license_line(&license(true, false)), "TEST-1.0");
     }
 
     fn projection_variant(id: &str, region: Option<&str>) -> ModelVariant {

@@ -85,7 +85,7 @@ birda recording.wav --lat 60.1699 --lon 24.9384 --week 24 --rerank
 
 **Note:** You must provide either `--week` OR `--month`+`--day`, but not both.
 
-`--geomodel-path`, `--geomodel-labels-path` and `--yes` are global options, so they parse on every command, but only commands that use the geomodel read them (`analyze`, `species`, `models check` and `models install`). Given to any other command they are accepted and do nothing. `models install geomodel` always installs to birda's models directory and ignores the two path flags.
+`--geomodel-path`, `--geomodel-labels-path` and `--yes` are global options, so they parse on every command. The two path flags are read by `analyze`, `species` and `models check`; `models install` ignores them and always installs to birda's models directory, the geomodel it installs alongside a classifier included. `--yes` is read by the commands that prompt: `analyze`, `species`, `models install` and `models remove` (which prompts for a bat region, and for anything else only with `--purge`, unless the output mode is structured). Given to any other command they are accepted and do nothing.
 
 ### How It Works
 
@@ -337,7 +337,7 @@ range_unmatched = "keep"
 
 `geomodel` and `geomodel_labels` only work as a pair. If one is set without the other, `analyze` skips range filtering with a warning and `birda species` fails; `birda config set` prints a warning naming the missing key after it saves the first one. Paths are used exactly as written, so give absolute paths: a leading `~` is not expanded.
 
-`birda models check` reports the geomodel at these configured paths, the same files `analyze` would load. To stop using an installed geomodel, run `birda models remove geomodel` (add `--purge` to delete its files from birda's models directory too).
+`birda models check` reports the geomodel at these configured paths, the same files `analyze` would load. To remove the geomodel, run `birda models remove geomodel --purge`. It deletes the files birda installed, the recorded ones and the copy at birda's own install location, and only files inside the models directory. Without `--purge` the command only clears `defaults.geomodel` and `defaults.geomodel_labels`, and while the files are still in the models directory `analyze` keeps using them. A geomodel that a classifier install or the download on `analyze` fetched is not recorded in the config, so a plain `models remove geomodel` fails for it and says to use `--purge`.
 
 The old per-model `meta_model` key is ignored. birda warns once when it sees one and drops it the next time the config is written.
 

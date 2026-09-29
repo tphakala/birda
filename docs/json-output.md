@@ -250,7 +250,7 @@ birda --output-mode json models check
 
 `model_installed` carries `id`, `set_as_default`, `model_path` and `labels_path`, and `region`, `variant` and `selection_reason` when they apply. `models install geomodel` emits it with `id` `geomodel`; the two paths are the files it recorded in `defaults.geomodel` and `defaults.geomodel_labels`.
 
-`model_removed` carries `id`, `purge_requested` and `new_default`. `models remove geomodel` clears `defaults.geomodel` and `defaults.geomodel_labels`; with `--purge` it deletes those files only when they are inside birda's models directory.
+`model_removed` carries `id`, `purge_requested` and `new_default`. `models remove geomodel` clears `defaults.geomodel` and `defaults.geomodel_labels`; with `--purge` it also deletes the recorded files and the copy at birda's own install location, only when they are inside birda's models directory. A plain remove leaves the files, and while they are in that directory `analyze` still uses them; the result does not say so, so birda logs a warning on stderr. A geomodel installed alongside a classifier is not recorded in the configuration: `models remove geomodel` fails for it, and `models remove geomodel --purge` deletes it.
 
 ### Model Manifest
 
@@ -521,7 +521,10 @@ Error severities:
 - `fatal` - Operation cannot continue
 - `warning` - Operation continues with issues
 
-A command that fails outright is not reported as a JSON event. birda prints `error: <message>` to stderr and exits non-zero: 1 for a failed command, 2 for a command-line usage error. Treat every non-zero exit as a failure and show stderr; a result already written to stdout before the failure describes what completed.
+A command that fails outright is not reported as a JSON event. birda prints `error: <message>` to stderr and exits non-zero: 1 for a failed command, 2 for a command-line usage error. An interrupt exits 130 without an error line. Treat every non-zero exit as a failure and show stderr. Most failures leave stdout empty, but a result written before the failure describes what completed, so read it when it is there:
+
+- `birda clip` emits its `clip_extraction` result, with the failures under `failed_files`, and then exits 1 when every file failed.
+- `models remove --purge` on a configured model or the geomodel emits its `model_removed` result and then exits 1 when a file cannot be deleted after the configuration change was saved. When the geomodel was not recorded in the configuration there is no such change, and nothing is emitted.
 
 Warnings such as "Range filtering disabled" also go to stderr, not into the JSON envelope. A `null` `range_filter` in a detections payload therefore does not say whether range filtering was never requested or was requested and skipped; check stderr for the reason.
 

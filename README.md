@@ -880,7 +880,7 @@ The shared range filter, used by every classifier. It predicts an occurrence pro
 
 Installed automatically alongside any classifier, or downloaded on first use when you pass `--lat`/`--lon`. See [docs/species-list-usage.md](docs/species-list-usage.md) for coverage details and the `--range-unmatched` option.
 
-Remove it with `birda models remove geomodel`; add `--purge` to delete its files as well.
+Remove it with `birda models remove geomodel --purge`. Without `--purge` it only clears the config keys, and birda keeps using the files in its models directory.
 
 Powered by [BirdNET](https://birdnet.cornell.edu/).
 

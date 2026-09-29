@@ -453,6 +453,22 @@ pub struct ModelInfoPayload {
     pub model: ModelDetails,
 }
 
+/// Licence terms of a registry entry, as shown by `birda models info`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LicenseDetails {
+    /// SPDX licence identifier.
+    #[serde(rename = "type")]
+    pub r#type: String,
+    /// URL of the full licence text.
+    pub url: String,
+    /// Whether commercial use is allowed.
+    pub commercial_use: bool,
+    /// Whether attribution is required.
+    pub attribution_required: bool,
+    /// Whether derivatives must be shared under the same licence.
+    pub share_alike: bool,
+}
+
 /// Detailed model information.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ModelDetails {
@@ -468,6 +484,10 @@ pub struct ModelDetails {
     pub labels_path: Option<PathBuf>,
     /// Source (configured or registry).
     pub source: String,
+    /// Licence terms, present for registry entries (a configured model has no
+    /// registry record to take them from).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub license: Option<LicenseDetails>,
 }
 
 /// Payload for providers result.
@@ -633,6 +653,14 @@ pub struct AvailableModelEntry {
     pub license: String,
     /// Whether commercial use is allowed.
     pub commercial_use: bool,
+    /// Whether derivatives must be shared under the same licence.
+    ///
+    /// Defaults to `false` when absent so output written by an earlier birda
+    /// still deserialises. The range filter and bat entries already carried it;
+    /// classifiers did not, so a consumer could show the geomodel's obligation
+    /// and none of theirs.
+    #[serde(default)]
+    pub share_alike: bool,
 }
 
 /// Payload for model check result.
@@ -1100,6 +1128,7 @@ mod tests {
                 recommended: true,
                 license: "CC-BY-NC-SA-4.0".to_string(),
                 commercial_use: false,
+                share_alike: true,
             }],
             available_range_filter: None,
             available_bat: None,
@@ -1117,7 +1146,8 @@ mod tests {
                 "model_type": "birdnet-v24",
                 "recommended": true,
                 "license": "CC-BY-NC-SA-4.0",
-                "commercial_use": false
+                "commercial_use": false,
+                "share_alike": true
             }]
         });
         assert_eq!(actual, expected);

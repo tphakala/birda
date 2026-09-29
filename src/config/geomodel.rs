@@ -215,6 +215,22 @@ fn acquire(
     Ok(GeomodelResolution::Ready(installed))
 }
 
+/// The text shown before the implicit download prompt.
+///
+/// Names the obligations, not just the SPDX identifier: the geomodel is CC BY-SA
+/// (commercial use allowed, share-alike required), which is not what the
+/// classifiers the user has already accepted are licensed under.
+fn download_prompt_text(asset: &crate::registry::RangeFilterAsset) -> String {
+    format!(
+        "Range filtering needs the {}, which is not installed.\n  Model: {}    Labels: {}\n  Licence: {}\n  Terms: {}\n",
+        asset.name,
+        human_size(asset.model.size_bytes),
+        human_size(asset.labels.size_bytes),
+        crate::registry::license_line(&asset.license),
+        asset.license.url
+    )
+}
+
 /// Ask the user whether to download the geomodel.
 #[allow(clippy::print_stderr)]
 fn prompt_for_download(asset: &crate::registry::RangeFilterAsset) -> Result<bool> {
@@ -222,16 +238,7 @@ fn prompt_for_download(asset: &crate::registry::RangeFilterAsset) -> Result<bool
     // terminal, so `birda ... > results.txt` from a terminal still prompts; on
     // stdout the prompt would land in the redirected file and the user would
     // see an unexplained hang on the read below.
-    eprintln!(
-        "Range filtering needs the {}, which is not installed.",
-        asset.name
-    );
-    eprintln!(
-        "  Model: {}    Labels: {}    Licence: {}",
-        human_size(asset.model.size_bytes),
-        human_size(asset.labels.size_bytes),
-        asset.license.r#type
-    );
+    eprint!("{}", download_prompt_text(asset));
     eprint!("Download it now? [y/N]: ");
     std::io::stderr().flush()?;
 
@@ -412,6 +419,20 @@ mod tests {
     #[test]
     fn test_host_of_falls_back_to_the_whole_string() {
         assert_eq!(host_of("not-a-url"), "not-a-url");
+    }
+
+    #[test]
+    fn test_download_prompt_states_the_obligations_and_the_terms_url() {
+        // The prompt used to print only the SPDX identifier, so a user never saw
+        // that the geomodel binds share-alike. Whole-value compare: a substring
+        // check would pass on a prompt that named the licence and nothing else.
+        assert_eq!(
+            download_prompt_text(&test_asset()),
+            "Range filtering needs the BirdNET Geomodel v3.0.2, which is not installed.\n  \
+             Model: 14.0 MB    Labels: 468 KB\n  \
+             Licence: CC-BY-SA-4.0 (share-alike)\n  \
+             Terms: https://creativecommons.org/licenses/by-sa/4.0/\n"
+        );
     }
 
     fn test_asset() -> crate::registry::RangeFilterAsset {

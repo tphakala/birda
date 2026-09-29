@@ -1968,6 +1968,7 @@ fn handle_models_command(
                             path: None,
                             labels_path: None,
                             source: "registry".to_string(),
+                            license: Some((&asset.license).into()),
                         },
                     };
                     emit_json_result(&payload);
@@ -2004,6 +2005,7 @@ fn handle_models_command(
                             path: None,
                             labels_path: None,
                             source: "registry".to_string(),
+                            license: Some((&catalog.license).into()),
                         },
                     };
                     emit_json_result(&payload);
@@ -2025,6 +2027,7 @@ fn handle_models_command(
                             path: None,
                             labels_path: None,
                             source: "registry".to_string(),
+                            license: Some((&reg_model.license).into()),
                         },
                     };
                     emit_json_result(&payload);
@@ -2051,6 +2054,7 @@ fn handle_models_command(
                             path: Some(model.path.clone()),
                             labels_path: Some(model.labels.clone()),
                             source: "configured".to_string(),
+                            license: None,
                         },
                     };
                     emit_json_result(&payload);
@@ -2490,6 +2494,20 @@ fn handle_models_install(
     // Ensure the shared range filter is present so a fresh install can range
     // filter immediately. A failure here is a warning, not an error: the
     // classifier itself installed fine and works without range filtering.
+    if let Some(asset) = registry.range_filter.as_ref()
+        && !output_mode.is_structured()
+        && registry::geomodel_paths(asset).is_ok_and(|paths| !paths.is_installed())
+    {
+        println!(
+            "{}",
+            registry::side_install_notice(registry::LicensedAsset {
+                name: &asset.name,
+                vendor: &asset.vendor,
+                version: &asset.version,
+                license: &asset.license,
+            })
+        );
+    }
     if let Some(asset) = registry.range_filter.as_ref()
         && let Err(e) = runtime.block_on(registry::install_range_filter(asset))
     {

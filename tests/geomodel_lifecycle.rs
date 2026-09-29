@@ -76,6 +76,37 @@ fn configure_geomodel(home: &Path, model: &Path, labels: &Path) {
     );
 }
 
+/// Seed the isolated home with a registry whose geomodel is already on disk.
+///
+/// The bundled registry with the geomodel's two filenames pointed at the test
+/// fixtures and their checksums dropped, which makes `install_range_filter`
+/// accept the files as they are instead of downloading 14 MB. A registry
+/// version above the bundled one keeps the cached copy. Returns the model and
+/// labels paths at the registry's own install location.
+fn seed_installed_registry_geomodel(home: &Path) -> (PathBuf, PathBuf) {
+    let bundled = Path::new(env!("CARGO_MANIFEST_DIR")).join("registry.json");
+    let mut registry: Value =
+        serde_json::from_slice(&std::fs::read(bundled).unwrap()).expect("bundled registry parses");
+    registry["registry_version"] = Value::from(9999);
+    let asset = &mut registry["range_filter"];
+    for (key, filename) in [
+        ("model", "seeded-geomodel.onnx"),
+        ("labels", "seeded-geomodel-labels.txt"),
+    ] {
+        asset[key]["filename"] = Value::from(filename);
+        asset[key].as_object_mut().unwrap().remove("sha256");
+    }
+    std::fs::write(home.join("registry.json"), registry.to_string()).unwrap();
+
+    let models = home.join("models");
+    std::fs::create_dir_all(&models).unwrap();
+    let model = models.join("seeded-geomodel.onnx");
+    let labels = models.join("seeded-geomodel-labels.txt");
+    std::fs::copy(fixture("fixture-geomodel.onnx"), &model).unwrap();
+    std::fs::copy(fixture("fixture-geomodel-labels.txt"), &labels).unwrap();
+    (model, labels)
+}
+
 fn config_text(home: &Path) -> String {
     let path = home.join("config.toml");
     std::fs::read_to_string(&path).unwrap_or_default()
@@ -228,4 +259,43 @@ fn test_config_set_warns_about_a_half_configured_geomodel() {
         ],
     );
     assert_eq!(String::from_utf8_lossy(&second.stderr), "");
+}
+
+#[test]
+fn test_check_reports_a_half_configured_geomodel_as_not_installed() {
+    let home = tempfile::tempdir().unwrap();
+    // A copy exists at the registry's own location, so a check that fell back to
+    // that path would report "installed" for a config `analyze` cannot use.
+    seed_installed_registry_geomodel(home.path());
+    ok_in(
+        home.path(),
+        &[
+            "config",
+            "set",
+            "defaults.geomodel",
+            "/elsewhere/model.onnx",
+        ],
+    );
+
+    let output = ok_in(home.path(), &["--output-mode", "json", "models", "check"]);
+    let geomodel = payload_of(&output)["geomodel"].clone();
+
+    assert_eq!(geomodel["installed"], false, "got: {geomodel}");
+    assert!(geomodel.get("model_path").is_none(), "got: {geomodel}");
+    assert!(geomodel.get("labels_path").is_none(), "got: {geomodel}");
+}
+
+#[test]
+fn test_check_reports_the_registry_copy_when_nothing_is_configured() {
+    // The counterpart of the test above: it is only meaningful if the seeded copy
+    // is otherwise reported installed.
+    let home = tempfile::tempdir().unwrap();
+    let (model, labels) = seed_installed_registry_geomodel(home.path());
+
+    let output = ok_in(home.path(), &["--output-mode", "json", "models", "check"]);
+    let geomodel = payload_of(&output)["geomodel"].clone();
+
+    assert_eq!(geomodel["installed"], true, "got: {geomodel}");
+    assert_eq!(geomodel["model_path"], path_str(&model));
+    assert_eq!(geomodel["labels_path"], path_str(&labels));
 }

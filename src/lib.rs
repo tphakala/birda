@@ -2682,6 +2682,12 @@ fn handle_models_install(
 /// in [`config::resolve_geomodel`]. Without that, a valid geomodel at a
 /// configured custom path reads as "not installed", and the advice to install
 /// it downloads a second copy and overwrites the user's setting.
+///
+/// Only one of the two paths being set is reported as "not installed" with a
+/// warning, not as an error: `config set` writes one key per call, so that state
+/// is reachable, and this is the command a user runs to find out what is wrong.
+/// It does not fall back to the registry copy, because `analyze` does not either
+/// (`configured_paths` rejects the pair).
 fn check_geomodel(
     registry: &registry::Registry,
     config: &config::Config,
@@ -2692,9 +2698,15 @@ fn check_geomodel(
         .as_ref()
         .ok_or(Error::RangeFilterAssetMissing)?;
 
-    let paths = config::configured_paths(request, config)?
-        .map_or_else(|| registry::geomodel_paths(asset), Ok)?;
-    let installed = paths.is_installed();
+    let paths = match config::configured_paths(request, config) {
+        Ok(configured) => Some(configured.map_or_else(|| registry::geomodel_paths(asset), Ok)?),
+        Err(e @ Error::GeomodelPathsIncomplete { .. }) => {
+            warn!("{e}");
+            None
+        }
+        Err(e) => return Err(e),
+    };
+    let installed_paths = paths.filter(registry::InstalledRangeFilter::is_installed);
     // Advisory only, so a failure must not fail the check, but it is logged: an
     // empty list here would otherwise read as "nothing left over".
     let obsolete_files = registry::models_dir()
@@ -2706,10 +2718,10 @@ fn check_geomodel(
 
     Ok(output::GeomodelInfo {
         version: asset.version.clone(),
-        installed,
+        installed: installed_paths.is_some(),
         species_count: asset.species_count,
-        model_path: installed.then(|| paths.model.clone()),
-        labels_path: installed.then(|| paths.labels.clone()),
+        model_path: installed_paths.as_ref().map(|p| p.model.clone()),
+        labels_path: installed_paths.map(|p| p.labels),
         obsolete_files,
     })
 }

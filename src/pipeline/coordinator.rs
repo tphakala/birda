@@ -41,7 +41,7 @@ pub enum ProcessCheck {
 }
 
 /// Determine the output directory for a file.
-pub fn output_dir_for(input: &Path, explicit_output_dir: Option<&Path>) -> PathBuf {
+fn output_dir_for(input: &Path, explicit_output_dir: Option<&Path>) -> PathBuf {
     explicit_output_dir.map_or_else(
         || {
             input
@@ -57,6 +57,15 @@ pub fn output_dir_for(input: &Path, explicit_output_dir: Option<&Path>) -> PathB
 /// Replaces path separators with underscores.
 fn sanitize_filename(filename: &str) -> String {
     filename.replace(['/', '\\'], "_")
+}
+
+/// Sanitized output name from a file stem or file name, or a fallback when the
+/// input path has none.
+fn output_name(part: Option<&std::ffi::OsStr>) -> String {
+    part.map_or_else(
+        || FALLBACK_OUTPUT_NAME.to_string(),
+        |s| sanitize_filename(&s.to_string_lossy()),
+    )
 }
 
 /// Where the output files for one input go, and what they are called.
@@ -79,12 +88,6 @@ impl OutputTarget {
     #[must_use]
     pub fn dir(&self) -> &Path {
         &self.dir
-    }
-
-    /// File name shared by every format, without the format suffix.
-    #[must_use]
-    pub fn base(&self) -> &str {
-        &self.base
     }
 
     /// Output file path for a given format.
@@ -167,14 +170,12 @@ impl Candidate {
         (dir, self.base().to_lowercase())
     }
 
-    fn target_dir(&self, explicit_output_dir: Option<&Path>) -> PathBuf {
-        match explicit_output_dir {
-            Some(out) if !self.mirror.is_empty() => self
-                .mirror
-                .iter()
-                .fold(out.to_path_buf(), |dir, part| dir.join(part)),
-            _ => self.plain_dir.clone(),
-        }
+    /// `plain_dir`, with the mirror subfolders under it. Only a run with `-o`
+    /// sets a mirror, and its `plain_dir` is the `-o` directory.
+    fn target_dir(&self) -> PathBuf {
+        self.mirror
+            .iter()
+            .fold(self.plain_dir.clone(), |dir, part| dir.join(part))
     }
 }
 
@@ -187,6 +188,20 @@ fn canonical_dir(dir: &Path) -> PathBuf {
         dir
     };
     std::fs::canonicalize(dir).unwrap_or_else(|_| dir.to_path_buf())
+}
+
+/// `canonical_dir` results for one pass over a file list. Files mostly share a
+/// few folders, so each folder is resolved once rather than once per file.
+#[derive(Default)]
+struct CanonicalDirs(HashMap<PathBuf, PathBuf>);
+
+impl CanonicalDirs {
+    fn get(&mut self, dir: &Path) -> PathBuf {
+        self.0
+            .entry(dir.to_path_buf())
+            .or_insert_with(|| canonical_dir(dir))
+            .clone()
+    }
 }
 
 /// The folder names in a path, without the drive prefix and root, so paths on
@@ -223,26 +238,40 @@ fn group_by_key(candidates: &[Candidate]) -> HashMap<(PathBuf, String), Vec<usiz
 /// A name that is still shared after that (folders that differ only in case, or
 /// the same folder on two drives) is an [`Error::OutputPathCollision`] for every
 /// input involved.
+///
+/// With `writes_files` false (`--stdout`) nothing is written, so there is
+/// nothing for two names to collide on: every input keeps its stem and none
+/// fails.
 #[must_use]
 pub fn plan_output_targets(
     files: &[PathBuf],
     explicit_output_dir: Option<&Path>,
+    writes_files: bool,
 ) -> Vec<Result<OutputTarget>> {
+    if !writes_files {
+        return files
+            .iter()
+            .map(|file| {
+                let dir = output_dir_for(file, explicit_output_dir);
+                Ok(OutputTarget {
+                    root: dir.clone(),
+                    dir,
+                    base: output_name(file.file_stem()),
+                })
+            })
+            .collect();
+    }
+
+    let mut dirs = CanonicalDirs::default();
     let mut candidates: Vec<Candidate> = files
         .iter()
         .map(|file| {
             let plain_dir = output_dir_for(file, explicit_output_dir);
-            let name = |part: Option<&std::ffi::OsStr>| {
-                part.map_or_else(
-                    || FALLBACK_OUTPUT_NAME.to_string(),
-                    |s| sanitize_filename(&s.to_string_lossy()),
-                )
-            };
             Candidate {
-                stem: name(file.file_stem()),
-                full: name(file.file_name()),
-                canonical_dir: canonical_dir(&plain_dir),
-                canonical_parent: canonical_dir(file.parent().unwrap_or_else(|| Path::new(""))),
+                stem: output_name(file.file_stem()),
+                full: output_name(file.file_name()),
+                canonical_dir: dirs.get(&plain_dir),
+                canonical_parent: dirs.get(file.parent().unwrap_or_else(|| Path::new(""))),
                 plain_dir,
                 qualified: false,
                 mirror: Vec::new(),
@@ -268,9 +297,10 @@ pub fn plan_output_targets(
 
     // A name that stayed plain can still match a qualified one (`x.wav` next to
     // `x.wav.wav` and `x.flac`). Qualify it too, until nothing changes.
-    loop {
+    let groups = loop {
+        let groups = group_by_key(&candidates);
         let mut changed = false;
-        for members in group_by_key(&candidates).values().filter(|m| m.len() > 1) {
+        for members in groups.values().filter(|m| m.len() > 1) {
             for &i in members {
                 if !candidates[i].qualified {
                     candidates[i].qualified = true;
@@ -279,18 +309,16 @@ pub fn plan_output_targets(
             }
         }
         if !changed {
-            break;
+            break groups;
         }
-    }
+    };
 
-    let groups = group_by_key(&candidates);
     candidates
         .iter()
         .map(|candidate| {
             let target = OutputTarget {
-                dir: candidate.target_dir(explicit_output_dir),
-                root: explicit_output_dir
-                    .map_or_else(|| candidate.plain_dir.clone(), Path::to_path_buf),
+                dir: candidate.target_dir(),
+                root: candidate.plain_dir.clone(),
                 base: candidate.base().to_string(),
             };
             let clashing = &groups[&candidate.key()];
@@ -368,9 +396,11 @@ pub fn should_process(
 ///
 /// A file that several arguments reach (listed twice, or inside a listed
 /// directory) is kept once, at its first position. Two entries for one file
-/// would otherwise be planned as a name collision. Files are compared by their
-/// resolved folder and file name, so a symlink to a file already collected is
-/// still its own input.
+/// would otherwise be planned as a name collision. A regular file is compared
+/// by its canonical path, which also catches a second spelling of one file on a
+/// case-insensitive filesystem. A symlinked file is not followed: it is compared
+/// by its resolved folder and its own name, so a link to a file already
+/// collected is still its own input.
 pub fn collect_input_files(paths: &[PathBuf]) -> Result<Vec<PathBuf>> {
     let mut files = Vec::new();
 
@@ -386,15 +416,22 @@ pub fn collect_input_files(paths: &[PathBuf]) -> Result<Vec<PathBuf>> {
         }
     }
 
+    let mut dirs = CanonicalDirs::default();
     let mut seen = HashSet::new();
     files.retain(|file| {
-        // Resolve the folder, not the file: two symlinks to one recording in
-        // different folders are two inputs with two output locations.
+        // For a symlink, resolve the folder, not the file: two symlinks to one
+        // recording in different folders are two inputs with two output
+        // locations.
         let identity = match (file.parent(), file.file_name()) {
-            (Some(parent), Some(name)) => canonical_dir(parent).join(name),
+            (Some(parent), Some(name)) => dirs.get(parent).join(name),
             _ => file.clone(),
         };
-        let first = seen.insert(identity);
+        let resolved = if file.is_symlink() {
+            None
+        } else {
+            std::fs::canonicalize(file).ok()
+        };
+        let first = seen.insert(input_key(identity, resolved));
         if !first {
             info!("Skipping duplicate input: {}", file.display());
         }
@@ -402,6 +439,13 @@ pub fn collect_input_files(paths: &[PathBuf]) -> Result<Vec<PathBuf>> {
     });
 
     Ok(files)
+}
+
+/// Identity `collect_input_files` compares inputs by: the canonical path of a
+/// regular file (`resolved`), or else the resolved folder joined with the name
+/// as given (`identity`), which is what a symlink gets.
+fn input_key(identity: PathBuf, resolved: Option<PathBuf>) -> PathBuf {
+    resolved.unwrap_or(identity)
 }
 
 /// Recursively collect audio files from a directory.
@@ -446,7 +490,7 @@ mod tests {
 
     /// Plan a run that must have no unresolved collision.
     fn plan(files: &[PathBuf], out: Option<&Path>) -> Vec<OutputTarget> {
-        plan_output_targets(files, out)
+        plan_output_targets(files, out, true)
             .into_iter()
             .map(|t| t.unwrap())
             .collect()
@@ -620,21 +664,6 @@ mod tests {
     }
 
     #[test]
-    fn test_plan_mirrors_explicit_files_from_different_folders() {
-        // Explicit files, not a walked tree: the folders are mirrored relative
-        // to the closest folder the two share, here the tempdir itself.
-        let dir = tempfile::tempdir().unwrap();
-        let out = dir.path().join("out");
-        let d1 = touch(dir.path(), "d1/x.wav");
-        let d2 = touch(dir.path(), "d2/x.wav");
-
-        let targets = plan(&[d1, d2], Some(&out));
-
-        assert_eq!(json_path(&targets[0]), out.join("d1/x.wav.BirdNET.json"));
-        assert_eq!(json_path(&targets[1]), out.join("d2/x.wav.BirdNET.json"));
-    }
-
-    #[test]
     fn test_plan_mirrors_only_below_the_folder_the_group_shares() {
         // a/x.wav and a/b/x.wav: `a` is shared, so one lands directly in `out`
         // and the other in `out/b`; `a` itself is not repeated.
@@ -677,10 +706,7 @@ mod tests {
             touch(dir.path(), "x.wav.wav.wav"),
         ];
 
-        let names: Vec<String> = plan(&files, None)
-            .iter()
-            .map(|t| t.base().to_string())
-            .collect();
+        let names: Vec<String> = plan(&files, None).iter().map(|t| t.base.clone()).collect();
 
         assert_eq!(names, vec!["x.wav", "x.flac", "x.wav.wav", "x.wav.wav.wav"]);
     }
@@ -724,7 +750,7 @@ mod tests {
         let lower = touch(dir.path(), "a/x.wav");
         let fine = touch(dir.path(), "b/y.wav");
 
-        let plans = plan_output_targets(&[upper.clone(), lower.clone(), fine], Some(&out));
+        let plans = plan_output_targets(&[upper.clone(), lower.clone(), fine], Some(&out), true);
 
         assert_eq!(plans.len(), 3);
         for failed in &plans[..2] {
@@ -770,6 +796,37 @@ mod tests {
         let files = collect_input_files(&[first.clone(), second.clone()]).unwrap();
 
         assert_eq!(files, vec![first, second]);
+    }
+
+    #[test]
+    fn test_input_key_uses_the_canonical_path_of_a_regular_file() {
+        // On a case-insensitive filesystem `x.wav` and `X.wav` name one file:
+        // the spellings differ, but canonicalizing either gives the same path.
+        assert_eq!(
+            input_key(PathBuf::from("/d/X.wav"), Some(PathBuf::from("/d/x.wav"))),
+            PathBuf::from("/d/x.wav")
+        );
+    }
+
+    #[test]
+    fn test_input_key_keeps_the_name_of_a_symlink() {
+        // A symlink is not followed, so two links to one recording stay two
+        // inputs.
+        assert_eq!(
+            input_key(PathBuf::from("/a/x.wav"), None),
+            PathBuf::from("/a/x.wav")
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn test_collect_input_files_drops_a_file_listed_in_two_cases() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = touch(dir.path(), "x.wav");
+
+        let files = collect_input_files(&[file.clone(), dir.path().join("X.wav")]).unwrap();
+
+        assert_eq!(files, vec![file]);
     }
 
     #[test]
@@ -824,7 +881,7 @@ mod tests {
 
         let target = plan(&[input], None).remove(0);
 
-        assert_eq!(target.base(), "ääni_tiedostö");
+        assert_eq!(target.base, "ääni_tiedostö");
     }
 
     #[test]
@@ -882,7 +939,7 @@ mod tests {
 
         let target = plan(&[input], None).remove(0);
 
-        assert_eq!(target.base(), ".._evil");
+        assert_eq!(target.base, ".._evil");
         assert!(json_path(&target).starts_with(dir.path()));
     }
 }

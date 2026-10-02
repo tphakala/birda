@@ -861,6 +861,20 @@ pub enum Error {
     },
 }
 
+impl Error {
+    /// Code for this error when it fails one file, reported in the JSON
+    /// envelope's `error.code` field.
+    #[must_use]
+    pub const fn file_error_code(&self) -> &'static str {
+        match self {
+            Self::OutputPathCollision { .. } => {
+                crate::constants::error_codes::OUTPUT_PATH_COLLISION
+            }
+            _ => crate::constants::error_codes::PROCESSING_ERROR,
+        }
+    }
+}
+
 /// Render input paths as a quoted, comma-separated list for error messages.
 fn join_paths(paths: &[std::path::PathBuf]) -> String {
     paths

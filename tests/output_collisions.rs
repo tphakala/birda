@@ -3,7 +3,7 @@
 //!
 //! The run needs a real classifier, so it needs the ONNX Runtime shared library
 //! and a model, which CI has neither of. The test skips, saying why, unless the
-//! runtime loads and `BIRDA_TEST_MODEL_PATH` and `BIRDA_TEST_LABELS_PATH` name a
+//! runtime loads and `BIRDA_TEST_MODEL` and `BIRDA_TEST_LABELS` name a
 //! `BirdNET` v2.4 model and its labels. Run with `cargo test -- --nocapture` to
 //! see the notice. The naming rules themselves are covered without a model by
 //! the unit tests in `src/pipeline/coordinator.rs`.
@@ -26,9 +26,9 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 /// Model file for the run (`BirdNET` v2.4).
-const MODEL_ENV: &str = "BIRDA_TEST_MODEL_PATH";
+const MODEL_ENV: &str = "BIRDA_TEST_MODEL";
 /// Labels file that goes with the model.
-const LABELS_ENV: &str = "BIRDA_TEST_LABELS_PATH";
+const LABELS_ENV: &str = "BIRDA_TEST_LABELS";
 /// Model type passed to birda for the model above.
 const MODEL_TYPE: &str = "birdnet-v24";
 /// Sample rate of the generated audio, the model's own, so no resampling runs.

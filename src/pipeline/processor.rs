@@ -11,7 +11,7 @@ use crate::output::{
 };
 use crate::pipeline::OutputTarget;
 use birdnet_onnx::CustomClassifier;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::mpsc::{Receiver, SyncSender, sync_channel};
 use std::thread::{self, JoinHandle};
 use tracing::{debug, info};
@@ -722,15 +722,19 @@ pub fn process_file(
 
     // Write output files if needed
     let outputs = if should_write_files {
-        write_all_outputs(
-            input_path,
-            output,
-            formats,
-            &detections,
-            csv_columns,
-            csv_bom_enabled,
-            json_config.as_ref(),
-        )?
+        for format in formats {
+            write_output(
+                input_path,
+                output,
+                *format,
+                &detections,
+                csv_columns,
+                csv_bom_enabled,
+                json_config.as_ref(),
+            )?;
+        }
+        // The same paths `write_output` wrote, from the one place that names them.
+        output.paths_for(formats)?
     } else {
         OutputFiles::new()
     };
@@ -815,32 +819,6 @@ pub struct JsonOutputConfig {
     pub week: Option<u8>,
 }
 
-/// Write detections in every requested format and return the files written.
-fn write_all_outputs(
-    input_path: &Path,
-    output: &OutputTarget,
-    formats: &[OutputFormat],
-    detections: &[Detection],
-    csv_columns: &[String],
-    csv_bom_enabled: bool,
-    json_config: Option<&JsonOutputConfig>,
-) -> Result<OutputFiles> {
-    let mut outputs = OutputFiles::new();
-    for format in formats {
-        let written = write_output(
-            input_path,
-            output,
-            *format,
-            detections,
-            csv_columns,
-            csv_bom_enabled,
-            json_config,
-        )?;
-        outputs.insert(*format, written);
-    }
-    Ok(outputs)
-}
-
 /// Write detections to an output file.
 #[allow(clippy::too_many_arguments)]
 fn write_output(
@@ -851,7 +829,7 @@ fn write_output(
     csv_columns: &[String],
     csv_bom_enabled: bool,
     json_config: Option<&JsonOutputConfig>,
-) -> Result<PathBuf> {
+) -> Result<()> {
     let output_path = output.path_for(format)?;
     debug!("Writing {} output: {}", format, output_path.display());
 
@@ -896,7 +874,7 @@ fn write_output(
     }
     writer.finalize()?;
 
-    Ok(output_path)
+    Ok(())
 }
 
 /// Result of processing a single file.
@@ -912,47 +890,4 @@ pub struct ProcessResult {
     pub audio_duration_secs: f64,
     /// Output files written, by format. Empty when no files were written.
     pub outputs: OutputFiles,
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::pipeline::plan_output_targets;
-
-    #[test]
-    fn test_write_all_outputs_returns_every_file_it_wrote() {
-        let dir = tempfile::tempdir().unwrap();
-        let input = dir.path().join("x.wav");
-        std::fs::write(&input, "").unwrap();
-        let target = plan_output_targets(std::slice::from_ref(&input), None)
-            .remove(0)
-            .unwrap();
-        let json_config = JsonOutputConfig {
-            model: "test".to_string(),
-            min_confidence: 0.1,
-            overlap: 0.0,
-            audio_duration: 3.0,
-            lat: None,
-            lon: None,
-            week: None,
-        };
-
-        let outputs = write_all_outputs(
-            &input,
-            &target,
-            &[OutputFormat::Csv, OutputFormat::Json],
-            &[],
-            &[],
-            false,
-            Some(&json_config),
-        )
-        .unwrap();
-
-        let expected = OutputFiles::from([
-            (OutputFormat::Csv, dir.path().join("x.BirdNET.results.csv")),
-            (OutputFormat::Json, dir.path().join("x.BirdNET.json")),
-        ]);
-        assert_eq!(outputs, expected);
-        assert!(expected.values().all(|p| p.exists()));
-    }
 }

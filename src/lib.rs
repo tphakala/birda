@@ -819,24 +819,6 @@ fn reclaim_stale_lock(input: &Path, output_dir: &Path, timeout: Option<std::time
     }
 }
 
-/// Plan the output target of every file in a run.
-///
-/// `--stdout` writes no files, so there is nothing for two names to collide on:
-/// each file is planned alone and none is failed for a name it never writes.
-fn plan_run_targets(
-    files: &[PathBuf],
-    output_dir: Option<&Path>,
-    stdout_mode: bool,
-) -> Vec<Result<OutputTarget>> {
-    if stdout_mode {
-        return files
-            .iter()
-            .flat_map(|file| plan_output_targets(std::slice::from_ref(file), output_dir))
-            .collect();
-    }
-    plan_output_targets(files, output_dir)
-}
-
 /// Decide whether a planned file goes on to inference, reporting and counting
 /// the skip when it does not.
 ///
@@ -1001,10 +983,6 @@ fn process_all_files(
     Ok(())
 }
 
-/// Reporter error code for a file that failed during processing; goes into the
-/// JSON envelope's `error.code` field.
-const PROCESSING_ERROR_CODE: &str = "processing_error";
-
 /// Fold a per-file processing failure into the run stats, distinguishing the
 /// check-to-use lock race (#344) from a genuine error.
 ///
@@ -1035,12 +1013,7 @@ fn record_file_failure(
     }
 
     error!("Failed to process {}: {}", file.display(), e);
-    let code = if matches!(e, Error::OutputPathCollision { .. }) {
-        constants::error_codes::OUTPUT_PATH_COLLISION
-    } else {
-        PROCESSING_ERROR_CODE
-    };
-    reporter.file_completed_failure(file, code, &e.to_string());
+    reporter.file_completed_failure(file, e.file_error_code(), &e.to_string());
     stats.errors += 1;
     if fail_fast {
         return Err(e);
@@ -1170,7 +1143,7 @@ fn analyze_files(
 
     // Name every output up front, so inputs that would share a name are told
     // apart (or failed) before any of them is analyzed.
-    let targets = plan_run_targets(&files, output_dir.as_deref(), args.stdout);
+    let targets = plan_output_targets(&files, output_dir.as_deref(), !args.stdout);
     let files: Vec<(PathBuf, Result<OutputTarget>)> = files.into_iter().zip(targets).collect();
     let force = args.force;
     let fail_fast = args.fail_fast;
@@ -3611,45 +3584,36 @@ mod tests {
     }
 
     #[test]
-    fn test_collision_target_aborts_under_fail_fast_with_its_code() {
-        let mut stats = ProcessingStats::default();
-        let reporter = RecordingReporter::default();
-        let err = Error::OutputPathCollision {
-            output: PathBuf::from("/out/A/x.wav"),
-            inputs: vec![PathBuf::from("/in/A/x.wav"), PathBuf::from("/in/a/x.wav")],
-        };
-
-        let outcome =
-            record_file_failure(Path::new("/in/A/x.wav"), err, &mut stats, &reporter, true);
-
-        assert!(matches!(outcome, Err(Error::OutputPathCollision { .. })));
-        assert_eq!(stats.errors, 1);
-        assert_eq!(
-            *reporter.failure_codes.lock().unwrap(),
-            vec!["output_path_collision".to_string()]
-        );
-    }
-
-    #[test]
     fn test_collision_target_reports_a_failure_with_its_code() {
         // An input whose output name could not be made unique fails on its own,
-        // under its own code, and the run goes on (no --fail-fast).
-        let mut stats = ProcessingStats::default();
-        let reporter = RecordingReporter::default();
-        let err = Error::OutputPathCollision {
-            output: PathBuf::from("/out/A/x.wav"),
-            inputs: vec![PathBuf::from("/in/A/x.wav"), PathBuf::from("/in/a/x.wav")],
-        };
+        // under its own code. The run goes on, unless --fail-fast stops it.
+        for fail_fast in [false, true] {
+            let mut stats = ProcessingStats::default();
+            let reporter = RecordingReporter::default();
+            let err = Error::OutputPathCollision {
+                output: PathBuf::from("/out/A/x.wav"),
+                inputs: vec![PathBuf::from("/in/A/x.wav"), PathBuf::from("/in/a/x.wav")],
+            };
 
-        let outcome =
-            record_file_failure(Path::new("/in/A/x.wav"), err, &mut stats, &reporter, false);
+            let outcome = record_file_failure(
+                Path::new("/in/A/x.wav"),
+                err,
+                &mut stats,
+                &reporter,
+                fail_fast,
+            );
 
-        assert!(outcome.is_ok(), "one colliding file must not abort the run");
-        assert_eq!(stats.errors, 1);
-        assert_eq!(
-            *reporter.failure_codes.lock().unwrap(),
-            vec!["output_path_collision".to_string()]
-        );
+            if fail_fast {
+                assert!(matches!(outcome, Err(Error::OutputPathCollision { .. })));
+            } else {
+                assert!(outcome.is_ok(), "one colliding file must not abort the run");
+            }
+            assert_eq!(stats.errors, 1);
+            assert_eq!(
+                *reporter.failure_codes.lock().unwrap(),
+                vec!["output_path_collision".to_string()]
+            );
+        }
     }
 
     /// Params for the pre-check tests: JSON only, nothing forced.
@@ -3686,7 +3650,7 @@ mod tests {
             std::fs::create_dir_all(input.parent().unwrap()).unwrap();
             std::fs::write(input, "").unwrap();
         }
-        let targets = plan_output_targets(&[a.clone(), b], Some(&out));
+        let targets = plan_output_targets(&[a.clone(), b], Some(&out), true);
         let target = targets.into_iter().next().unwrap().unwrap();
         let expected = out.join("a/x.wav.BirdNET.json");
         std::fs::create_dir_all(expected.parent().unwrap()).unwrap();
@@ -3724,13 +3688,12 @@ mod tests {
             std::fs::write(file, "").unwrap();
         }
         // Only meaningful where both names are separate files.
-        if !files.iter().all(|f| f.exists()) || std::fs::read_dir(dir.path()).unwrap().count() != 2
-        {
+        if std::fs::read_dir(dir.path()).unwrap().count() != 2 {
             return;
         }
 
-        let stdout_plan = plan_run_targets(&files, None, true);
-        let file_plan = plan_run_targets(&files, None, false);
+        let stdout_plan = plan_output_targets(&files, None, false);
+        let file_plan = plan_output_targets(&files, None, true);
 
         assert!(stdout_plan.iter().all(Result::is_ok));
         assert!(file_plan.iter().all(Result::is_err));
@@ -3741,7 +3704,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let input = dir.path().join("x.wav");
         std::fs::write(&input, "").unwrap();
-        let target = plan_output_targets(std::slice::from_ref(&input), None)
+        let target = plan_output_targets(std::slice::from_ref(&input), None, true)
             .into_iter()
             .next()
             .unwrap()

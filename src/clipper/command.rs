@@ -79,7 +79,7 @@ fn validate_float_args(args: &ClipArgs) -> Result<(), Error> {
 /// JSON `error`-event code for a detection file that failed to process.
 ///
 /// A named constant rather than an inline literal because it is an API-contract
-/// string a consumer keys on, mirroring `PROCESSING_ERROR_CODE` in `lib.rs`.
+/// string a consumer keys on, like those in `constants::error_codes`.
 const CLIP_FILE_FAILED_CODE: &str = "clip_file_failed";
 
 /// Execute clip extraction from CSV detection files.

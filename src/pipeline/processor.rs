@@ -6,12 +6,12 @@ use crate::error::Result;
 use crate::inference::{BatchInferenceContext, BirdClassifier, InferenceOptions};
 use crate::locking::FileLock;
 use crate::output::{
-    AudacityWriter, CsvWriter, Detection, JsonResultWriter, KaleidoscopeWriter, OutputWriter,
-    ParquetWriter, RavenWriter,
+    AudacityWriter, CsvWriter, Detection, JsonResultWriter, KaleidoscopeWriter, OutputFiles,
+    OutputWriter, ParquetWriter, RavenWriter,
 };
-use crate::pipeline::output_path_for;
+use crate::pipeline::OutputTarget;
 use birdnet_onnx::CustomClassifier;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::mpsc::{Receiver, SyncSender, sync_channel};
 use std::thread::{self, JoinHandle};
 use tracing::{debug, info};
@@ -424,7 +424,7 @@ pub fn process_file(
     use std::time::Instant;
 
     let input_path = config.input_path;
-    let output_dir = config.output_dir;
+    let output = config.output;
     let formats = config.formats;
     let min_confidence = config.min_confidence;
     let overlap = config.overlap;
@@ -447,7 +447,7 @@ pub fn process_file(
     // Acquire lock when writing files (file mode or dual output mode)
     let _lock = if reporter.is_none() || dual_output_mode {
         // File mode or dual output mode - need lock to prevent concurrent writes
-        Some(FileLock::acquire(input_path, output_dir)?)
+        Some(FileLock::acquire(input_path, output.dir())?)
     } else {
         // Pure stdout mode - no files written, no lock needed
         None
@@ -721,17 +721,19 @@ pub fn process_file(
     let should_write_files = dual_output_mode || reporter.is_none();
 
     // Write output files if needed
+    let mut outputs = OutputFiles::new();
     if should_write_files {
         for format in formats {
-            write_output(
+            let written = write_output(
                 input_path,
-                output_dir,
+                output,
                 *format,
                 &detections,
                 csv_columns,
                 csv_bom_enabled,
                 json_config.as_ref(),
             )?;
+            outputs.insert(*format, written);
         }
     }
 
@@ -792,6 +794,7 @@ pub fn process_file(
         segments: actual_segments,
         duration_secs,
         audio_duration_secs,
+        outputs,
     })
 }
 
@@ -818,14 +821,14 @@ pub struct JsonOutputConfig {
 #[allow(clippy::too_many_arguments)]
 fn write_output(
     input_path: &Path,
-    output_dir: &Path,
+    output: &OutputTarget,
     format: OutputFormat,
     detections: &[Detection],
     csv_columns: &[String],
     csv_bom_enabled: bool,
     json_config: Option<&JsonOutputConfig>,
-) -> Result<()> {
-    let output_path = output_path_for(input_path, output_dir, format)?;
+) -> Result<PathBuf> {
+    let output_path = output.path_for(format)?;
     debug!("Writing {} output: {}", format, output_path.display());
 
     let mut writer: Box<dyn OutputWriter> = match format {
@@ -869,7 +872,7 @@ fn write_output(
     }
     writer.finalize()?;
 
-    Ok(())
+    Ok(output_path)
 }
 
 /// Result of processing a single file.
@@ -883,4 +886,6 @@ pub struct ProcessResult {
     pub duration_secs: f64,
     /// Audio duration in seconds.
     pub audio_duration_secs: f64,
+    /// Output files written, by format. Empty when no files were written.
+    pub outputs: OutputFiles,
 }

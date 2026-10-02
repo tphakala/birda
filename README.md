@@ -170,6 +170,10 @@ birda *.wav
 # Analyze a directory
 birda /path/to/recordings/
 
+# Analyze a directory tree into one output directory; same-named files in
+# different folders get their own subfolders under results/
+birda -o results/ /path/to/recordings/
+
 # Analyze with GPU acceleration
 birda --gpu -b 64 recording.wav
 ```
@@ -435,6 +439,8 @@ All options can be set via environment variables:
 | `BIRDA_OUTPUT_MODE` | CLI output mode (human, json, ndjson) |
 
 ## Output Formats
+
+Result files are named `<input name>.BirdNET.<format suffix>` and written next to the input, or into the `-o` directory. When several inputs in one run would get the same name (`x.wav` and `x.flac` in one folder, or `a/x.wav` and `b/x.wav` with `-o out`), those outputs use the full input file name (`x.wav.BirdNET.results.csv`) and, with `-o`, a subfolder mirroring the input's folder (`out/a/`, `out/b/`). Inputs with a name of their own keep the plain name. See [Output File Names](docs/json-output.md#output-file-names) for the rules.
 
 ### CSV (default)
 

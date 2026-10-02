@@ -3,8 +3,10 @@
 //! This module provides structured JSON output for command-line operations,
 //! enabling birda to be used as a backend service for web frontends.
 
+use crate::config::OutputFormat;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 /// Current spec version for JSON envelope.
@@ -262,6 +264,12 @@ pub struct DownloadProgress {
     pub percent: f32,
 }
 
+/// Output files written for one input, keyed by format.
+///
+/// Serialized as a JSON object whose keys are the lowercase format names
+/// (`csv`, `raven`, `audacity`, `kaleidoscope`, `json`, `parquet`).
+pub type OutputFiles = BTreeMap<OutputFormat, PathBuf>;
+
 /// Payload for `file_completed` event.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FileCompletedPayload {
@@ -278,6 +286,13 @@ pub struct FileCompletedPayload {
     /// Error details (if failed).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<FileErrorInfo>,
+    /// Output files for this input, keyed by format.
+    ///
+    /// Present on `processed` events that wrote files and on `skipped` events
+    /// (the files that already exist). Absent for `locked` and `failed` events,
+    /// and in stdout mode.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub output_files: OutputFiles,
 }
 
 /// Error information for a file.
@@ -950,6 +965,19 @@ pub struct ClipExtractionFailure {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn test_file_completed_payload_without_output_files_deserializes() {
+        // Wire JSON from a birda that predates `output_files` must still parse,
+        // with the map empty.
+        let payload: super::FileCompletedPayload = serde_json::from_str(
+            r#"{"file":"x.wav","status":"processed","detections":2,"duration_ms":10}"#,
+        )
+        .unwrap();
+
+        assert_eq!(payload.file, std::path::PathBuf::from("x.wav"));
+        assert!(payload.output_files.is_empty());
+    }
+
     use super::*;
 
     #[test]

@@ -7,7 +7,7 @@ use crate::config::OutputMode;
 use crate::output::json_envelope::{
     BatchProgress, BsgMetadata, CancelReason, CancelledPayload, ErrorPayload, ErrorSeverity,
     EventType, FileCompletedPayload, FileErrorInfo, FileProgress, FileStartedPayload, FileStatus,
-    JsonEnvelope, PipelineCompletedPayload, PipelineStartedPayload, PipelineStatus,
+    JsonEnvelope, OutputFiles, PipelineCompletedPayload, PipelineStartedPayload, PipelineStatus,
     ProgressPayload,
 };
 use std::io::{self, Write};
@@ -42,14 +42,21 @@ pub trait ProgressReporter: Send + Sync {
     /// Report progress update.
     fn progress(&self, batch: Option<&BatchProgress>, file: Option<&FileProgress>);
 
-    /// Report file completion (success).
-    fn file_completed_success(&self, file: &Path, detections: usize, duration_ms: u64);
+    /// Report file completion (success). `outputs` lists the files written.
+    fn file_completed_success(
+        &self,
+        file: &Path,
+        detections: usize,
+        duration_ms: u64,
+        outputs: &OutputFiles,
+    );
 
     /// Report file completion (failure).
     fn file_completed_failure(&self, file: &Path, error_code: &str, error_message: &str);
 
-    /// Report file skipped.
-    fn file_skipped(&self, file: &Path, reason: FileStatus);
+    /// Report file skipped. `outputs` lists the files that already exist for a
+    /// skipped input; it is empty when none are known (a locked file).
+    fn file_skipped(&self, file: &Path, reason: FileStatus, outputs: &OutputFiles);
 
     /// Report pipeline completion.
     fn pipeline_completed(&self, summary: &PipelineSummary);
@@ -309,7 +316,13 @@ impl ProgressReporter for JsonProgressReporter {
         }
     }
 
-    fn file_completed_success(&self, file: &Path, detections: usize, duration_ms: u64) {
+    fn file_completed_success(
+        &self,
+        file: &Path,
+        detections: usize,
+        duration_ms: u64,
+        outputs: &OutputFiles,
+    ) {
         self.emit(
             EventType::FileCompleted,
             FileCompletedPayload {
@@ -318,6 +331,7 @@ impl ProgressReporter for JsonProgressReporter {
                 detections: Some(detections),
                 duration_ms: Some(duration_ms),
                 error: None,
+                output_files: outputs.clone(),
             },
         );
     }
@@ -334,11 +348,12 @@ impl ProgressReporter for JsonProgressReporter {
                     code: error_code.to_string(),
                     message: error_message.to_string(),
                 }),
+                output_files: OutputFiles::new(),
             },
         );
     }
 
-    fn file_skipped(&self, file: &Path, reason: FileStatus) {
+    fn file_skipped(&self, file: &Path, reason: FileStatus, outputs: &OutputFiles) {
         self.emit(
             EventType::FileCompleted,
             FileCompletedPayload {
@@ -347,6 +362,7 @@ impl ProgressReporter for JsonProgressReporter {
                 detections: None,
                 duration_ms: None,
                 error: None,
+                output_files: outputs.clone(),
             },
         );
     }
@@ -460,9 +476,16 @@ impl ProgressReporter for NullReporter {
     ) {
     }
     fn progress(&self, _batch: Option<&BatchProgress>, _file: Option<&FileProgress>) {}
-    fn file_completed_success(&self, _file: &Path, _detections: usize, _duration_ms: u64) {}
+    fn file_completed_success(
+        &self,
+        _file: &Path,
+        _detections: usize,
+        _duration_ms: u64,
+        _outputs: &OutputFiles,
+    ) {
+    }
     fn file_completed_failure(&self, _file: &Path, _error_code: &str, _error_message: &str) {}
-    fn file_skipped(&self, _file: &Path, _reason: FileStatus) {}
+    fn file_skipped(&self, _file: &Path, _reason: FileStatus, _outputs: &OutputFiles) {}
     fn pipeline_completed(&self, _summary: &PipelineSummary) {}
     fn error(
         &self,
@@ -607,8 +630,92 @@ mod tests {
         };
         reporter.pipeline_started(10, "model", 0.1, &dummy_ep, None);
         reporter.file_started(Path::new("test.wav"), 0, 100, Some(60.0));
-        reporter.file_completed_success(Path::new("test.wav"), 5, 1000);
+        reporter.file_completed_success(Path::new("test.wav"), 5, 1000, &OutputFiles::new());
         // No assertions - just verifying it doesn't panic
+    }
+
+    /// The `file_completed` payloads written to a capture buffer, as JSON.
+    fn captured_payloads(buffer: &Arc<Mutex<Vec<u8>>>) -> Vec<serde_json::Value> {
+        let text = {
+            let output = buffer.lock().expect("lock");
+            String::from_utf8_lossy(&output).into_owned()
+        };
+        text.lines()
+            .map(|line| serde_json::from_str::<serde_json::Value>(line).expect("json"))
+            .map(|envelope| envelope["payload"].clone())
+            .collect()
+    }
+
+    #[test]
+    fn test_file_completed_carries_output_files() {
+        let buffer = Arc::new(Mutex::new(Vec::new()));
+        let reporter = JsonProgressReporter::with_writer(
+            OutputMode::Ndjson,
+            TestWriter {
+                buffer: buffer.clone(),
+            },
+        );
+        let outputs = OutputFiles::from([
+            (
+                crate::config::OutputFormat::Json,
+                std::path::PathBuf::from("out/a/x.wav.BirdNET.json"),
+            ),
+            (
+                crate::config::OutputFormat::Csv,
+                std::path::PathBuf::from("out/a/x.wav.BirdNET.results.csv"),
+            ),
+        ]);
+
+        reporter.file_completed_success(Path::new("in/a/x.wav"), 3, 1500, &outputs);
+        reporter.file_skipped(Path::new("in/a/x.wav"), FileStatus::Skipped, &outputs);
+
+        let expected_outputs = serde_json::json!({
+            "csv": "out/a/x.wav.BirdNET.results.csv",
+            "json": "out/a/x.wav.BirdNET.json",
+        });
+        assert_eq!(
+            captured_payloads(&buffer),
+            vec![
+                serde_json::json!({
+                    "file": "in/a/x.wav",
+                    "status": "processed",
+                    "detections": 3,
+                    "duration_ms": 1500,
+                    "output_files": expected_outputs,
+                }),
+                serde_json::json!({
+                    "file": "in/a/x.wav",
+                    "status": "skipped",
+                    "output_files": expected_outputs,
+                }),
+            ]
+        );
+    }
+
+    #[test]
+    fn test_file_completed_omits_output_files_when_empty() {
+        let buffer = Arc::new(Mutex::new(Vec::new()));
+        let reporter = JsonProgressReporter::with_writer(
+            OutputMode::Ndjson,
+            TestWriter {
+                buffer: buffer.clone(),
+            },
+        );
+
+        reporter.file_skipped(Path::new("x.wav"), FileStatus::Locked, &OutputFiles::new());
+        reporter.file_completed_failure(Path::new("y.wav"), "processing_error", "boom");
+
+        assert_eq!(
+            captured_payloads(&buffer),
+            vec![
+                serde_json::json!({"file": "x.wav", "status": "locked"}),
+                serde_json::json!({
+                    "file": "y.wav",
+                    "status": "failed",
+                    "error": {"code": "processing_error", "message": "boom"},
+                }),
+            ]
+        );
     }
 
     #[test]

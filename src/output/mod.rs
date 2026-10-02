@@ -24,9 +24,9 @@ pub use json_envelope::{
     FileStartedPayload, FileStatus, GeomodelInfo, JsonEnvelope, LicenseDetails, ManifestVariant,
     ModelCheckEntry, ModelCheckPayload, ModelDetails, ModelEntry, ModelInfoPayload,
     ModelInstalledPayload, ModelListPayload, ModelManifest, ModelManifestPayload,
-    ModelRemovedPayload, PipelineCompletedPayload, PipelineStartedPayload, PipelineStatus,
-    ProgressPayload, ProviderInfo, ProvidersPayload, RangeFilterInfo, ResultType, SPEC_VERSION,
-    SpeciesEntry, SpeciesListPayload, VersionPayload,
+    ModelRemovedPayload, OutputFiles, PipelineCompletedPayload, PipelineStartedPayload,
+    PipelineStatus, ProgressPayload, ProviderInfo, ProvidersPayload, RangeFilterInfo, ResultType,
+    SPEC_VERSION, SpeciesEntry, SpeciesListPayload, VersionPayload,
 };
 pub use kaleidoscope::KaleidoscopeWriter;
 pub use parquet::{ParquetWriter, combine_parquet_files};

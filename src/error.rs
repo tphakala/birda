@@ -115,6 +115,20 @@ pub enum Error {
         output_dir: std::path::PathBuf,
     },
 
+    /// Several input files would write to the same output name and no
+    /// qualified name can tell them apart.
+    #[error(
+        "inputs would overwrite each other's output '{}': {}",
+        output.display(),
+        join_paths(inputs)
+    )]
+    OutputPathCollision {
+        /// The output path (without a format suffix) the inputs share.
+        output: std::path::PathBuf,
+        /// Every input that maps to it.
+        inputs: Vec<std::path::PathBuf>,
+    },
+
     /// Failed to open audio file.
     #[error("failed to open audio file '{path}'")]
     AudioOpen {
@@ -847,9 +861,33 @@ pub enum Error {
     },
 }
 
+/// Render input paths as a quoted, comma-separated list for error messages.
+fn join_paths(paths: &[std::path::PathBuf]) -> String {
+    paths
+        .iter()
+        .map(|p| format!("'{}'", p.display()))
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_output_path_collision_renders_the_output_and_every_input() {
+        let err = Error::OutputPathCollision {
+            output: std::path::PathBuf::from("out/A/x.wav"),
+            inputs: vec![
+                std::path::PathBuf::from("A/x.wav"),
+                std::path::PathBuf::from("a/x.wav"),
+            ],
+        };
+        assert_eq!(
+            err.to_string(),
+            "inputs would overwrite each other's output 'out/A/x.wav': 'A/x.wav', 'a/x.wav'"
+        );
+    }
 
     #[test]
     fn test_invalid_output_format_error_display() {

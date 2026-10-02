@@ -160,14 +160,15 @@ impl Candidate {
         }
     }
 
-    /// Identity of the file this candidate would write: the directory (folder
-    /// names compared case-insensitively) and the lowercased name.
-    fn key(&self) -> (PathBuf, String) {
+    /// Identity of the file this candidate would write: the directory and the
+    /// name, with the mirror folders and the name lowercased when `fold_case`.
+    fn key(&self, fold_case: bool) -> (PathBuf, String) {
+        let fold = |text: String| if fold_case { text.to_lowercase() } else { text };
         let mut dir = self.canonical_dir.clone();
         for part in &self.mirror {
-            dir.push(part.to_string_lossy().to_lowercase());
+            dir.push(fold(part.to_string_lossy().into_owned()));
         }
-        (dir, self.base().to_lowercase())
+        (dir, fold(self.base().to_string()))
     }
 
     /// `plain_dir`, with the mirror subfolders under it. Only a run with `-o`
@@ -216,10 +217,16 @@ fn normal_components(path: &Path) -> Vec<OsString> {
 }
 
 /// Group candidate indices by their output identity.
-fn group_by_key(candidates: &[Candidate]) -> HashMap<(PathBuf, String), Vec<usize>> {
+fn group_by_key(
+    candidates: &[Candidate],
+    fold_case: bool,
+) -> HashMap<(PathBuf, String), Vec<usize>> {
     let mut groups: HashMap<(PathBuf, String), Vec<usize>> = HashMap::new();
     for (index, candidate) in candidates.iter().enumerate() {
-        groups.entry(candidate.key()).or_default().push(index);
+        groups
+            .entry(candidate.key(fold_case))
+            .or_default()
+            .push(index);
     }
     groups
 }
@@ -235,9 +242,11 @@ fn group_by_key(candidates: &[Candidate]) -> HashMap<(PathBuf, String), Vec<usiz
 /// also gets its folder, relative to the closest folder the group shares, under
 /// `-o`. The rule is symmetric, so the result does not depend on input order.
 ///
-/// A name that is still shared after that (folders that differ only in case, or
-/// the same folder on two drives) is an [`Error::OutputPathCollision`] for every
-/// input involved.
+/// A name that is still shared after that (under `-o`, folders that differ only
+/// in case, or the same folder on two drives) is an
+/// [`Error::OutputPathCollision`] for every input involved. Without `-o`, names
+/// that differ only in case are not a clash: the inputs' own folder holds both,
+/// so it tells case apart.
 ///
 /// With `writes_files` false (`--stdout`) nothing is written, so there is
 /// nothing for two names to collide on: every input keeps its stem and none
@@ -281,7 +290,10 @@ pub fn plan_output_targets(
 
     // Inputs that share a name: qualify them, and keep different source folders
     // apart under `-o`.
-    for members in group_by_key(&candidates).values().filter(|m| m.len() > 1) {
+    for members in group_by_key(&candidates, true)
+        .values()
+        .filter(|m| m.len() > 1)
+    {
         let parents: Vec<Vec<OsString>> = members
             .iter()
             .map(|&i| normal_components(&candidates[i].canonical_parent))
@@ -298,7 +310,7 @@ pub fn plan_output_targets(
     // A name that stayed plain can still match a qualified one (`x.wav` next to
     // `x.wav.wav` and `x.flac`). Qualify it too, until nothing changes.
     let groups = loop {
-        let groups = group_by_key(&candidates);
+        let groups = group_by_key(&candidates, true);
         let mut changed = false;
         for members in groups.values().filter(|m| m.len() > 1) {
             for &i in members {
@@ -313,6 +325,17 @@ pub fn plan_output_targets(
         }
     };
 
+    // Names are qualified without regard to case, since `-o` can point at a
+    // filesystem that ignores it. Without `-o` every output sits in its input's
+    // own folder: two inputs there whose names differ only in case both exist,
+    // so that folder tells case apart, and only an exact match is a clash.
+    let fold_case = explicit_output_dir.is_some();
+    let groups = if fold_case {
+        groups
+    } else {
+        group_by_key(&candidates, false)
+    };
+
     candidates
         .iter()
         .map(|candidate| {
@@ -321,7 +344,7 @@ pub fn plan_output_targets(
                 root: candidate.plain_dir.clone(),
                 base: candidate.base().to_string(),
             };
-            let clashing = &groups[&candidate.key()];
+            let clashing = &groups[&candidate.key(fold_case)];
             if clashing.len() > 1 {
                 return Err(Error::OutputPathCollision {
                     output: target.dir.join(&target.base),
@@ -691,6 +714,33 @@ mod tests {
 
         assert_eq!(json_path(&targets[0]), out.join("a/X.wav.BirdNET.json"));
         assert_eq!(json_path(&targets[1]), out.join("b/x.wav.BirdNET.json"));
+    }
+
+    #[test]
+    fn test_plan_keeps_names_that_differ_only_in_case_apart_without_an_output_dir() {
+        // Both files exist in one folder, so it tells case apart, and the
+        // outputs written next to them can too.
+        let dir = tempfile::tempdir().unwrap();
+        let upper = touch(dir.path(), "X.wav");
+        let lower = touch(dir.path(), "x.wav");
+        // Only meaningful where both names are separate files.
+        if std::fs::read_dir(dir.path()).unwrap().count() != 2 {
+            return;
+        }
+
+        let plans = plan_output_targets(&[upper, lower], None, true);
+
+        let names: Vec<Option<PathBuf>> = plans
+            .iter()
+            .map(|p| p.as_ref().ok().map(json_path))
+            .collect();
+        assert_eq!(
+            names,
+            vec![
+                Some(dir.path().join("X.wav.BirdNET.json")),
+                Some(dir.path().join("x.wav.BirdNET.json")),
+            ]
+        );
     }
 
     #[test]

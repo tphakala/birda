@@ -3680,8 +3680,10 @@ mod tests {
     #[test]
     fn test_stdout_mode_does_not_fail_names_that_only_differ_in_case() {
         // Nothing is written in stdout mode, so `x.wav` and `X.wav` in one folder
-        // are both analyzed; in a file run they collide.
+        // are both analyzed; in a file run into `-o`, which may ignore case,
+        // they collide.
         let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("out");
         let files = [dir.path().join("x.wav"), dir.path().join("X.wav")];
         for file in &files {
             std::fs::write(file, "").unwrap();
@@ -3691,8 +3693,8 @@ mod tests {
             return;
         }
 
-        let stdout_plan = plan_output_targets(&files, None, false);
-        let file_plan = plan_output_targets(&files, None, true);
+        let stdout_plan = plan_output_targets(&files, Some(&out), false);
+        let file_plan = plan_output_targets(&files, Some(&out), true);
 
         assert!(stdout_plan.iter().all(Result::is_ok));
         assert!(file_plan.iter().all(Result::is_err));

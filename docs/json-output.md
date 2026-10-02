@@ -433,7 +433,7 @@ Without `-o` the outputs sit next to their inputs, so inputs in different folder
 
 Names depend on the set of inputs in the run. Adding an input that shares a name with one that was analyzed before, or removing one, changes the name of the outputs involved, so a rerun analyzes them again and leaves the old file in place. Rerunning with the same inputs gives the same names, and the skip-existing check finds them. Use the `output_files` field of `file_completed` rather than building a path from the input name.
 
-Two inputs that still share a name after this (for example `-o out` with `A/x.wav` and `a/x.wav`, whose folders are one folder on a case-insensitive filesystem) both fail with `output_path_collision`. Rename one of them or run them separately.
+Two inputs that still share a name after this (for example `-o out` with `A/x.wav` and `a/x.wav`, whose folders are one folder on a case-insensitive filesystem) both fail with `output_path_collision`. Rename one of them or run them separately. Without `-o` this cannot happen through case alone: `X.wav` and `x.wav` can only sit side by side in a folder that tells case apart, so they become `X.wav.BirdNET.json` and `x.wav.BirdNET.json`.
 
 A file or directory that is reached more than once (a directory and a file inside it) is analyzed once.
 

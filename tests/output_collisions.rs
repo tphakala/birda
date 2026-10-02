@@ -149,16 +149,18 @@ fn test_same_named_inputs_each_get_their_own_output() {
     // The two folders hold an `x.wav` each, and `b` also holds a differently
     // typed `x`: three inputs, one stem. The WAV bytes in `x.flac` decode
     // because the decoder reads the content, not the name.
-    let a_wav = input.join("a/x.wav");
-    let b_wav = input.join("b/x.wav");
-    let b_flac = input.join("b/x.flac");
+    // Each path is joined one component at a time, so it is spelled with the
+    // platform's separator, as birda spells the paths it reports.
+    let a_wav = input.join("a").join("x.wav");
+    let b_wav = input.join("b").join("x.wav");
+    let b_flac = input.join("b").join("x.flac");
     write_wav(&a_wav, 6);
     write_wav(&b_wav, 9);
     write_wav(&b_flac, 12);
     let expected = [
-        (&a_wav, out.join("a/x.wav.BirdNET.json"), 6.0),
-        (&b_wav, out.join("b/x.wav.BirdNET.json"), 9.0),
-        (&b_flac, out.join("b/x.flac.BirdNET.json"), 12.0),
+        (&a_wav, out.join("a").join("x.wav.BirdNET.json"), 6.0),
+        (&b_wav, out.join("b").join("x.wav.BirdNET.json"), 9.0),
+        (&b_flac, out.join("b").join("x.flac.BirdNET.json"), 12.0),
     ];
 
     let first = run(&model, &labels, config_dir.path(), &input, &out);

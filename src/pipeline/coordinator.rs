@@ -923,9 +923,14 @@ mod tests {
 
         let err = target.path_for(OutputFormat::Json).unwrap_err();
 
+        // Built with `join`, so the separator is the platform's own.
+        let escaped = Path::new("/elsewhere").join("x.BirdNET.json");
         assert_eq!(
             err.to_string(),
-            "output path '/elsewhere/x.BirdNET.json' escapes output directory '/safe/output'"
+            format!(
+                "output path '{}' escapes output directory '/safe/output'",
+                escaped.display()
+            )
         );
     }
 

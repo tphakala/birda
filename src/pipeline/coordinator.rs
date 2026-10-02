@@ -241,12 +241,12 @@ fn group_by_key(
 /// the input. Inputs whose names would clash (the same stem, compared without
 /// regard to case, in one output directory) all switch to their full file name,
 /// so `x.wav` and `x.flac` become `x.wav.BirdNET.json` and `x.flac.BirdNET.json`.
-/// When `-o` is given and the clashing inputs sit in different folders, each
-/// also gets its folder below the directory argument it was found under (in
-/// `roots`; an input given as a file counts as found in its own folder), and
-/// inputs from different arguments that still clash also get the argument's
-/// folder name. The rule is symmetric, so the result does not depend on input
-/// order, and the base does not move when inputs are added under the same
+/// When `-o` is given, each clashing input also goes into a folder named after
+/// the directory argument it was found under (in `roots`; an input given as a
+/// file counts as found in its own folder), mirroring its folder below that
+/// argument. The rule is symmetric, so the result does not depend on input
+/// order, and a clashing input's path depends only on its own location and
+/// argument, so it does not move when inputs are added under the same
 /// arguments.
 ///
 /// A name that is still shared after that (under `-o`, folders that differ only
@@ -311,10 +311,11 @@ pub fn plan_output_targets(
         })
         .collect();
 
-    // Inputs that share a name: qualify them, and under `-o` keep different
-    // source folders apart by mirroring each input's folder below the argument
-    // it was found under. That base does not move when recordings are added, so
-    // a rerun of the same arguments cannot give a new input the name another
+    // Inputs that share a name: qualify them, and under `-o` put each in a
+    // folder named after the argument it was found under, mirroring its folder
+    // below that argument. The path depends only on where the input is and
+    // which argument found it, never on which other inputs clash, so a rerun
+    // that finds more recordings cannot give one of them the name another
     // input's earlier output already has.
     for members in group_by_key(&candidates, true)
         .values()
@@ -328,24 +329,14 @@ pub fn plan_output_targets(
                     .canonical_parent
                     .strip_prefix(&candidate.base_root)
                     .unwrap_or_else(|_| Path::new(""));
-                candidates[i].mirror = normal_components(below_root);
-            }
-        }
-    }
-
-    // Inputs found under different arguments can still meet at one mirrored
-    // name (`d1/x.wav` and `d2/x.wav` listed as files, or two directories with
-    // the same layout). Put each under its argument's folder name as well.
-    if explicit_output_dir.is_some() {
-        for members in group_by_key(&candidates, true)
-            .values()
-            .filter(|m| m.len() > 1)
-        {
-            for &i in members {
-                let name = candidates[i].base_root.file_name().map(OsStr::to_os_string);
-                if let Some(name) = name {
-                    candidates[i].mirror.insert(0, name);
-                }
+                let mut mirror: Vec<OsString> = candidate
+                    .base_root
+                    .file_name()
+                    .map(OsStr::to_os_string)
+                    .into_iter()
+                    .collect();
+                mirror.extend(normal_components(below_root));
+                candidates[i].mirror = mirror;
             }
         }
     }
@@ -740,8 +731,11 @@ mod tests {
         assert_eq!(
             names,
             vec![
-                out.join("a").join("x.wav.BirdNET.json"),
-                out.join("a").join("b").join("x.wav.BirdNET.json"),
+                out.join("in").join("a").join("x.wav.BirdNET.json"),
+                out.join("in")
+                    .join("a")
+                    .join("b")
+                    .join("x.wav.BirdNET.json"),
             ]
         );
     }
@@ -766,6 +760,35 @@ mod tests {
             "{} is reused",
             second[2].display()
         );
+    }
+
+    #[test]
+    fn test_plan_keeps_mirrored_names_when_several_arguments_find_more() {
+        // Expanding a run under two arguments must not move an output either:
+        // the moved-from path would then be taken as a new input's result.
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("out");
+        let one = dir.path().join("one");
+        let two = dir.path().join("two");
+        let roots = [one.clone(), two.clone()];
+        let deep = touch(&one, "one/a/x.wav");
+        let other = touch(&two, "a/x.wav");
+        let names = |files: &[PathBuf]| -> Vec<PathBuf> {
+            plan_output_targets(files, &roots, Some(&out), true)
+                .iter()
+                .map(|t| json_path(t.as_ref().unwrap()))
+                .collect()
+        };
+        let first = names(&[deep.clone(), other.clone()]);
+        let shallow = touch(&one, "a/x.wav");
+        let nested = touch(&two, "one/a/x.wav");
+
+        let second = names(&[deep, other, shallow, nested]);
+
+        assert_eq!(second[..2], first[..]);
+        for added in &second[2..] {
+            assert!(!first.contains(added), "{} is reused", added.display());
+        }
     }
 
     #[test]

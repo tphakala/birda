@@ -158,9 +158,21 @@ fn test_same_named_inputs_each_get_their_own_output() {
     write_wav(&b_wav, 9);
     write_wav(&b_flac, 12);
     let expected = [
-        (&a_wav, out.join("a").join("x.wav.BirdNET.json"), 6.0),
-        (&b_wav, out.join("b").join("x.wav.BirdNET.json"), 9.0),
-        (&b_flac, out.join("b").join("x.flac.BirdNET.json"), 12.0),
+        (
+            &a_wav,
+            out.join("in").join("a").join("x.wav.BirdNET.json"),
+            6.0,
+        ),
+        (
+            &b_wav,
+            out.join("in").join("b").join("x.wav.BirdNET.json"),
+            9.0,
+        ),
+        (
+            &b_flac,
+            out.join("in").join("b").join("x.flac.BirdNET.json"),
+            12.0,
+        ),
     ];
 
     let first = run(&model, &labels, config_dir.path(), &input, &out);

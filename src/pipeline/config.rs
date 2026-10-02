@@ -1,6 +1,7 @@
 //! Configuration types for the processing pipeline.
 
 use crate::config::OutputFormat;
+use crate::pipeline::OutputTarget;
 use birdnet_onnx::CustomClassifier;
 use std::path::Path;
 
@@ -11,7 +12,7 @@ use std::path::Path;
 /// ```ignore
 /// let config = ProcessingConfig {
 ///     input_path: Path::new("recording.wav"),
-///     output_dir: Path::new("output/"),
+///     output: &targets[0],
 ///     formats: &[OutputFormat::Csv],
 ///     min_confidence: 0.5,
 ///     overlap: 0.0,
@@ -32,8 +33,8 @@ use std::path::Path;
 pub struct ProcessingConfig<'a> {
     /// Path to input audio file.
     pub input_path: &'a Path,
-    /// Directory for output files.
-    pub output_dir: &'a Path,
+    /// Where the output files go and what they are called.
+    pub output: &'a OutputTarget,
     /// Output formats to generate.
     pub formats: &'a [OutputFormat],
     /// Minimum confidence threshold (0.0-1.0).

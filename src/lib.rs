@@ -62,8 +62,8 @@ use output::{
     emit_json_result,
 };
 use pipeline::{
-    ProcessCheck, ProcessingConfig, collect_input_files, output_dir_for, process_file,
-    should_process,
+    OutputTarget, ProcessCheck, ProcessingConfig, collect_input_files, plan_output_targets,
+    process_file, should_process,
 };
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
@@ -430,7 +430,6 @@ fn determine_default_batch_size(
 #[allow(clippy::struct_excessive_bools)]
 struct ProcessingParams<'a> {
     formats: &'a [OutputFormat],
-    output_dir: Option<&'a Path>,
     min_confidence: f32,
     overlap: f32,
     batch_size: usize,
@@ -820,12 +819,58 @@ fn reclaim_stale_lock(input: &Path, output_dir: &Path, timeout: Option<std::time
     }
 }
 
+/// Decide whether a planned file goes on to inference, reporting and counting
+/// the skip when it does not.
+///
+/// Returns `true` to process the file. A file whose output already exists is
+/// reported as `skipped` with the planned output paths; a locked one is
+/// reported as `locked` without any, since its outputs are not known to exist.
+fn precheck_file(
+    file: &Path,
+    target: &OutputTarget,
+    params: &ProcessingParams<'_>,
+    reporter: &dyn ProgressReporter,
+    stats: &mut ProcessingStats,
+) -> bool {
+    // Reclaim a stale lock before the skip-locked check below (see the fn doc).
+    reclaim_stale_lock(file, target.dir(), params.stale_lock_timeout);
+
+    match should_process(
+        file,
+        target,
+        params.formats,
+        params.force,
+        params.stdout_mode,
+    ) {
+        ProcessCheck::SkipExists => {
+            info!("Skipping (output exists): {}", file.display());
+            let outputs = target.paths_for(params.formats).unwrap_or_else(|e| {
+                warn!("Failed to generate output paths: {e}");
+                output::OutputFiles::new()
+            });
+            reporter.file_skipped(file, FileStatus::Skipped, &outputs);
+            stats.skipped += 1;
+            false
+        }
+        ProcessCheck::SkipLocked => {
+            info!("Skipping (locked): {}", file.display());
+            reporter.file_skipped(file, FileStatus::Locked, &output::OutputFiles::new());
+            stats.skipped += 1;
+            false
+        }
+        ProcessCheck::Process => true,
+    }
+}
+
 /// Process all files, updating stats in place.
+///
+/// Each file arrives with its planned output target; one whose name could not
+/// be made unique is reported as failed without being analyzed.
 ///
 /// On fail-fast error, returns `Err` immediately but `stats` contains partial results.
 /// The caller is responsible for all summary reporting (success or failure).
 fn process_all_files(
-    files: &[PathBuf],
+    files: Vec<(PathBuf, Result<OutputTarget>)>,
     classifier: &BirdClassifier,
     params: &ProcessingParams<'_>,
     reporter: &Arc<dyn ProgressReporter>,
@@ -835,35 +880,25 @@ fn process_all_files(
 
     let file_progress = progress::create_file_progress(files.len(), params.progress_enabled);
 
-    for (index, file) in files.iter().enumerate() {
-        let file_output_dir = output_dir_for(file, params.output_dir);
-
-        // Reclaim a stale lock before the skip-locked check below (see the fn doc).
-        reclaim_stale_lock(file, &file_output_dir, params.stale_lock_timeout);
-
-        // Check if should process
-        match should_process(
-            file,
-            &file_output_dir,
-            params.formats,
-            params.force,
-            params.stdout_mode,
-        ) {
-            ProcessCheck::SkipExists => {
-                info!("Skipping (output exists): {}", file.display());
-                reporter.file_skipped(file, FileStatus::Skipped);
-                stats.skipped += 1;
+    for (index, (file, planned)) in files.into_iter().enumerate() {
+        let file = file.as_path();
+        let target = match planned {
+            Ok(target) => target,
+            Err(e) => {
+                if let Err(e) =
+                    record_file_failure(file, e, stats, reporter.as_ref(), params.fail_fast)
+                {
+                    progress::finish_progress(file_progress, "Failed");
+                    return Err(e);
+                }
                 progress::inc_progress(file_progress.as_ref());
                 continue;
             }
-            ProcessCheck::SkipLocked => {
-                info!("Skipping (locked): {}", file.display());
-                reporter.file_skipped(file, FileStatus::Locked);
-                stats.skipped += 1;
-                progress::inc_progress(file_progress.as_ref());
-                continue;
-            }
-            ProcessCheck::Process => {}
+        };
+
+        if !precheck_file(file, &target, params, reporter.as_ref(), stats) {
+            progress::inc_progress(file_progress.as_ref());
+            continue;
         }
 
         // Get audio duration for progress estimation
@@ -901,7 +936,7 @@ fn process_all_files(
         };
         let proc_config = ProcessingConfig {
             input_path: file,
-            output_dir: &file_output_dir,
+            output: &target,
             formats: params.formats,
             min_confidence: params.min_confidence,
             overlap: params.overlap,
@@ -921,7 +956,12 @@ fn process_all_files(
             Ok(result) => {
                 #[allow(clippy::cast_possible_truncation)]
                 let duration_ms = file_start.elapsed().as_millis() as u64;
-                reporter.file_completed_success(file, result.detections, duration_ms);
+                reporter.file_completed_success(
+                    file,
+                    result.detections,
+                    duration_ms,
+                    &result.outputs,
+                );
                 stats.processed += 1;
                 stats.total_detections += result.detections;
                 stats.total_segments += result.segments;
@@ -942,10 +982,6 @@ fn process_all_files(
     progress::finish_progress(file_progress, "Complete");
     Ok(())
 }
-
-/// Reporter error code for a file that failed during processing; goes into the
-/// JSON envelope's `error.code` field.
-const PROCESSING_ERROR_CODE: &str = "processing_error";
 
 /// Fold a per-file processing failure into the run stats, distinguishing the
 /// check-to-use lock race (#344) from a genuine error.
@@ -971,13 +1007,13 @@ fn record_file_failure(
 ) -> Result<()> {
     if matches!(e, Error::FileLocked { .. }) {
         info!("Skipping (locked): {}", file.display());
-        reporter.file_skipped(file, FileStatus::Locked);
+        reporter.file_skipped(file, FileStatus::Locked, &output::OutputFiles::new());
         stats.skipped += 1;
         return Ok(());
     }
 
     error!("Failed to process {}: {}", file.display(), e);
-    reporter.file_completed_failure(file, PROCESSING_ERROR_CODE, &e.to_string());
+    reporter.file_completed_failure(file, e.file_error_code(), &e.to_string());
     stats.errors += 1;
     if fail_fast {
         return Err(e);
@@ -1104,6 +1140,11 @@ fn analyze_files(
         .clone()
         .unwrap_or_else(|| config.defaults.formats.clone());
     let output_dir = args.output_dir.clone();
+
+    // Name every output up front, so inputs that would share a name are told
+    // apart (or failed) before any of them is analyzed.
+    let targets = plan_output_targets(&files, inputs, output_dir.as_deref(), !args.stdout);
+    let files: Vec<(PathBuf, Result<OutputTarget>)> = files.into_iter().zip(targets).collect();
     let force = args.force;
     let fail_fast = args.fail_fast;
 
@@ -1249,7 +1290,6 @@ fn analyze_files(
 
     let params = ProcessingParams {
         formats: &formats,
-        output_dir: output_dir.as_deref(),
         min_confidence,
         overlap,
         batch_size,
@@ -1269,7 +1309,7 @@ fn analyze_files(
 
     // Process all files - stats owned here so partial results available on fail-fast
     let mut stats = ProcessingStats::default();
-    let result = process_all_files(&files, &classifier, &params, reporter, &mut stats);
+    let result = process_all_files(files, &classifier, &params, reporter, &mut stats);
 
     // analyze_files is sole authority for all reporting (success or failure)
     report_summary(&stats, total_start, fail_fast, reporter);
@@ -1456,7 +1496,6 @@ fn handle_update_command(check_only: bool, output_mode: OutputMode) -> Result<()
             } else {
                 println!("birda is up to date (v{version})");
             }
-            Ok(())
         }
         update::UpdateCheck::Available {
             current,
@@ -1503,10 +1542,10 @@ fn handle_update_command(check_only: bool, output_mode: OutputMode) -> Result<()
                     println!("\nNote: {warning}");
                 }
             }
-
-            Ok(())
         }
     }
+
+    Ok(())
 }
 
 fn handle_config_command(action: cli::ConfigAction, output_mode: OutputMode) -> Result<()> {
@@ -3430,6 +3469,10 @@ mod tests {
     struct RecordingReporter {
         skipped_locked: std::sync::atomic::AtomicUsize,
         completed_failure: std::sync::atomic::AtomicUsize,
+        /// Error code of each failure, in order.
+        failure_codes: std::sync::Mutex<Vec<String>>,
+        /// Reason and output files of each skip, in order.
+        skips: std::sync::Mutex<Vec<(FileStatus, output::OutputFiles)>>,
     }
 
     impl crate::output::ProgressReporter for RecordingReporter {
@@ -3456,16 +3499,33 @@ mod tests {
             _file: Option<&crate::output::FileProgress>,
         ) {
         }
-        fn file_completed_success(&self, _file: &Path, _detections: usize, _duration_ms: u64) {}
-        fn file_completed_failure(&self, _file: &Path, _error_code: &str, _error_message: &str) {
+        fn file_completed_success(
+            &self,
+            _file: &Path,
+            _detections: usize,
+            _duration_ms: u64,
+            _outputs: &output::OutputFiles,
+        ) {
+        }
+        fn file_completed_failure(&self, _file: &Path, error_code: &str, _error_message: &str) {
             self.completed_failure
                 .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            self.failure_codes
+                .lock()
+                .unwrap()
+                .push(error_code.to_string());
         }
-        fn file_skipped(&self, _file: &Path, reason: crate::output::FileStatus) {
+        fn file_skipped(
+            &self,
+            _file: &Path,
+            reason: crate::output::FileStatus,
+            outputs: &output::OutputFiles,
+        ) {
             if matches!(reason, crate::output::FileStatus::Locked) {
                 self.skipped_locked
                     .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             }
+            self.skips.lock().unwrap().push((reason, outputs.clone()));
         }
         fn pipeline_completed(&self, _summary: &crate::output::PipelineSummary) {}
         fn error(
@@ -3519,6 +3579,164 @@ mod tests {
             reporter.completed_failure.load(Ordering::Relaxed),
             0,
             "a lost lock must not emit a failure event"
+        );
+    }
+
+    #[test]
+    fn test_collision_target_reports_a_failure_with_its_code() {
+        // An input whose output name could not be made unique fails on its own,
+        // under its own code. The run goes on, unless --fail-fast stops it.
+        for fail_fast in [false, true] {
+            let mut stats = ProcessingStats::default();
+            let reporter = RecordingReporter::default();
+            let err = Error::OutputPathCollision {
+                output: PathBuf::from("/out/A/x.wav"),
+                inputs: vec![PathBuf::from("/in/A/x.wav"), PathBuf::from("/in/a/x.wav")],
+            };
+
+            let outcome = record_file_failure(
+                Path::new("/in/A/x.wav"),
+                err,
+                &mut stats,
+                &reporter,
+                fail_fast,
+            );
+
+            if fail_fast {
+                assert!(matches!(outcome, Err(Error::OutputPathCollision { .. })));
+            } else {
+                assert!(outcome.is_ok(), "one colliding file must not abort the run");
+            }
+            assert_eq!(stats.errors, 1);
+            assert_eq!(
+                *reporter.failure_codes.lock().unwrap(),
+                vec!["output_path_collision".to_string()]
+            );
+        }
+    }
+
+    /// Params for the pre-check tests: JSON only, nothing forced.
+    fn precheck_params(formats: &[OutputFormat]) -> ProcessingParams<'_> {
+        ProcessingParams {
+            formats,
+            min_confidence: 0.1,
+            overlap: 0.0,
+            batch_size: 1,
+            csv_columns: &[],
+            csv_bom: false,
+            model_name: "test",
+            range_filter_params: None,
+            force: false,
+            fail_fast: false,
+            progress_enabled: false,
+            stdout_mode: false,
+            dual_output_mode: false,
+            bsg_params: None,
+            custom_classifier: None,
+            stale_lock_timeout: None,
+        }
+    }
+
+    #[test]
+    fn test_skip_exists_reports_the_planned_output_files() {
+        // A skipped file names the files that made it skip, so a consumer does
+        // not have to rebuild the path (and get it wrong for a qualified name).
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("out");
+        let a = dir.path().join("a/x.wav");
+        let b = dir.path().join("b/x.wav");
+        for input in [&a, &b] {
+            std::fs::create_dir_all(input.parent().unwrap()).unwrap();
+            std::fs::write(input, "").unwrap();
+        }
+        let targets =
+            plan_output_targets(&[a.clone(), b.clone()], &[a.clone(), b], Some(&out), true);
+        let target = targets.into_iter().next().unwrap().unwrap();
+        let expected = out.join("a/x.wav.BirdNET.json");
+        std::fs::create_dir_all(expected.parent().unwrap()).unwrap();
+        std::fs::write(&expected, "").unwrap();
+        let formats = [OutputFormat::Json];
+        let mut stats = ProcessingStats::default();
+        let reporter = RecordingReporter::default();
+
+        let proceed = precheck_file(
+            &a,
+            &target,
+            &precheck_params(&formats),
+            &reporter,
+            &mut stats,
+        );
+
+        assert!(!proceed, "a file whose output exists must be skipped");
+        assert_eq!(stats.skipped, 1);
+        assert_eq!(
+            *reporter.skips.lock().unwrap(),
+            vec![(
+                FileStatus::Skipped,
+                output::OutputFiles::from([(OutputFormat::Json, expected)])
+            )]
+        );
+    }
+
+    #[test]
+    fn test_stdout_mode_does_not_fail_names_that_only_differ_in_case() {
+        // Nothing is written in stdout mode, so `x.wav` and `X.wav` in one folder
+        // are both analyzed; in a file run into `-o`, which may ignore case,
+        // they collide.
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("out");
+        let files = [dir.path().join("x.wav"), dir.path().join("X.wav")];
+        for file in &files {
+            std::fs::write(file, "").unwrap();
+        }
+        // Only meaningful where both names are separate files.
+        if std::fs::read_dir(dir.path()).unwrap().count() != 2 {
+            return;
+        }
+
+        let stdout_plan = plan_output_targets(&files, &files, Some(&out), false);
+        let file_plan = plan_output_targets(&files, &files, Some(&out), true);
+
+        assert!(stdout_plan.iter().all(Result::is_ok));
+        assert!(file_plan.iter().all(Result::is_err));
+    }
+
+    #[test]
+    fn test_locked_skip_reports_no_output_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let input = dir.path().join("x.wav");
+        std::fs::write(&input, "").unwrap();
+        let target = plan_output_targets(
+            std::slice::from_ref(&input),
+            std::slice::from_ref(&input),
+            None,
+            true,
+        )
+        .into_iter()
+        .next()
+        .unwrap()
+        .unwrap();
+        std::fs::write(
+            crate::locking::FileLock::lock_path_for(&input, target.dir()),
+            "",
+        )
+        .unwrap();
+        let formats = [OutputFormat::Json];
+        let mut stats = ProcessingStats::default();
+        let reporter = RecordingReporter::default();
+
+        let proceed = precheck_file(
+            &input,
+            &target,
+            &precheck_params(&formats),
+            &reporter,
+            &mut stats,
+        );
+
+        assert!(!proceed);
+        assert_eq!(
+            *reporter.skips.lock().unwrap(),
+            vec![(FileStatus::Locked, output::OutputFiles::new())]
         );
     }
 

@@ -83,6 +83,21 @@ All JSON output follows a consistent envelope structure:
 | `file_completed` | File finished (success, failed, or skipped) |
 | `pipeline_completed` | All files processed, includes summary |
 
+### `file_completed` Payload
+
+| Field | Present | Description |
+|-------|---------|-------------|
+| `file` | always | Input path, as given on the command line or as found when walking a directory (relative if the argument was relative) |
+| `status` | always | `processed`, `skipped`, `locked` or `failed` |
+| `detections` | `processed` | Number of detections |
+| `duration_ms` | `processed` | Processing time in milliseconds |
+| `error` | `failed` | `{ "code": ..., "message": ... }` |
+| `output_files` | `processed` (when files were written) and `skipped` | Object mapping each requested format to the path of its output file |
+
+`output_files` is the way to find the result file of an input. The keys are the lowercase format names (`csv`, `raven`, `audacity`, `kaleidoscope`, `json`, `parquet`). For `skipped` it lists the files that already exist. It is omitted for `locked` and `failed` events and in `--stdout` mode, and it is an optional field, so `spec_version` stays `1.1`. A consumer that must also work with an older birda should fall back to deriving the path from the input name when the field is missing.
+
+An input whose output name cannot be made unique (see [Output File Names](#output-file-names)) is reported as `failed` with `error.code` `output_path_collision`, and the rest of the run continues. Other per-file failures use the code `processing_error`.
+
 ### Result Events (Commands)
 
 | Event | Description |
@@ -126,7 +141,7 @@ Output (one JSON object per line):
 {"spec_version":"1.1","timestamp":"...","event":"pipeline_started","payload":{"total_files":1,"model":"birdnet-v24","min_confidence":0.1}}
 {"spec_version":"1.1","timestamp":"...","event":"file_started","payload":{"file":"recording.wav","index":0,"estimated_segments":100}}
 {"spec_version":"1.1","timestamp":"...","event":"progress","payload":{"file":{"path":"recording.wav","segments_done":50,"segments_total":100,"percent":50.0}}}
-{"spec_version":"1.1","timestamp":"...","event":"file_completed","payload":{"file":"recording.wav","status":"processed","detections":42,"duration_ms":1234}}
+{"spec_version":"1.1","timestamp":"...","event":"file_completed","payload":{"file":"recording.wav","status":"processed","detections":42,"duration_ms":1234,"output_files":{"csv":"recording.BirdNET.results.csv"}}}
 {"spec_version":"1.1","timestamp":"...","event":"pipeline_completed","payload":{"status":"success","files_processed":1,"files_failed":0,"total_detections":42,"duration_ms":1234,"realtime_factor":85.2}}
 ```
 
@@ -400,6 +415,28 @@ birda --output-mode json clip results.csv -c 0.7
 
 In `ndjson` mode `birda clip` also emits a per-file `error` event (severity `warning`) as each failure occurs; in `json` mode the output stays a single document, so the failures are conveyed only through `failed_files`. Its exit status reflects the batch outcome: it exits non-zero only when every detection file failed. A batch where at least one file was processed exits zero even if others failed, so a machine consumer should read `failed_files` to detect partial failures rather than relying on the exit code alone. A direct-extraction range that decodes no audio (past the end of the file, or too short to hold a frame) is an error, not an empty clip.
 
+## Output File Names
+
+A result file is named after its input's file stem plus a format suffix, and is written next to the input, or into the `-o` directory:
+
+```bash
+birda -f json recording.wav
+# Creates: recording.BirdNET.json
+```
+
+Birda names every output of a run before analyzing anything, so two inputs never write the same file. An input whose name is not shared with any other input in the run keeps exactly the name above. A name also counts as shared with the full name another input takes: with `x.wav` and `x.flac` in one folder, an input named `x.wav.wav` is qualified too. When several inputs would produce the same name, which means the same stem in the same output directory (compared without regard to case), each of them is named differently:
+
+- The name uses the full input file name instead of the stem: `x.wav` and `x.flac` in one folder become `x.wav.BirdNET.json` and `x.flac.BirdNET.json`.
+- When `-o` is given, each of them also goes into a folder of the `-o` directory named after the argument it was found under, mirroring its folder below that argument. `birda -o out in` with `in/a/x.wav` and `in/b/x.wav` gives `out/in/a/x.wav.BirdNET.json` and `out/in/b/x.wav.BirdNET.json`, and `in/a/x.wav` with `in/a/x.flac` gives `out/in/a/x.wav.BirdNET.json` and `out/in/a/x.flac.BirdNET.json`. A file listed on its own counts as found in its own folder: `birda -o out d1/x.wav d2/x.wav` gives `out/d1/x.wav.BirdNET.json` and `out/d2/x.wav.BirdNET.json`. Arguments whose folder names match are told apart by their path below the folder they share: `birda -o out stationA/2024-05-01 stationB/2024-05-01` puts clashing outputs under `out/stationA/2024-05-01/` and `out/stationB/2024-05-01/`. The path depends only on where the input is and which argument found it, so finding more recordings on a rerun never moves an existing output.
+
+Without `-o` the outputs sit next to their inputs, so inputs in different folders never share a name.
+
+Names depend on the set of inputs in the run and on the arguments that found them, so rerun with the same arguments. Adding an input that shares a name with one that was analyzed before, or removing one, changes the name of the outputs involved, so a rerun analyzes them again and leaves the old file in place. Rerunning with the same inputs gives the same names, and the skip-existing check finds them. Use the `output_files` field of `file_completed` rather than building a path from the input name.
+
+Two inputs that still share a name after this (for example `-o out` with `A/x.wav` and `a/x.wav`, whose folders are one folder on a case-insensitive filesystem) both fail with `output_path_collision`. Rename one of them or run them separately. Without `-o` this cannot happen through case alone: `X.wav` and `x.wav` can only sit side by side in a folder that tells case apart, so they become `X.wav.BirdNET.json` and `x.wav.BirdNET.json`.
+
+A file or directory that is reached more than once (a directory and a file inside it) is analyzed once.
+
 ## JSON Detection File Format
 
 Use `-f json` to write detection results to JSON files:
@@ -408,6 +445,8 @@ Use `-f json` to write detection results to JSON files:
 birda -f json recording.wav
 # Creates: recording.BirdNET.json
 ```
+
+The file name follows the rules in [Output File Names](#output-file-names).
 
 ### File Structure
 
@@ -533,4 +572,4 @@ Warnings such as "Range filtering disabled" also go to stderr, not into the JSON
 - Logs are written to stderr, JSON output to stdout - use `2>/dev/null` to suppress logs
 - The `spec_version` field enables backwards-compatible API evolution
 - All timestamps are UTC in ISO 8601 format
-- File paths in output are absolute paths
+- File paths in output are as given on the command line, or as found when walking a directory, so they are relative when the argument was relative. Output paths in `output_files` are the paths birda wrote, derived from the `-o` directory or the input's folder in the same way

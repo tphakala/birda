@@ -176,8 +176,8 @@ mod tests {
             BatRegion::UsaWest,
         ];
         for region in regions {
-            assert!(!region.model_filename().is_empty());
-            assert!(!region.labels_filename().is_empty());
+            assert_ne!(region.model_filename(), "");
+            assert_ne!(region.labels_filename(), "");
             assert!(region.model_filename().ends_with("_fp32.onnx"));
             assert!(region.labels_filename().ends_with("_Labels.txt"));
         }

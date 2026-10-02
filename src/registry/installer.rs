@@ -1664,7 +1664,10 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(dir.path().join("birdnet-v30.onnx"), b"x").unwrap();
 
-        assert!(find_stale_part_files(dir.path()).unwrap().is_empty());
+        assert_eq!(
+            find_stale_part_files(dir.path()).unwrap(),
+            Vec::<PathBuf>::new()
+        );
     }
 
     #[test]
@@ -1672,7 +1675,10 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let missing = dir.path().join("does-not-exist");
 
-        assert!(find_stale_part_files(&missing).unwrap().is_empty());
+        assert_eq!(
+            find_stale_part_files(&missing).unwrap(),
+            Vec::<PathBuf>::new()
+        );
     }
 
     #[test]
@@ -1771,7 +1777,10 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(dir.path().join("birdnet-geomodel-v3.0.2.onnx"), b"x").unwrap();
 
-        assert!(find_obsolete_files(dir.path()).unwrap().is_empty());
+        assert_eq!(
+            find_obsolete_files(dir.path()).unwrap(),
+            Vec::<PathBuf>::new()
+        );
     }
 
     #[test]

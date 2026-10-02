@@ -275,6 +275,17 @@ pub mod output_extensions {
     pub const PARQUET: &str = ".BirdNET.results.parquet";
 }
 
+/// Output file name stem used when an input path has no file name.
+pub const FALLBACK_OUTPUT_NAME: &str = "output";
+
+/// Per-file error codes reported in the JSON envelope's `error.code` field.
+pub mod error_codes {
+    /// A file failed while it was being processed.
+    pub const PROCESSING_ERROR: &str = "processing_error";
+    /// Several inputs map to one output name and could not be told apart.
+    pub const OUTPUT_PATH_COLLISION: &str = "output_path_collision";
+}
+
 /// Combined output file names.
 pub mod combined_filenames {
     /// Combined CSV filename.

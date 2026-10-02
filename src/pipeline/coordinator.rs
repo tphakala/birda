@@ -368,7 +368,9 @@ pub fn should_process(
 ///
 /// A file that several arguments reach (listed twice, or inside a listed
 /// directory) is kept once, at its first position. Two entries for one file
-/// would otherwise be planned as a name collision.
+/// would otherwise be planned as a name collision. Files are compared by their
+/// resolved folder and file name, so a symlink to a file already collected is
+/// still its own input.
 pub fn collect_input_files(paths: &[PathBuf]) -> Result<Vec<PathBuf>> {
     let mut files = Vec::new();
 
@@ -386,7 +388,12 @@ pub fn collect_input_files(paths: &[PathBuf]) -> Result<Vec<PathBuf>> {
 
     let mut seen = HashSet::new();
     files.retain(|file| {
-        let identity = std::fs::canonicalize(file).unwrap_or_else(|_| file.clone());
+        // Resolve the folder, not the file: two symlinks to one recording in
+        // different folders are two inputs with two output locations.
+        let identity = match (file.parent(), file.file_name()) {
+            (Some(parent), Some(name)) => canonical_dir(parent).join(name),
+            _ => file.clone(),
+        };
         let first = seen.insert(identity);
         if !first {
             info!("Skipping duplicate input: {}", file.display());
@@ -746,6 +753,23 @@ mod tests {
         let files = collect_input_files(&[dir.path().to_path_buf(), file.clone()]).unwrap();
 
         assert_eq!(files, vec![file]);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_collect_input_files_keeps_symlinks_to_one_file_in_different_folders() {
+        let dir = tempfile::tempdir().unwrap();
+        let real = touch(dir.path(), "data/x.wav");
+        std::fs::create_dir_all(dir.path().join("a")).unwrap();
+        std::fs::create_dir_all(dir.path().join("b")).unwrap();
+        let first = dir.path().join("a/x.wav");
+        let second = dir.path().join("b/x.wav");
+        std::os::unix::fs::symlink(&real, &first).unwrap();
+        std::os::unix::fs::symlink(&real, &second).unwrap();
+
+        let files = collect_input_files(&[first.clone(), second.clone()]).unwrap();
+
+        assert_eq!(files, vec![first, second]);
     }
 
     #[test]

@@ -721,21 +721,19 @@ pub fn process_file(
     let should_write_files = dual_output_mode || reporter.is_none();
 
     // Write output files if needed
-    let mut outputs = OutputFiles::new();
-    if should_write_files {
-        for format in formats {
-            let written = write_output(
-                input_path,
-                output,
-                *format,
-                &detections,
-                csv_columns,
-                csv_bom_enabled,
-                json_config.as_ref(),
-            )?;
-            outputs.insert(*format, written);
-        }
-    }
+    let outputs = if should_write_files {
+        write_all_outputs(
+            input_path,
+            output,
+            formats,
+            &detections,
+            csv_columns,
+            csv_bom_enabled,
+            json_config.as_ref(),
+        )?
+    } else {
+        OutputFiles::new()
+    };
 
     // Emit detections to stdout only in pure stdout mode (not dual output mode)
     if !dual_output_mode && let Some(reporter) = reporter {
@@ -817,6 +815,32 @@ pub struct JsonOutputConfig {
     pub week: Option<u8>,
 }
 
+/// Write detections in every requested format and return the files written.
+fn write_all_outputs(
+    input_path: &Path,
+    output: &OutputTarget,
+    formats: &[OutputFormat],
+    detections: &[Detection],
+    csv_columns: &[String],
+    csv_bom_enabled: bool,
+    json_config: Option<&JsonOutputConfig>,
+) -> Result<OutputFiles> {
+    let mut outputs = OutputFiles::new();
+    for format in formats {
+        let written = write_output(
+            input_path,
+            output,
+            *format,
+            detections,
+            csv_columns,
+            csv_bom_enabled,
+            json_config,
+        )?;
+        outputs.insert(*format, written);
+    }
+    Ok(outputs)
+}
+
 /// Write detections to an output file.
 #[allow(clippy::too_many_arguments)]
 fn write_output(
@@ -888,4 +912,47 @@ pub struct ProcessResult {
     pub audio_duration_secs: f64,
     /// Output files written, by format. Empty when no files were written.
     pub outputs: OutputFiles,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::pipeline::plan_output_targets;
+
+    #[test]
+    fn test_write_all_outputs_returns_every_file_it_wrote() {
+        let dir = tempfile::tempdir().unwrap();
+        let input = dir.path().join("x.wav");
+        std::fs::write(&input, "").unwrap();
+        let target = plan_output_targets(std::slice::from_ref(&input), None)
+            .remove(0)
+            .unwrap();
+        let json_config = JsonOutputConfig {
+            model: "test".to_string(),
+            min_confidence: 0.1,
+            overlap: 0.0,
+            audio_duration: 3.0,
+            lat: None,
+            lon: None,
+            week: None,
+        };
+
+        let outputs = write_all_outputs(
+            &input,
+            &target,
+            &[OutputFormat::Csv, OutputFormat::Json],
+            &[],
+            &[],
+            false,
+            Some(&json_config),
+        )
+        .unwrap();
+
+        let expected = OutputFiles::from([
+            (OutputFormat::Csv, dir.path().join("x.BirdNET.results.csv")),
+            (OutputFormat::Json, dir.path().join("x.BirdNET.json")),
+        ]);
+        assert_eq!(outputs, expected);
+        assert!(expected.values().all(|p| p.exists()));
+    }
 }

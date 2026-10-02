@@ -424,7 +424,7 @@ birda -f json recording.wav
 # Creates: recording.BirdNET.json
 ```
 
-Birda names every output of a run before analyzing anything, so two inputs never write the same file. An input whose name is not shared with any other input in the run keeps exactly the name above. When several inputs would produce the same name, which means the same stem in the same output directory (compared without regard to case), each of them is named differently:
+Birda names every output of a run before analyzing anything, so two inputs never write the same file. An input whose name is not shared with any other input in the run keeps exactly the name above. A name also counts as shared with the full name another input takes: with `x.wav` and `x.flac` in one folder, an input named `x.wav.wav` is qualified too. When several inputs would produce the same name, which means the same stem in the same output directory (compared without regard to case), each of them is named differently:
 
 - The name uses the full input file name instead of the stem: `x.wav` and `x.flac` in one folder become `x.wav.BirdNET.json` and `x.flac.BirdNET.json`.
 - When `-o` is given and the inputs sit in different folders, each output also goes into a subfolder of the `-o` directory that mirrors the input's folder, relative to the closest folder the inputs share: `in/a/x.wav` and `in/b/x.wav` with `-o out` become `out/a/x.wav.BirdNET.json` and `out/b/x.wav.BirdNET.json`.

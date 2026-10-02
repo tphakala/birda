@@ -819,6 +819,24 @@ fn reclaim_stale_lock(input: &Path, output_dir: &Path, timeout: Option<std::time
     }
 }
 
+/// Plan the output target of every file in a run.
+///
+/// `--stdout` writes no files, so there is nothing for two names to collide on:
+/// each file is planned alone and none is failed for a name it never writes.
+fn plan_run_targets(
+    files: &[PathBuf],
+    output_dir: Option<&Path>,
+    stdout_mode: bool,
+) -> Vec<Result<OutputTarget>> {
+    if stdout_mode {
+        return files
+            .iter()
+            .flat_map(|file| plan_output_targets(std::slice::from_ref(file), output_dir))
+            .collect();
+    }
+    plan_output_targets(files, output_dir)
+}
+
 /// Decide whether a planned file goes on to inference, reporting and counting
 /// the skip when it does not.
 ///
@@ -1152,7 +1170,7 @@ fn analyze_files(
 
     // Name every output up front, so inputs that would share a name are told
     // apart (or failed) before any of them is analyzed.
-    let targets = plan_output_targets(&files, output_dir.as_deref());
+    let targets = plan_run_targets(&files, output_dir.as_deref(), args.stdout);
     let files: Vec<(PathBuf, Result<OutputTarget>)> = files.into_iter().zip(targets).collect();
     let force = args.force;
     let fail_fast = args.fail_fast;
@@ -3593,6 +3611,26 @@ mod tests {
     }
 
     #[test]
+    fn test_collision_target_aborts_under_fail_fast_with_its_code() {
+        let mut stats = ProcessingStats::default();
+        let reporter = RecordingReporter::default();
+        let err = Error::OutputPathCollision {
+            output: PathBuf::from("/out/A/x.wav"),
+            inputs: vec![PathBuf::from("/in/A/x.wav"), PathBuf::from("/in/a/x.wav")],
+        };
+
+        let outcome =
+            record_file_failure(Path::new("/in/A/x.wav"), err, &mut stats, &reporter, true);
+
+        assert!(matches!(outcome, Err(Error::OutputPathCollision { .. })));
+        assert_eq!(stats.errors, 1);
+        assert_eq!(
+            *reporter.failure_codes.lock().unwrap(),
+            vec!["output_path_collision".to_string()]
+        );
+    }
+
+    #[test]
     fn test_collision_target_reports_a_failure_with_its_code() {
         // An input whose output name could not be made unique fails on its own,
         // under its own code, and the run goes on (no --fail-fast).
@@ -3674,6 +3712,28 @@ mod tests {
                 output::OutputFiles::from([(OutputFormat::Json, expected)])
             )]
         );
+    }
+
+    #[test]
+    fn test_stdout_mode_does_not_fail_names_that_only_differ_in_case() {
+        // Nothing is written in stdout mode, so `x.wav` and `X.wav` in one folder
+        // are both analyzed; in a file run they collide.
+        let dir = tempfile::tempdir().unwrap();
+        let files = [dir.path().join("x.wav"), dir.path().join("X.wav")];
+        for file in &files {
+            std::fs::write(file, "").unwrap();
+        }
+        // Only meaningful where both names are separate files.
+        if !files.iter().all(|f| f.exists()) || std::fs::read_dir(dir.path()).unwrap().count() != 2
+        {
+            return;
+        }
+
+        let stdout_plan = plan_run_targets(&files, None, true);
+        let file_plan = plan_run_targets(&files, None, false);
+
+        assert!(stdout_plan.iter().all(Result::is_ok));
+        assert!(file_plan.iter().all(Result::is_err));
     }
 
     #[test]

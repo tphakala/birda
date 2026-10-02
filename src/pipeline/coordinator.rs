@@ -234,6 +234,86 @@ fn group_by_key(
     groups
 }
 
+/// Folder names under `-o` that keep each argument's clashing outputs apart,
+/// keyed by the argument's canonical folder (a file argument's own folder).
+///
+/// An argument is labelled with its folder name. Arguments whose folder names
+/// match (`stationA/2024-05-01` and `stationB/2024-05-01`) are labelled with
+/// their path below the folder they share instead. The labels depend only on
+/// the arguments, so they stay the same across reruns of the same command.
+fn root_labels(roots: &[PathBuf], dirs: &mut CanonicalDirs) -> HashMap<PathBuf, Vec<OsString>> {
+    let mut bases: Vec<PathBuf> = roots
+        .iter()
+        .filter_map(|root| {
+            if root.is_dir() {
+                Some(dirs.get(root))
+            } else {
+                root.parent().map(|parent| dirs.get(parent))
+            }
+        })
+        .collect();
+    bases.sort();
+    bases.dedup();
+
+    let mut by_name: HashMap<String, Vec<PathBuf>> = HashMap::new();
+    for base in bases {
+        let name = base
+            .file_name()
+            .map(|n| n.to_string_lossy().to_lowercase())
+            .unwrap_or_default();
+        by_name.entry(name).or_default().push(base);
+    }
+
+    let mut labels = HashMap::new();
+    for group in by_name.into_values() {
+        if let [base] = group.as_slice() {
+            let label = base
+                .file_name()
+                .map(OsStr::to_os_string)
+                .into_iter()
+                .collect();
+            labels.insert(base.clone(), label);
+            continue;
+        }
+        let parts: Vec<Vec<OsString>> = group.iter().map(|base| normal_components(base)).collect();
+        let shared = parts.iter().skip(1).fold(parts[0].len(), |len, other| {
+            len.min(
+                parts[0]
+                    .iter()
+                    .zip(other)
+                    .take_while(|(a, b)| a == b)
+                    .count(),
+            )
+        });
+        for (base, components) in group.into_iter().zip(parts) {
+            labels.insert(base, components[shared..].to_vec());
+        }
+    }
+    labels
+}
+
+/// Folders under `-o` for a clashing input: its argument's label, then its
+/// folder below that argument.
+fn mirror_for(candidate: &Candidate, labels: &HashMap<PathBuf, Vec<OsString>>) -> Vec<OsString> {
+    let mut mirror = labels
+        .get(&candidate.base_root)
+        .cloned()
+        .unwrap_or_else(|| {
+            candidate
+                .base_root
+                .file_name()
+                .map(OsStr::to_os_string)
+                .into_iter()
+                .collect()
+        });
+    let below_root = candidate
+        .canonical_parent
+        .strip_prefix(&candidate.base_root)
+        .unwrap_or_else(|_| Path::new(""));
+    mirror.extend(normal_components(below_root));
+    mirror
+}
+
 /// Plan the output name of every input in a run.
 ///
 /// Returns one entry per input, in input order. An input that shares no name
@@ -243,8 +323,9 @@ fn group_by_key(
 /// so `x.wav` and `x.flac` become `x.wav.BirdNET.json` and `x.flac.BirdNET.json`.
 /// When `-o` is given, each clashing input also goes into a folder named after
 /// the directory argument it was found under (in `roots`; an input given as a
-/// file counts as found in its own folder), mirroring its folder below that
-/// argument. The rule is symmetric, so the result does not depend on input
+/// file counts as found in its own folder, and arguments whose folder names
+/// match are told apart by their path below the folder they share), mirroring
+/// its folder below that argument. The rule is symmetric, so the result does not depend on input
 /// order, and a clashing input's path depends only on its own location and
 /// argument, so it does not move when inputs are added under the same
 /// arguments.
@@ -288,6 +369,7 @@ pub fn plan_output_targets(
     // Deepest first, so a file under nested directory arguments takes the
     // closest one.
     dir_roots.sort_by_key(|root| std::cmp::Reverse(root.components().count()));
+    let labels = root_labels(roots, &mut dirs);
     let mut candidates: Vec<Candidate> = files
         .iter()
         .map(|file| {
@@ -324,25 +406,15 @@ pub fn plan_output_targets(
         for &i in members {
             candidates[i].qualified = true;
             if explicit_output_dir.is_some() {
-                let candidate = &candidates[i];
-                let below_root = candidate
-                    .canonical_parent
-                    .strip_prefix(&candidate.base_root)
-                    .unwrap_or_else(|_| Path::new(""));
-                let mut mirror: Vec<OsString> = candidate
-                    .base_root
-                    .file_name()
-                    .map(OsStr::to_os_string)
-                    .into_iter()
-                    .collect();
-                mirror.extend(normal_components(below_root));
-                candidates[i].mirror = mirror;
+                candidates[i].mirror = mirror_for(&candidates[i], &labels);
             }
         }
     }
 
     // A name that stayed plain can still match a qualified one (`x.wav` next to
-    // `x.wav.wav` and `x.flac`). Qualify it too, until nothing changes.
+    // `x.wav.wav` and `x.flac`). Qualify it too, until nothing changes. This
+    // only happens without `-o`: under `-o` a qualified name sits in its
+    // argument's folder and a plain one directly in `-o`, so they never meet.
     let groups = loop {
         let groups = group_by_key(&candidates, true);
         let mut changed = false;
@@ -789,6 +861,64 @@ mod tests {
         for added in &second[2..] {
             assert!(!first.contains(added), "{} is reused", added.display());
         }
+    }
+
+    #[test]
+    fn test_plan_tells_apart_arguments_whose_folder_names_match() {
+        // Recorder folders are often named by date, so two stations give two
+        // arguments that both end in `2024-05-01`.
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("out");
+        let first_day = dir.path().join("stationA").join("2024-05-01");
+        let second_day = dir.path().join("stationB").join("2024-05-01");
+        let first = touch(&first_day, "x.wav");
+        let second = touch(&second_day, "x.wav");
+
+        let plans =
+            plan_output_targets(&[first, second], &[first_day, second_day], Some(&out), true);
+
+        let names: Vec<Option<PathBuf>> = plans
+            .iter()
+            .map(|p| p.as_ref().ok().map(json_path))
+            .collect();
+        assert_eq!(
+            names,
+            vec![
+                Some(
+                    out.join("stationA")
+                        .join("2024-05-01")
+                        .join("x.wav.BirdNET.json")
+                ),
+                Some(
+                    out.join("stationB")
+                        .join("2024-05-01")
+                        .join("x.wav.BirdNET.json")
+                ),
+            ]
+        );
+    }
+
+    #[test]
+    fn test_plan_keeps_a_plain_name_that_only_matches_a_mirrored_one() {
+        // Under `-o` the qualified `x.wav` goes into the argument's folder, so
+        // the plain name `x.wav.wav` gets directly in `out` does not meet it.
+        let dir = tempfile::tempdir().unwrap();
+        let input = dir.path().join("in");
+        let out = dir.path().join("out");
+        let wav = touch(&input, "x.wav");
+        let flac = touch(&input, "x.flac");
+        let double = touch(&input, "x.wav.wav");
+
+        let names = plan_under(&input, &[wav, flac, double], &out);
+
+        assert_eq!(
+            names,
+            vec![
+                out.join("in").join("x.wav.BirdNET.json"),
+                out.join("in").join("x.flac.BirdNET.json"),
+                out.join("x.wav.BirdNET.json"),
+            ]
+        );
     }
 
     #[test]

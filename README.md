@@ -440,7 +440,7 @@ All options can be set via environment variables:
 
 ## Output Formats
 
-Result files are named `<input name>.BirdNET.<format suffix>` and written next to the input, or into the `-o` directory. When several inputs in one run would get the same name (`x.wav` and `x.flac` in one folder, or `a/x.wav` and `b/x.wav` with `-o out`), those outputs use the full input file name (`x.wav.BirdNET.results.csv`) and, with `-o`, a subfolder named after the argument that found the input, mirroring its folder below it (`out/in/a/`, `out/in/b/`). Inputs with a name of their own keep the plain name. See [Output File Names](docs/json-output.md#output-file-names) for the rules.
+Result files are named `<input name>.BirdNET.<format suffix>` and written next to the input, or into the `-o` directory. When several inputs in one run would get the same name (`x.wav` and `x.flac` in one folder, or `in/a/x.wav` and `in/b/x.wav` with `birda -o out in`), those outputs use the full input file name (`x.wav.BirdNET.results.csv`) and, with `-o`, a subfolder named after the argument that found the input, mirroring its folder below it (`out/in/a/`, `out/in/b/`). Inputs with a name of their own keep the plain name. See [Output File Names](docs/json-output.md#output-file-names) for the rules.
 
 ### CSV (default)
 

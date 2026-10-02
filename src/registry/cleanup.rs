@@ -160,7 +160,7 @@ mod tests {
             &[PathBuf::from("/m/same.onnx"), PathBuf::from("/m/same.txt")],
         );
 
-        assert!(orphans.is_empty());
+        assert_eq!(orphans, Vec::<PathBuf>::new());
     }
 
     #[test]
@@ -226,7 +226,7 @@ mod tests {
     fn test_orphaned_files_is_empty_for_a_first_install() {
         let config = Config::default();
         let orphans = orphaned_files(&config, "birdnet-v30", &[PathBuf::from("/m/new.onnx")]);
-        assert!(orphans.is_empty());
+        assert_eq!(orphans, Vec::<PathBuf>::new());
     }
 
     #[test]

@@ -27,7 +27,7 @@ fn test_cuda_library_patterns_platform_specific() {
     let patterns = get_cuda_library_patterns();
 
     // Should have at least one pattern
-    assert!(!patterns.is_empty());
+    assert_ne!(patterns, [] as [&str; 0]);
 
     #[cfg(target_os = "windows")]
     {

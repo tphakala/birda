@@ -558,7 +558,10 @@ mod tests {
 
     #[test]
     fn test_variant_ids_for_an_unknown_region_is_empty() {
-        assert!(variant_entry().variant_ids_for(Some("atlantis")).is_empty());
+        assert_eq!(
+            variant_entry().variant_ids_for(Some("atlantis")),
+            Vec::<&str>::new()
+        );
     }
 
     #[test]
@@ -683,7 +686,7 @@ mod tests {
         let registry: Registry = serde_json::from_str(json).unwrap();
         assert_eq!(registry.schema_version, "1.0");
         assert_eq!(registry.registry_version, 0);
-        assert!(registry.models.is_empty());
+        assert_eq!(registry.models, Vec::<ModelEntry>::new());
     }
 
     #[test]
@@ -737,7 +740,7 @@ mod tests {
         let registry: Registry = serde_json::from_str(json).unwrap();
         assert_eq!(registry.schema_version, "1.0");
         assert_eq!(registry.registry_version, 0); // Should default to 0
-        assert!(registry.models.is_empty());
+        assert_eq!(registry.models, Vec::<ModelEntry>::new());
     }
 
     #[test]

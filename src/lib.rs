@@ -1496,7 +1496,6 @@ fn handle_update_command(check_only: bool, output_mode: OutputMode) -> Result<()
             } else {
                 println!("birda is up to date (v{version})");
             }
-            Ok(())
         }
         update::UpdateCheck::Available {
             current,
@@ -1543,10 +1542,10 @@ fn handle_update_command(check_only: bool, output_mode: OutputMode) -> Result<()
                     println!("\nNote: {warning}");
                 }
             }
-
-            Ok(())
         }
     }
+
+    Ok(())
 }
 
 fn handle_config_command(action: cli::ConfigAction, output_mode: OutputMode) -> Result<()> {

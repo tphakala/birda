@@ -67,7 +67,7 @@ mod tests {
     #[test]
     fn test_asset_key_is_not_empty() {
         let key = asset_key();
-        assert!(!key.is_empty());
+        assert_ne!(key, "");
     }
 
     #[test]

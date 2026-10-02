@@ -80,6 +80,6 @@ mod tests {
         writer.finalize().unwrap();
 
         let contents = std::fs::read_to_string(file.path()).unwrap();
-        assert!(contents.is_empty());
+        assert_eq!(contents, "");
     }
 }

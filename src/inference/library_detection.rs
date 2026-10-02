@@ -336,7 +336,7 @@ mod tests {
         // Should have at least standard paths on Linux/macOS
         #[cfg(any(target_os = "linux", target_os = "macos"))]
         {
-            assert!(!paths.is_empty());
+            assert_ne!(paths, Vec::<PathBuf>::new());
             assert!(paths.contains(&PathBuf::from("/usr/lib")));
         }
     }

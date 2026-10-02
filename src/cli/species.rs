@@ -486,7 +486,7 @@ mod tests {
             SortOrder::Freq,
         );
 
-        assert!(entries.is_empty());
+        assert_eq!(entries, Vec::<(String, f32)>::new());
     }
 
     #[test]

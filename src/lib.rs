@@ -1143,7 +1143,7 @@ fn analyze_files(
 
     // Name every output up front, so inputs that would share a name are told
     // apart (or failed) before any of them is analyzed.
-    let targets = plan_output_targets(&files, output_dir.as_deref(), !args.stdout);
+    let targets = plan_output_targets(&files, inputs, output_dir.as_deref(), !args.stdout);
     let files: Vec<(PathBuf, Result<OutputTarget>)> = files.into_iter().zip(targets).collect();
     let force = args.force;
     let fail_fast = args.fail_fast;
@@ -3649,7 +3649,8 @@ mod tests {
             std::fs::create_dir_all(input.parent().unwrap()).unwrap();
             std::fs::write(input, "").unwrap();
         }
-        let targets = plan_output_targets(&[a.clone(), b], Some(&out), true);
+        let targets =
+            plan_output_targets(&[a.clone(), b.clone()], &[a.clone(), b], Some(&out), true);
         let target = targets.into_iter().next().unwrap().unwrap();
         let expected = out.join("a/x.wav.BirdNET.json");
         std::fs::create_dir_all(expected.parent().unwrap()).unwrap();
@@ -3693,8 +3694,8 @@ mod tests {
             return;
         }
 
-        let stdout_plan = plan_output_targets(&files, Some(&out), false);
-        let file_plan = plan_output_targets(&files, Some(&out), true);
+        let stdout_plan = plan_output_targets(&files, &files, Some(&out), false);
+        let file_plan = plan_output_targets(&files, &files, Some(&out), true);
 
         assert!(stdout_plan.iter().all(Result::is_ok));
         assert!(file_plan.iter().all(Result::is_err));
@@ -3705,11 +3706,16 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let input = dir.path().join("x.wav");
         std::fs::write(&input, "").unwrap();
-        let target = plan_output_targets(std::slice::from_ref(&input), None, true)
-            .into_iter()
-            .next()
-            .unwrap()
-            .unwrap();
+        let target = plan_output_targets(
+            std::slice::from_ref(&input),
+            std::slice::from_ref(&input),
+            None,
+            true,
+        )
+        .into_iter()
+        .next()
+        .unwrap()
+        .unwrap();
         std::fs::write(
             crate::locking::FileLock::lock_path_for(&input, target.dir()),
             "",

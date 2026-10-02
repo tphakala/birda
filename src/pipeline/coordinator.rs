@@ -6,7 +6,7 @@ use crate::error::{Error, Result};
 use crate::locking::FileLock;
 use crate::output::OutputFiles;
 use std::collections::{HashMap, HashSet};
-use std::ffi::OsString;
+use std::ffi::{OsStr, OsString};
 use std::path::{Component, Path, PathBuf};
 use tracing::{info, warn};
 
@@ -145,6 +145,9 @@ struct Candidate {
     canonical_dir: PathBuf,
     /// Canonical parent folder of the input.
     canonical_parent: PathBuf,
+    /// Canonical folder the input was found under: the deepest directory
+    /// argument that holds it, or else its own folder.
+    base_root: PathBuf,
     /// Whether the full file name is used instead of the stem.
     qualified: bool,
     /// Subfolders under `-o` that keep inputs from different folders apart.
@@ -239,8 +242,12 @@ fn group_by_key(
 /// regard to case, in one output directory) all switch to their full file name,
 /// so `x.wav` and `x.flac` become `x.wav.BirdNET.json` and `x.flac.BirdNET.json`.
 /// When `-o` is given and the clashing inputs sit in different folders, each
-/// also gets its folder, relative to the closest folder the group shares, under
-/// `-o`. The rule is symmetric, so the result does not depend on input order.
+/// also gets its folder below the directory argument it was found under (in
+/// `roots`; an input given as a file counts as found in its own folder), and
+/// inputs from different arguments that still clash also get the argument's
+/// folder name. The rule is symmetric, so the result does not depend on input
+/// order, and the base does not move when inputs are added under the same
+/// arguments.
 ///
 /// A name that is still shared after that (under `-o`, folders that differ only
 /// in case, or the same folder on two drives) is an
@@ -254,6 +261,7 @@ fn group_by_key(
 #[must_use]
 pub fn plan_output_targets(
     files: &[PathBuf],
+    roots: &[PathBuf],
     explicit_output_dir: Option<&Path>,
     writes_files: bool,
 ) -> Vec<Result<OutputTarget>> {
@@ -272,15 +280,30 @@ pub fn plan_output_targets(
     }
 
     let mut dirs = CanonicalDirs::default();
+    let mut dir_roots: Vec<PathBuf> = roots
+        .iter()
+        .filter(|root| root.is_dir())
+        .map(|root| dirs.get(root))
+        .collect();
+    // Deepest first, so a file under nested directory arguments takes the
+    // closest one.
+    dir_roots.sort_by_key(|root| std::cmp::Reverse(root.components().count()));
     let mut candidates: Vec<Candidate> = files
         .iter()
         .map(|file| {
             let plain_dir = output_dir_for(file, explicit_output_dir);
+            let canonical_parent = dirs.get(file.parent().unwrap_or_else(|| Path::new("")));
+            let base_root = dir_roots
+                .iter()
+                .find(|root| canonical_parent.starts_with(root))
+                .cloned()
+                .unwrap_or_else(|| canonical_parent.clone());
             Candidate {
                 stem: output_name(file.file_stem()),
                 full: output_name(file.file_name()),
                 canonical_dir: dirs.get(&plain_dir),
-                canonical_parent: dirs.get(file.parent().unwrap_or_else(|| Path::new(""))),
+                canonical_parent,
+                base_root,
                 plain_dir,
                 qualified: false,
                 mirror: Vec::new(),
@@ -288,21 +311,41 @@ pub fn plan_output_targets(
         })
         .collect();
 
-    // Inputs that share a name: qualify them, and keep different source folders
-    // apart under `-o`.
+    // Inputs that share a name: qualify them, and under `-o` keep different
+    // source folders apart by mirroring each input's folder below the argument
+    // it was found under. That base does not move when recordings are added, so
+    // a rerun of the same arguments cannot give a new input the name another
+    // input's earlier output already has.
     for members in group_by_key(&candidates, true)
         .values()
         .filter(|m| m.len() > 1)
     {
-        let parents: Vec<Vec<OsString>> = members
-            .iter()
-            .map(|&i| normal_components(&candidates[i].canonical_parent))
-            .collect();
-        let shared = common_prefix_len(&parents);
-        for (&i, parent) in members.iter().zip(&parents) {
+        for &i in members {
             candidates[i].qualified = true;
             if explicit_output_dir.is_some() {
-                candidates[i].mirror = parent[shared..].to_vec();
+                let candidate = &candidates[i];
+                let below_root = candidate
+                    .canonical_parent
+                    .strip_prefix(&candidate.base_root)
+                    .unwrap_or_else(|_| Path::new(""));
+                candidates[i].mirror = normal_components(below_root);
+            }
+        }
+    }
+
+    // Inputs found under different arguments can still meet at one mirrored
+    // name (`d1/x.wav` and `d2/x.wav` listed as files, or two directories with
+    // the same layout). Put each under its argument's folder name as well.
+    if explicit_output_dir.is_some() {
+        for members in group_by_key(&candidates, true)
+            .values()
+            .filter(|m| m.len() > 1)
+        {
+            for &i in members {
+                let name = candidates[i].base_root.file_name().map(OsStr::to_os_string);
+                if let Some(name) = name {
+                    candidates[i].mirror.insert(0, name);
+                }
             }
         }
     }
@@ -354,16 +397,6 @@ pub fn plan_output_targets(
             Ok(target)
         })
         .collect()
-}
-
-/// Length of the leading run of folder names shared by every list.
-fn common_prefix_len(lists: &[Vec<OsString>]) -> usize {
-    let Some(first) = lists.first() else { return 0 };
-    let mut len = first.len();
-    for list in &lists[1..] {
-        len = len.min(first.iter().zip(list).take_while(|(a, b)| a == b).count());
-    }
-    len
 }
 
 /// Check if a file should be processed.
@@ -513,7 +546,7 @@ mod tests {
 
     /// Plan a run that must have no unresolved collision.
     fn plan(files: &[PathBuf], out: Option<&Path>) -> Vec<OutputTarget> {
-        plan_output_targets(files, out, true)
+        plan_output_targets(files, files, out, true)
             .into_iter()
             .map(|t| t.unwrap())
             .collect()
@@ -686,19 +719,79 @@ mod tests {
         assert_eq!(json_path(&targets[1]), dir.path().join("b/x.BirdNET.json"));
     }
 
+    /// Plan `files` as found under the directory argument `root`.
+    fn plan_under(root: &Path, files: &[PathBuf], out: &Path) -> Vec<PathBuf> {
+        plan_output_targets(files, &[root.to_path_buf()], Some(out), true)
+            .iter()
+            .map(|t| json_path(t.as_ref().unwrap()))
+            .collect()
+    }
+
     #[test]
-    fn test_plan_mirrors_only_below_the_folder_the_group_shares() {
-        // a/x.wav and a/b/x.wav: `a` is shared, so one lands directly in `out`
-        // and the other in `out/b`; `a` itself is not repeated.
+    fn test_plan_mirrors_folders_below_the_directory_argument() {
+        let dir = tempfile::tempdir().unwrap();
+        let input = dir.path().join("in");
+        let out = dir.path().join("out");
+        let top = touch(&input, "a/x.wav");
+        let deep = touch(&input, "a/b/x.wav");
+
+        let names = plan_under(&input, &[top, deep], &out);
+
+        assert_eq!(
+            names,
+            vec![
+                out.join("a").join("x.wav.BirdNET.json"),
+                out.join("a").join("b").join("x.wav.BirdNET.json"),
+            ]
+        );
+    }
+
+    #[test]
+    fn test_plan_keeps_mirrored_names_when_a_recording_is_added() {
+        // A rerun with one more recording must not hand the new one a name an
+        // earlier output already has: that output would be taken as its result.
+        let dir = tempfile::tempdir().unwrap();
+        let input = dir.path().join("in");
+        let out = dir.path().join("out");
+        let top = touch(&input, "a/x.wav");
+        let deep = touch(&input, "a/b/x.wav");
+        let first = plan_under(&input, &[top.clone(), deep.clone()], &out);
+        let added = touch(&input, "b/x.wav");
+
+        let second = plan_under(&input, &[top, deep, added], &out);
+
+        assert_eq!(second[..2], first[..]);
+        assert!(
+            !first.contains(&second[2]),
+            "{} is reused",
+            second[2].display()
+        );
+    }
+
+    #[test]
+    fn test_plan_puts_inputs_from_different_arguments_under_their_names() {
+        // Two directory arguments with the same layout meet at `a/x.wav`, so
+        // each also gets its argument's folder name.
         let dir = tempfile::tempdir().unwrap();
         let out = dir.path().join("out");
-        let top = touch(dir.path(), "a/x.wav");
-        let deep = touch(dir.path(), "a/b/x.wav");
+        let one = dir.path().join("one");
+        let two = dir.path().join("two");
+        let first = touch(&one, "a/x.wav");
+        let second = touch(&two, "a/x.wav");
 
-        let targets = plan(&[top, deep], Some(&out));
+        let plans = plan_output_targets(&[first, second], &[one, two], Some(&out), true);
 
-        assert_eq!(json_path(&targets[0]), out.join("x.wav.BirdNET.json"));
-        assert_eq!(json_path(&targets[1]), out.join("b/x.wav.BirdNET.json"));
+        let names: Vec<Option<PathBuf>> = plans
+            .iter()
+            .map(|p| p.as_ref().ok().map(json_path))
+            .collect();
+        assert_eq!(
+            names,
+            vec![
+                Some(out.join("one").join("a").join("x.wav.BirdNET.json")),
+                Some(out.join("two").join("a").join("x.wav.BirdNET.json")),
+            ]
+        );
     }
 
     #[test]
@@ -728,7 +821,8 @@ mod tests {
             return;
         }
 
-        let plans = plan_output_targets(&[upper, lower], None, true);
+        let plans =
+            plan_output_targets(&[upper.clone(), lower.clone()], &[upper, lower], None, true);
 
         let names: Vec<Option<PathBuf>> = plans
             .iter()
@@ -800,7 +894,12 @@ mod tests {
         let lower = touch(dir.path(), "a/x.wav");
         let fine = touch(dir.path(), "b/y.wav");
 
-        let plans = plan_output_targets(&[upper.clone(), lower.clone(), fine], Some(&out), true);
+        let plans = plan_output_targets(
+            &[upper.clone(), lower.clone(), fine.clone()],
+            &[upper.clone(), lower.clone(), fine],
+            Some(&out),
+            true,
+        );
 
         assert_eq!(plans.len(), 3);
         for failed in &plans[..2] {

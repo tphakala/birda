@@ -1238,6 +1238,28 @@ mod tests {
     }
 
     #[test]
+    fn test_should_process_refuses_a_same_named_output_when_the_output_dir_is_the_input_folder() {
+        // `-o` naming the input's own folder is still an explicit output
+        // directory: other folders' inputs can write there too.
+        let dir = tempfile::tempdir().unwrap();
+        let input = touch(dir.path(), "in/x.wav");
+        let target = plan_alone(&input, input.parent());
+        write_result(
+            &json_path(&target),
+            OutputFormat::Json,
+            "x.wav",
+            Some(Path::new("/elsewhere/x.wav")),
+        );
+
+        let check = should_process(&input, &target, &[OutputFormat::Json], false, false, &[]);
+
+        assert!(
+            matches!(&check, ProcessCheck::OwnedByOther { recorded, .. } if recorded == "/elsewhere/x.wav"),
+            "got {check:?}"
+        );
+    }
+
+    #[test]
     fn test_plan_keeps_the_stem_name_when_nothing_collides() {
         let dir = tempfile::tempdir().unwrap();
         let out = dir.path().join("out");

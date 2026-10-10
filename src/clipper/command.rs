@@ -533,7 +533,8 @@ fn push_all_new(list: &mut Vec<PathBuf>, paths: impl IntoIterator<Item = PathBuf
 /// name clashes with another input's, so the result's folder repeats the
 /// folder that was given to `birda`. `base_dir` is that folder: for every
 /// place where the result's folder path has a component equal to the name of
-/// `base_dir`, the components after it are the input's folder below `base_dir`.
+/// `base_dir` (as given, or once symlinks are resolved), the components after
+/// it are the input's folder below `base_dir`.
 /// `name` is the input's file name. The paths are not checked for existence.
 fn mirror_candidates(detection_file: &Path, base_dir: &Path, name: &str) -> Vec<PathBuf> {
     let Some(parent) = detection_file.parent() else {

@@ -539,14 +539,24 @@ fn mirror_candidates(detection_file: &Path, base_dir: &Path, name: &str) -> Vec<
     let Some(parent) = detection_file.parent() else {
         return Vec::new();
     };
-    let parent = std::fs::canonicalize(parent).unwrap_or_else(|_| parent.to_path_buf());
-    let base_name = std::fs::canonicalize(base_dir)
-        .unwrap_or_else(|_| base_dir.to_path_buf())
-        .file_name()
-        .map(std::ffi::OsStr::to_os_string);
-    let Some(base_name) = base_name else {
-        return Vec::new();
+    // A bare file name has an empty parent, which stands for the current folder.
+    let parent = if parent.as_os_str().is_empty() {
+        Path::new(".")
+    } else {
+        parent
     };
+    let parent = std::fs::canonicalize(parent).unwrap_or_else(|_| parent.to_path_buf());
+
+    // The folder was named as the user typed it when birda wrote the result,
+    // which may be a symlink; the name it resolves to is also a fair match.
+    let canonical_base = std::fs::canonicalize(base_dir).unwrap_or_else(|_| base_dir.to_path_buf());
+    let base_names: Vec<&std::ffi::OsStr> = [base_dir.file_name(), canonical_base.file_name()]
+        .into_iter()
+        .flatten()
+        .collect();
+    if base_names.is_empty() {
+        return Vec::new();
+    }
 
     let parts: Vec<&std::ffi::OsStr> = parent
         .components()
@@ -557,7 +567,7 @@ fn mirror_candidates(detection_file: &Path, base_dir: &Path, name: &str) -> Vec<
         .collect();
     let mut candidates = Vec::new();
     for (index, part) in parts.iter().enumerate() {
-        if *part == base_name {
+        if base_names.contains(part) {
             let mut candidate = base_dir.to_path_buf();
             candidate.extend(&parts[index + 1..]);
             push_all_new(&mut candidates, [candidate.join(name)]);
@@ -671,6 +681,62 @@ mod tests {
                         .map(|ext| base.join(format!("x.{ext}"))),
                 );
                 assert_eq!(tried, expected);
+            }
+            other => panic!("expected SourceAudioNotInferred, got {other:?}"),
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_find_source_audio_matches_a_base_dir_given_through_a_symlink() {
+        // `birda -o out current` mirrors under `out/current/`, but canonicalizing
+        // `current` gives `2024`, a name no result folder has.
+        let dir = tempfile::tempdir().unwrap();
+        let real = dir.path().join("2024");
+        let audio = touch(&real, "a/x.wav");
+        touch(&real, "x.wav");
+        let link = dir.path().join("current");
+        std::os::unix::fs::symlink(&real, &link).unwrap();
+        let result = touch(dir.path(), "out/current/a/x.wav.BirdNET.results.csv");
+
+        let found = find_source_audio(&result, None, Some(&link)).unwrap();
+
+        assert_eq!(found, link.join("a").join("x.wav"));
+        assert!(found.is_file() && audio.is_file());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_find_source_audio_matches_a_result_written_under_the_real_name_of_a_symlinked_base_dir()
+    {
+        // `birda -o out real` mirrors under `out/real/`, and `--base-dir` is a
+        // link to `real`: only the canonical name of the base folder is in the
+        // result path.
+        let dir = tempfile::tempdir().unwrap();
+        let real = dir.path().join("real");
+        touch(&real, "a/x.wav");
+        let link = dir.path().join("link");
+        std::os::unix::fs::symlink(&real, &link).unwrap();
+        let result = touch(dir.path(), "out/real/a/x.wav.BirdNET.results.csv");
+
+        let found = find_source_audio(&result, None, Some(&link)).unwrap();
+
+        assert_eq!(found, link.join("a").join("x.wav"));
+    }
+
+    #[test]
+    fn test_find_source_audio_does_not_guess_extensions_for_a_stem_holding_dots() {
+        // `a..b.wav` exists, but the extension guesses are not made for a stem
+        // that holds `..`; the error names only the stem it refused.
+        let dir = tempfile::tempdir().unwrap();
+        touch(dir.path(), "a..b.wav");
+        let result = touch(dir.path(), "a..b.BirdNET.results.csv");
+
+        let err = find_source_audio(&result, None, None).unwrap_err();
+
+        match err {
+            Error::SourceAudioNotInferred { tried, .. } => {
+                assert_eq!(tried, vec![dir.path().join("a..b")]);
             }
             other => panic!("expected SourceAudioNotInferred, got {other:?}"),
         }

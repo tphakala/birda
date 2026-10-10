@@ -143,17 +143,35 @@ fn is_absolute_text(text: &str) -> bool {
 
 /// Whether a recorded source is compatible with an input.
 ///
-/// A recorded path may be absolute, relative to wherever the earlier run
+/// An absolute recorded path names one file, so it must be the whole identity
+/// of one of the `identities`: `.` and `..` steps are collapsed lexically, a
+/// Windows verbatim prefix is dropped as in [`identity_text`], the drive is kept,
+/// and segments are compared with the filesystem's case rule. `/old/in/x.wav` is
+/// not `/new/old/in/x.wav`, and `C:\rec\s.wav` is not `D:\rec\s.wav`.
+///
+/// A recorded path that is not absolute is relative to wherever the earlier run
 /// started (`in/a/x.wav`, `../in/a/x.wav`, `./x.wav`), or only a file name
-/// (older JSON). The folders a relative path names are the ones it needs below
-/// its starting point, so the check keeps the trailing segments that name real
-/// folders and the file, dropping the leading `.`, `..`, `?` and drive
-/// segments, and requires them to be the tail of one of the `identities`.
+/// (older JSON). The folders it names are the ones it needs below its starting
+/// point, so the check keeps the trailing segments that name real folders and the
+/// file, dropping the leading `.`, `..`, `?` and drive segments, and requires
+/// them to be the tail of one of the `identities`.
 ///
 /// A recorded value with nothing left after that has no evidence, which counts
 /// as compatible.
 #[must_use]
 pub fn recorded_matches(recorded: &str, identities: &[&Path]) -> bool {
+    if is_absolute_text(recorded) {
+        let recorded_text = identity_text(Path::new(recorded));
+        let wanted = collapse_parent_segments(segments(&recorded_text));
+        if wanted.is_empty() {
+            return true;
+        }
+        return identities.iter().any(|identity| {
+            let text = identity_text(identity);
+            let own = collapse_parent_segments(segments(&text));
+            own.len() == wanted.len() && own.iter().zip(&wanted).all(|(a, b)| same_segment(a, b))
+        });
+    }
     let all = segments(recorded);
     let kept = all.iter().rev().take_while(|s| !is_marker(s)).count();
     if kept == 0 {
@@ -248,8 +266,12 @@ mod tests {
             ("./x.wav", true),
             ("x.wav", true),
             ("a/x.wav", true),
-            (r"C:\data\in\a\x.wav", true),
-            (r"\\?\C:\data\in\a\x.wav", true),
+            // An absolute value names one file, so a drive it does not share
+            // with the identity is a different file.
+            (r"C:\data\in\a\x.wav", false),
+            (r"\\?\C:\data\in\a\x.wav", false),
+            ("/data/in/./b/../a/x.wav", true),
+            ("/new/data/in/a/x.wav", false),
             ("", true),
             (".", true),
             ("..", true),
@@ -270,12 +292,30 @@ mod tests {
     }
 
     #[test]
+    fn test_recorded_matches_an_absolute_windows_value_only_on_its_own_drive() {
+        let identity = Path::new(r"\\?\C:\rec\s.wav");
+
+        assert!(recorded_matches(r"C:\rec\s.wav", &[identity]));
+        assert!(recorded_matches(r"\\?\C:\rec\s.wav", &[identity]));
+        assert!(recorded_matches(r"C:\rec\.\x\..\s.wav", &[identity]));
+        assert!(!recorded_matches(r"D:\rec\s.wav", &[identity]));
+        assert!(!recorded_matches(r"C:\old\rec\s.wav", &[identity]));
+        // A value without a drive or a root is relative and keeps the tail rule.
+        assert!(recorded_matches(r"rec\s.wav", &[identity]));
+    }
+
+    #[test]
     fn test_recorded_matches_any_of_the_identities() {
         let canonical = Path::new("/data/real/x.wav");
         let typed = Path::new("/home/me/link/x.wav");
 
         assert!(recorded_matches("/home/me/link/x.wav", &[canonical, typed]));
         assert!(!recorded_matches("/home/me/link/x.wav", &[canonical]));
+        // An absolute value is not a suffix of a longer identity.
+        assert!(!recorded_matches(
+            "/data/real/x.wav",
+            &[Path::new("/new/data/real/x.wav")]
+        ));
     }
 
     #[test]

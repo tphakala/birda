@@ -448,7 +448,7 @@ An input is skipped when every requested output file already exists and none of 
 | Raven | the `Begin Path` column of the first detection |
 | Audacity, Kaleidoscope, Parquet | nothing; these formats cannot be checked |
 
-A recorded path that is relative (CSV and Raven hold the path as it was typed, such as `in/a/x.wav` or `./x.wav`) is compared by its trailing folders and file name, and a file name alone only needs the same name. Outputs written by earlier versions are therefore still recognised, and rerunning a command skips what it wrote before.
+A recorded path that is absolute names one file, so it must be the input's whole path (with `.` and `..` steps collapsed, the drive kept and case ignored on Windows and macOS): `/old/in/x.wav` is not `/new/old/in/x.wav`, and `C:\rec\s.wav` is not `D:\rec\s.wav`. A recorded path that is relative (CSV and Raven hold the path as it was typed, such as `in/a/x.wav` or `./x.wav`) is compared by its trailing folders and file name, and a file name alone only needs the same name. Outputs written by earlier versions are therefore still recognised, and rerunning a command skips what it wrote before.
 
 If an existing output records a different input, birda does not take it as the result of the input being checked:
 
@@ -456,7 +456,7 @@ If an existing output records a different input, birda does not take it as the r
 - Without `-o` the output sits beside its input. When it records no input of this run, it counts as the input's own if the recorded file name is the input's file name, which keeps a rerun working after the folder moved.
 - Otherwise the input is not analyzed and is reported as `failed` with the code `output_owned_by_other_input`, so that results of an input that is not in this run are never replaced silently. `--force` overwrites the file, or give the run another `-o` directory.
 
-Limits: an output that records no source (a CSV or Raven file with no detections, or any Audacity, Kaleidoscope or Parquet file) cannot be told apart, so it counts as the input's own, as before. A relative path in a CSV or Raven file that ends in the same folders and name as another input's is also taken as a match. JSON written by this version always holds an absolute path and is not affected. With `-o`, a CSV or Raven output records the path as it was typed, so if the input folder has moved, was remounted or is now reached through a symlink, its recorded path differs and the input fails with `output_owned_by_other_input` until you rerun with `--force`. A JSON output records the resolved path, so only a folder that really moved has that effect. Paths are compared without regard to case on Windows and macOS.
+Limits: an output that records no source (a CSV or Raven file with no detections, or any Audacity, Kaleidoscope or Parquet file) cannot be told apart, so it counts as the input's own, as before. A relative path in a CSV or Raven file that ends in the same folders and name as another input's is also taken as a match. An absolute path, as JSON written by this version always holds, is not affected. With `-o`, a CSV or Raven output records the path as it was typed, so if the input folder has moved, was remounted or is now reached through a symlink, its recorded path differs and the input fails with `output_owned_by_other_input` until you rerun with `--force`. A JSON output records the resolved path, so only a folder that really moved has that effect. Paths are compared without regard to case on Windows and macOS.
 
 ## JSON Detection File Format
 

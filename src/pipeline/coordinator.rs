@@ -1238,6 +1238,35 @@ mod tests {
     }
 
     #[test]
+    fn test_should_process_does_not_take_an_absolute_value_that_is_only_the_tail_of_the_input() {
+        // The JSON records an absolute path that ends the way this input's path
+        // does but starts elsewhere: it names a different file.
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("out");
+        let input = touch(dir.path(), "in/x.wav");
+        let target = plan_alone(&input, Some(&out));
+        let tail = target
+            .source()
+            .strip_prefix(Path::new("/").join(target.source().components().nth(1).unwrap()))
+            .unwrap()
+            .to_path_buf();
+        let recorded = Path::new("/").join(tail);
+        write_result(
+            &json_path(&target),
+            OutputFormat::Json,
+            "x.wav",
+            Some(&recorded),
+        );
+
+        let check = should_process(&input, &target, &[OutputFormat::Json], false, false, &[]);
+
+        assert!(
+            matches!(&check, ProcessCheck::OwnedByOther { .. }),
+            "got {check:?}"
+        );
+    }
+
+    #[test]
     fn test_should_process_refuses_a_same_named_output_when_the_output_dir_is_the_input_folder() {
         // `-o` naming the input's own folder is still an explicit output
         // directory: other folders' inputs can write there too.

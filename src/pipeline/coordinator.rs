@@ -5,7 +5,9 @@ use crate::constants::{FALLBACK_OUTPUT_NAME, output_extensions};
 use crate::error::{Error, Result};
 use crate::locking::FileLock;
 use crate::output::OutputFiles;
-use crate::output::ownership::{recorded_is_exactly_one_of, recorded_matches, recorded_source};
+use crate::output::ownership::{
+    recorded_file_name, recorded_is_exactly_one_of, recorded_matches, recorded_source,
+};
 use std::collections::{HashMap, HashSet};
 use std::ffi::OsString;
 use std::path::{Component, Path, PathBuf};
@@ -74,6 +76,8 @@ pub struct OutputTarget {
     /// The input this target is for: its canonical folder joined with its file
     /// name. Result files record it so a later run can tell whose they are.
     source: PathBuf,
+    /// Whether the output files sit next to the input (no `-o` was given).
+    beside_input: bool,
 }
 
 impl OutputTarget {
@@ -88,6 +92,12 @@ impl OutputTarget {
     #[must_use]
     pub fn source(&self) -> &Path {
         &self.source
+    }
+
+    /// Whether the output files sit next to the input (no `-o` was given).
+    #[must_use]
+    pub const fn beside_input(&self) -> bool {
+        self.beside_input
     }
 
     /// Output file path for a given format.
@@ -364,6 +374,7 @@ pub fn plan_output_targets(
                     dir,
                     base: output_name(file.file_stem()),
                     source: input_identity(file, &mut dirs),
+                    beside_input: explicit_output_dir.is_none(),
                 })
             })
             .collect();
@@ -450,6 +461,7 @@ pub fn plan_output_targets(
                 root: candidate.plain_dir.clone(),
                 base: candidate.base().to_string(),
                 source: input_identity(file, &mut dirs),
+                beside_input: explicit_output_dir.is_none(),
             };
             let clashing = &groups[&candidate.key(fold_case)];
             if clashing.len() > 1 {
@@ -533,6 +545,12 @@ pub fn should_process(
         }
         if recorded_is_exactly_one_of(&recorded, run_sources) {
             replaces_stale_copy = true;
+            continue;
+        }
+        // Beside its input, an output was written for the file of that name, so
+        // when it names no input of this run only the name says whose it is:
+        // the folder may have moved since.
+        if target.beside_input() && recorded_matches(recorded_file_name(&recorded), &identities) {
             continue;
         }
         return ProcessCheck::OwnedByOther {
@@ -1131,6 +1149,85 @@ mod tests {
     }
 
     #[test]
+    fn test_should_process_skips_outputs_beside_the_input_after_its_folder_moved() {
+        // Without `-o` the output sits next to its input, so a copy recorded
+        // for the same file name in an old folder is that input's own result:
+        // the folder moved. A different name in the same place is not.
+        let dir = tempfile::tempdir().unwrap();
+        let input = touch(dir.path(), "in/x.wav");
+        let target = plan_alone(&input, None);
+        let output = json_path(&target);
+
+        write_result(
+            &output,
+            OutputFormat::Json,
+            "x.wav",
+            Some(Path::new("/old/place/in/x.wav")),
+        );
+        let moved = should_process(&input, &target, &[OutputFormat::Json], false, false, &[]);
+        write_result(
+            &output,
+            OutputFormat::Json,
+            "x.wav.wav",
+            Some(Path::new("/old/place/in/x.wav.wav")),
+        );
+        let renamed = should_process(&input, &target, &[OutputFormat::Json], false, false, &[]);
+
+        // The copy records a same-named input that is part of this run: it has
+        // its own output, so this one is the stale copy and is overwritten.
+        let other = touch(dir.path(), "other/x.wav");
+        let other_target = plan_alone(&other, None);
+        write_result(
+            &output,
+            OutputFormat::Json,
+            "x.wav",
+            Some(other_target.source()),
+        );
+        let run_sources = [
+            target.source().to_path_buf(),
+            other_target.source().to_path_buf(),
+        ];
+        let stale = should_process(
+            &input,
+            &target,
+            &[OutputFormat::Json],
+            false,
+            false,
+            &run_sources,
+        );
+
+        assert!(matches!(moved, ProcessCheck::SkipExists), "got {moved:?}");
+        assert!(matches!(stale, ProcessCheck::Process), "got {stale:?}");
+        assert!(
+            matches!(&renamed, ProcessCheck::OwnedByOther { recorded, .. } if recorded == "/old/place/in/x.wav.wav"),
+            "got {renamed:?}"
+        );
+    }
+
+    #[test]
+    fn test_should_process_refuses_a_same_named_output_under_an_explicit_output_dir() {
+        // With `-o` many folders write into one place, so the same file name
+        // recorded for another folder is another input's result.
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("out");
+        let input = touch(dir.path(), "in/x.wav");
+        let target = plan_alone(&input, Some(&out));
+        write_result(
+            &json_path(&target),
+            OutputFormat::Json,
+            "x.wav",
+            Some(Path::new("/elsewhere/x.wav")),
+        );
+
+        let check = should_process(&input, &target, &[OutputFormat::Json], false, false, &[]);
+
+        assert!(
+            matches!(&check, ProcessCheck::OwnedByOther { recorded, .. } if recorded == "/elsewhere/x.wav"),
+            "got {check:?}"
+        );
+    }
+
+    #[test]
     fn test_plan_keeps_the_stem_name_when_nothing_collides() {
         let dir = tempfile::tempdir().unwrap();
         let out = dir.path().join("out");
@@ -1691,6 +1788,7 @@ mod tests {
             root: PathBuf::from("/output"),
             base: "test".to_string(),
             source: PathBuf::from("/in/test.wav"),
+            beside_input: false,
         };
         assert_eq!(
             target.path_for(OutputFormat::Csv).unwrap(),
@@ -1776,6 +1874,7 @@ mod tests {
             root: PathBuf::from("/safe/output"),
             base: "x".to_string(),
             source: PathBuf::from("/in/x.wav"),
+            beside_input: false,
         };
 
         let err = target.path_for(OutputFormat::Json).unwrap_err();

@@ -171,6 +171,13 @@ pub fn recorded_matches(recorded: &str, identities: &[&Path]) -> bool {
     })
 }
 
+/// The last segment of a recorded source: the file name, whichever separator
+/// the value was written with.
+#[must_use]
+pub fn recorded_file_name(recorded: &str) -> &str {
+    segments(recorded).last().copied().unwrap_or(recorded)
+}
+
 /// Resolve `..` and `.` segments lexically, the way a shell does before it
 /// touches the filesystem.
 fn collapse_parent_segments(segments: Vec<&str>) -> Vec<&str> {
@@ -296,6 +303,14 @@ mod tests {
         assert!(recorded_is_exactly_one_of("sub/../in/x.wav", &sources));
         assert!(!recorded_is_exactly_one_of("x.wav", &sources));
         assert!(!recorded_is_exactly_one_of("../in/x.wav", &sources));
+    }
+
+    #[test]
+    fn test_recorded_file_name_is_the_last_segment_with_either_separator() {
+        assert_eq!(recorded_file_name("/data/in/x.wav"), "x.wav");
+        assert_eq!(recorded_file_name(r"C:\data\in\x.wav"), "x.wav");
+        assert_eq!(recorded_file_name("x.wav"), "x.wav");
+        assert_eq!(recorded_file_name("in/x.wav/"), "x.wav");
     }
 
     #[test]

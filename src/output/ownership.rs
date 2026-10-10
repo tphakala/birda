@@ -301,6 +301,11 @@ mod tests {
         assert!(recorded_is_exactly_one_of("in/x.wav", &sources));
         assert!(recorded_is_exactly_one_of("./in/x.wav", &sources));
         assert!(recorded_is_exactly_one_of("sub/../in/x.wav", &sources));
+        // Absolute values with `.` and `..` steps are collapsed the same way.
+        assert!(recorded_is_exactly_one_of(
+            &format!("{}/./in/../in/x.wav", cwd.display()),
+            &sources
+        ));
         assert!(!recorded_is_exactly_one_of("x.wav", &sources));
         assert!(!recorded_is_exactly_one_of("../in/x.wav", &sources));
     }

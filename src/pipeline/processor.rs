@@ -906,9 +906,11 @@ mod tests {
         // JSON file would only name the file, and another folder's file of the
         // same name would be taken as this input's result.
         let dir = tempfile::tempdir().unwrap();
-        let input = dir.path().join("in").join("x.wav");
-        std::fs::create_dir_all(input.parent().unwrap()).unwrap();
-        std::fs::write(&input, "").unwrap();
+        let real = dir.path().join("in").join("x.wav");
+        std::fs::create_dir_all(real.parent().unwrap()).unwrap();
+        std::fs::write(&real, "").unwrap();
+        // Spelled with a `..` step, so the path as given is not the resolved one.
+        let input = dir.path().join("in").join("..").join("in").join("x.wav");
         let target = plan_output_targets(
             std::slice::from_ref(&input),
             std::slice::from_ref(&input),

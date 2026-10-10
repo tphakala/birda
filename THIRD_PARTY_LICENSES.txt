@@ -4346,7 +4346,7 @@ MIT License
 --------------------------------------------------------------------------------
 
 Used by:
-  - rubato 5.0.0
+  - rubato 5.0.1
 
 Copyright (c) 2020 Henrik Enquist
 
@@ -4854,7 +4854,7 @@ MIT License
 --------------------------------------------------------------------------------
 
 Used by:
-  - libc 0.2.189
+  - libc 0.2.190
 
 Copyright (c) The Rust Project Developers
 
@@ -5660,7 +5660,7 @@ MIT License
 
 Used by:
   - tokio-util 0.7.19
-  - tokio 1.53.1
+  - tokio 1.53.2
 
 MIT License
 

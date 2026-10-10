@@ -404,10 +404,13 @@ pub fn plan_output_targets(
             let plain_dir = output_dir_for(file, explicit_output_dir);
             let canonical_parent = dirs.get(file.parent().unwrap_or_else(|| Path::new("")));
             let canonical_dir = dirs.get(&plain_dir);
+            // Same form as the mirror folders below, so a relative `-o` that
+            // does not exist yet compares equal on both sides.
+            let resolved_dir = dirs.resolve_through_existing(&canonical_dir);
             Candidate {
                 stem: output_name(file.file_stem()),
                 full: output_name(file.file_name()),
-                resolved_dir: canonical_dir.clone(),
+                resolved_dir,
                 canonical_dir,
                 canonical_parent,
                 plain_dir,
@@ -1349,11 +1352,15 @@ mod tests {
         let out = dir.path().join("out");
         let input = touch(dir.path(), "in/x.wav");
         let target = plan_alone(&input, Some(&out));
-        let tail = target
+        // Drop the first folder after the root or drive and write what is left
+        // as an absolute path, so the value ends like the input but starts
+        // elsewhere on every platform.
+        let tail: PathBuf = target
             .source()
-            .strip_prefix(Path::new("/").join(target.source().components().nth(1).unwrap()))
-            .unwrap()
-            .to_path_buf();
+            .components()
+            .filter(|c| matches!(c, std::path::Component::Normal(_)))
+            .skip(1)
+            .collect();
         let recorded = Path::new("/").join(tail);
         write_result(
             &json_path(&target),
@@ -1367,6 +1374,31 @@ mod tests {
         assert!(
             matches!(&check, ProcessCheck::OwnedByOther { .. }),
             "got {check:?}"
+        );
+    }
+
+    #[test]
+    fn test_plan_finds_a_file_folder_conflict_under_a_relative_output_dir_that_does_not_exist() {
+        // `-o ./name` is relative and absent, so a plain output keeps the text it
+        // was given while a mirror folder is resolved from the current directory.
+        // Both must compare in the same form or the conflict goes unseen.
+        let dir = tempfile::tempdir().unwrap();
+        let first = touch(dir.path(), "x.BirdNET.json/a.wav");
+        let second = touch(dir.path(), "other/a.wav");
+        let plain = touch(dir.path(), "other/x.wav");
+        let roots = [
+            dir.path().join("x.BirdNET.json"),
+            dir.path().join("other"),
+        ];
+        let out = Path::new("./birda-test-relative-output-that-does-not-exist");
+
+        let targets = plan_output_targets(&[first, second, plain], &roots, Some(out), true);
+
+        assert!(
+            targets
+                .iter()
+                .any(|t| matches!(t, Err(Error::OutputPathCollision { .. }))),
+            "got {targets:?}"
         );
     }
 

@@ -483,8 +483,11 @@ pub fn plan_output_targets(
 /// them records a different input as its source. `run_sources` holds the
 /// identity ([`OutputTarget::source`]) of every input planned in this run: an
 /// output that records one of those is a stale copy, since that input has its
-/// own planned output, and may be overwritten. An output recording any other
-/// input is [`ProcessCheck::OwnedByOther`] unless `force` is set.
+/// own planned output, and is overwritten when the recorded path names that
+/// input exactly. Beside its input (no `-o`), an output that names no input of
+/// the run counts as the input's own when the recorded file name is the input's,
+/// since the folder may have moved. An output recording any other input is
+/// [`ProcessCheck::OwnedByOther`] unless `force` is set.
 pub fn should_process(
     input: &Path,
     target: &OutputTarget,

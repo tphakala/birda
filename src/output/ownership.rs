@@ -412,6 +412,9 @@ mod tests {
         ));
     }
 
+    // On Windows `C:audio.wav` is drive-relative and `join` drops the base, so this
+    // pins only the Unix reading of a file name that holds a colon.
+    #[cfg(unix)]
     #[test]
     fn test_recorded_is_exactly_one_of_resolves_a_drive_relative_value_from_the_current_directory()
     {

@@ -330,6 +330,16 @@ fn mirror_for(candidate: &Candidate, anchor: &[OsString]) -> Vec<OsString> {
     }
 }
 
+/// Every output file extension, for finding a file path that is also a folder.
+const OUTPUT_EXTENSIONS: [&str; 6] = [
+    output_extensions::CSV,
+    output_extensions::RAVEN,
+    output_extensions::AUDACITY,
+    output_extensions::KALEIDOSCOPE,
+    output_extensions::JSON,
+    output_extensions::PARQUET,
+];
+
 /// Plan the output name of every input in a run.
 ///
 /// Returns one entry per input, in input order. An input that shares no name
@@ -354,6 +364,11 @@ fn mirror_for(candidate: &Candidate, anchor: &[OsString]) -> Vec<OsString> {
 /// through a symlink under `-o`) is an [`Error::OutputPathCollision`] for every
 /// input involved. Without `-o`, names that differ only in case are not a
 /// clash: the inputs' own folder holds both, so it tells case apart.
+///
+/// An input is also an error when its output path cannot be written: a mirror
+/// folder that is a symlink out of the `-o` directory is an
+/// [`Error::PathTraversal`], and an output file whose path is the mirror folder of
+/// another input's output is an [`Error::OutputPathCollision`] for both.
 ///
 /// With `writes_files` false (`--stdout`) nothing is written, so there is
 /// nothing for two names to collide on: every input keeps its stem and none
@@ -454,10 +469,14 @@ pub fn plan_output_targets(
         group_by_key(&candidates, false)
     };
 
+    let escaping = escaping_mirrors(&candidates, &mut dirs);
+    let conflicts = file_folder_conflicts(&candidates, &mut dirs, fold_case);
+
     candidates
         .iter()
         .zip(files)
-        .map(|(candidate, file)| {
+        .enumerate()
+        .map(|(index, (candidate, file))| {
             let target = OutputTarget {
                 dir: candidate.target_dir(),
                 root: candidate.plain_dir.clone(),
@@ -472,9 +491,94 @@ pub fn plan_output_targets(
                     inputs: clashing.iter().map(|&i| files[i].clone()).collect(),
                 });
             }
+            if escaping.contains(&index) {
+                return Err(Error::PathTraversal {
+                    output_path: target.dir.join(&target.base),
+                    output_dir: target.root,
+                });
+            }
+            if let Some((output, others)) = conflicts.get(&index) {
+                let mut inputs = vec![file.clone()];
+                inputs.extend(others.iter().map(|&i| files[i].clone()));
+                return Err(Error::OutputPathCollision {
+                    output: output.clone(),
+                    inputs,
+                });
+            }
             Ok(target)
         })
         .collect()
+}
+
+/// Candidates whose mirror folders, with any symlink among the folders that
+/// already exist followed, lead out of the `-o` directory.
+fn escaping_mirrors(candidates: &[Candidate], dirs: &mut CanonicalDirs) -> HashSet<usize> {
+    candidates
+        .iter()
+        .enumerate()
+        .filter(|(_, candidate)| !candidate.mirror.is_empty())
+        .filter(|(_, candidate)| {
+            let root = dirs.resolve_through_existing(&candidate.canonical_dir);
+            !candidate.resolved_dir.starts_with(root)
+        })
+        .map(|(index, _)| index)
+        .collect()
+}
+
+/// Candidates whose output file path is a folder another candidate's output
+/// goes into (`out/x.BirdNET.json` next to `out/x.BirdNET.json/a.wav...`), which
+/// no writer can satisfy. Maps each involved candidate to the contested path and
+/// the other candidates involved.
+fn file_folder_conflicts(
+    candidates: &[Candidate],
+    dirs: &mut CanonicalDirs,
+    fold_case: bool,
+) -> HashMap<usize, (PathBuf, Vec<usize>)> {
+    let fold = |path: &Path| {
+        let text = path.to_string_lossy();
+        if fold_case {
+            PathBuf::from(text.to_lowercase())
+        } else {
+            PathBuf::from(text.into_owned())
+        }
+    };
+    let mut files: HashMap<PathBuf, Vec<usize>> = HashMap::new();
+    for (index, candidate) in candidates.iter().enumerate() {
+        for extension in OUTPUT_EXTENSIONS {
+            let path = candidate
+                .resolved_dir
+                .join(format!("{}{extension}", candidate.base()));
+            files.entry(fold(&path)).or_default().push(index);
+        }
+    }
+
+    let mut conflicts: HashMap<usize, (PathBuf, Vec<usize>)> = HashMap::new();
+    for (inner, candidate) in candidates.iter().enumerate() {
+        if candidate.mirror.is_empty() {
+            continue;
+        }
+        let root = dirs.resolve_through_existing(&candidate.canonical_dir);
+        let below_root = candidate
+            .resolved_dir
+            .ancestors()
+            .take_while(|ancestor| *ancestor != root && ancestor.starts_with(&root));
+        for folder in below_root {
+            for &outer in files.get(&fold(folder)).into_iter().flatten() {
+                if outer == inner {
+                    continue;
+                }
+                for (member, other) in [(inner, outer), (outer, inner)] {
+                    let entry = conflicts
+                        .entry(member)
+                        .or_insert_with(|| (folder.to_path_buf(), Vec::new()));
+                    if !entry.1.contains(&other) {
+                        entry.1.push(other);
+                    }
+                }
+            }
+        }
+    }
+    conflicts
 }
 
 /// Check if a file should be processed.
@@ -1780,6 +1884,75 @@ mod tests {
             json_path(plans[2].as_ref().unwrap()),
             out.join("y.BirdNET.json")
         );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_plan_rejects_a_mirror_folder_that_is_a_symlink_out_of_the_output_dir() {
+        // `out/in/a` already exists as a link to a folder outside `-o`, so a
+        // writer that follows the planned path would leave the output directory.
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("out");
+        let outside = dir.path().join("outside");
+        std::fs::create_dir_all(out.join("in")).unwrap();
+        std::fs::create_dir_all(&outside).unwrap();
+        std::os::unix::fs::symlink(&outside, out.join("in").join("a")).unwrap();
+        let escaping = touch(dir.path(), "in/a/x.wav");
+        let fine = touch(dir.path(), "in/b/x.wav");
+        let root = dir.path().join("in");
+
+        let plans = plan_output_targets(
+            &[escaping.clone(), fine.clone()],
+            std::slice::from_ref(&root),
+            Some(&out),
+            true,
+        );
+
+        assert!(
+            matches!(&plans[0], Err(Error::PathTraversal { output_dir, .. }) if output_dir == &out),
+            "got {:?}",
+            plans[0]
+        );
+        let target = plans[1].as_ref().unwrap();
+        assert_eq!(
+            json_path(target),
+            out.join("in").join("b").join("x.wav.BirdNET.json")
+        );
+    }
+
+    #[test]
+    fn test_plan_fails_inputs_whose_output_file_is_another_inputs_output_folder() {
+        // `other/x.wav` is unique and plans `out/x.BirdNET.json`, while the
+        // clashing `a.wav` pair mirrors into `out/x.BirdNET.json/`. A file and a
+        // folder cannot share a path, so both inputs involved fail.
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("out");
+        let folder_root = dir.path().join("x.BirdNET.json");
+        let other_root = dir.path().join("other");
+        let unique = touch(dir.path(), "other/x.wav");
+        let in_folder = touch(dir.path(), "x.BirdNET.json/a.wav");
+        let sibling = touch(dir.path(), "other/a.wav");
+
+        let plans = plan_output_targets(
+            &[unique.clone(), in_folder.clone(), sibling.clone()],
+            &[folder_root, other_root],
+            Some(&out),
+            true,
+        );
+
+        for failed in &plans[..2] {
+            match failed {
+                Err(Error::OutputPathCollision { inputs, .. }) => {
+                    let mut inputs = inputs.clone();
+                    inputs.sort();
+                    let mut expected = vec![unique.clone(), in_folder.clone()];
+                    expected.sort();
+                    assert_eq!(inputs, expected);
+                }
+                other => panic!("expected an output path collision, got {other:?}"),
+            }
+        }
+        assert!(plans[2].is_ok(), "got {:?}", plans[2]);
     }
 
     #[test]

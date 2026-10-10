@@ -520,7 +520,7 @@ pub struct AnalyzeArgs {
     pub stale_lock_timeout: Option<Duration>,
 
     /// Write results to stdout as NDJSON stream (single file only).
-    #[arg(long, conflicts_with_all = ["output_dir", "combine", "format"])]
+    #[arg(long, conflicts_with_all = ["output_dir", "format"])]
     pub stdout: bool,
 }
 
@@ -1112,9 +1112,10 @@ mod tests {
     }
 
     #[test]
-    fn test_cli_stdout_conflicts_with_combine() {
-        let cli = Cli::try_parse_from(["birda", "--stdout", "--combine", "test.wav"]);
-        assert!(cli.is_err());
+    fn test_cli_stdout_accepts_the_deprecated_combine_flag() {
+        let cli = Cli::try_parse_from(["birda", "--stdout", "--combine", "test.wav"]).unwrap();
+        assert!(cli.analyze.stdout);
+        assert!(cli.analyze.combine);
     }
 
     #[test]

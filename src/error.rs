@@ -129,6 +129,21 @@ pub enum Error {
         inputs: Vec<std::path::PathBuf>,
     },
 
+    /// An existing output file holds results recorded for another input.
+    #[error(
+        "output '{}' holds results recorded for '{recorded}', not '{}'; rerun with --force to overwrite it, or use another -o directory",
+        output.display(),
+        input.display()
+    )]
+    OutputOwnedByOtherInput {
+        /// The existing output file.
+        output: std::path::PathBuf,
+        /// The source the output records, as written in it.
+        recorded: String,
+        /// The input that would have written to it.
+        input: std::path::PathBuf,
+    },
+
     /// Failed to open audio file.
     #[error("failed to open audio file '{path}'")]
     AudioOpen {
@@ -558,6 +573,32 @@ pub enum Error {
         audio_path: std::path::PathBuf,
     },
 
+    /// The source audio for a detection file could not be inferred.
+    #[error(
+        "could not find the source audio for detection file '{}'; tried {}; pass --audio, or --base-dir set to the folder given to birda",
+        detection_path.display(),
+        join_paths(tried)
+    )]
+    SourceAudioNotInferred {
+        /// Path to the detection file.
+        detection_path: std::path::PathBuf,
+        /// Every path that was looked at.
+        tried: Vec<std::path::PathBuf>,
+    },
+
+    /// Several audio files could be the source of a detection file.
+    #[error(
+        "several audio files could be the source for detection file '{}': {}; pass --audio to choose one",
+        detection_path.display(),
+        join_paths(candidates)
+    )]
+    SourceAudioAmbiguous {
+        /// Path to the detection file.
+        detection_path: std::path::PathBuf,
+        /// Every audio file that matched.
+        candidates: Vec<std::path::PathBuf>,
+    },
+
     /// Failed to write JSON output file.
     #[error("failed to write JSON output file '{path}'")]
     JsonWrite {
@@ -768,10 +809,6 @@ pub enum Error {
         name: String,
     },
 
-    /// No input files provided for combining operation.
-    #[error("no input files were provided to combine")]
-    NoInputFilesToCombine,
-
     /// Failed to load labels from file.
     #[error("failed to load labels from {path}: {reason}")]
     LabelLoad {
@@ -870,6 +907,9 @@ impl Error {
             Self::OutputPathCollision { .. } => {
                 crate::constants::error_codes::OUTPUT_PATH_COLLISION
             }
+            Self::OutputOwnedByOtherInput { .. } => {
+                crate::constants::error_codes::OUTPUT_OWNED_BY_OTHER_INPUT
+            }
             _ => crate::constants::error_codes::PROCESSING_ERROR,
         }
     }
@@ -900,6 +940,50 @@ mod tests {
         assert_eq!(
             err.to_string(),
             "inputs would overwrite each other's output 'out/A/x.wav': 'A/x.wav', 'a/x.wav'"
+        );
+    }
+
+    #[test]
+    fn test_output_owned_by_other_input_renders_the_output_the_owner_and_the_input() {
+        let err = Error::OutputOwnedByOtherInput {
+            output: std::path::PathBuf::from("out/REC0001.BirdNET.results.csv"),
+            recorded: "card1/REC0001.WAV".to_string(),
+            input: std::path::PathBuf::from("card2/REC0001.WAV"),
+        };
+        assert_eq!(
+            err.to_string(),
+            "output 'out/REC0001.BirdNET.results.csv' holds results recorded for 'card1/REC0001.WAV', not 'card2/REC0001.WAV'; rerun with --force to overwrite it, or use another -o directory"
+        );
+        assert_eq!(err.file_error_code(), "output_owned_by_other_input");
+    }
+
+    #[test]
+    fn test_source_audio_not_inferred_renders_every_path_tried() {
+        let err = Error::SourceAudioNotInferred {
+            detection_path: std::path::PathBuf::from("out/in/a/x.wav.BirdNET.results.csv"),
+            tried: vec![
+                std::path::PathBuf::from("in/a/x.wav"),
+                std::path::PathBuf::from("in/x.wav"),
+            ],
+        };
+        assert_eq!(
+            err.to_string(),
+            "could not find the source audio for detection file 'out/in/a/x.wav.BirdNET.results.csv'; tried 'in/a/x.wav', 'in/x.wav'; pass --audio, or --base-dir set to the folder given to birda"
+        );
+    }
+
+    #[test]
+    fn test_source_audio_ambiguous_renders_every_candidate() {
+        let err = Error::SourceAudioAmbiguous {
+            detection_path: std::path::PathBuf::from("sample.BirdNET.results.csv"),
+            candidates: vec![
+                std::path::PathBuf::from("sample.wav"),
+                std::path::PathBuf::from("sample.flac"),
+            ],
+        };
+        assert_eq!(
+            err.to_string(),
+            "several audio files could be the source for detection file 'sample.BirdNET.results.csv': 'sample.wav', 'sample.flac'; pass --audio to choose one"
         );
     }
 

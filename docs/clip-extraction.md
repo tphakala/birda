@@ -33,15 +33,16 @@ birda clip *.BirdNET.results.csv -c 0.8
 | `--pre` | `5.0` | Seconds of audio before each detection |
 | `--post` | `5.0` | Seconds of audio after each detection |
 | `-a, --audio` | auto | Explicit source audio file path |
-| `--base-dir` | - | Base directory for resolving audio paths |
+| `--base-dir` | - | Folder the audio files are in; the folder given to `birda` when a mirrored result is used |
 
 ## Audio File Resolution
 
 The clipper automatically finds the source audio file based on the detection filename:
 
-1. **Direct match**: `recording.wav.BirdNET.results.csv` → `recording.wav`
-2. **Extension fallback**: If original not found, tries `.wav`, `.flac`, `.mp3`, `.ogg`, `.m4a`
-3. **Explicit override**: Use `-a path/to/audio.wav` to specify manually
+1. **Mirrored result** (with `--base-dir`): see below
+2. **Direct match**: `recording.wav.BirdNET.results.csv` → `recording.wav`, in `--base-dir` or in the folder of the detection file
+3. **Extension fallback**: If original not found, tries `.wav`, `.flac`, `.mp3`, `.m4a`, `.aac`. If more than one of them exists, the clipper stops and lists them instead of choosing one
+4. **Explicit override**: Use `-a path/to/audio.wav` to specify manually
 
 ### Base Directory
 
@@ -51,6 +52,17 @@ When audio files are in a different location than detection files:
 # Detection files in ./results, audio in ./recordings
 birda clip results/*.csv --base-dir ./recordings
 ```
+
+### Mirrored Results
+
+When `-o` is used and several inputs share a name, birda writes each result into a folder that mirrors the input's folder (see [Output File Names](json-output.md#output-file-names)). `birda -o out in` writes the result of `in/a/x.wav` to `out/in/a/x.wav.BirdNET.results.csv`. Pass the folder that was given to `birda` as `--base-dir`, and the clipper finds the recording again:
+
+```bash
+birda clip out/in/a/x.wav.BirdNET.results.csv --base-dir in
+# looks for in/a/x.wav first
+```
+
+The clipper looks for a folder in the result's path with the name of `--base-dir`, and takes the folders after it as the input's folder below `--base-dir`. This is tried before the plain lookup, because `in/x.wav` may be a different recording of the same name. If `--base-dir` is a parent of the folder given to `birda`, the mirrored location is not found and the plain lookup is used.
 
 ## Output Format
 
@@ -181,12 +193,16 @@ A direct-extraction range (`--start`/`--end`) that lies past the end of the file
 
 ## Troubleshooting
 
-### "Source audio file not found"
+### "could not find the source audio" / "source audio file not found"
 
-The clipper couldn't locate the audio file. Solutions:
+The clipper couldn't locate the audio file, and the error lists every path it tried. Solutions:
 1. Ensure the audio file exists in the same directory as the CSV
 2. Use `-a` to specify the audio file path explicitly
-3. Use `--base-dir` if audio files are in a different directory
+3. Use `--base-dir` if audio files are in a different directory; for a result in a mirrored folder under `-o`, give the folder that was given to `birda`
+
+### "several audio files could be the source"
+
+More than one audio file matches the result (for example `sample.wav` and `sample.flac` next to `sample.BirdNET.results.csv`). Use `-a` to choose one.
 
 ### "No detections above confidence threshold"
 

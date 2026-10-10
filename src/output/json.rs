@@ -14,6 +14,11 @@ use std::path::{Path, PathBuf};
 pub struct JsonResultFile {
     /// Source audio file name.
     pub source_file: String,
+    /// Absolute path of the source audio file.
+    ///
+    /// Absent in files written by versions that recorded only the name.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_path: Option<String>,
     /// Analysis timestamp.
     pub analysis_date: DateTime<Utc>,
     /// Model used for analysis.
@@ -78,6 +83,8 @@ pub struct JsonResultWriter {
     output_path: PathBuf,
     /// Source file name.
     source_file: String,
+    /// Absolute path of the source file, when known.
+    source_path: Option<String>,
     /// Model name.
     model: String,
     /// Analysis settings.
@@ -124,6 +131,7 @@ impl JsonResultWriter {
             detections: Vec::new(),
             output_path: output_path.to_path_buf(),
             source_file: source_file.to_string(),
+            source_path: None,
             model: model.to_string(),
             min_confidence,
             overlap,
@@ -132,6 +140,13 @@ impl JsonResultWriter {
             week,
             audio_duration,
         })
+    }
+
+    /// Record the absolute path of the source audio file in the result.
+    #[must_use]
+    pub fn with_source_path(mut self, source_path: &str) -> Self {
+        self.source_path = Some(source_path.to_string());
+        self
     }
 
     /// Compute summary from detections.
@@ -171,6 +186,7 @@ impl OutputWriter for JsonResultWriter {
 
         let result = JsonResultFile {
             source_file: self.source_file.clone(),
+            source_path: self.source_path.clone(),
             analysis_date: Utc::now(),
             model: self.model.clone(),
             settings: JsonSettings {
@@ -258,6 +274,50 @@ mod tests {
         assert_eq!(result.summary.total_detections, 1);
         assert_eq!(result.summary.unique_species, 1);
         assert!((result.summary.audio_duration_seconds - 60.0).abs() < 0.001);
+    }
+
+    /// Write a result file with `source_path` set or not, and parse it back as
+    /// loose JSON so an omitted key is visible.
+    fn written_json(source_path: Option<&str>) -> serde_json::Value {
+        let dir = tempdir().expect("create temp dir");
+        let output_path = dir.path().join("test.BirdNET.json");
+        let mut writer = JsonResultWriter::new(
+            &output_path,
+            "test.wav",
+            60.0,
+            "birdnet-v24",
+            0.1,
+            0.0,
+            None,
+            None,
+            None,
+        )
+        .expect("create writer");
+        if let Some(path) = source_path {
+            writer = writer.with_source_path(path);
+        }
+        writer.write_header().expect("write header");
+        writer.finalize().expect("finalize");
+        let content = std::fs::read_to_string(&output_path).expect("read file");
+        serde_json::from_str(&content).expect("parse JSON")
+    }
+
+    #[test]
+    fn test_json_writer_records_the_source_path_when_given() {
+        let value = written_json(Some("/data/in/a/test.wav"));
+
+        assert_eq!(
+            value["source_path"],
+            serde_json::json!("/data/in/a/test.wav")
+        );
+        assert_eq!(value["source_file"], serde_json::json!("test.wav"));
+    }
+
+    #[test]
+    fn test_json_writer_omits_the_source_path_when_not_given() {
+        let value = written_json(None);
+
+        assert_eq!(value.get("source_path"), None);
     }
 
     #[test]

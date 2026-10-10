@@ -441,6 +441,9 @@ struct ProcessingParams<'a> {
     fail_fast: bool,
     progress_enabled: bool,
     stdout_mode: bool,
+    /// Identity of every input planned in this run, so an output that records
+    /// one of them can be told from one recorded for an input outside the run.
+    run_sources: &'a [PathBuf],
     /// Dual output mode: progress events to stdout, detections to files.
     /// When true, reporter receives progress events but not detection events.
     dual_output_mode: bool,
@@ -473,6 +476,12 @@ pub fn run() -> Result<()> {
 
     // Initialize logging
     init_logging(cli.analyze.verbose, cli.analyze.quiet);
+
+    // Logging is not up yet in `validate_analyze_args_preflight`, so the warning
+    // is here.
+    if cli.analyze.combine {
+        warn!("{}", constants::COMBINE_DEPRECATED_WARNING);
+    }
 
     // Install Ctrl+C handler to clean up lock files on interrupt
     if let Err(e) = ctrlc::set_handler(|| {
@@ -822,16 +831,23 @@ fn reclaim_stale_lock(input: &Path, output_dir: &Path, timeout: Option<std::time
 /// Decide whether a planned file goes on to inference, reporting and counting
 /// the skip when it does not.
 ///
-/// Returns `true` to process the file. A file whose output already exists is
-/// reported as `skipped` with the planned output paths; a locked one is
+/// Returns `Ok(true)` to process the file. A file whose output already exists
+/// is reported as `skipped` with the planned output paths; a locked one is
 /// reported as `locked` without any, since its outputs are not known to exist.
+/// A file whose output holds another input's results is reported as `failed`
+/// with the code `output_owned_by_other_input`.
+///
+/// # Errors
+///
+/// Returns that failure when `--fail-fast` is set; otherwise it is counted in
+/// `stats` and the file is not processed.
 fn precheck_file(
     file: &Path,
     target: &OutputTarget,
     params: &ProcessingParams<'_>,
     reporter: &dyn ProgressReporter,
     stats: &mut ProcessingStats,
-) -> bool {
+) -> Result<bool> {
     // Reclaim a stale lock before the skip-locked check below (see the fn doc).
     reclaim_stale_lock(file, target.dir(), params.stale_lock_timeout);
 
@@ -841,6 +857,7 @@ fn precheck_file(
         params.formats,
         params.force,
         params.stdout_mode,
+        params.run_sources,
     ) {
         ProcessCheck::SkipExists => {
             info!("Skipping (output exists): {}", file.display());
@@ -850,15 +867,23 @@ fn precheck_file(
             });
             reporter.file_skipped(file, FileStatus::Skipped, &outputs);
             stats.skipped += 1;
-            false
+            Ok(false)
         }
         ProcessCheck::SkipLocked => {
             info!("Skipping (locked): {}", file.display());
             reporter.file_skipped(file, FileStatus::Locked, &output::OutputFiles::new());
             stats.skipped += 1;
-            false
+            Ok(false)
         }
-        ProcessCheck::Process => true,
+        ProcessCheck::OwnedByOther { output, recorded } => {
+            let err = Error::OutputOwnedByOtherInput {
+                output,
+                recorded,
+                input: file.to_path_buf(),
+            };
+            record_file_failure(file, err, stats, reporter, params.fail_fast).map(|()| false)
+        }
+        ProcessCheck::Process => Ok(true),
     }
 }
 
@@ -896,9 +921,16 @@ fn process_all_files(
             }
         };
 
-        if !precheck_file(file, &target, params, reporter.as_ref(), stats) {
-            progress::inc_progress(file_progress.as_ref());
-            continue;
+        match precheck_file(file, &target, params, reporter.as_ref(), stats) {
+            Ok(true) => {}
+            Ok(false) => {
+                progress::inc_progress(file_progress.as_ref());
+                continue;
+            }
+            Err(e) => {
+                progress::finish_progress(file_progress, "Failed");
+                return Err(e);
+            }
         }
 
         // Get audio duration for progress estimation
@@ -1144,6 +1176,11 @@ fn analyze_files(
     // Name every output up front, so inputs that would share a name are told
     // apart (or failed) before any of them is analyzed.
     let targets = plan_output_targets(&files, inputs, output_dir.as_deref(), !args.stdout);
+    let run_sources: Vec<PathBuf> = targets
+        .iter()
+        .filter_map(|target| target.as_ref().ok())
+        .map(|target| target.source().to_path_buf())
+        .collect();
     let files: Vec<(PathBuf, Result<OutputTarget>)> = files.into_iter().zip(targets).collect();
     let force = args.force;
     let fail_fast = args.fail_fast;
@@ -1301,6 +1338,7 @@ fn analyze_files(
         fail_fast,
         progress_enabled,
         stdout_mode: args.stdout,
+        run_sources: &run_sources,
         dual_output_mode,
         bsg_params,
         custom_classifier: bat_classifier.as_ref(),
@@ -3630,6 +3668,7 @@ mod tests {
             fail_fast: false,
             progress_enabled: false,
             stdout_mode: false,
+            run_sources: &[],
             dual_output_mode: false,
             bsg_params: None,
             custom_classifier: None,
@@ -3665,7 +3704,8 @@ mod tests {
             &precheck_params(&formats),
             &reporter,
             &mut stats,
-        );
+        )
+        .unwrap();
 
         assert!(!proceed, "a file whose output exists must be skipped");
         assert_eq!(stats.skipped, 1);
@@ -3731,13 +3771,84 @@ mod tests {
             &precheck_params(&formats),
             &reporter,
             &mut stats,
-        );
+        )
+        .unwrap();
 
         assert!(!proceed);
         assert_eq!(
             *reporter.skips.lock().unwrap(),
             vec![(FileStatus::Locked, output::OutputFiles::new())]
         );
+    }
+
+    #[test]
+    fn test_output_owned_by_another_input_fails_with_its_code() {
+        // Two cards that both hold `REC0001.WAV`, analyzed into one `-o`: the
+        // second must fail under its own code instead of being skipped on, or
+        // overwriting, the first one's results.
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("out");
+        let first = dir.path().join("card1/REC0001.WAV");
+        let second = dir.path().join("card2/REC0001.WAV");
+        for input in [&first, &second] {
+            std::fs::create_dir_all(input.parent().unwrap()).unwrap();
+            std::fs::write(input, "").unwrap();
+        }
+        let plan_alone = |file: &PathBuf| {
+            plan_output_targets(
+                std::slice::from_ref(file),
+                std::slice::from_ref(file),
+                Some(&out),
+                true,
+            )
+            .remove(0)
+            .unwrap()
+        };
+        let first_target = plan_alone(&first);
+        let second_target = plan_alone(&second);
+        let existing = first_target.path_for(OutputFormat::Json).unwrap();
+        std::fs::create_dir_all(&out).unwrap();
+        let mut writer = output::JsonResultWriter::new(
+            &existing,
+            "REC0001.WAV",
+            1.0,
+            "test",
+            0.1,
+            0.0,
+            None,
+            None,
+            None,
+        )
+        .unwrap()
+        .with_source_path(&first_target.source().to_string_lossy());
+        output::OutputWriter::finalize(&mut writer).unwrap();
+        let formats = [OutputFormat::Json];
+
+        for fail_fast in [false, true] {
+            let mut stats = ProcessingStats::default();
+            let reporter = RecordingReporter::default();
+            let params = ProcessingParams {
+                fail_fast,
+                ..precheck_params(&formats)
+            };
+
+            let outcome = precheck_file(&second, &second_target, &params, &reporter, &mut stats);
+
+            if fail_fast {
+                assert!(matches!(
+                    outcome,
+                    Err(Error::OutputOwnedByOtherInput { .. })
+                ));
+            } else {
+                assert!(matches!(outcome, Ok(false)), "got {outcome:?}");
+            }
+            assert_eq!(stats.errors, 1);
+            assert_eq!(stats.skipped, 0);
+            assert_eq!(
+                *reporter.failure_codes.lock().unwrap(),
+                vec!["output_owned_by_other_input".to_string()]
+            );
+        }
     }
 
     /// Create a minimal Config with a named model.

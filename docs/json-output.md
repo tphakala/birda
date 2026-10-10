@@ -96,7 +96,7 @@ All JSON output follows a consistent envelope structure:
 
 `output_files` is the way to find the result file of an input. The keys are the lowercase format names (`csv`, `raven`, `audacity`, `kaleidoscope`, `json`, `parquet`). For `skipped` it lists the files that already exist. It is omitted for `locked` and `failed` events and in `--stdout` mode, and it is an optional field, so `spec_version` stays `1.1`. A consumer that must also work with an older birda should fall back to deriving the path from the input name when the field is missing.
 
-An input whose output name cannot be made unique (see [Output File Names](#output-file-names)) is reported as `failed` with `error.code` `output_path_collision`, and the rest of the run continues. Other per-file failures use the code `processing_error`.
+An input whose output name cannot be made unique (see [Output File Names](#output-file-names)) is reported as `failed` with `error.code` `output_path_collision`, and the rest of the run continues. An input whose existing output holds results recorded for a different input (see [Skipping Existing Outputs](#skipping-existing-outputs)) is reported as `failed` with `error.code` `output_owned_by_other_input`. Other per-file failures use the code `processing_error`.
 
 ### Result Events (Commands)
 
@@ -427,15 +427,35 @@ birda -f json recording.wav
 Birda names every output of a run before analyzing anything, so two inputs never write the same file. An input whose name is not shared with any other input in the run keeps exactly the name above. A name also counts as shared with the full name another input takes: with `x.wav` and `x.flac` in one folder, an input named `x.wav.wav` is qualified too. When several inputs would produce the same name, which means the same stem in the same output directory (compared without regard to case), each of them is named differently:
 
 - The name uses the full input file name instead of the stem: `x.wav` and `x.flac` in one folder become `x.wav.BirdNET.json` and `x.flac.BirdNET.json`.
-- When `-o` is given, each of them also goes into a folder of the `-o` directory named after the argument it was found under, mirroring its folder below that argument. `birda -o out in` with `in/a/x.wav` and `in/b/x.wav` gives `out/in/a/x.wav.BirdNET.json` and `out/in/b/x.wav.BirdNET.json`, and `in/a/x.wav` with `in/a/x.flac` gives `out/in/a/x.wav.BirdNET.json` and `out/in/a/x.flac.BirdNET.json`. A file listed on its own counts as found in its own folder: `birda -o out d1/x.wav d2/x.wav` gives `out/d1/x.wav.BirdNET.json` and `out/d2/x.wav.BirdNET.json`. Arguments whose folder names match are told apart by their path below the folder they share: `birda -o out stationA/2024-05-01 stationB/2024-05-01` puts clashing outputs under `out/stationA/2024-05-01/` and `out/stationB/2024-05-01/`. The path depends only on where the input is and which argument found it, so finding more recordings on a rerun never moves an existing output.
+- When `-o` is given, each of them also goes into a folder of the `-o` directory that mirrors its own folder. The mirror is the input's folder below the anchor, the folder that holds every argument: with a single argument `in` the anchor is the folder that holds `in`, so the mirror starts with `in`. `birda -o out in` with `in/a/x.wav` and `in/b/x.wav` gives `out/in/a/x.wav.BirdNET.json` and `out/in/b/x.wav.BirdNET.json`, and `in/a/x.wav` with `in/a/x.flac` gives `out/in/a/x.wav.BirdNET.json` and `out/in/a/x.flac.BirdNET.json`. A file listed on its own counts as found in its own folder: `birda -o out d1/x.wav d2/x.wav` gives `out/d1/x.wav.BirdNET.json` and `out/d2/x.wav.BirdNET.json`. With several arguments the anchor is the deepest folder they share, so `birda -o out stationA/2024-05-01 stationB/2024-05-01` puts clashing outputs under `out/stationA/2024-05-01/` and `out/stationB/2024-05-01/`, and `birda -o out p/2024 q/2024 r/p` gives `out/p/2024/`, `out/q/2024/` and `out/r/p/2024/`. Arguments with nothing in common are mirrored with their whole path: `birda -o out /data/in ~/rec` gives `out/data/in/...` and `out/home/<user>/rec/...`. Because the mirror is built from the input's folder, two inputs in different folders never share a mirror folder. The path depends only on where the input is and which arguments were given, so finding more recordings on a rerun never moves an existing output.
 
 Without `-o` the outputs sit next to their inputs, so inputs in different folders never share a name.
 
-Names depend on the set of inputs in the run and on the arguments that found them, so rerun with the same arguments. Adding an input that shares a name with one that was analyzed before, or removing one, changes the name of the outputs involved, so a rerun analyzes them again and leaves the old file in place. Rerunning with the same inputs gives the same names, and the skip-existing check finds them. Use the `output_files` field of `file_completed` rather than building a path from the input name.
+Names depend on the set of inputs in the run and on the arguments that found them, so rerun with the same arguments. Adding an input that shares a name with one that was analyzed before, or removing one, changes the name of the outputs involved, so a rerun analyzes them again and leaves the old file in place. Rerunning with the same inputs gives the same names, and the skip-existing check finds them. Adding an argument that changes the anchor (for example a second argument on another branch of the folder tree) moves every mirrored output of the run, so those inputs are analyzed again. Use the `output_files` field of `file_completed` rather than building a path from the input name.
 
 Two inputs that still share a name after this (for example `-o out` with `A/x.wav` and `a/x.wav`, whose folders are one folder on a case-insensitive filesystem) both fail with `output_path_collision`. Rename one of them or run them separately. Without `-o` this cannot happen through case alone: `X.wav` and `x.wav` can only sit side by side in a folder that tells case apart, so they become `X.wav.BirdNET.json` and `x.wav.BirdNET.json`.
 
 A file or directory that is reached more than once (a directory and a file inside it) is analyzed once.
+
+### Skipping Existing Outputs
+
+An input is skipped when every requested output file already exists and none of them records a different input as its source. A file name alone does not tell whose results a file holds: an earlier run with other inputs, other arguments or an older naming scheme can have left a file at the path another input plans today. Birda reads the source each existing output records:
+
+| Format | What is read |
+|---|---|
+| JSON | `source_path`, the absolute path of the input (see below), or `source_file`, the file name, in files written by older versions |
+| CSV | the `File` column of the first detection |
+| Raven | the `Begin Path` column of the first detection |
+| Audacity, Kaleidoscope, Parquet | nothing; these formats cannot be checked |
+
+A recorded path that is relative (CSV and Raven hold the path as it was typed, such as `in/a/x.wav` or `./x.wav`) is compared by its trailing folders and file name, and a file name alone only needs the same name. Outputs written by earlier versions are therefore still recognised, and rerunning a command skips what it wrote before.
+
+If an existing output records a different input, birda does not take it as the result of the input being checked:
+
+- When the recorded input is itself part of the run (it is analyzed into its own planned output, so the old file is a stale copy), the file is overwritten.
+- Otherwise the input is not analyzed and is reported as `failed` with the code `output_owned_by_other_input`, so that results of an input that is not in this run are never replaced silently. `--force` overwrites the file, or give the run another `-o` directory.
+
+Limits: an output that records no source (a CSV or Raven file with no detections, or any Audacity, Kaleidoscope or Parquet file) cannot be told apart, so it counts as the input's own, as before. A relative path in a CSV or Raven file that ends in the same folders and name as another input's is also taken as a match. JSON written by this version always holds an absolute path and is not affected. Paths are compared without regard to case on Windows and macOS.
 
 ## JSON Detection File Format
 
@@ -453,6 +473,7 @@ The file name follows the rules in [Output File Names](#output-file-names).
 ```json
 {
   "source_file": "recording.wav",
+  "source_path": "/data/survey/recording.wav",
   "analysis_date": "2025-01-11T12:34:56.789Z",
   "model": "birdnet-v24",
   "settings": {
@@ -478,6 +499,8 @@ The file name follows the rules in [Output File Names](#output-file-names).
   }
 }
 ```
+
+`source_path` is the absolute, resolved path of the input, the one the skip-existing check compares against. It is the input's folder as the filesystem resolves it, so it includes the user's home folder where the input lives there; take that into account before sharing result files. Files written by older versions do not have it, and consumers should treat it as optional.
 
 ## Integration Examples
 

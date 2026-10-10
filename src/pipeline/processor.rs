@@ -853,17 +853,20 @@ fn write_output(
                 message: "JsonOutputConfig required for JSON format".to_string(),
             })?;
 
-            Box::new(JsonResultWriter::new(
-                &output_path,
-                &source_file,
-                config.audio_duration,
-                &config.model,
-                config.min_confidence,
-                config.overlap,
-                config.lat,
-                config.lon,
-                config.week,
-            )?)
+            Box::new(
+                JsonResultWriter::new(
+                    &output_path,
+                    &source_file,
+                    config.audio_duration,
+                    &config.model,
+                    config.min_confidence,
+                    config.overlap,
+                    config.lat,
+                    config.lon,
+                    config.week,
+                )?
+                .with_source_path(&crate::output::ownership::identity_text(output.source())),
+            )
         }
         OutputFormat::Parquet => Box::new(ParquetWriter::new(&output_path, csv_columns)?),
     };

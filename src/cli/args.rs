@@ -347,8 +347,11 @@ pub struct AnalyzeArgs {
     #[arg(short, long, value_parser = parse_batch_size, env = "BIRDA_BATCH_SIZE")]
     pub batch_size: Option<usize>,
 
-    /// Generate combined results file.
-    #[arg(long)]
+    // Nothing reads this flag: combined output was never built. It stays
+    // accepted, and hidden, so a script that passes it keeps working; `run`
+    // warns that it does nothing.
+    /// Deprecated; does nothing.
+    #[arg(long, hide = true)]
     pub combine: bool,
 
     /// Reprocess files even if output exists.
@@ -1112,6 +1115,18 @@ mod tests {
     fn test_cli_stdout_conflicts_with_combine() {
         let cli = Cli::try_parse_from(["birda", "--stdout", "--combine", "test.wav"]);
         assert!(cli.is_err());
+    }
+
+    #[test]
+    fn test_cli_still_accepts_the_deprecated_combine_flag() {
+        let cli = Cli::try_parse_from(["birda", "--combine", "test.wav"]).unwrap();
+        assert!(cli.analyze.combine);
+    }
+
+    #[test]
+    fn test_help_does_not_list_the_deprecated_combine_flag() {
+        let help = Cli::command().render_long_help().to_string();
+        assert!(!help.contains("--combine"), "help lists --combine: {help}");
     }
 
     #[test]

@@ -440,7 +440,7 @@ All options can be set via environment variables:
 
 ## Output Formats
 
-Result files are named `<input name>.BirdNET.<format suffix>` and written next to the input, or into the `-o` directory. When several inputs in one run would get the same name (`x.wav` and `x.flac` in one folder, or `in/a/x.wav` and `in/b/x.wav` with `birda -o out in`), those outputs use the full input file name (`x.wav.BirdNET.results.csv`) and, with `-o`, a subfolder named after the argument that found the input, mirroring its folder below it (`out/in/a/`, `out/in/b/`). Inputs with a name of their own keep the plain name. See [Output File Names](docs/json-output.md#output-file-names) for the rules.
+Result files are named `<input name>.BirdNET.<format suffix>` and written next to the input, or into the `-o` directory. When several inputs in one run would get the same name (`x.wav` and `x.flac` in one folder, or `in/a/x.wav` and `in/b/x.wav` with `birda -o out in`), those outputs use the full input file name (`x.wav.BirdNET.results.csv`) and, with `-o`, a subfolder that mirrors the input's own folder (`out/in/a/`, `out/in/b/`). Inputs with a name of their own keep the plain name. An existing output that records a different input is never taken as an input's result: that input fails with `output_owned_by_other_input` unless you pass `--force`. See [Output File Names](docs/json-output.md#output-file-names) and [Skipping Existing Outputs](docs/json-output.md#skipping-existing-outputs) for the rules.
 
 ### CSV (default)
 
@@ -552,7 +552,7 @@ Output format: Each line is a JSON object with event type and payload. Progress 
 **Constraints:**
 
 - Only one input file allowed
-- Cannot combine with `--output-dir`, `--combine`, or `--format`
+- Cannot combine with `--output-dir` or `--format`
 - Progress bars automatically disabled (NDJSON mode)
 
 ### Example: Real-Time Progress

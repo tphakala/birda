@@ -132,11 +132,15 @@ fn same_segment(a: &str, b: &str) -> bool {
 }
 
 /// Whether `text` is an absolute path on Unix or Windows.
+///
+/// A drive prefix counts only when a separator follows it: `C:audio.wav` is a
+/// Unix file name with a colon, or a Windows path relative to the drive's
+/// current folder.
 fn is_absolute_text(text: &str) -> bool {
     let mut chars = text.chars();
-    match (chars.next(), chars.next()) {
-        (Some('/' | '\\'), _) => true,
-        (Some(letter), Some(DRIVE_SUFFIX)) => letter.is_ascii_alphabetic(),
+    match (chars.next(), chars.next(), chars.next()) {
+        (Some('/' | '\\'), _, _) => true,
+        (Some(letter), Some(DRIVE_SUFFIX), Some('/' | '\\')) => letter.is_ascii_alphabetic(),
         _ => false,
     }
 }
@@ -226,17 +230,17 @@ fn collapse_parent_segments(segments: Vec<&str>) -> Vec<&str> {
 #[must_use]
 pub fn recorded_is_exactly_one_of(recorded: &str, sources: &[PathBuf]) -> bool {
     let absolute = if is_absolute_text(recorded) {
-        recorded.to_string()
+        identity_text(Path::new(recorded))
     } else {
         match std::path::absolute(recorded) {
-            Ok(path) => path.to_string_lossy().into_owned(),
+            Ok(path) => identity_text(&path),
             Err(_) => return false,
         }
     };
     let wanted = collapse_parent_segments(segments(&absolute));
     sources.iter().any(|source| {
         let text = identity_text(source);
-        let own = segments(&text);
+        let own = collapse_parent_segments(segments(&text));
         own.len() == wanted.len() && own.iter().zip(&wanted).all(|(a, b)| same_segment(a, b))
     })
 }
@@ -389,6 +393,44 @@ mod tests {
         let sources = [PathBuf::from(r"\\?\C:\in\x.wav")];
 
         assert!(recorded_is_exactly_one_of(r"C:\in\x.wav", &sources));
+    }
+
+    #[test]
+    fn test_a_drive_prefix_without_a_separator_is_relative() {
+        // `C:audio.wav` is a Unix file name with a colon, or a Windows path
+        // relative to the drive's current folder. Neither is absolute.
+        assert!(is_absolute_text(r"C:\audio.wav"));
+        assert!(is_absolute_text("C:/audio.wav"));
+        assert!(!is_absolute_text("C:audio.wav"));
+        assert!(!is_absolute_text("C:"));
+
+        let identity = Path::new("/data/in/C:audio.wav");
+        assert!(recorded_matches("C:audio.wav", &[identity]));
+        assert!(!recorded_matches(
+            "C:audio.wav",
+            &[Path::new("/data/in/other.wav")]
+        ));
+    }
+
+    #[test]
+    fn test_recorded_is_exactly_one_of_resolves_a_drive_relative_value_from_the_current_directory()
+    {
+        let cwd = std::env::current_dir().unwrap();
+        let sources = [cwd.join("C:audio.wav")];
+        assert!(recorded_is_exactly_one_of("C:audio.wav", &sources));
+    }
+
+    #[test]
+    fn test_recorded_is_exactly_one_of_drops_a_verbatim_prefix_on_the_recorded_value() {
+        let sources = [PathBuf::from(r"C:\in\x.wav")];
+        assert!(recorded_is_exactly_one_of(r"\\?\C:\in\x.wav", &sources));
+        assert!(!recorded_is_exactly_one_of(r"\\?\D:\in\x.wav", &sources));
+    }
+
+    #[test]
+    fn test_recorded_is_exactly_one_of_collapses_parent_segments_in_the_source() {
+        let sources = [PathBuf::from("/data/out/../in/x.wav")];
+        assert!(recorded_is_exactly_one_of("/data/in/x.wav", &sources));
     }
 
     #[test]

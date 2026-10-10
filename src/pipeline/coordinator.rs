@@ -1386,10 +1386,7 @@ mod tests {
         let first = touch(dir.path(), "x.BirdNET.json/a.wav");
         let second = touch(dir.path(), "other/a.wav");
         let plain = touch(dir.path(), "other/x.wav");
-        let roots = [
-            dir.path().join("x.BirdNET.json"),
-            dir.path().join("other"),
-        ];
+        let roots = [dir.path().join("x.BirdNET.json"), dir.path().join("other")];
         let out = Path::new("./birda-test-relative-output-that-does-not-exist");
 
         let targets = plan_output_targets(&[first, second, plain], &roots, Some(out), true);

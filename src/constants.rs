@@ -275,6 +275,10 @@ pub mod output_extensions {
     pub const PARQUET: &str = ".BirdNET.results.parquet";
 }
 
+/// Warning printed when the deprecated `--combine` flag is passed.
+pub const COMBINE_DEPRECATED_WARNING: &str =
+    "--combine is deprecated and does nothing; it will be removed in a future release";
+
 /// Output file name stem used when an input path has no file name.
 pub const FALLBACK_OUTPUT_NAME: &str = "output";
 
@@ -284,18 +288,19 @@ pub mod error_codes {
     pub const PROCESSING_ERROR: &str = "processing_error";
     /// Several inputs map to one output name and could not be told apart.
     pub const OUTPUT_PATH_COLLISION: &str = "output_path_collision";
+    /// An existing output holds results recorded for a different input.
+    pub const OUTPUT_OWNED_BY_OTHER_INPUT: &str = "output_owned_by_other_input";
 }
 
-/// Combined output file names.
-pub mod combined_filenames {
-    /// Combined CSV filename.
-    pub const CSV: &str = "BirdNET_CombinedTable.csv";
-    /// Combined Raven filename.
-    pub const RAVEN: &str = "BirdNET_SelectionTable.txt";
-    /// Combined Kaleidoscope filename.
-    pub const KALEIDOSCOPE: &str = "BirdNET_Kaleidoscope.csv";
-    /// Combined Parquet filename.
-    pub const PARQUET: &str = "BirdNET_CombinedTable.parquet";
+/// Names of the columns that record which input a result file came from.
+///
+/// The ownership check finds the column by this header name, and the writers
+/// write the same names (`output/csv.rs`, `output/raven.rs`).
+pub mod output_columns {
+    /// CSV column holding the input path.
+    pub const CSV_SOURCE: &str = "File";
+    /// Raven selection table column holding the input path.
+    pub const RAVEN_SOURCE: &str = "Begin Path";
 }
 
 /// Confidence value bounds.

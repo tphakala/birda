@@ -38,8 +38,9 @@ pub struct ClipArgs {
     #[arg(short, long)]
     pub audio: Option<PathBuf>,
 
-    /// Base directory for resolving relative audio paths in detection files.
-    /// If not specified, paths are resolved relative to the detection file location.
+    /// Folder the audio files are in. For a result mirrored under `-o`, the
+    /// folder that was given to `birda`. If not specified, the audio is looked
+    /// for next to the detection file.
     #[arg(long)]
     pub base_dir: Option<PathBuf>,
 

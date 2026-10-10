@@ -42,15 +42,20 @@ fn test_stdout_conflicts_with_output_dir() {
 }
 
 #[test]
-fn test_stdout_conflicts_with_combine() {
+fn test_stdout_with_combine_warns_instead_of_failing_in_the_parser() {
+    let config_dir = tempfile::tempdir().unwrap();
     let mut cmd = cargo_bin_cmd!("birda");
-    cmd.arg("--stdout").arg("--combine").arg("test.wav");
+    cmd.env("BIRDA_CONFIG_DIR", config_dir.path())
+        .arg("--stdout")
+        .arg("--combine")
+        .arg("test.wav");
 
     cmd.assert()
         .failure()
-        .stderr(predicate::str::contains("--stdout"))
-        .stderr(predicate::str::contains("--combine"))
-        .stderr(predicate::str::contains("cannot be used with"));
+        .stderr(predicate::str::contains(
+            "--combine is deprecated and does nothing",
+        ))
+        .stderr(predicate::str::contains("cannot be used with").not());
 }
 
 #[test]

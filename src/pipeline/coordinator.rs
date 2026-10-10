@@ -5,29 +5,13 @@ use crate::constants::{FALLBACK_OUTPUT_NAME, output_extensions};
 use crate::error::{Error, Result};
 use crate::locking::FileLock;
 use crate::output::OutputFiles;
+use crate::output::ownership::{
+    recorded_file_name, recorded_is_exactly_one_of, recorded_matches, recorded_source,
+};
 use std::collections::{HashMap, HashSet};
-use std::ffi::{OsStr, OsString};
+use std::ffi::OsString;
 use std::path::{Component, Path, PathBuf};
 use tracing::{info, warn};
-
-/// Options for processing a single file.
-#[derive(Debug, Clone)]
-pub struct ProcessOptions {
-    /// Output directory (None = same as input).
-    pub output_dir: Option<PathBuf>,
-    /// Output formats to generate.
-    pub formats: Vec<OutputFormat>,
-    /// Force reprocessing even if output exists.
-    pub force: bool,
-    /// Minimum confidence threshold.
-    pub min_confidence: f32,
-    /// Segment overlap in seconds.
-    pub overlap: f32,
-    /// Batch size for inference.
-    pub batch_size: usize,
-    /// Model name.
-    pub model_name: String,
-}
 
 /// Result of checking whether a file should be processed.
 #[derive(Debug)]
@@ -38,6 +22,14 @@ pub enum ProcessCheck {
     SkipExists,
     /// Skip - file is locked by another process.
     SkipLocked,
+    /// An existing output holds results recorded for another input, whose own
+    /// results this run does not replace.
+    OwnedByOther {
+        /// The existing output file.
+        output: PathBuf,
+        /// The source it records, as written in it.
+        recorded: String,
+    },
 }
 
 /// Determine the output directory for a file.
@@ -81,6 +73,11 @@ pub struct OutputTarget {
     root: PathBuf,
     /// Sanitized file name shared by every format, without a format suffix.
     base: String,
+    /// The input this target is for: its canonical folder joined with its file
+    /// name. Result files record it so a later run can tell whose they are.
+    source: PathBuf,
+    /// Whether the output files sit next to the input (no `-o` was given).
+    beside_input: bool,
 }
 
 impl OutputTarget {
@@ -88,6 +85,19 @@ impl OutputTarget {
     #[must_use]
     pub fn dir(&self) -> &Path {
         &self.dir
+    }
+
+    /// The input this target is for: its canonical folder joined with its file
+    /// name.
+    #[must_use]
+    pub fn source(&self) -> &Path {
+        &self.source
+    }
+
+    /// Whether the output files sit next to the input (no `-o` was given).
+    #[must_use]
+    pub const fn beside_input(&self) -> bool {
+        self.beside_input
     }
 
     /// Output file path for a given format.
@@ -145,13 +155,13 @@ struct Candidate {
     canonical_dir: PathBuf,
     /// Canonical parent folder of the input.
     canonical_parent: PathBuf,
-    /// Canonical folder the input was found under: the deepest directory
-    /// argument that holds it, or else its own folder.
-    base_root: PathBuf,
     /// Whether the full file name is used instead of the stem.
     qualified: bool,
     /// Subfolders under `-o` that keep inputs from different folders apart.
     mirror: Vec<OsString>,
+    /// The folder the output lands in, with the mirror folders under
+    /// `canonical_dir` resolved through any symlink among them.
+    resolved_dir: PathBuf,
 }
 
 impl Candidate {
@@ -163,15 +173,17 @@ impl Candidate {
         }
     }
 
-    /// Identity of the file this candidate would write: the directory and the
-    /// name, with the mirror folders and the name lowercased when `fold_case`.
+    /// Identity of the file this candidate would write: the resolved directory
+    /// and the name, both lowercased when `fold_case`.
     fn key(&self, fold_case: bool) -> (PathBuf, String) {
-        let fold = |text: String| if fold_case { text.to_lowercase() } else { text };
-        let mut dir = self.canonical_dir.clone();
-        for part in &self.mirror {
-            dir.push(fold(part.to_string_lossy().into_owned()));
+        if fold_case {
+            (
+                PathBuf::from(self.resolved_dir.to_string_lossy().to_lowercase()),
+                self.base().to_lowercase(),
+            )
+        } else {
+            (self.resolved_dir.clone(), self.base().to_string())
         }
-        (dir, fold(self.base().to_string()))
     }
 
     /// `plain_dir`, with the mirror subfolders under it. Only a run with `-o`
@@ -197,15 +209,51 @@ fn canonical_dir(dir: &Path) -> PathBuf {
 /// `canonical_dir` results for one pass over a file list. Files mostly share a
 /// few folders, so each folder is resolved once rather than once per file.
 #[derive(Default)]
-struct CanonicalDirs(HashMap<PathBuf, PathBuf>);
+struct CanonicalDirs {
+    dirs: HashMap<PathBuf, PathBuf>,
+    resolved: HashMap<PathBuf, PathBuf>,
+}
 
 impl CanonicalDirs {
     fn get(&mut self, dir: &Path) -> PathBuf {
-        self.0
+        self.dirs
             .entry(dir.to_path_buf())
             .or_insert_with(|| canonical_dir(dir))
             .clone()
     }
+
+    /// `path` with its deepest existing ancestor canonicalized and the rest
+    /// appended as it is, so a symlink among the folders that already exist
+    /// shows in the result.
+    fn resolve_through_existing(&mut self, path: &Path) -> PathBuf {
+        if let Some(done) = self.resolved.get(path) {
+            return done.clone();
+        }
+        let mut missing: Vec<OsString> = Vec::new();
+        let mut head = path.to_path_buf();
+        let resolved = loop {
+            if let Ok(mut found) = std::fs::canonicalize(&head) {
+                found.extend(missing.iter().rev());
+                break found;
+            }
+            match (head.file_name(), head.parent()) {
+                (Some(name), Some(parent)) => {
+                    missing.push(name.to_os_string());
+                    head = parent.to_path_buf();
+                }
+                _ => break path.to_path_buf(),
+            }
+        };
+        self.resolved.insert(path.to_path_buf(), resolved.clone());
+        resolved
+    }
+}
+
+/// The identity of an input: its canonical folder joined with its file name.
+fn input_identity(file: &Path, dirs: &mut CanonicalDirs) -> PathBuf {
+    let parent = dirs.get(file.parent().unwrap_or_else(|| Path::new("")));
+    file.file_name()
+        .map_or_else(|| file.to_path_buf(), |name| parent.join(name))
 }
 
 /// The folder names in a path, without the drive prefix and root, so paths on
@@ -234,15 +282,19 @@ fn group_by_key(
     groups
 }
 
-/// Folder names under `-o` that keep each argument's clashing outputs apart,
-/// keyed by the argument's canonical folder (a file argument's own folder).
+/// The folders every argument sits below, as folder names. A clashing input's
+/// folder below this anchor is its mirror folder under `-o`.
 ///
-/// An argument is labelled with its folder name. Arguments whose folder names
-/// match (`stationA/2024-05-01` and `stationB/2024-05-01`) are labelled with
-/// their path below the folder they share instead. The labels depend only on
-/// the arguments, so they stay the same across reruns of the same command.
-fn root_labels(roots: &[PathBuf], dirs: &mut CanonicalDirs) -> HashMap<PathBuf, Vec<OsString>> {
-    let mut bases: Vec<PathBuf> = roots
+/// The anchor is the longest prefix the arguments' folders share (a directory
+/// argument itself, a file argument's parent). When one of the arguments is
+/// that shared folder (a single argument, or one nested in another), the
+/// anchor stops one folder short of it, so that argument keeps its own name in
+/// the mirror instead of vanishing from it.
+///
+/// It depends only on the arguments, so it stays the same across reruns of the
+/// same command whatever the inputs are.
+fn mirror_anchor(roots: &[PathBuf], dirs: &mut CanonicalDirs) -> Vec<OsString> {
+    let bases: Vec<Vec<OsString>> = roots
         .iter()
         .filter_map(|root| {
             if root.is_dir() {
@@ -251,68 +303,42 @@ fn root_labels(roots: &[PathBuf], dirs: &mut CanonicalDirs) -> HashMap<PathBuf, 
                 root.parent().map(|parent| dirs.get(parent))
             }
         })
+        .map(|base| normal_components(&base))
         .collect();
-    bases.sort();
-    bases.dedup();
-
-    let mut by_name: HashMap<String, Vec<PathBuf>> = HashMap::new();
-    for base in bases {
-        let name = base
-            .file_name()
-            .map(|n| n.to_string_lossy().to_lowercase())
-            .unwrap_or_default();
-        by_name.entry(name).or_default().push(base);
+    let Some(first) = bases.first() else {
+        return Vec::new();
+    };
+    let shared_len = bases.iter().skip(1).fold(first.len(), |len, other| {
+        len.min(first.iter().zip(other).take_while(|(a, b)| a == b).count())
+    });
+    let mut anchor = first[..shared_len].to_vec();
+    if bases.iter().any(|base| base.len() == shared_len) {
+        anchor.pop();
     }
-
-    let mut labels = HashMap::new();
-    for group in by_name.into_values() {
-        if let [base] = group.as_slice() {
-            let label = base
-                .file_name()
-                .map(OsStr::to_os_string)
-                .into_iter()
-                .collect();
-            labels.insert(base.clone(), label);
-            continue;
-        }
-        let parts: Vec<Vec<OsString>> = group.iter().map(|base| normal_components(base)).collect();
-        let shared = parts.iter().skip(1).fold(parts[0].len(), |len, other| {
-            len.min(
-                parts[0]
-                    .iter()
-                    .zip(other)
-                    .take_while(|(a, b)| a == b)
-                    .count(),
-            )
-        });
-        for (base, components) in group.into_iter().zip(parts) {
-            labels.insert(base, components[shared..].to_vec());
-        }
-    }
-    labels
+    anchor
 }
 
-/// Folders under `-o` for a clashing input: its argument's label, then its
-/// folder below that argument.
-fn mirror_for(candidate: &Candidate, labels: &HashMap<PathBuf, Vec<OsString>>) -> Vec<OsString> {
-    let mut mirror = labels
-        .get(&candidate.base_root)
-        .cloned()
-        .unwrap_or_else(|| {
-            candidate
-                .base_root
-                .file_name()
-                .map(OsStr::to_os_string)
-                .into_iter()
-                .collect()
-        });
-    let below_root = candidate
-        .canonical_parent
-        .strip_prefix(&candidate.base_root)
-        .unwrap_or_else(|_| Path::new(""));
-    mirror.extend(normal_components(below_root));
-    mirror
+/// Folders under `-o` for a clashing input: its folder below the anchor, or
+/// the whole folder when it is not under the anchor (a file reached through a
+/// symlinked folder that resolves outside every argument).
+fn mirror_for(candidate: &Candidate, anchor: &[OsString]) -> Vec<OsString> {
+    let parts = normal_components(&candidate.canonical_parent);
+    if parts.starts_with(anchor) {
+        parts[anchor.len()..].to_vec()
+    } else {
+        parts
+    }
 }
+
+/// Every output file extension, for finding a file path that is also a folder.
+const OUTPUT_EXTENSIONS: [&str; 6] = [
+    output_extensions::CSV,
+    output_extensions::RAVEN,
+    output_extensions::AUDACITY,
+    output_extensions::KALEIDOSCOPE,
+    output_extensions::JSON,
+    output_extensions::PARQUET,
+];
 
 /// Plan the output name of every input in a run.
 ///
@@ -321,20 +347,28 @@ fn mirror_for(candidate: &Candidate, labels: &HashMap<PathBuf, Vec<OsString>>) -
 /// the input. Inputs whose names would clash (the same stem, compared without
 /// regard to case, in one output directory) all switch to their full file name,
 /// so `x.wav` and `x.flac` become `x.wav.BirdNET.json` and `x.flac.BirdNET.json`.
-/// When `-o` is given, each clashing input also goes into a folder named after
-/// the directory argument it was found under (in `roots`; an input given as a
-/// file counts as found in its own folder, and arguments whose folder names
-/// match are told apart by their path below the folder they share), mirroring
-/// its folder below that argument. The rule is symmetric, so the result does not depend on input
-/// order, and a clashing input's path depends only on its own location and
-/// argument, so it does not move when inputs are added under the same
-/// arguments.
+/// When `-o` is given, each clashing input also goes into a folder that
+/// mirrors its own folder below the anchor, the folder every argument sits
+/// below (see [`mirror_anchor`]; with one argument `in`, the anchor is the
+/// folder that holds `in`, so the mirror starts with `in`). Mirror folders are
+/// the input's canonical folder with a common prefix removed, so two inputs in
+/// different folders share one only when the folders differ in case, are the
+/// same folder on two drives, or meet through a symlink (all reported below).
+/// The rule is symmetric, so the result does
+/// not depend on input order, and a clashing input's path depends only on its
+/// own location and the arguments, so it does not move when inputs are added
+/// under the same arguments.
 ///
 /// A name that is still shared after that (under `-o`, folders that differ only
-/// in case, or the same folder on two drives) is an
-/// [`Error::OutputPathCollision`] for every input involved. Without `-o`, names
-/// that differ only in case are not a clash: the inputs' own folder holds both,
-/// so it tells case apart.
+/// in case, the same folder on two drives, or folders that are one folder
+/// through a symlink under `-o`) is an [`Error::OutputPathCollision`] for every
+/// input involved. Without `-o`, names that differ only in case are not a
+/// clash: the inputs' own folder holds both, so it tells case apart.
+///
+/// An input is also an error when its output path cannot be written: a mirror
+/// folder that is a symlink out of the `-o` directory is an
+/// [`Error::PathTraversal`], and an output file whose path is the mirror folder of
+/// another input's output is an [`Error::OutputPathCollision`] for both.
 ///
 /// With `writes_files` false (`--stdout`) nothing is written, so there is
 /// nothing for two names to collide on: every input keeps its stem and none
@@ -346,6 +380,7 @@ pub fn plan_output_targets(
     explicit_output_dir: Option<&Path>,
     writes_files: bool,
 ) -> Vec<Result<OutputTarget>> {
+    let mut dirs = CanonicalDirs::default();
     if !writes_files {
         return files
             .iter()
@@ -355,37 +390,29 @@ pub fn plan_output_targets(
                     root: dir.clone(),
                     dir,
                     base: output_name(file.file_stem()),
+                    source: input_identity(file, &mut dirs),
+                    beside_input: explicit_output_dir.is_none(),
                 })
             })
             .collect();
     }
 
-    let mut dirs = CanonicalDirs::default();
-    let mut dir_roots: Vec<PathBuf> = roots
-        .iter()
-        .filter(|root| root.is_dir())
-        .map(|root| dirs.get(root))
-        .collect();
-    // Deepest first, so a file under nested directory arguments takes the
-    // closest one.
-    dir_roots.sort_by_key(|root| std::cmp::Reverse(root.components().count()));
-    let labels = root_labels(roots, &mut dirs);
+    let anchor = mirror_anchor(roots, &mut dirs);
     let mut candidates: Vec<Candidate> = files
         .iter()
         .map(|file| {
             let plain_dir = output_dir_for(file, explicit_output_dir);
             let canonical_parent = dirs.get(file.parent().unwrap_or_else(|| Path::new("")));
-            let base_root = dir_roots
-                .iter()
-                .find(|root| canonical_parent.starts_with(root))
-                .cloned()
-                .unwrap_or_else(|| canonical_parent.clone());
+            let canonical_dir = dirs.get(&plain_dir);
+            // Same form as the mirror folders below, so a relative `-o` that
+            // does not exist yet compares equal on both sides.
+            let resolved_dir = dirs.resolve_through_existing(&canonical_dir);
             Candidate {
                 stem: output_name(file.file_stem()),
                 full: output_name(file.file_name()),
-                canonical_dir: dirs.get(&plain_dir),
+                resolved_dir,
+                canonical_dir,
                 canonical_parent,
-                base_root,
                 plain_dir,
                 qualified: false,
                 mirror: Vec::new(),
@@ -394,11 +421,10 @@ pub fn plan_output_targets(
         .collect();
 
     // Inputs that share a name: qualify them, and under `-o` put each in a
-    // folder named after the argument it was found under, mirroring its folder
-    // below that argument. The path depends only on where the input is and
-    // which argument found it, never on which other inputs clash, so a rerun
-    // that finds more recordings cannot give one of them the name another
-    // input's earlier output already has.
+    // folder that mirrors its own folder below the anchor. The path depends only
+    // on where the input is and which arguments were given, never on which other
+    // inputs clash, so a rerun that finds more recordings cannot give one of
+    // them the name another input's earlier output already has.
     for members in group_by_key(&candidates, true)
         .values()
         .filter(|m| m.len() > 1)
@@ -406,7 +432,11 @@ pub fn plan_output_targets(
         for &i in members {
             candidates[i].qualified = true;
             if explicit_output_dir.is_some() {
-                candidates[i].mirror = mirror_for(&candidates[i], &labels);
+                let mirror = mirror_for(&candidates[i], &anchor);
+                let mut folder = candidates[i].canonical_dir.clone();
+                folder.extend(&mirror);
+                candidates[i].resolved_dir = dirs.resolve_through_existing(&folder);
+                candidates[i].mirror = mirror;
             }
         }
     }
@@ -442,13 +472,20 @@ pub fn plan_output_targets(
         group_by_key(&candidates, false)
     };
 
+    let escaping = escaping_mirrors(&candidates, &mut dirs);
+    let conflicts = file_folder_conflicts(&candidates, &mut dirs, fold_case);
+
     candidates
         .iter()
-        .map(|candidate| {
+        .zip(files)
+        .enumerate()
+        .map(|(index, (candidate, file))| {
             let target = OutputTarget {
                 dir: candidate.target_dir(),
                 root: candidate.plain_dir.clone(),
                 base: candidate.base().to_string(),
+                source: input_identity(file, &mut dirs),
+                beside_input: explicit_output_dir.is_none(),
             };
             let clashing = &groups[&candidate.key(fold_case)];
             if clashing.len() > 1 {
@@ -457,18 +494,114 @@ pub fn plan_output_targets(
                     inputs: clashing.iter().map(|&i| files[i].clone()).collect(),
                 });
             }
+            if escaping.contains(&index) {
+                return Err(Error::PathTraversal {
+                    output_path: target.dir.join(&target.base),
+                    output_dir: target.root,
+                });
+            }
+            if let Some((output, others)) = conflicts.get(&index) {
+                let mut inputs = vec![file.clone()];
+                inputs.extend(others.iter().map(|&i| files[i].clone()));
+                return Err(Error::OutputPathCollision {
+                    output: output.clone(),
+                    inputs,
+                });
+            }
             Ok(target)
         })
         .collect()
 }
 
+/// Candidates whose mirror folders, with any symlink among the folders that
+/// already exist followed, lead out of the `-o` directory.
+fn escaping_mirrors(candidates: &[Candidate], dirs: &mut CanonicalDirs) -> HashSet<usize> {
+    candidates
+        .iter()
+        .enumerate()
+        .filter(|(_, candidate)| !candidate.mirror.is_empty())
+        .filter(|(_, candidate)| {
+            let root = dirs.resolve_through_existing(&candidate.canonical_dir);
+            !candidate.resolved_dir.starts_with(root)
+        })
+        .map(|(index, _)| index)
+        .collect()
+}
+
+/// Candidates whose output file path is a folder another candidate's output
+/// goes into (`out/x.BirdNET.json` next to `out/x.BirdNET.json/a.wav...`), which
+/// no writer can satisfy. Maps each involved candidate to the contested path and
+/// the other candidates involved.
+fn file_folder_conflicts(
+    candidates: &[Candidate],
+    dirs: &mut CanonicalDirs,
+    fold_case: bool,
+) -> HashMap<usize, (PathBuf, Vec<usize>)> {
+    let fold = |path: &Path| {
+        let text = path.to_string_lossy();
+        if fold_case {
+            PathBuf::from(text.to_lowercase())
+        } else {
+            PathBuf::from(text.into_owned())
+        }
+    };
+    let mut files: HashMap<PathBuf, Vec<usize>> = HashMap::new();
+    for (index, candidate) in candidates.iter().enumerate() {
+        for extension in OUTPUT_EXTENSIONS {
+            let path = candidate
+                .resolved_dir
+                .join(format!("{}{extension}", candidate.base()));
+            files.entry(fold(&path)).or_default().push(index);
+        }
+    }
+
+    let mut conflicts: HashMap<usize, (PathBuf, Vec<usize>)> = HashMap::new();
+    for (inner, candidate) in candidates.iter().enumerate() {
+        if candidate.mirror.is_empty() {
+            continue;
+        }
+        let root = dirs.resolve_through_existing(&candidate.canonical_dir);
+        let below_root = candidate
+            .resolved_dir
+            .ancestors()
+            .take_while(|ancestor| *ancestor != root && ancestor.starts_with(&root));
+        for folder in below_root {
+            for &outer in files.get(&fold(folder)).into_iter().flatten() {
+                if outer == inner {
+                    continue;
+                }
+                for (member, other) in [(inner, outer), (outer, inner)] {
+                    let entry = conflicts
+                        .entry(member)
+                        .or_insert_with(|| (folder.to_path_buf(), Vec::new()));
+                    if !entry.1.contains(&other) {
+                        entry.1.push(other);
+                    }
+                }
+            }
+        }
+    }
+    conflicts
+}
+
 /// Check if a file should be processed.
+///
+/// An input is skipped only when every requested output exists and none of
+/// them records a different input as its source. `run_sources` holds the
+/// identity ([`OutputTarget::source`]) of every input planned in this run: an
+/// output that records one of those is a stale copy, since that input has its
+/// own planned output, and is overwritten when the recorded path names that
+/// input exactly. Beside its input (no `-o`), an output that names no input of
+/// the run counts as the input's own when the recorded file name is the input's,
+/// since the folder may have moved. An output recording any other input is
+/// [`ProcessCheck::OwnedByOther`] unless `force` is set.
 pub fn should_process(
     input: &Path,
     target: &OutputTarget,
     formats: &[OutputFormat],
     force: bool,
     stdout_mode: bool,
+    run_sources: &[PathBuf],
 ) -> ProcessCheck {
     // Check if locked
     if FileLock::is_locked(input, target.dir()) {
@@ -493,19 +626,56 @@ pub fn should_process(
     // not free, though: such a caller now decodes and runs inference over every
     // file and still writes nothing, where before it did nothing quickly. Both
     // are silent, which is why the config rule is the one that matters.
-    if !force && !formats.is_empty() {
-        let all_exist = formats.iter().all(|fmt| {
-            target.path_for(*fmt).map_or_else(
-                |e| {
-                    warn!("Failed to generate output path: {}", e);
-                    false
-                },
-                |p| p.exists(),
-            )
-        });
-        if all_exist {
-            return ProcessCheck::SkipExists;
+    if force || formats.is_empty() {
+        return ProcessCheck::Process;
+    }
+
+    let mut outputs: Vec<(OutputFormat, PathBuf)> = Vec::with_capacity(formats.len());
+    for fmt in formats {
+        match target.path_for(*fmt) {
+            Ok(path) => outputs.push((*fmt, path)),
+            Err(e) => warn!("Failed to generate output path: {}", e),
         }
+    }
+    // A folder at an output path is not an output, so `is_file`, not `exists`.
+    let existing: Vec<&(OutputFormat, PathBuf)> =
+        outputs.iter().filter(|(_, path)| path.is_file()).collect();
+
+    // Whose is each existing output? Read what it records about its source.
+    // An output that records nothing (no detections, or a format that holds no
+    // source) cannot be told apart and counts as this input's, as it always did.
+    let lexical = std::path::absolute(input).ok();
+    let mut identities: Vec<&Path> = vec![target.source()];
+    identities.extend(lexical.as_deref());
+    let mut replaces_stale_copy = false;
+    for (fmt, path) in &existing {
+        let Some(recorded) = recorded_source(path, *fmt) else {
+            continue;
+        };
+        if recorded_matches(&recorded, &identities) {
+            continue;
+        }
+        if recorded_is_exactly_one_of(&recorded, run_sources) {
+            replaces_stale_copy = true;
+            continue;
+        }
+        // Beside its input, an output was written for the file of that name, so
+        // when it names no input of this run only the name says whose it is:
+        // the folder may have moved since.
+        if target.beside_input() && recorded_matches(recorded_file_name(&recorded), &identities) {
+            continue;
+        }
+        return ProcessCheck::OwnedByOther {
+            output: path.clone(),
+            recorded,
+        };
+    }
+    if replaces_stale_copy {
+        return ProcessCheck::Process;
+    }
+
+    if outputs.len() == formats.len() && existing.len() == formats.len() {
+        return ProcessCheck::SkipExists;
     }
 
     ProcessCheck::Process
@@ -636,7 +806,7 @@ mod tests {
         let input = dir.path().join("recording.wav");
         let target = plan(std::slice::from_ref(&input), None).remove(0);
 
-        let check = should_process(&input, &target, &[], false, false);
+        let check = should_process(&input, &target, &[], false, false, &[]);
 
         assert!(
             matches!(check, ProcessCheck::Process),
@@ -654,7 +824,7 @@ mod tests {
         let target = plan(std::slice::from_ref(&input), None).remove(0);
         touch(dir.path(), "recording.BirdNET.results.csv");
 
-        let check = should_process(&input, &target, &[OutputFormat::Csv], false, false);
+        let check = should_process(&input, &target, &[OutputFormat::Csv], false, false, &[]);
 
         assert!(
             matches!(check, ProcessCheck::SkipExists),
@@ -682,7 +852,7 @@ mod tests {
         let second = plan(&files, Some(&out));
 
         for (input, target) in files.iter().zip(&second) {
-            let check = should_process(input, target, &formats, false, false);
+            let check = should_process(input, target, &formats, false, false, &[]);
             assert!(
                 matches!(check, ProcessCheck::SkipExists),
                 "{} must find its own output on a rerun, got {check:?}",
@@ -704,13 +874,551 @@ mod tests {
         let targets = plan(&[a.clone(), b.clone()], Some(&out));
 
         for (input, target) in [&a, &b].into_iter().zip(&targets) {
-            let check = should_process(input, target, &[OutputFormat::Json], false, false);
+            let check = should_process(input, target, &[OutputFormat::Json], false, false, &[]);
             assert!(
                 matches!(check, ProcessCheck::Process),
                 "{} must not be skipped on another file's output, got {check:?}",
                 input.display()
             );
         }
+    }
+
+    /// Write the result file of `format` at `path` the way the real writers do,
+    /// for an input named `recorded` in the file (and, for JSON, `source_path`).
+    fn write_result(path: &Path, format: OutputFormat, recorded: &str, source_path: Option<&Path>) {
+        use crate::output::{CsvWriter, Detection, JsonResultWriter, OutputWriter, RavenWriter};
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let detection = Detection::from_label(
+            "Passer domesticus_House Sparrow",
+            0.9,
+            0.0,
+            3.0,
+            PathBuf::from(recorded),
+        );
+        let mut writer: Box<dyn OutputWriter> = match format {
+            OutputFormat::Csv => Box::new(CsvWriter::new(path, Vec::new(), true).unwrap()),
+            OutputFormat::Raven => Box::new(RavenWriter::new(path).unwrap()),
+            OutputFormat::Json => {
+                let name = Path::new(recorded).file_name().unwrap().to_string_lossy();
+                let mut json =
+                    JsonResultWriter::new(path, &name, 10.0, "m", 0.1, 0.0, None, None, None)
+                        .unwrap();
+                if let Some(source) = source_path {
+                    json = json.with_source_path(&source.to_string_lossy());
+                }
+                Box::new(json)
+            }
+            other => panic!("no result writer for {other:?}"),
+        };
+        writer.write_header().unwrap();
+        writer.write_detection(&detection).unwrap();
+        writer.finalize().unwrap();
+    }
+
+    /// Plan one input on its own, as a run over just that file would.
+    fn plan_alone(file: &Path, out: Option<&Path>) -> OutputTarget {
+        plan(std::slice::from_ref(&file.to_path_buf()), out).remove(0)
+    }
+
+    #[test]
+    fn test_should_process_skips_its_own_outputs_on_rerun() {
+        let dir = tempfile::tempdir().unwrap();
+        let input = touch(dir.path(), "in/x.wav");
+        let target = plan_alone(&input, None);
+        write_result(
+            &target.path_for(OutputFormat::Json).unwrap(),
+            OutputFormat::Json,
+            "x.wav",
+            Some(target.source()),
+        );
+        // The CLI records the input path as the user typed it.
+        write_result(
+            &target.path_for(OutputFormat::Csv).unwrap(),
+            OutputFormat::Csv,
+            "in/x.wav",
+            None,
+        );
+        write_result(
+            &target.path_for(OutputFormat::Raven).unwrap(),
+            OutputFormat::Raven,
+            "./x.wav",
+            None,
+        );
+
+        let check = should_process(
+            &input,
+            &target,
+            &[OutputFormat::Json, OutputFormat::Csv, OutputFormat::Raven],
+            false,
+            false,
+            &[],
+        );
+
+        assert!(
+            matches!(check, ProcessCheck::SkipExists),
+            "an input must find its own outputs on a rerun, got {check:?}"
+        );
+    }
+
+    #[test]
+    fn test_should_process_does_not_skip_an_output_recorded_for_another_input() {
+        // The sequence from #416 without `-o`. Run 1 sees `x.wav.wav` and
+        // `x.flac`, which do not clash, so `x.wav.wav` writes
+        // `x.wav.BirdNET.json`. Run 2 adds `x.wav`, which clashes with `x.flac`
+        // and so takes exactly that name: the file is there, but it is not
+        // `x.wav`'s result.
+        let dir = tempfile::tempdir().unwrap();
+        let double = touch(dir.path(), "x.wav.wav");
+        let flac = touch(dir.path(), "x.flac");
+        let wav = touch(dir.path(), "x.wav");
+        let first = plan(&[double.clone(), flac.clone()], None);
+        for (input, target) in [&double, &flac].into_iter().zip(&first) {
+            let source = target.source().to_path_buf();
+            write_result(
+                &json_path(target),
+                OutputFormat::Json,
+                &input.to_string_lossy(),
+                Some(&source),
+            );
+        }
+        let files = [double, flac, wav.clone()];
+        let second = plan(&files, None);
+        let run_sources: Vec<PathBuf> = second.iter().map(|t| t.source().to_path_buf()).collect();
+
+        let check = should_process(
+            &wav,
+            &second[2],
+            &[OutputFormat::Json],
+            false,
+            false,
+            &run_sources,
+        );
+
+        assert_eq!(
+            json_path(&second[2]),
+            json_path(&first[0]),
+            "the fixture needs x.wav to plan the file x.wav.wav wrote"
+        );
+        assert!(
+            matches!(check, ProcessCheck::Process),
+            "x.wav must not be skipped on x.wav.wav's results, got {check:?}"
+        );
+    }
+
+    #[test]
+    fn test_should_process_overwrites_a_csv_or_raven_copy_recorded_for_an_input_in_the_run() {
+        // The default format is CSV, which records the input path as typed. An
+        // absolute argument (as a GUI passes) names its owner exactly, so an
+        // owner that is part of this run has its own output and this copy is
+        // stale.
+        let dir = tempfile::tempdir().unwrap();
+        let double = touch(dir.path(), "x.wav.wav");
+        let flac = touch(dir.path(), "x.flac");
+        let wav = touch(dir.path(), "x.wav");
+        let files = [double, flac, wav.clone()];
+        let plans = plan(&files, None);
+        let run_sources: Vec<PathBuf> = plans.iter().map(|t| t.source().to_path_buf()).collect();
+        for (format, recorded) in [
+            (OutputFormat::Csv, run_sources[0].to_string_lossy()),
+            (OutputFormat::Raven, run_sources[0].to_string_lossy()),
+        ] {
+            let path = plans[2].path_for(format).unwrap();
+            write_result(&path, format, &recorded, None);
+
+            let check = should_process(&wav, &plans[2], &[format], false, false, &run_sources);
+            let alone = should_process(&wav, &plans[2], &[format], false, false, &[]);
+
+            assert!(
+                matches!(check, ProcessCheck::Process),
+                "{format:?}: an owner in the run is overwritten, got {check:?}"
+            );
+            assert!(
+                matches!(&alone, ProcessCheck::OwnedByOther { recorded: r, .. } if *r == *recorded),
+                "{format:?}: an owner outside the run is refused, got {alone:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_should_process_overwrites_a_copy_recorded_with_a_relative_path_for_an_input_in_the_run()
+    {
+        // The value the CLI writes when the owner was typed relative to the
+        // current directory, here with `..` steps up to the temp folder.
+        let dir = tempfile::tempdir().unwrap();
+        let double = touch(dir.path(), "x.wav.wav");
+        let flac = touch(dir.path(), "x.flac");
+        let wav = touch(dir.path(), "x.wav");
+        let plans = plan(&[double, flac, wav.clone()], None);
+        let run_sources: Vec<PathBuf> = plans.iter().map(|t| t.source().to_path_buf()).collect();
+        let cwd = std::env::current_dir().unwrap();
+        let mut relative = PathBuf::new();
+        for _ in normal_components(&cwd) {
+            relative.push("..");
+        }
+        relative.extend(normal_components(&run_sources[0]));
+        let recorded = relative.to_string_lossy().into_owned();
+        write_result(
+            &plans[2].path_for(OutputFormat::Csv).unwrap(),
+            OutputFormat::Csv,
+            &recorded,
+            None,
+        );
+
+        let check = should_process(
+            &wav,
+            &plans[2],
+            &[OutputFormat::Csv],
+            false,
+            false,
+            &run_sources,
+        );
+
+        assert!(matches!(check, ProcessCheck::Process), "got {check:?}");
+    }
+
+    #[test]
+    fn test_should_process_refuses_to_overwrite_an_output_whose_owner_is_not_in_the_run() {
+        // `card1` was analyzed into `out`; a later run over `card2` plans the
+        // same `out/REC0001.BirdNET.json` (a single argument never clashes with
+        // itself) but must not replace card1's results.
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("out");
+        let first = touch(dir.path(), "card1/REC0001.WAV");
+        let second = touch(dir.path(), "card2/REC0001.WAV");
+        let first_target = plan_alone(&first, Some(&out));
+        let second_target = plan_alone(&second, Some(&out));
+        let output = json_path(&first_target);
+        assert_eq!(output, json_path(&second_target));
+        write_result(
+            &output,
+            OutputFormat::Json,
+            "REC0001.WAV",
+            Some(first_target.source()),
+        );
+        let run_sources = [second_target.source().to_path_buf()];
+
+        let check = should_process(
+            &second,
+            &second_target,
+            &[OutputFormat::Json],
+            false,
+            false,
+            &run_sources,
+        );
+        let forced = should_process(
+            &second,
+            &second_target,
+            &[OutputFormat::Json],
+            true,
+            false,
+            &run_sources,
+        );
+
+        match check {
+            ProcessCheck::OwnedByOther {
+                output: found,
+                recorded,
+            } => {
+                assert_eq!(found, output);
+                assert_eq!(recorded, first_target.source().to_string_lossy());
+            }
+            other => panic!("expected OwnedByOther, got {other:?}"),
+        }
+        assert!(
+            matches!(forced, ProcessCheck::Process),
+            "--force overwrites, got {forced:?}"
+        );
+    }
+
+    #[test]
+    fn test_should_process_recognises_outputs_written_without_source_path() {
+        // Files from earlier versions: JSON that names only the file, and CSV
+        // whose `File` is the path as the user typed it, relative to wherever
+        // they ran.
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("out");
+        let first = touch(dir.path(), "in/a/x.wav");
+        let second = touch(dir.path(), "in/b/x.wav");
+        let first_target = plan_alone(&first, Some(&out));
+        let second_target = plan_alone(&second, Some(&out));
+        let csv = first_target.path_for(OutputFormat::Csv).unwrap();
+        assert_eq!(csv, second_target.path_for(OutputFormat::Csv).unwrap());
+        write_result(&csv, OutputFormat::Csv, "in/a/x.wav", None);
+        let json = first_target.path_for(OutputFormat::Json).unwrap();
+        std::fs::write(
+            &json,
+            r#"{"source_file":"x.wav","analysis_date":"2024-01-01T00:00:00Z","model":"m","settings":{"min_confidence":0.1,"overlap":0.0},"detections":[],"summary":{"total_detections":0,"unique_species":0,"audio_duration_seconds":1.0}}"#,
+        )
+        .unwrap();
+
+        let own = should_process(
+            &first,
+            &first_target,
+            &[OutputFormat::Csv],
+            false,
+            false,
+            &[],
+        );
+        let other = should_process(
+            &second,
+            &second_target,
+            &[OutputFormat::Csv],
+            false,
+            false,
+            &[],
+        );
+        let legacy_json = should_process(
+            &first,
+            &first_target,
+            &[OutputFormat::Json],
+            false,
+            false,
+            &[],
+        );
+
+        assert!(matches!(own, ProcessCheck::SkipExists), "got {own:?}");
+        assert!(
+            matches!(&other, ProcessCheck::OwnedByOther { recorded, .. } if recorded == "in/a/x.wav"),
+            "got {other:?}"
+        );
+        assert!(
+            matches!(legacy_json, ProcessCheck::SkipExists),
+            "got {legacy_json:?}"
+        );
+    }
+
+    #[test]
+    fn test_should_process_does_not_let_a_same_named_input_claim_a_relative_owner() {
+        // The CSV was written for some `audio.wav` run from its own folder, so
+        // it records only `audio.wav`. `audio.flac` finds it at its path. The
+        // run also holds an unrelated `/deep/audio.wav`: its name ends the same
+        // way, but the CSV is not shown to be its result, so `audio.flac` must
+        // not overwrite it on that account.
+        let dir = tempfile::tempdir().unwrap();
+        let flac = touch(dir.path(), "new/audio.flac");
+        let unrelated = touch(dir.path(), "deep/audio.wav");
+        let targets = plan(&[flac.clone(), unrelated], None);
+        let run_sources: Vec<PathBuf> = targets.iter().map(|t| t.source().to_path_buf()).collect();
+        write_result(
+            &targets[0].path_for(OutputFormat::Csv).unwrap(),
+            OutputFormat::Csv,
+            "audio.wav",
+            None,
+        );
+
+        let check = should_process(
+            &flac,
+            &targets[0],
+            &[OutputFormat::Csv],
+            false,
+            false,
+            &run_sources,
+        );
+
+        assert!(
+            matches!(&check, ProcessCheck::OwnedByOther { recorded, .. } if recorded == "audio.wav"),
+            "got {check:?}"
+        );
+    }
+
+    #[test]
+    fn test_should_process_checks_ownership_when_only_some_outputs_exist() {
+        // Adding a format on a rerun must not overwrite another input's CSV
+        // either, so the check does not wait for every output to exist.
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("out");
+        let first = touch(dir.path(), "card1/REC0001.WAV");
+        let second = touch(dir.path(), "card2/REC0001.WAV");
+        let first_target = plan_alone(&first, Some(&out));
+        let second_target = plan_alone(&second, Some(&out));
+        write_result(
+            &first_target.path_for(OutputFormat::Csv).unwrap(),
+            OutputFormat::Csv,
+            &first.to_string_lossy(),
+            None,
+        );
+
+        let check = should_process(
+            &second,
+            &second_target,
+            &[OutputFormat::Csv, OutputFormat::Json],
+            false,
+            false,
+            &[],
+        );
+
+        assert!(
+            matches!(check, ProcessCheck::OwnedByOther { .. }),
+            "got {check:?}"
+        );
+    }
+
+    #[test]
+    fn test_should_process_treats_a_folder_at_the_output_path_as_missing() {
+        let dir = tempfile::tempdir().unwrap();
+        let input = touch(dir.path(), "recording.wav");
+        let target = plan_alone(&input, None);
+        std::fs::create_dir(json_path(&target)).unwrap();
+
+        let check = should_process(&input, &target, &[OutputFormat::Json], false, false, &[]);
+
+        assert!(matches!(check, ProcessCheck::Process), "got {check:?}");
+    }
+
+    #[test]
+    fn test_should_process_skips_outputs_beside_the_input_after_its_folder_moved() {
+        // Without `-o` the output sits next to its input, so a copy recorded
+        // for the same file name in an old folder is that input's own result:
+        // the folder moved. A different name in the same place is not.
+        let dir = tempfile::tempdir().unwrap();
+        let input = touch(dir.path(), "in/x.wav");
+        let target = plan_alone(&input, None);
+        let output = json_path(&target);
+
+        write_result(
+            &output,
+            OutputFormat::Json,
+            "x.wav",
+            Some(Path::new("/old/place/in/x.wav")),
+        );
+        let moved = should_process(&input, &target, &[OutputFormat::Json], false, false, &[]);
+        write_result(
+            &output,
+            OutputFormat::Json,
+            "x.wav.wav",
+            Some(Path::new("/old/place/in/x.wav.wav")),
+        );
+        let renamed = should_process(&input, &target, &[OutputFormat::Json], false, false, &[]);
+
+        // The copy records a same-named input that is part of this run: it has
+        // its own output, so this one is the stale copy and is overwritten.
+        let other = touch(dir.path(), "other/x.wav");
+        let other_target = plan_alone(&other, None);
+        write_result(
+            &output,
+            OutputFormat::Json,
+            "x.wav",
+            Some(other_target.source()),
+        );
+        let run_sources = [
+            target.source().to_path_buf(),
+            other_target.source().to_path_buf(),
+        ];
+        let stale = should_process(
+            &input,
+            &target,
+            &[OutputFormat::Json],
+            false,
+            false,
+            &run_sources,
+        );
+
+        assert!(matches!(moved, ProcessCheck::SkipExists), "got {moved:?}");
+        assert!(matches!(stale, ProcessCheck::Process), "got {stale:?}");
+        assert!(
+            matches!(&renamed, ProcessCheck::OwnedByOther { recorded, .. } if recorded == "/old/place/in/x.wav.wav"),
+            "got {renamed:?}"
+        );
+    }
+
+    #[test]
+    fn test_should_process_refuses_a_same_named_output_under_an_explicit_output_dir() {
+        // With `-o` many folders write into one place, so the same file name
+        // recorded for another folder is another input's result.
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("out");
+        let input = touch(dir.path(), "in/x.wav");
+        let target = plan_alone(&input, Some(&out));
+        write_result(
+            &json_path(&target),
+            OutputFormat::Json,
+            "x.wav",
+            Some(Path::new("/elsewhere/x.wav")),
+        );
+
+        let check = should_process(&input, &target, &[OutputFormat::Json], false, false, &[]);
+
+        assert!(
+            matches!(&check, ProcessCheck::OwnedByOther { recorded, .. } if recorded == "/elsewhere/x.wav"),
+            "got {check:?}"
+        );
+    }
+
+    #[test]
+    fn test_should_process_does_not_take_an_absolute_value_that_is_only_the_tail_of_the_input() {
+        // The JSON records an absolute path that ends the way this input's path
+        // does but starts elsewhere: it names a different file.
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("out");
+        let input = touch(dir.path(), "in/x.wav");
+        let target = plan_alone(&input, Some(&out));
+        // Drop the first folder after the root or drive and write what is left
+        // as an absolute path, so the value ends like the input but starts
+        // elsewhere on every platform.
+        let tail: PathBuf = target
+            .source()
+            .components()
+            .filter(|c| matches!(c, std::path::Component::Normal(_)))
+            .skip(1)
+            .collect();
+        let recorded = Path::new("/").join(tail);
+        write_result(
+            &json_path(&target),
+            OutputFormat::Json,
+            "x.wav",
+            Some(&recorded),
+        );
+
+        let check = should_process(&input, &target, &[OutputFormat::Json], false, false, &[]);
+
+        assert!(
+            matches!(&check, ProcessCheck::OwnedByOther { .. }),
+            "got {check:?}"
+        );
+    }
+
+    #[test]
+    fn test_plan_finds_a_file_folder_conflict_under_a_relative_output_dir_that_does_not_exist() {
+        // `-o ./name` is relative and absent, so a plain output keeps the text it
+        // was given while a mirror folder is resolved from the current directory.
+        // Both must compare in the same form or the conflict goes unseen.
+        let dir = tempfile::tempdir().unwrap();
+        let first = touch(dir.path(), "x.BirdNET.json/a.wav");
+        let second = touch(dir.path(), "other/a.wav");
+        let plain = touch(dir.path(), "other/x.wav");
+        let roots = [dir.path().join("x.BirdNET.json"), dir.path().join("other")];
+        let out = Path::new("./birda-test-relative-output-that-does-not-exist");
+
+        let targets = plan_output_targets(&[first, second, plain], &roots, Some(out), true);
+
+        assert!(
+            targets
+                .iter()
+                .any(|t| matches!(t, Err(Error::OutputPathCollision { .. }))),
+            "got {targets:?}"
+        );
+    }
+
+    #[test]
+    fn test_should_process_refuses_a_same_named_output_when_the_output_dir_is_the_input_folder() {
+        // `-o` naming the input's own folder is still an explicit output
+        // directory: other folders' inputs can write there too.
+        let dir = tempfile::tempdir().unwrap();
+        let input = touch(dir.path(), "in/x.wav");
+        let target = plan_alone(&input, input.parent());
+        write_result(
+            &json_path(&target),
+            OutputFormat::Json,
+            "x.wav",
+            Some(Path::new("/elsewhere/x.wav")),
+        );
+
+        let check = should_process(&input, &target, &[OutputFormat::Json], false, false, &[]);
+
+        assert!(
+            matches!(&check, ProcessCheck::OwnedByOther { recorded, .. } if recorded == "/elsewhere/x.wav"),
+            "got {check:?}"
+        );
     }
 
     #[test]
@@ -899,6 +1607,142 @@ mod tests {
     }
 
     #[test]
+    fn test_plan_keeps_arguments_apart_when_one_label_ends_where_another_begins() {
+        // `p/2024` and `r/p` used to meet: the first was labelled `p/2024` to
+        // tell it from `q/2024`, the second `p`, and its folder `2024` below the
+        // argument made the same mirror folder `p/2024`.
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("out");
+        let first = dir.path().join("p").join("2024");
+        let second = dir.path().join("q").join("2024");
+        let third = dir.path().join("r").join("p");
+        let in_first = touch(&first, "x.wav");
+        touch(&first, "x.flac");
+        let in_second = touch(&second, "y.wav");
+        let in_third = touch(&third, "2024/x.wav");
+        let files = [in_first, in_second, in_third];
+
+        let plans = plan_output_targets(&files, &[first, second, third], Some(&out), true);
+
+        let names: Vec<Option<PathBuf>> = plans
+            .iter()
+            .map(|p| p.as_ref().ok().map(json_path))
+            .collect();
+        assert_eq!(
+            names,
+            vec![
+                Some(out.join("p").join("2024").join("x.wav.BirdNET.json")),
+                Some(out.join("y.BirdNET.json")),
+                Some(
+                    out.join("r")
+                        .join("p")
+                        .join("2024")
+                        .join("x.wav.BirdNET.json")
+                ),
+            ]
+        );
+    }
+
+    #[test]
+    fn test_plan_gives_the_outer_of_nested_same_name_arguments_its_own_folder() {
+        // `rec` and `rec/a/rec` share the folder name. The outer one used to get
+        // an empty label, so its clashing outputs landed directly in `out`.
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("out");
+        let outer = dir.path().join("rec");
+        let inner = outer.join("a").join("rec");
+        let in_outer = touch(&outer, "x.wav");
+        let in_inner = touch(&inner, "x.wav");
+
+        let plans = plan_output_targets(&[in_outer, in_inner], &[outer, inner], Some(&out), true);
+
+        let names: Vec<Option<PathBuf>> = plans
+            .iter()
+            .map(|p| p.as_ref().ok().map(json_path))
+            .collect();
+        assert_eq!(
+            names,
+            vec![
+                Some(out.join("rec").join("x.wav.BirdNET.json")),
+                Some(
+                    out.join("rec")
+                        .join("a")
+                        .join("rec")
+                        .join("x.wav.BirdNET.json")
+                ),
+            ]
+        );
+    }
+
+    #[test]
+    fn test_plan_mirror_does_not_depend_on_other_inputs() {
+        // The path of a clashing input depends on the input and the arguments
+        // only: adding, removing or reordering other recordings must not move it.
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("out");
+        let one = dir.path().join("one");
+        let two = dir.path().join("two");
+        let roots = [one.clone(), two.clone()];
+        let a = touch(&one, "a/x.wav");
+        let b = touch(&two, "a/x.wav");
+        let c = touch(&one, "b/x.wav");
+        let d = touch(&two, "a/x.flac");
+        let lone = touch(&two, "z/other.wav");
+        let sequences: Vec<Vec<PathBuf>> = vec![
+            vec![a.clone(), b.clone()],
+            vec![a.clone(), b.clone(), c.clone()],
+            vec![b.clone(), a.clone(), c.clone(), d.clone()],
+            vec![c, lone.clone(), a.clone()],
+            vec![d, b.clone(), lone],
+        ];
+        let mut seen: HashMap<PathBuf, Vec<PathBuf>> = HashMap::new();
+
+        for files in &sequences {
+            let plans = plan_output_targets(files, &roots, Some(&out), true);
+            for (file, plan) in files.iter().zip(&plans) {
+                // Only inputs that clash get a mirror; compare those.
+                let path = json_path(plan.as_ref().unwrap());
+                if path.starts_with(out.join("one")) || path.starts_with(out.join("two")) {
+                    seen.entry(file.clone()).or_default().push(path);
+                }
+            }
+        }
+
+        for (file, paths) in &seen {
+            assert!(
+                paths.windows(2).all(|w| w[0] == w[1]),
+                "{} moved between runs: {paths:?}",
+                file.display()
+            );
+        }
+        assert!(seen.contains_key(&a) && seen.contains_key(&b));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_plan_fails_inputs_whose_mirror_folders_are_one_folder_through_a_symlink() {
+        // `out/in/b` is a link to `out/in/a`, so the two mirrored outputs would
+        // be one file. The lexical mirror folders differ, so only resolving the
+        // link shows it.
+        let dir = tempfile::tempdir().unwrap();
+        let input = dir.path().join("in");
+        let out = dir.path().join("out");
+        let first = touch(&input, "a/x.wav");
+        let second = touch(&input, "b/x.wav");
+        std::fs::create_dir_all(out.join("in").join("a")).unwrap();
+        std::os::unix::fs::symlink(out.join("in").join("a"), out.join("in").join("b")).unwrap();
+
+        let plans = plan_output_targets(&[first, second], &[input], Some(&out), true);
+
+        assert!(
+            plans
+                .iter()
+                .all(|p| matches!(p, Err(Error::OutputPathCollision { .. }))),
+            "both inputs must fail as a collision, got {plans:?}"
+        );
+    }
+
+    #[test]
     fn test_plan_keeps_a_plain_name_that_only_matches_a_mirrored_one() {
         // Under `-o` the qualified `x.wav` goes into the argument's folder, so
         // the plain name `x.wav.wav` gets directly in `out` does not meet it.
@@ -1071,6 +1915,75 @@ mod tests {
         );
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn test_plan_rejects_a_mirror_folder_that_is_a_symlink_out_of_the_output_dir() {
+        // `out/in/a` already exists as a link to a folder outside `-o`, so a
+        // writer that follows the planned path would leave the output directory.
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("out");
+        let outside = dir.path().join("outside");
+        std::fs::create_dir_all(out.join("in")).unwrap();
+        std::fs::create_dir_all(&outside).unwrap();
+        std::os::unix::fs::symlink(&outside, out.join("in").join("a")).unwrap();
+        let escaping = touch(dir.path(), "in/a/x.wav");
+        let fine = touch(dir.path(), "in/b/x.wav");
+        let root = dir.path().join("in");
+
+        let plans = plan_output_targets(
+            &[escaping, fine],
+            std::slice::from_ref(&root),
+            Some(&out),
+            true,
+        );
+
+        assert!(
+            matches!(&plans[0], Err(Error::PathTraversal { output_dir, .. }) if output_dir == &out),
+            "got {:?}",
+            plans[0]
+        );
+        let target = plans[1].as_ref().unwrap();
+        assert_eq!(
+            json_path(target),
+            out.join("in").join("b").join("x.wav.BirdNET.json")
+        );
+    }
+
+    #[test]
+    fn test_plan_fails_inputs_whose_output_file_is_another_inputs_output_folder() {
+        // `other/x.wav` is unique and plans `out/x.BirdNET.json`, while the
+        // clashing `a.wav` pair mirrors into `out/x.BirdNET.json/`. A file and a
+        // folder cannot share a path, so both inputs involved fail.
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("out");
+        let folder_root = dir.path().join("x.BirdNET.json");
+        let other_root = dir.path().join("other");
+        let unique = touch(dir.path(), "other/x.wav");
+        let in_folder = touch(dir.path(), "x.BirdNET.json/a.wav");
+        let sibling = touch(dir.path(), "other/a.wav");
+
+        let plans = plan_output_targets(
+            &[unique.clone(), in_folder.clone(), sibling],
+            &[folder_root, other_root],
+            Some(&out),
+            true,
+        );
+
+        for failed in &plans[..2] {
+            match failed {
+                Err(Error::OutputPathCollision { inputs, .. }) => {
+                    let mut inputs = inputs.clone();
+                    inputs.sort();
+                    let mut expected = vec![unique.clone(), in_folder.clone()];
+                    expected.sort();
+                    assert_eq!(inputs, expected);
+                }
+                other => panic!("expected an output path collision, got {other:?}"),
+            }
+        }
+        assert!(plans[2].is_ok(), "got {:?}", plans[2]);
+    }
+
     #[test]
     fn test_collect_input_files_drops_a_file_listed_twice() {
         // A directory and a file inside it reach the same file twice. Planned as
@@ -1137,6 +2050,8 @@ mod tests {
             dir: PathBuf::from("/output"),
             root: PathBuf::from("/output"),
             base: "test".to_string(),
+            source: PathBuf::from("/in/test.wav"),
+            beside_input: false,
         };
         assert_eq!(
             target.path_for(OutputFormat::Csv).unwrap(),
@@ -1221,6 +2136,8 @@ mod tests {
             dir: PathBuf::from("/elsewhere"),
             root: PathBuf::from("/safe/output"),
             base: "x".to_string(),
+            source: PathBuf::from("/in/x.wav"),
+            beside_input: false,
         };
 
         let err = target.path_for(OutputFormat::Json).unwrap_err();

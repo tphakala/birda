@@ -20,7 +20,7 @@
 )]
 
 use std::io::Write;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Output;
 use std::time::Duration;
 
@@ -937,4 +937,132 @@ fn test_clip_json_partial_failure_lists_failed_files() {
         1,
         "the bad file should be listed even though a clip was produced: {payload}"
     );
+}
+
+/// #417: `birda -o out in` writes the result of `in/a/x.wav` into
+/// `out/in/a/` when another input is also called `x.wav`, and `--base-dir in`
+/// must find the recording again. `in/x.wav` is a different, longer recording
+/// of the same name: the clip only exists when the right one is read.
+#[test]
+fn test_clip_finds_the_source_of_a_mirrored_result_under_base_dir() {
+    let temp_dir = TempDir::new().unwrap();
+    let base = temp_dir.path().join("in");
+    std::fs::create_dir_all(base.join("a")).unwrap();
+    create_test_wav(&base.join("x.wav"), 2, 8000);
+    create_test_wav(&base.join("a").join("x.wav"), 5, 8000);
+    let result_dir = temp_dir.path().join("out").join("in").join("a");
+    std::fs::create_dir_all(&result_dir).unwrap();
+    let result = write_results_csv(
+        &result_dir,
+        "x.wav.BirdNET.results.csv",
+        &["3.0,4.0,Parus major,Great Tit,0.85"],
+    );
+    let clips = temp_dir.path().join("clips");
+
+    let output = birda_cmd()
+        .env(birda::constants::CONFIG_DIR_ENV, temp_dir.path())
+        .current_dir(temp_dir.path())
+        .args([
+            "clip",
+            result.to_str().unwrap(),
+            "--base-dir",
+            "in",
+            "--output",
+            clips.to_str().unwrap(),
+            "--pre",
+            "0",
+            "--post",
+            "0",
+        ])
+        .output()
+        .expect("failed to execute birda clip");
+
+    assert!(
+        output.status.success(),
+        "clip failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(walk_wav_files(&clips).len(), 1);
+}
+
+#[test]
+fn test_clip_names_the_mirrored_path_it_looked_for_when_the_source_is_missing() {
+    let temp_dir = TempDir::new().unwrap();
+    std::fs::create_dir_all(temp_dir.path().join("in")).unwrap();
+    let result_dir = temp_dir.path().join("out").join("in").join("a");
+    std::fs::create_dir_all(&result_dir).unwrap();
+    let result = write_results_csv(
+        &result_dir,
+        "x.wav.BirdNET.results.csv",
+        &["0.0,1.0,Parus major,Great Tit,0.85"],
+    );
+    let expected = Path::new("in").join("a").join("x.wav");
+
+    let output = birda_cmd()
+        .env(birda::constants::CONFIG_DIR_ENV, temp_dir.path())
+        .current_dir(temp_dir.path())
+        .args([
+            "clip",
+            result.to_str().unwrap(),
+            "--base-dir",
+            "in",
+            "--output",
+            temp_dir.path().join("clips").to_str().unwrap(),
+        ])
+        .output()
+        .expect("failed to execute birda clip");
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains(&format!("'{}'", expected.display())),
+        "the error must name {}: {stderr}",
+        expected.display()
+    );
+}
+
+/// A result named without a folder (`cd` into its folder first) still tells
+/// which recording it belongs to by the folder it sits in. `in/x.wav` is a
+/// shorter recording of the same name: the clip only exists when the mirrored
+/// one is read.
+#[test]
+fn test_clip_finds_the_source_when_the_result_is_named_without_a_folder() {
+    let temp_dir = TempDir::new().unwrap();
+    let base = temp_dir.path().join("in");
+    std::fs::create_dir_all(base.join("a")).unwrap();
+    create_test_wav(&base.join("x.wav"), 2, 8000);
+    create_test_wav(&base.join("a").join("x.wav"), 5, 8000);
+    let result_dir = temp_dir.path().join("out").join("in").join("a");
+    std::fs::create_dir_all(&result_dir).unwrap();
+    write_results_csv(
+        &result_dir,
+        "x.wav.BirdNET.results.csv",
+        &["3.0,4.0,Parus major,Great Tit,0.85"],
+    );
+    let clips = temp_dir.path().join("clips");
+
+    let output = birda_cmd()
+        .env(birda::constants::CONFIG_DIR_ENV, temp_dir.path())
+        .current_dir(&result_dir)
+        .args([
+            "clip",
+            "x.wav.BirdNET.results.csv",
+            "--base-dir",
+            base.to_str().unwrap(),
+            "--output",
+            clips.to_str().unwrap(),
+            "--pre",
+            "0",
+            "--post",
+            "0",
+        ])
+        .output()
+        .expect("failed to execute birda clip");
+
+    assert!(
+        output.status.success(),
+        "clip failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(walk_wav_files(&clips).len(), 1);
 }

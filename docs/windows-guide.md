@@ -286,7 +286,6 @@ birda [OPTIONS] <FILES>
   -c, --min-confidence <N>  # Confidence threshold (0.0-1.0)
   -b, --batch-size <N>      # Inference batch size
       --overlap <SEC>       # Segment overlap in seconds (finite, non-negative)
-      --combine             # Generate combined results file
       --force               # Reprocess existing files
       --fail-fast           # Stop on first error
   -q, --quiet               # Suppress progress output

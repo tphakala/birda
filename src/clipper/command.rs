@@ -385,8 +385,13 @@ fn process_detection_file(
 ///
 /// Resolution order:
 /// 1. Explicit --audio path if provided
-/// 2. Infer from detection filename in --base-dir (if provided)
-/// 3. Infer from detection filename in detection file's directory
+/// 2. With --base-dir, the mirrored location: a result under `out/in/a/` with
+///    `--base-dir in` came from `in/a/` (see [`mirror_candidates`])
+/// 3. Infer from detection filename in --base-dir (if provided)
+/// 4. Infer from detection filename in detection file's directory
+///
+/// More than one existing candidate at the same step is an error that lists
+/// them; the last step names every path it tried when nothing is found.
 fn find_source_audio(
     detection_file: &Path,
     explicit_audio: Option<&PathBuf>,
@@ -426,13 +431,41 @@ fn find_source_audio(
         PathBuf::as_path,
     );
 
-    for suffix in suffixes {
-        if let Some(base) = file_name.strip_suffix(suffix) {
-            let audio_path = search_dir.join(base);
-            if audio_path.exists() {
-                return Ok(audio_path);
+    let stripped: Vec<&str> = suffixes
+        .iter()
+        .filter_map(|suffix| file_name.strip_suffix(suffix))
+        .collect();
+
+    // Every path looked at, for the error when nothing is found.
+    let mut tried: Vec<PathBuf> = Vec::new();
+
+    // A result that birda mirrored under `-o` sits in a folder that repeats the
+    // input's folder, so look there first: the flat lookup below would find a
+    // different recording of the same name in the top folder of `--base-dir`.
+    if let Some(base_dir) = base_dir {
+        for name in &stripped {
+            let candidates = mirror_candidates(detection_file, base_dir, name);
+            let found: Vec<PathBuf> = candidates.iter().filter(|c| c.is_file()).cloned().collect();
+            match found.as_slice() {
+                [] => {}
+                [only] => return Ok(only.clone()),
+                _ => {
+                    return Err(Error::SourceAudioAmbiguous {
+                        detection_path: detection_file.to_path_buf(),
+                        candidates: found,
+                    });
+                }
             }
+            push_all_new(&mut tried, candidates);
         }
+    }
+
+    for base in &stripped {
+        let audio_path = search_dir.join(base);
+        if audio_path.is_file() {
+            return Ok(audio_path);
+        }
+        push_all_new(&mut tried, [audio_path]);
     }
 
     // Try common audio extensions
@@ -456,23 +489,92 @@ fn find_source_audio(
 
     // Prevent path traversal: reject stems containing ".." or path separators
     if base_stem.contains("..") || base_stem.contains('/') || base_stem.contains('\\') {
-        return Err(Error::SourceAudioNotFound {
+        return Err(Error::SourceAudioNotInferred {
             detection_path: detection_file.to_path_buf(),
-            audio_path: search_dir.join(base_stem),
+            tried: vec![search_dir.join(base_stem)],
         });
     }
 
-    for ext in clipper::AUDIO_EXTENSIONS {
-        let audio_path = search_dir.join(format!("{base_stem}.{ext}"));
-        if audio_path.exists() {
-            return Ok(audio_path);
+    let guesses: Vec<PathBuf> = clipper::AUDIO_EXTENSIONS
+        .iter()
+        .map(|ext| search_dir.join(format!("{base_stem}.{ext}")))
+        .collect();
+    let found: Vec<PathBuf> = guesses.iter().filter(|g| g.is_file()).cloned().collect();
+    match found.as_slice() {
+        [] => {}
+        [only] => return Ok(only.clone()),
+        _ => {
+            return Err(Error::SourceAudioAmbiguous {
+                detection_path: detection_file.to_path_buf(),
+                candidates: found,
+            });
         }
     }
+    push_all_new(&mut tried, guesses);
 
-    Err(Error::SourceAudioNotFound {
+    Err(Error::SourceAudioNotInferred {
         detection_path: detection_file.to_path_buf(),
-        audio_path: search_dir.join(base_stem),
+        tried,
     })
+}
+
+/// Append the paths that `list` does not hold yet, keeping their order.
+fn push_all_new(list: &mut Vec<PathBuf>, paths: impl IntoIterator<Item = PathBuf>) {
+    for path in paths {
+        if !list.contains(&path) {
+            list.push(path);
+        }
+    }
+}
+
+/// Where the input of a mirrored result file may be, below `base_dir`.
+///
+/// `birda -o out in` writes the result of `in/a/x.wav` into `out/in/a/` when its
+/// name clashes with another input's, so the result's folder repeats the
+/// folder that was given to `birda`. `base_dir` is that folder: for every
+/// place where the result's folder path has a component equal to the name of
+/// `base_dir` (as given, or once symlinks are resolved), the components after
+/// it are the input's folder below `base_dir`.
+/// `name` is the input's file name. The paths are not checked for existence.
+fn mirror_candidates(detection_file: &Path, base_dir: &Path, name: &str) -> Vec<PathBuf> {
+    let Some(parent) = detection_file.parent() else {
+        return Vec::new();
+    };
+    // A bare file name has an empty parent, which stands for the current folder.
+    let parent = if parent.as_os_str().is_empty() {
+        Path::new(".")
+    } else {
+        parent
+    };
+    let parent = std::fs::canonicalize(parent).unwrap_or_else(|_| parent.to_path_buf());
+
+    // The folder was named as the user typed it when birda wrote the result,
+    // which may be a symlink; the name it resolves to is also a fair match.
+    let canonical_base = std::fs::canonicalize(base_dir).unwrap_or_else(|_| base_dir.to_path_buf());
+    let base_names: Vec<&std::ffi::OsStr> = [base_dir.file_name(), canonical_base.file_name()]
+        .into_iter()
+        .flatten()
+        .collect();
+    if base_names.is_empty() {
+        return Vec::new();
+    }
+
+    let parts: Vec<&std::ffi::OsStr> = parent
+        .components()
+        .filter_map(|c| match c {
+            std::path::Component::Normal(part) => Some(part),
+            _ => None,
+        })
+        .collect();
+    let mut candidates = Vec::new();
+    for (index, part) in parts.iter().enumerate() {
+        if base_names.contains(part) {
+            let mut candidate = base_dir.to_path_buf();
+            candidate.extend(&parts[index + 1..]);
+            push_all_new(&mut candidates, [candidate.join(name)]);
+        }
+    }
+    candidates
 }
 
 #[cfg(test)]
@@ -494,6 +596,176 @@ mod tests {
             base_dir: None,
             start: None,
             end: None,
+        }
+    }
+
+    /// Create an empty file, and its folders, under `root`.
+    fn touch(root: &Path, relative: &str) -> PathBuf {
+        let path = root.join(relative);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, "").unwrap();
+        path
+    }
+
+    #[test]
+    fn test_find_source_audio_resolves_a_mirrored_result_under_base_dir() {
+        // `birda -o out in` writes `out/in/a/x.wav.BirdNET.results.csv` for
+        // `in/a/x.wav`; `--base-dir in` names the folder that was given to birda.
+        let dir = tempfile::tempdir().unwrap();
+        let base = dir.path().join("in");
+        let audio = touch(&base, "a/x.wav");
+        let result = touch(dir.path(), "out/in/a/x.wav.BirdNET.results.csv");
+
+        let found = find_source_audio(&result, None, Some(&base)).unwrap();
+
+        assert_eq!(found, audio);
+    }
+
+    #[test]
+    fn test_find_source_audio_prefers_the_mirrored_recording_to_a_same_named_one_above_it() {
+        // `in/x.wav` and `in/a/x.wav` both exist. The flat lookup would answer
+        // `in/x.wav` for both results, silently the wrong recording for one.
+        let dir = tempfile::tempdir().unwrap();
+        let base = dir.path().join("in");
+        let top = touch(&base, "x.wav");
+        let nested = touch(&base, "a/x.wav");
+        let top_result = touch(dir.path(), "out/in/x.wav.BirdNET.results.csv");
+        let nested_result = touch(dir.path(), "out/in/a/x.wav.BirdNET.results.csv");
+
+        assert_eq!(
+            find_source_audio(&nested_result, None, Some(&base)).unwrap(),
+            nested
+        );
+        assert_eq!(
+            find_source_audio(&top_result, None, Some(&base)).unwrap(),
+            top
+        );
+    }
+
+    #[test]
+    fn test_find_source_audio_reports_every_mirror_candidate_when_there_are_two() {
+        // The result's folder holds the base folder's name twice, and a file of
+        // that name exists below each.
+        let dir = tempfile::tempdir().unwrap();
+        let base = dir.path().join("in");
+        let deeper = touch(&base, "in/x.wav");
+        let shallower = touch(&base, "x.wav");
+        let result = touch(dir.path(), "out/in/in/x.wav.BirdNET.results.csv");
+
+        let err = find_source_audio(&result, None, Some(&base)).unwrap_err();
+
+        match err {
+            Error::SourceAudioAmbiguous { candidates, .. } => {
+                assert_eq!(candidates, vec![deeper, shallower]);
+            }
+            other => panic!("expected SourceAudioAmbiguous, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_find_source_audio_names_every_path_it_tried() {
+        let dir = tempfile::tempdir().unwrap();
+        let base = dir.path().join("in");
+        std::fs::create_dir_all(&base).unwrap();
+        let result = touch(dir.path(), "out/in/a/x.wav.BirdNET.results.csv");
+
+        let err = find_source_audio(&result, None, Some(&base)).unwrap_err();
+
+        match err {
+            Error::SourceAudioNotInferred { tried, .. } => {
+                let mut expected = vec![base.join("a").join("x.wav"), base.join("x.wav")];
+                // `x.wav` was tried as the stripped name already.
+                expected.extend(
+                    clipper::AUDIO_EXTENSIONS
+                        .iter()
+                        .filter(|ext| **ext != "wav")
+                        .map(|ext| base.join(format!("x.{ext}"))),
+                );
+                assert_eq!(tried, expected);
+            }
+            other => panic!("expected SourceAudioNotInferred, got {other:?}"),
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_find_source_audio_matches_a_base_dir_given_through_a_symlink() {
+        // `birda -o out current` mirrors under `out/current/`, but canonicalizing
+        // `current` gives `2024`, a name no result folder has.
+        let dir = tempfile::tempdir().unwrap();
+        let real = dir.path().join("2024");
+        let audio = touch(&real, "a/x.wav");
+        touch(&real, "x.wav");
+        let link = dir.path().join("current");
+        std::os::unix::fs::symlink(&real, &link).unwrap();
+        let result = touch(dir.path(), "out/current/a/x.wav.BirdNET.results.csv");
+
+        let found = find_source_audio(&result, None, Some(&link)).unwrap();
+
+        assert_eq!(found, link.join("a").join("x.wav"));
+        assert!(found.is_file() && audio.is_file());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_find_source_audio_matches_a_result_written_under_the_real_name_of_a_symlinked_base_dir()
+    {
+        // `birda -o out real` mirrors under `out/real/`, and `--base-dir` is a
+        // link to `real`: only the canonical name of the base folder is in the
+        // result path.
+        let dir = tempfile::tempdir().unwrap();
+        let real = dir.path().join("real");
+        touch(&real, "a/x.wav");
+        let link = dir.path().join("link");
+        std::os::unix::fs::symlink(&real, &link).unwrap();
+        let result = touch(dir.path(), "out/real/a/x.wav.BirdNET.results.csv");
+
+        let found = find_source_audio(&result, None, Some(&link)).unwrap();
+
+        assert_eq!(found, link.join("a").join("x.wav"));
+    }
+
+    #[test]
+    fn test_find_source_audio_does_not_guess_extensions_for_a_stem_holding_dots() {
+        // `a..b.wav` exists, but the extension guesses are not made for a stem
+        // that holds `..`; the error names only the stem it refused.
+        let dir = tempfile::tempdir().unwrap();
+        touch(dir.path(), "a..b.wav");
+        let result = touch(dir.path(), "a..b.BirdNET.results.csv");
+
+        let err = find_source_audio(&result, None, None).unwrap_err();
+
+        match err {
+            Error::SourceAudioNotInferred { tried, .. } => {
+                assert_eq!(tried, vec![dir.path().join("a..b")]);
+            }
+            other => panic!("expected SourceAudioNotInferred, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_find_source_audio_still_finds_the_audio_beside_its_result() {
+        let dir = tempfile::tempdir().unwrap();
+        let audio = touch(dir.path(), "x.wav");
+        let result = touch(dir.path(), "x.BirdNET.results.csv");
+
+        assert_eq!(find_source_audio(&result, None, None).unwrap(), audio);
+    }
+
+    #[test]
+    fn test_find_source_audio_does_not_pick_between_audio_files_of_one_stem() {
+        let dir = tempfile::tempdir().unwrap();
+        let wav = touch(dir.path(), "sample.wav");
+        let flac = touch(dir.path(), "sample.flac");
+        let result = touch(dir.path(), "sample.BirdNET.results.csv");
+
+        let err = find_source_audio(&result, None, None).unwrap_err();
+
+        match err {
+            Error::SourceAudioAmbiguous { candidates, .. } => {
+                assert_eq!(candidates, vec![wav, flac]);
+            }
+            other => panic!("expected SourceAudioAmbiguous, got {other:?}"),
         }
     }
 

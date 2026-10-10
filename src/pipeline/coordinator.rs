@@ -882,6 +882,11 @@ mod tests {
             &run_sources,
         );
 
+        assert_eq!(
+            json_path(&second[2]),
+            json_path(&first[0]),
+            "the fixture needs x.wav to plan the file x.wav.wav wrote"
+        );
         assert!(
             matches!(check, ProcessCheck::Process),
             "x.wav must not be skipped on x.wav.wav's results, got {check:?}"

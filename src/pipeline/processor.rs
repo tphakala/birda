@@ -894,3 +894,58 @@ pub struct ProcessResult {
     /// Output files written, by format. Empty when no files were written.
     pub outputs: OutputFiles,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::pipeline::plan_output_targets;
+
+    #[test]
+    fn test_write_output_records_the_inputs_identity_in_json() {
+        // The ownership check on a later run reads `source_path`; without it a
+        // JSON file would only name the file, and another folder's file of the
+        // same name would be taken as this input's result.
+        let dir = tempfile::tempdir().unwrap();
+        let input = dir.path().join("in").join("x.wav");
+        std::fs::create_dir_all(input.parent().unwrap()).unwrap();
+        std::fs::write(&input, "").unwrap();
+        let target = plan_output_targets(
+            std::slice::from_ref(&input),
+            std::slice::from_ref(&input),
+            None,
+            true,
+        )
+        .remove(0)
+        .unwrap();
+        let config = JsonOutputConfig {
+            model: "m".to_string(),
+            min_confidence: 0.1,
+            overlap: 0.0,
+            audio_duration: 1.0,
+            lat: None,
+            lon: None,
+            week: None,
+        };
+
+        write_output(
+            &input,
+            &target,
+            OutputFormat::Json,
+            &[],
+            &[],
+            false,
+            Some(&config),
+        )
+        .unwrap();
+
+        let written =
+            std::fs::read_to_string(target.path_for(OutputFormat::Json).unwrap()).unwrap();
+        let value: serde_json::Value = serde_json::from_str(&written).unwrap();
+        let identity = dir.path().canonicalize().unwrap().join("in").join("x.wav");
+        assert_eq!(
+            value["source_path"],
+            serde_json::json!(crate::output::ownership::identity_text(&identity))
+        );
+        assert_eq!(value["source_file"], serde_json::json!("x.wav"));
+    }
+}

@@ -305,6 +305,32 @@ mod tests {
         assert!(!recorded_is_exactly_one_of("../in/x.wav", &sources));
     }
 
+    #[cfg(any(windows, target_os = "macos"))]
+    #[test]
+    fn test_segments_differing_only_in_case_match_where_the_filesystem_ignores_case() {
+        assert!(recorded_matches(
+            r"C:\In\X.wav",
+            &[Path::new(r"c:\in\x.wav")]
+        ));
+        assert!(recorded_is_exactly_one_of(
+            "/Data/In/X.wav",
+            &[PathBuf::from("/data/in/x.wav")]
+        ));
+    }
+
+    #[cfg(not(any(windows, target_os = "macos")))]
+    #[test]
+    fn test_segments_differing_in_case_are_different_names_where_the_filesystem_keeps_case() {
+        assert!(!recorded_matches(
+            "/Data/In/X.wav",
+            &[Path::new("/data/in/x.wav")]
+        ));
+        assert!(!recorded_is_exactly_one_of(
+            "/Data/In/X.wav",
+            &[PathBuf::from("/data/in/x.wav")]
+        ));
+    }
+
     #[test]
     fn test_recorded_file_name_is_the_last_segment_with_either_separator() {
         assert_eq!(recorded_file_name("/data/in/x.wav"), "x.wav");

@@ -871,6 +871,77 @@ mod tests {
     }
 
     #[test]
+    fn test_should_process_overwrites_a_csv_or_raven_copy_recorded_for_an_input_in_the_run() {
+        // The default format is CSV, which records the input path as typed. An
+        // absolute argument (as a GUI passes) names its owner exactly, so an
+        // owner that is part of this run has its own output and this copy is
+        // stale.
+        let dir = tempfile::tempdir().unwrap();
+        let double = touch(dir.path(), "x.wav.wav");
+        let flac = touch(dir.path(), "x.flac");
+        let wav = touch(dir.path(), "x.wav");
+        let files = [double, flac, wav.clone()];
+        let plans = plan(&files, None);
+        let run_sources: Vec<PathBuf> = plans.iter().map(|t| t.source().to_path_buf()).collect();
+        for (format, recorded) in [
+            (OutputFormat::Csv, run_sources[0].to_string_lossy()),
+            (OutputFormat::Raven, run_sources[0].to_string_lossy()),
+        ] {
+            let path = plans[2].path_for(format).unwrap();
+            write_result(&path, format, &recorded, None);
+
+            let check = should_process(&wav, &plans[2], &[format], false, false, &run_sources);
+            let alone = should_process(&wav, &plans[2], &[format], false, false, &[]);
+
+            assert!(
+                matches!(check, ProcessCheck::Process),
+                "{format:?}: an owner in the run is overwritten, got {check:?}"
+            );
+            assert!(
+                matches!(&alone, ProcessCheck::OwnedByOther { recorded: r, .. } if *r == *recorded),
+                "{format:?}: an owner outside the run is refused, got {alone:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_should_process_overwrites_a_copy_recorded_with_a_relative_path_for_an_input_in_the_run()
+    {
+        // The value the CLI writes when the owner was typed relative to the
+        // current directory, here with `..` steps up to the temp folder.
+        let dir = tempfile::tempdir().unwrap();
+        let double = touch(dir.path(), "x.wav.wav");
+        let flac = touch(dir.path(), "x.flac");
+        let wav = touch(dir.path(), "x.wav");
+        let plans = plan(&[double, flac, wav.clone()], None);
+        let run_sources: Vec<PathBuf> = plans.iter().map(|t| t.source().to_path_buf()).collect();
+        let cwd = std::env::current_dir().unwrap();
+        let mut relative = PathBuf::new();
+        for _ in normal_components(&cwd) {
+            relative.push("..");
+        }
+        relative.extend(normal_components(&run_sources[0]));
+        let recorded = relative.to_string_lossy().into_owned();
+        write_result(
+            &plans[2].path_for(OutputFormat::Csv).unwrap(),
+            OutputFormat::Csv,
+            &recorded,
+            None,
+        );
+
+        let check = should_process(
+            &wav,
+            &plans[2],
+            &[OutputFormat::Csv],
+            false,
+            false,
+            &run_sources,
+        );
+
+        assert!(matches!(check, ProcessCheck::Process), "got {check:?}");
+    }
+
+    #[test]
     fn test_should_process_refuses_to_overwrite_an_output_whose_owner_is_not_in_the_run() {
         // `card1` was analyzed into `out`; a later run over `card2` plans the
         // same `out/REC0001.BirdNET.json` (a single argument never clashes with

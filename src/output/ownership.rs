@@ -171,17 +171,44 @@ pub fn recorded_matches(recorded: &str, identities: &[&Path]) -> bool {
     })
 }
 
-/// Whether a recorded source is, in full, the absolute identity of one of
-/// `sources`.
+/// Resolve `..` and `.` segments lexically, the way a shell does before it
+/// touches the filesystem.
+fn collapse_parent_segments(segments: Vec<&str>) -> Vec<&str> {
+    let mut kept: Vec<&str> = Vec::with_capacity(segments.len());
+    for segment in segments {
+        match segment {
+            PARENT_DIR => {
+                kept.pop();
+            }
+            CURRENT_DIR => {}
+            other => kept.push(other),
+        }
+    }
+    kept
+}
+
+/// Whether a recorded source is, in full, the identity of one of `sources`.
+///
+/// A relative value (CSV and Raven hold the input path as it was typed) is
+/// resolved against the current directory first, with `..` segments collapsed
+/// lexically, so it counts only when it names that exact input from here. The
+/// directory the earlier run started in is not recorded: a value typed in
+/// another directory can resolve to an unrelated input of this run. A path
+/// that goes through a symlinked folder does not match the resolved identity.
 ///
 /// This is deliberately stricter than [`recorded_matches`]: a relative value
 /// such as `audio.wav` would otherwise match any unrelated `.../audio.wav`.
 #[must_use]
 pub fn recorded_is_exactly_one_of(recorded: &str, sources: &[PathBuf]) -> bool {
-    if !is_absolute_text(recorded) {
-        return false;
-    }
-    let wanted = segments(recorded);
+    let absolute = if is_absolute_text(recorded) {
+        recorded.to_string()
+    } else {
+        match std::path::absolute(recorded) {
+            Ok(path) => path.to_string_lossy().into_owned(),
+            Err(_) => return false,
+        }
+    };
+    let wanted = collapse_parent_segments(segments(&absolute));
     sources.iter().any(|source| {
         let text = identity_text(source);
         let own = segments(&text);
@@ -245,7 +272,7 @@ mod tests {
     }
 
     #[test]
-    fn test_recorded_is_exactly_one_of_needs_the_whole_absolute_path() {
+    fn test_recorded_is_exactly_one_of_needs_the_whole_path() {
         let sources = [PathBuf::from("/data/in/a/x.wav")];
 
         assert!(recorded_is_exactly_one_of("/data/in/a/x.wav", &sources));
@@ -254,6 +281,21 @@ mod tests {
         assert!(!recorded_is_exactly_one_of("/other/in/a/x.wav", &sources));
         assert!(!recorded_is_exactly_one_of("/in/a/x.wav", &sources));
         assert!(!recorded_is_exactly_one_of("/data/in/a/x.wav", &[]));
+    }
+
+    #[test]
+    fn test_recorded_is_exactly_one_of_resolves_a_relative_value_against_the_current_directory() {
+        // CSV and Raven hold the input path as it was typed. The run that wrote
+        // `in/x.wav` started in this directory unless the user moved, and a
+        // value that does not resolve to an input of this run claims nothing.
+        let cwd = std::env::current_dir().unwrap();
+        let sources = [cwd.join("in").join("x.wav")];
+
+        assert!(recorded_is_exactly_one_of("in/x.wav", &sources));
+        assert!(recorded_is_exactly_one_of("./in/x.wav", &sources));
+        assert!(recorded_is_exactly_one_of("sub/../in/x.wav", &sources));
+        assert!(!recorded_is_exactly_one_of("x.wav", &sources));
+        assert!(!recorded_is_exactly_one_of("../in/x.wav", &sources));
     }
 
     #[test]

@@ -342,7 +342,9 @@ fn mirror_for(candidate: &Candidate, anchor: &[OsString]) -> Vec<OsString> {
 /// below (see [`mirror_anchor`]; with one argument `in`, the anchor is the
 /// folder that holds `in`, so the mirror starts with `in`). Mirror folders are
 /// the input's canonical folder with a common prefix removed, so two inputs in
-/// different folders never share one. The rule is symmetric, so the result does
+/// different folders share one only when the folders differ in case, are the
+/// same folder on two drives, or meet through a symlink (all reported below).
+/// The rule is symmetric, so the result does
 /// not depend on input order, and a clashing input's path depends only on its
 /// own location and the arguments, so it does not move when inputs are added
 /// under the same arguments.

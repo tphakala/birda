@@ -1902,7 +1902,7 @@ mod tests {
         let root = dir.path().join("in");
 
         let plans = plan_output_targets(
-            &[escaping.clone(), fine.clone()],
+            &[escaping, fine],
             std::slice::from_ref(&root),
             Some(&out),
             true,
@@ -1934,7 +1934,7 @@ mod tests {
         let sibling = touch(dir.path(), "other/a.wav");
 
         let plans = plan_output_targets(
-            &[unique.clone(), in_folder.clone(), sibling.clone()],
+            &[unique.clone(), in_folder.clone(), sibling],
             &[folder_root, other_root],
             Some(&out),
             true,

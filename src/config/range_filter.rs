@@ -12,7 +12,7 @@ use crate::constants::confidence;
 use crate::error::{Error, Result};
 use crate::inference::RangeFilterConfig;
 use crate::registry::InstalledRangeFilter;
-use crate::utils::date::{date_to_week, day_of_year_to_date, week_to_start_day};
+use crate::utils::date::{day_of_year_to_date, week_to_start_day};
 
 /// Whether a model participates in geomodel range filtering.
 ///
@@ -103,24 +103,17 @@ pub fn build_range_filter_config(
         return Ok(None); // No coordinates - range filtering disabled
     };
 
-    // Get week number: either from CLI or convert from month/day
-    let week = if let Some(week) = args.week {
-        week
-    } else if let (Some(month), Some(day)) = (args.month, args.day) {
-        date_to_week(month, day)
-    } else {
-        // No time parameter - range filtering disabled
-        return Ok(None);
+    let (month, day) = match (args.week, args.month, args.day) {
+        // Convert week to month/day for the geomodel query.
+        // Week 1 = Jan 1 (day 1), Week 48 = Dec 24 (day 358)
+        (Some(week), _, _) => day_of_year_to_date(week_to_start_day(week)),
+        (_, Some(month), Some(day)) => (month, day),
+        _ => return Ok(None),
     };
 
     if !supports_range_filter(args, model_config.model_type) {
         return Ok(None);
     }
-
-    // Convert week to month/day for the geomodel query.
-    // Week 1 = Jan 1 (day 1), Week 48 = Dec 24 (day 358)
-    let day_of_year = week_to_start_day(week);
-    let (month, day) = day_of_year_to_date(day_of_year);
 
     // Threshold and unmatched policy: CLI overrides config
     let threshold = args
@@ -286,9 +279,9 @@ mod tests {
         .unwrap()
         .unwrap();
 
-        // June 15 -> week 22 -> day 160 -> June 9 (precision loss in round-trip)
+        // Exact month/day is passed through unchanged
         assert_eq!(rf_config.month, 6);
-        assert_eq!(rf_config.day, 9);
+        assert_eq!(rf_config.day, 15);
     }
 
     #[test]

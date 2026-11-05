@@ -59,7 +59,7 @@ sha2 = "0.11"
 tar = "0.4"
 self-replace = "1"
 flate2 = "1"
-zip = { version = "8", default-features = false, features = ["deflate"] }
+zip = { version = "9", default-features = false, features = ["deflate"] }
 
 # Promoted from dev-dependencies for the atomic config write in
 # `config::file::save_config`. Already in the tree either way, so this adds no

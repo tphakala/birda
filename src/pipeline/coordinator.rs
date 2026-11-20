@@ -1352,15 +1352,17 @@ mod tests {
         let out = dir.path().join("out");
         let input = touch(dir.path(), "in/x.wav");
         let target = plan_alone(&input, Some(&out));
-        // Drop the first folder after the root or drive and write what is left
-        // as an absolute path, so the value ends like the input but starts
-        // elsewhere on every platform.
-        let tail: PathBuf = target
+        // Write the part of the source below the temp dir as an absolute path,
+        // so the value ends like the input but is the whole of neither identity
+        // `should_process` compares it with: the canonical source and
+        // `std::path::absolute` of the input. Dropping only the first folder is
+        // not enough on macOS, where the temp dir is under `/var`, a symlink to
+        // `/private/var`: the canonical source without `private` is exactly the
+        // lexical input path.
+        let tail = target
             .source()
-            .components()
-            .filter(|c| matches!(c, std::path::Component::Normal(_)))
-            .skip(1)
-            .collect();
+            .strip_prefix(dir.path().canonicalize().unwrap())
+            .unwrap();
         let recorded = Path::new("/").join(tail);
         write_result(
             &json_path(&target),

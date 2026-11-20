@@ -12,7 +12,7 @@
 use super::cache;
 use super::device::{OvDevice, ResolveError, resolve};
 use super::parity::{max_abs_diff, probe_segment};
-use super::runtime::{Diagnosis, Os, Runtime, gather_render_nodes, render_diagnosis};
+use super::runtime::{Diagnosis, Os, RenderNode, Runtime, gather_render_nodes, render_diagnosis};
 use crate::config::{ModelConfig as BirdaModelConfig, OpenVinoSettings, openvino_cache_dir};
 use crate::constants::openvino as ov;
 use crate::error::{Error, Result};
@@ -159,14 +159,26 @@ fn port_dims(shape: &PartialShape, what: &str) -> Result<Vec<i64>> {
 /// Map a resolve failure to the user-facing error, with the render-node
 /// diagnosis when no Intel GPU is listed at all.
 pub(super) fn resolve_error(error: ResolveError, runtime: &Runtime) -> Error {
+    map_resolve_error(
+        error,
+        Os::current(),
+        runtime.devices.iter().any(OvDevice::is_selectable),
+        gather_render_nodes,
+    )
+}
+
+/// The pure part of [`resolve_error`]: the host's OS, whether an Intel GPU is
+/// listed and the node gatherer are passed in.
+fn map_resolve_error(
+    error: ResolveError,
+    os: Option<Os>,
+    any_selectable: bool,
+    gather: impl FnOnce() -> Vec<RenderNode>,
+) -> Error {
     match error {
         ResolveError::Unsupported { reason, .. } => Error::OpenVinoUnsupported { reason },
         ResolveError::NotFound { requested, found } => {
-            let diagnosis = render_diagnosis(
-                Os::current(),
-                runtime.devices.iter().any(OvDevice::is_selectable),
-                gather_render_nodes,
-            );
+            let diagnosis = render_diagnosis(os, any_selectable, gather);
             if let Some(Diagnosis::AccessDenied { node }) = diagnosis {
                 return Error::OpenVinoGpuAccessDenied { node };
             }
@@ -598,29 +610,13 @@ impl OpenVinoEngine {
         let rows: Vec<&[f32]> = probes.iter().map(Vec::as_slice).collect();
         let actual = self.run(shape, &rows)?;
 
-        let mut worst = 0.0_f32;
-        for (result, reference) in actual.iter().zip(&state.reference) {
-            let mismatch = |what: &str| Error::OpenVinoModelLoad {
-                reason: format!("the {what} width differs from ONNX Runtime's"),
-            };
-            worst = worst.max(
-                max_abs_diff(&result.raw_scores, &reference.scores)
-                    .map_err(|_| mismatch("class score"))?,
-            );
-            if let (Some(a), Some(r)) = (&result.embeddings, &reference.embeddings) {
-                worst = worst.max(max_abs_diff(a, r).map_err(|_| mismatch("embedding"))?);
-            }
-        }
-        // A NaN or infinite value makes `max_abs_diff` return infinity, which
-        // exceeds the tolerance.
-        if worst > ov::VERIFY_TOLERANCE {
-            return Err(Error::OpenVinoVerificationFailed {
-                device: self.report.device.describe(),
-                shape: shape.batch,
-                difference: worst,
-                tolerance: ov::VERIFY_TOLERANCE,
-            });
-        }
+        let worst = check_against_reference(
+            &self.report.device.describe(),
+            shape.batch,
+            &actual,
+            &state.reference,
+            ov::VERIFY_TOLERANCE,
+        )?;
         debug!(
             "OpenVINO batch {} matches ONNX Runtime to {worst:e} on {} probe row(s)",
             shape.batch, shape.batch
@@ -666,6 +662,57 @@ impl OpenVinoEngine {
         state.reference = outputs;
         Ok(())
     }
+}
+
+/// Decide whether a compiled shape reproduced the ONNX Runtime reference.
+///
+/// `actual` holds one result per batch row and `reference` the ONNX Runtime
+/// output for at least the same probe rows. Returns the largest absolute
+/// difference when it is within `tolerance`.
+///
+/// # Errors
+///
+/// `OpenVinoVerificationFailed` when the difference exceeds the tolerance (a
+/// NaN or infinite value counts as infinitely different), and
+/// `OpenVinoModelLoad` when the row count or an output width does not line up.
+fn check_against_reference(
+    device: &str,
+    batch: usize,
+    actual: &[PredictionResult],
+    reference: &[RowOutput],
+    tolerance: f32,
+) -> Result<f32> {
+    if actual.len() != batch || reference.len() < batch {
+        return Err(Error::OpenVinoModelLoad {
+            reason: format!(
+                "the check needs {batch} rows, got {} from OpenVINO and {} from ONNX Runtime",
+                actual.len(),
+                reference.len()
+            ),
+        });
+    }
+    let mismatch = |what: &str| Error::OpenVinoModelLoad {
+        reason: format!("the {what} width differs from ONNX Runtime's"),
+    };
+    let mut worst = 0.0_f32;
+    for (result, expected) in actual.iter().zip(reference) {
+        worst = worst.max(
+            max_abs_diff(&result.raw_scores, &expected.scores)
+                .map_err(|_| mismatch("class score"))?,
+        );
+        if let (Some(a), Some(r)) = (&result.embeddings, &expected.embeddings) {
+            worst = worst.max(max_abs_diff(a, r).map_err(|_| mismatch("embedding"))?);
+        }
+    }
+    if worst > tolerance {
+        return Err(Error::OpenVinoVerificationFailed {
+            device: device.to_string(),
+            shape: batch,
+            difference: worst,
+            tolerance,
+        });
+    }
+    Ok(worst)
 }
 
 /// Input dimensions with the batch set and a dynamic sample axis filled in.
@@ -764,6 +811,187 @@ mod tests {
     #[test]
     fn a_zero_large_shape_is_treated_as_one() {
         assert_eq!(plan_chunks(2, 0).len(), 2);
+    }
+
+    fn result(scores: &[f32], embeddings: Option<&[f32]>) -> PredictionResult {
+        PredictionResult {
+            model_type: birdnet_onnx::ModelType::BirdNetV24,
+            predictions: Vec::new(),
+            embeddings: embeddings.map(<[f32]>::to_vec),
+            raw_scores: scores.to_vec(),
+        }
+    }
+
+    fn reference(scores: &[f32], embeddings: Option<&[f32]>) -> RowOutput {
+        RowOutput {
+            scores: scores.to_vec(),
+            embeddings: embeddings.map(<[f32]>::to_vec),
+        }
+    }
+
+    #[test]
+    fn the_check_passes_within_the_tolerance_and_returns_the_worst_difference() {
+        let actual = [
+            result(&[0.0, 1.0], Some(&[0.5])),
+            result(&[0.25, 1.0], Some(&[0.5])),
+        ];
+        let expected = [
+            reference(&[0.0, 1.0], Some(&[0.5])),
+            reference(&[0.0, 1.0], Some(&[0.5])),
+            // A longer reference (more probe rows than this shape) is fine.
+            reference(&[9.0, 9.0], None),
+        ];
+
+        assert_eq!(
+            check_against_reference("GPU", 2, &actual, &expected, 0.25).unwrap(),
+            0.25
+        );
+    }
+
+    #[test]
+    fn the_check_fails_with_the_whole_verification_message() {
+        let actual = [result(&[0.0, 1.5], None)];
+        let expected = [reference(&[0.0, 1.0], None)];
+
+        let err =
+            check_against_reference("GPU (Iris Xe)", 1, &actual, &expected, 0.25).unwrap_err();
+
+        assert_eq!(
+            err.to_string(),
+            "OpenVINO on GPU (Iris Xe) gives different results from ONNX Runtime for batch shape \
+             1: largest difference 5e-1, allowed 2.5e-1. \
+             Results from this device would not be trustworthy, so the run was stopped. \
+             Use --cpu or another provider, a different OpenVINO device (see `birda openvino devices`), \
+             or update the Intel GPU driver and the OpenVINO runtime"
+        );
+    }
+
+    #[test]
+    fn the_check_looks_at_embeddings_nan_and_every_row() {
+        let tolerance = 0.1;
+        // Only the embeddings differ.
+        let embedding_off = check_against_reference(
+            "GPU",
+            1,
+            &[result(&[0.0], Some(&[1.0]))],
+            &[reference(&[0.0], Some(&[2.0]))],
+            tolerance,
+        );
+        assert!(matches!(
+            embedding_off,
+            Err(Error::OpenVinoVerificationFailed { shape: 1, .. })
+        ));
+        // Only the second row differs: the first row's match must not hide it.
+        let second_row_off = check_against_reference(
+            "GPU",
+            2,
+            &[result(&[0.0], None), result(&[5.0], None)],
+            &[reference(&[0.0], None), reference(&[0.0], None)],
+            tolerance,
+        );
+        assert!(matches!(
+            second_row_off,
+            Err(Error::OpenVinoVerificationFailed { .. })
+        ));
+        // NaN never passes.
+        let nan = check_against_reference(
+            "GPU",
+            1,
+            &[result(&[f32::NAN], None)],
+            &[reference(&[0.0], None)],
+            tolerance,
+        );
+        assert!(matches!(nan, Err(Error::OpenVinoVerificationFailed { .. })));
+    }
+
+    #[test]
+    fn the_check_refuses_rows_that_do_not_line_up() {
+        let one_row = [result(&[0.0], None)];
+        let two_refs = [reference(&[0.0], None), reference(&[0.0], None)];
+
+        // Fewer results than the batch: a zip would silently skip the rest.
+        assert_eq!(
+            check_against_reference("GPU", 2, &one_row, &two_refs, 0.1)
+                .unwrap_err()
+                .to_string(),
+            "OpenVINO could not load the model: the check needs 2 rows, got 1 from OpenVINO and 2 \
+             from ONNX Runtime"
+        );
+        // A different class-score width.
+        assert_eq!(
+            check_against_reference(
+                "GPU",
+                1,
+                &[result(&[0.0, 0.0], None)],
+                &[reference(&[0.0], None)],
+                0.1
+            )
+            .unwrap_err()
+            .to_string(),
+            "OpenVINO could not load the model: the class score width differs from ONNX Runtime's"
+        );
+    }
+
+    fn denied_node() -> Vec<RenderNode> {
+        vec![RenderNode {
+            path: "/dev/dri/renderD128".to_string(),
+            vendor: Some(0x8086),
+            openable: false,
+        }]
+    }
+
+    fn not_found(found: &[&str]) -> ResolveError {
+        ResolveError::NotFound {
+            requested: "dgpu".to_string(),
+            found: found.iter().map(ToString::to_string).collect(),
+        }
+    }
+
+    #[test]
+    fn resolve_errors_map_to_their_user_facing_errors() {
+        // Unsupported keeps its reason whatever the host looks like.
+        assert_eq!(
+            map_resolve_error(
+                ResolveError::Unsupported {
+                    requested: "npu".to_string(),
+                    reason: "the NPU is not supported yet".to_string(),
+                },
+                Some(Os::Linux),
+                false,
+                denied_node
+            )
+            .to_string(),
+            "OpenVINO backend: the NPU is not supported yet"
+        );
+        // A listed GPU: the devices are named and there is no hint.
+        assert_eq!(
+            map_resolve_error(
+                not_found(&["CPU", "GPU (Iris Xe)"]),
+                Some(Os::Linux),
+                true,
+                || panic!("the render nodes must not be read when a GPU is listed")
+            )
+            .to_string(),
+            "OpenVINO device 'dgpu' is not available. OpenVINO found: CPU; GPU (Iris Xe)"
+        );
+        // Nothing listed on Windows: "nothing", and no Linux advice.
+        assert_eq!(
+            map_resolve_error(not_found(&[]), Some(Os::Windows), false, denied_node).to_string(),
+            "OpenVINO device 'dgpu' is not available. OpenVINO found: nothing"
+        );
+        // Nothing listed on Linux with an Intel node this user cannot open.
+        assert_eq!(
+            map_resolve_error(not_found(&["CPU"]), Some(Os::Linux), false, denied_node).to_string(),
+            "no permission to use the Intel GPU render node /dev/dri/renderD128. \
+             Add your user to the 'render' group (sudo usermod -aG render $USER) and log in again"
+        );
+        // Nothing listed on Linux with no render node at all.
+        assert_eq!(
+            map_resolve_error(not_found(&["CPU"]), Some(Os::Linux), false, Vec::new).to_string(),
+            "OpenVINO device 'dgpu' is not available. OpenVINO found: CPU\n\
+             No GPU render node exists under /dev/dri. Check that the Intel GPU driver is installed \
+             and, in a container, that /dev/dri is passed through"
+        );
     }
 
     #[test]

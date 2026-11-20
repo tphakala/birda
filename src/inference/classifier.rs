@@ -20,6 +20,21 @@ use tracing::{debug, error, info, warn};
 
 use super::get_tensorrt_library_name;
 
+/// Refuse the inference options the `OpenVINO` engine cannot honour.
+///
+/// The engine runs each request to completion with a blocking `infer` call, so
+/// a timeout or a cancellation token would be ignored. Refusing them keeps a
+/// caller from believing it can stop a request.
+fn refuse_unsupported_options(options: &InferenceOptions) -> Result<()> {
+    if options.timeout.is_some() || options.cancellation_token.is_some() {
+        return Err(Error::Inference {
+            reason: "the OpenVINO backend does not support an inference timeout or cancellation"
+                .to_string(),
+        });
+    }
+    Ok(())
+}
+
 /// Tracks execution provider selection and fallback status.
 #[derive(Debug, Clone)]
 pub struct ExecutionProviderStatus {
@@ -525,7 +540,10 @@ impl BirdClassifier {
                         reason: e.to_string(),
                     })
             }
-            Engine::OpenVino(engine) => engine.predict(segment),
+            Engine::OpenVino(engine) => {
+                refuse_unsupported_options(options)?;
+                engine.predict(segment)
+            }
         }
     }
 
@@ -543,7 +561,10 @@ impl BirdClassifier {
                         reason: e.to_string(),
                     })
             }
-            Engine::OpenVino(engine) => engine.predict_batch(segments),
+            Engine::OpenVino(engine) => {
+                refuse_unsupported_options(options)?;
+                engine.predict_batch(segments)
+            }
         }
     }
 
@@ -1182,6 +1203,33 @@ fn provider_unavailable_error(provider_name: &str, available: &[ExecutionProvide
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn openvino_refuses_a_timeout_or_cancellation_it_cannot_honour() {
+        use birdnet_onnx::CancellationToken;
+        use std::time::Duration;
+
+        assert!(refuse_unsupported_options(&InferenceOptions::default()).is_ok());
+        let expected = "inference failed: the OpenVINO backend does not support an inference \
+                        timeout or cancellation";
+        let timeout = InferenceOptions::timeout(Duration::from_secs(1));
+        assert_eq!(
+            refuse_unsupported_options(&timeout)
+                .unwrap_err()
+                .to_string(),
+            expected
+        );
+        let cancellable = InferenceOptions {
+            timeout: None,
+            cancellation_token: Some(CancellationToken::new()),
+        };
+        assert_eq!(
+            refuse_unsupported_options(&cancellable)
+                .unwrap_err()
+                .to_string(),
+            expected
+        );
+    }
 
     #[test]
     fn test_mapping_summary_counts_coverage_and_in_range_species() {

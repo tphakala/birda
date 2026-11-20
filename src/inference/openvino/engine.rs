@@ -674,7 +674,8 @@ impl OpenVinoEngine {
 ///
 /// `OpenVinoVerificationFailed` when the difference exceeds the tolerance (a
 /// NaN or infinite value counts as infinitely different), and
-/// `OpenVinoModelLoad` when the row count or an output width does not line up.
+/// `OpenVinoModelLoad` when the row count, an output width or the presence of
+/// embeddings does not line up.
 fn check_against_reference(
     device: &str,
     batch: usize,
@@ -700,8 +701,16 @@ fn check_against_reference(
             max_abs_diff(&result.raw_scores, &expected.scores)
                 .map_err(|_| mismatch("class score"))?,
         );
-        if let (Some(a), Some(r)) = (&result.embeddings, &expected.embeddings) {
-            worst = worst.max(max_abs_diff(a, r).map_err(|_| mismatch("embedding"))?);
+        match (&result.embeddings, &expected.embeddings) {
+            (Some(a), Some(r)) => {
+                worst = worst.max(max_abs_diff(a, r).map_err(|_| mismatch("embedding"))?);
+            }
+            (None, None) => {}
+            _ => {
+                return Err(Error::OpenVinoModelLoad {
+                    reason: "only one of OpenVINO and ONNX Runtime returned embeddings".to_string(),
+                });
+            }
         }
     }
     if worst > tolerance {
@@ -930,6 +939,20 @@ mod tests {
             .to_string(),
             "OpenVINO could not load the model: the class score width differs from ONNX Runtime's"
         );
+        // Embeddings on one side only, in either direction.
+        let one_sided = "OpenVINO could not load the model: only one of OpenVINO and ONNX Runtime \
+                         returned embeddings";
+        for (actual, expected) in [
+            (result(&[0.0], Some(&[1.0])), reference(&[0.0], None)),
+            (result(&[0.0], None), reference(&[0.0], Some(&[1.0]))),
+        ] {
+            assert_eq!(
+                check_against_reference("GPU", 1, &[actual], &[expected], 0.1)
+                    .unwrap_err()
+                    .to_string(),
+                one_sided
+            );
+        }
     }
 
     fn denied_node() -> Vec<RenderNode> {

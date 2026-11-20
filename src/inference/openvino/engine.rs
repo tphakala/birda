@@ -735,6 +735,9 @@ fn check_against_reference(
 }
 
 /// Input dimensions with the batch set and a dynamic sample axis filled in.
+///
+/// The result must hold exactly `samples` values per batch row, because
+/// [`OpenVinoEngine::run`] copies each segment into one row of that size.
 fn fixed_dims(dims: &[i64], batch: usize, samples: usize) -> Result<Vec<i64>> {
     let to_i64 = |value: usize| {
         i64::try_from(value).map_err(|_| Error::OpenVinoModelLoad {
@@ -742,7 +745,8 @@ fn fixed_dims(dims: &[i64], batch: usize, samples: usize) -> Result<Vec<i64>> {
         })
     };
     let last = dims.len().saturating_sub(1);
-    dims.iter()
+    let fixed = dims
+        .iter()
         .enumerate()
         .map(|(axis, dim)| match (axis, *dim) {
             (0, _) => to_i64(batch),
@@ -753,7 +757,17 @@ fn fixed_dims(dims: &[i64], batch: usize, samples: usize) -> Result<Vec<i64>> {
             }),
             (_, fixed) => Ok(fixed),
         })
-        .collect()
+        .collect::<Result<Vec<i64>>>()?;
+    let per_row = fixed
+        .iter()
+        .skip(1)
+        .try_fold(1_i64, |acc, dim| acc.checked_mul(*dim));
+    if per_row != Some(to_i64(samples)?) {
+        return Err(Error::OpenVinoModelLoad {
+            reason: format!("the model input {dims:?} does not hold {samples} samples per segment"),
+        });
+    }
+    Ok(fixed)
 }
 
 fn static_shape(dims: &[i64], batch: usize, samples: usize) -> Result<PartialShape> {
@@ -1049,5 +1063,17 @@ mod tests {
             fixed_dims(&[-1, -1, 144_000], 2, 144_000),
             Err(Error::OpenVinoModelLoad { .. })
         ));
+        // A fixed sample axis or an extra axis that does not give exactly one
+        // segment per row would overrun or misalign the input copy.
+        for dims in [vec![-1, 160_000], vec![-1, 2, 144_000], vec![-1]] {
+            assert_eq!(
+                fixed_dims(&dims, 2, 144_000).unwrap_err().to_string(),
+                format!(
+                    "OpenVINO could not load the model: the model input {dims:?} does not hold \
+                     144000 samples per segment"
+                ),
+                "{dims:?}"
+            );
+        }
     }
 }

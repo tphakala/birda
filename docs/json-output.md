@@ -123,9 +123,23 @@ The `result` event includes a `result_type` field:
 | `model_removed` | `birda models remove <id>` (classifiers, `geomodel` and `bat-<region>`) |
 | `providers` | `birda providers` |
 | `species_list` | `birda species` |
+| `openvino_devices` | `birda openvino devices` |
 | `clip_extraction` | `birda clip` |
 | `update_check` | `birda update --check` (and `birda update` when already current); carries `status` (`up_to_date` or `available`) and the versions |
 | `update_result` | `birda update`, after installing; carries `old_version`, `new_version`, `backup_path` and `warnings` |
+
+### `pipeline_started` Payload
+
+| Field | Present | Description |
+|-------|---------|-------------|
+| `total_files` | always | Number of files in the run |
+| `model` | always | Model name |
+| `min_confidence` | always | Confidence threshold |
+| `execution_provider` | always | `requested`, `actual` and, when the run fell back, `fallback_reason` |
+| `execution_provider.device` | `--openvino` runs only | The Intel GPU the run executes on: `requested` (the configured device spec), `name`, `kind`, `class`, `full_name`, `pci_address`, `uuid` (each omitted when OpenVINO does not report it), `precision` (`f32`) and `runtime_version` |
+| `range_filter` | range filter active | Geomodel coverage at the run's location |
+
+`execution_provider.device` is an optional field, so `spec_version` stays `1.1`. A consumer that ignores unknown fields needs no change.
 
 ## Example: Real-Time Progress with NDJSON
 
@@ -354,6 +368,55 @@ birda --output-mode json providers
   }
 }
 ```
+
+### OpenVINO Devices
+
+```bash
+birda --output-mode json openvino devices
+```
+
+```json
+{
+  "spec_version": "1.1",
+  "timestamp": "2026-11-20T12:34:56.789Z",
+  "event": "result",
+  "payload": {
+    "result_type": "openvino_devices",
+    "runtime_version": "2025.4.1-19314-5a61fbc7b2d",
+    "library": "/usr/lib/libopenvino_c.so.2025.4.1",
+    "configured": "auto",
+    "resolved": "GPU (Intel(R) Iris(R) Xe Graphics (iGPU), integrated, pci 0000:00:02.0)",
+    "devices": [
+      {
+        "name": "CPU",
+        "kind": "cpu",
+        "class": "unknown",
+        "intel": false,
+        "selectable": false,
+        "refusal": "CPU inference runs on ONNX Runtime; use --cpu",
+        "capabilities": [],
+        "selectors": []
+      },
+      {
+        "name": "GPU",
+        "kind": "gpu",
+        "class": "integrated",
+        "full_name": "Intel(R) Iris(R) Xe Graphics (iGPU)",
+        "intel": true,
+        "selectable": true,
+        "pci_address": "0000:00:02.0",
+        "uuid": "8680a6460c0000000002000000000000",
+        "memory_bytes": 30269562880,
+        "architecture": "GPU: vendor=0x8086 arch=v12.3.0",
+        "capabilities": ["FP32", "BIN", "FP16", "INT8", "GPU_USM_MEMORY", "EXPORT_IMPORT"],
+        "selectors": ["gpu", "igpu", "gpu.0", "pci:0000:00:02.0", "uuid:8680a6460c0000000002000000000000"]
+      }
+    ]
+  }
+}
+```
+
+`resolved` is present when the configured device resolves, `resolve_error` (instead of `resolved`) when it does not. The `selectors` of a device are the values of `--openvino-device` that select exactly that device.
 
 ### Species List
 

@@ -233,6 +233,103 @@ pub enum Error {
         reason: String,
     },
 
+    /// No `OpenVINO` runtime library was found.
+    #[error(
+        "OpenVINO runtime not found. Searched:\n{searched}\n\
+         Install OpenVINO 2025.1 or newer (see docs/openvino.md) or set \
+         inference.openvino_path in the config file to the directory holding {library}"
+    )]
+    OpenVinoRuntimeNotFound {
+        /// One line per place that was searched.
+        searched: String,
+        /// File name that was looked for.
+        library: &'static str,
+    },
+
+    /// `inference.openvino_path` does not point at an `OpenVINO` runtime.
+    #[error("inference.openvino_path is set to '{path}', but {reason}")]
+    OpenVinoPathInvalid {
+        /// The configured path.
+        path: std::path::PathBuf,
+        /// What is wrong with it.
+        reason: String,
+    },
+
+    /// The `OpenVINO` runtime was found but could not be loaded.
+    #[error(
+        "could not load the OpenVINO runtime: {reason}\n\
+         The runtime and its TBB library directories must be on the loader path \
+         (LD_LIBRARY_PATH, or PATH on Windows), as OpenVINO's setupvars script does \
+         (see docs/openvino.md)"
+    )]
+    OpenVinoRuntimeLoadFailed {
+        /// Message from the dynamic loader or the bindings.
+        reason: String,
+    },
+
+    /// The `OpenVINO` runtime is older than birda supports.
+    #[error("OpenVINO runtime {found} is too old; birda needs {minimum} or newer")]
+    OpenVinoRuntimeTooOld {
+        /// Version string the runtime reports.
+        found: String,
+        /// Oldest supported release.
+        minimum: &'static str,
+    },
+
+    /// An Intel GPU render node exists but this user cannot open it.
+    #[error(
+        "no permission to use the Intel GPU render node {node}. \
+         Add your user to the 'render' group (sudo usermod -aG render $USER) and log in again"
+    )]
+    OpenVinoGpuAccessDenied {
+        /// Path of the render node.
+        node: String,
+    },
+
+    /// The requested `OpenVINO` device is not available.
+    #[error("OpenVINO device '{requested}' is not available. OpenVINO found: {found}{hint}")]
+    OpenVinoDeviceUnavailable {
+        /// The device spec as the user wrote it.
+        requested: String,
+        /// Every device `OpenVINO` listed, or `nothing`.
+        found: String,
+        /// Extra diagnosis, starting with a newline, or empty.
+        hint: String,
+    },
+
+    /// The request names something the `OpenVINO` backend does not support.
+    #[error("OpenVINO backend: {reason}")]
+    OpenVinoUnsupported {
+        /// What is unsupported and why.
+        reason: String,
+    },
+
+    /// `OpenVINO` could not read, reshape or compile the model.
+    #[error("OpenVINO could not load the model: {reason}")]
+    OpenVinoModelLoad {
+        /// `OpenVINO`'s message, or birda's own finding.
+        reason: String,
+    },
+
+    /// `OpenVINO` output disagrees with the ONNX Runtime reference.
+    #[error(
+        "OpenVINO on {device} gives different results from ONNX Runtime for batch shape \
+         {shape}: largest difference {difference:e}, allowed {tolerance:e}. \
+         Results from this device would not be trustworthy, so the run was stopped. \
+         Use --cpu or another provider, a different OpenVINO device (see `birda openvino devices`), \
+         or update the Intel GPU driver and the OpenVINO runtime"
+    )]
+    OpenVinoVerificationFailed {
+        /// Device description.
+        device: String,
+        /// Batch size of the compiled shape that failed.
+        shape: usize,
+        /// Largest absolute difference measured.
+        difference: f32,
+        /// Largest difference accepted.
+        tolerance: f32,
+    },
+
     /// Failed to read registry file.
     #[error("failed to read registry file '{path}'")]
     RegistryRead {

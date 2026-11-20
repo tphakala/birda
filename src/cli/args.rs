@@ -1,6 +1,6 @@
 //! CLI argument definitions.
 
-use crate::config::{ModelType, OutputFormat, OutputMode};
+use crate::config::{ModelType, OpenVinoDeviceSpec, OutputFormat, OutputMode};
 use crate::constants::{calendar, range_filter};
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use std::path::PathBuf;
@@ -85,6 +85,12 @@ pub enum Command {
     },
     /// Show available execution providers (CPU, CUDA, etc.).
     Providers,
+    /// Inspect the `OpenVINO` runtime and its Intel GPUs.
+    Openvino {
+        /// `OpenVINO` action to perform.
+        #[command(subcommand)]
+        action: OpenvinoAction,
+    },
     /// Extract audio clips from detection results.
     Clip(ClipArgs),
     /// Check for and install updates from GitHub.
@@ -167,6 +173,18 @@ pub enum ConfigAction {
         #[arg(allow_hyphen_values = true)]
         value: String,
     },
+}
+
+/// `OpenVINO` subcommand actions.
+#[derive(Debug, Subcommand)]
+pub enum OpenvinoAction {
+    /// List the Intel GPUs `OpenVINO` can use and how to select each one.
+    ///
+    /// Shows the runtime that was found, what the configured device resolves
+    /// to, and for each device its class, PCI address, UUID and the values
+    /// `--openvino-device` accepts for it. Best with `--output-mode json` when
+    /// a script needs the values.
+    Devices,
 }
 
 /// Models subcommand actions.
@@ -378,7 +396,7 @@ pub struct AnalyzeArgs {
     #[arg(long)]
     pub no_csv_bom: bool,
 
-    /// Auto-select best available GPU provider (priority: `TensorRT` → `CUDA` → `DirectML` → `CoreML` → `ROCm` → `OpenVINO`).
+    /// Auto-select best available GPU provider (priority: `TensorRT` → `CUDA` → `DirectML` → `CoreML` → `ROCm`).
     /// Note: `CoreML` excluded from auto-selection on macOS (use `--coreml` to force). Run `birda providers` for platform-specific details.
     /// Warns and falls back to CPU if no GPU providers available.
     #[arg(long, group = "provider")]
@@ -408,9 +426,21 @@ pub struct AnalyzeArgs {
     #[arg(long, group = "provider")]
     pub rocm: bool,
 
-    /// Use `OpenVINO` provider explicitly (fail if unavailable).
+    /// Use `OpenVINO` on an Intel GPU (needs an installed `OpenVINO` runtime; fails if unavailable).
+    /// Choose the GPU with `--openvino-device`; run `birda openvino devices` to see them.
     #[arg(long, group = "provider")]
     pub openvino: bool,
+
+    // Rationale lives here, not in the doc comment, because clap prints `///`
+    // text in `--help`. A device that is not named never falls back to another
+    // one: the run fails instead. Parsed by `OpenVinoDeviceSpec::from_str`,
+    // the same parser the `inference.openvino_device` config key uses. Global
+    // so `birda openvino devices --openvino-device dgpu` can show what a spec
+    // resolves to.
+    /// Intel GPU for `--openvino`: auto (default), gpu, igpu, dgpu, gpu.N, igpu.N, dgpu.N,
+    /// pci:DDDD:BB:DD.F or uuid:<32 hex digits>. See `birda openvino devices`.
+    #[arg(long, global = true, value_name = "DEVICE", value_parser = clap::value_parser!(OpenVinoDeviceSpec))]
+    pub openvino_device: Option<OpenVinoDeviceSpec>,
 
     /// Use `oneDNN` provider explicitly (fail if unavailable).
     #[arg(long, group = "provider")]

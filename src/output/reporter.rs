@@ -605,6 +605,7 @@ mod tests {
             requested: "cpu".to_string(),
             actual: "CPU".to_string(),
             fallback_reason: None,
+            device: None,
         };
         reporter.pipeline_started(5, "test-model", 0.1, &dummy_ep, None);
 
@@ -627,6 +628,7 @@ mod tests {
             requested: "cpu".to_string(),
             actual: "CPU".to_string(),
             fallback_reason: None,
+            device: None,
         };
         reporter.pipeline_started(10, "model", 0.1, &dummy_ep, None);
         reporter.file_started(Path::new("test.wav"), 0, 100, Some(60.0));
@@ -776,6 +778,7 @@ mod tests {
             requested: "cpu".to_string(),
             actual: "CPU".to_string(),
             fallback_reason: None,
+            device: None,
         };
         reporter.pipeline_started(1, "test", 0.1, &dummy_ep, None);
         // Test passes if no panic occurs

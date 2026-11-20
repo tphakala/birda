@@ -30,7 +30,15 @@ required-features = ["gen-registry"]
 # ONNX Runtime is always loaded at run time (src/inference/runtime.rs calls
 # ort::init_from, which exists only with load-dynamic), so the feature is
 # requested here unconditionally rather than exposed as a crate feature.
-birdnet-onnx = { version = "2.0.0-rc.16", features = ["load-dynamic"] }
+# TODO(#441): temporary git dependency on the branch that adds `PredictionDecoder`
+# (tphakala/rust-birdnet-onnx#108); switch to the 2.0.0-rc.17 release before merging.
+birdnet-onnx = { git = "https://github.com/tphakala/rust-birdnet-onnx", branch = "feat/prediction-decoder", features = ["load-dynamic"] }
+# Native OpenVINO backend for Intel GPUs. `runtime-linking` loads the user's
+# OpenVINO runtime at run time, so nothing is linked at build time and no
+# OpenVINO install is needed to build or test. Keep the two crates on the same
+# version: `openvino-sys` is used directly for `library::load_from`.
+openvino = { version = "=0.11.1", features = ["runtime-linking"] }
+openvino-sys = { version = "=0.11.1", features = ["runtime-linking"] }
 ort = { version = "2.0.0-rc.12", default-features = false, features = ["load-dynamic"] }
 symphonia = { git = "https://github.com/tphakala/Symphonia", branch = "feature/rf64-support", features = ["aac", "mp3", "flac", "wav", "pcm"] }
 rubato = "5.0"

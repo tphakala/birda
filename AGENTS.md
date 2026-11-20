@@ -8,6 +8,7 @@ Birda is a Rust CLI tool for analyzing audio files using BirdNET and Google Perc
 
 - **Language:** Rust, edition 2024. The minimum supported version is `rust-version` in `Cargo.toml`, and the CI MSRV job builds on exactly that toolchain.
 - **Inference:** `birdnet-onnx` from crates.io (source: `tphakala/rust-birdnet-onnx`), on top of `ort`. ONNX Runtime is loaded at run time, because both dependencies are declared with `load-dynamic`.
+- **Intel GPUs:** the `openvino` and `openvino-sys` crates, built with `runtime-linking`, drive the user's own OpenVINO runtime (`src/inference/openvino/`). OpenVINO is not an ONNX Runtime provider in birda, and the OpenVINO CPU device is never used: CPU inference stays on ONNX Runtime.
 - **Audio decoding:** `symphonia`, pinned to the `feature/rf64-support` branch of the `tphakala/Symphonia` fork
 - **Resampling:** `rubato`, fed through `audioadapter-buffers`
 - **CLI:** `clap` with derive
@@ -21,6 +22,8 @@ Birda is a Rust CLI tool for analyzing audio files using BirdNET and Google Perc
 
 - `cuda` (default): CUDA support in `birdnet-onnx`.
 - `gen-registry`: builds the `gen-registry` maintenance binary that regenerates `registry.json`. It is not part of the shipped CLI.
+
+OpenVINO has no feature: it is always compiled and its runtime is loaded only when `--openvino` or `birda openvino devices` runs, so nothing in a build, in CI or in the tests needs an OpenVINO install.
 
 There is no `load-dynamic` feature: ONNX Runtime is always loaded at run time, because both dependencies request `load-dynamic` unconditionally and `src/inference/runtime.rs` needs `ort::init_from`.
 
@@ -186,6 +189,7 @@ perf report
 - Unit tests in same file (`#[cfg(test)] mod tests`)
 - Integration tests are flat files in `tests/`, one per feature area. Fixtures live in `tests/fixtures/`, which `.gitignore` re-includes so audio fixtures there are tracked.
 - Any test that runs the binary or touches config must point `BIRDA_CONFIG_DIR` (`constants::CONFIG_DIR_ENV`) at a temporary directory; `config_dir()` and `data_dir()` both honour it. Setting `HOME` or `XDG_CONFIG_HOME` alone does not redirect the config on Windows (see the note on `CONFIG_DIR_ENV` in `src/constants.rs`), so such a test would write to the developer's real profile.
+- OpenVINO tests must not need an OpenVINO runtime, and must not assume one is absent either (a developer machine may have one): reach the "missing runtime" paths through an explicit `inference.openvino_path` that does not exist, or through injected inputs to the pure functions in `src/inference/openvino/`.
 - Test error paths, not just happy paths
 - Use property-based testing for parsers
 - Prefer `assert_eq!` on the whole rendered value over `contains`. A substring check passes when the expected text sits inside a different value: `"90.0"` is inside `"-90.0"`. `test_invalid_padding_renders_the_value_and_the_ceiling` in `src/error.rs` shows the pattern. Where a whole-value compare is impractical, scope the search to the part that should hold the value, and assert that the neighbouring values are absent.
@@ -209,6 +213,7 @@ Don't hand-edit these:
 ## Dependencies
 
 - `ort` and `ort-sys` move only together with `ONNXRUNTIME_VERSION` in `.github/workflows/release.yml`, which pins the native runtime and the CUDA and cuDNN set shipped with every release. Because of `load-dynamic`, an ABI mismatch compiles and passes CI, then fails when a released binary loads the library. Dependabot ignores both crates (`.github/dependabot.yml`). Keep them at their current version in routine `cargo update` sweeps (check with `cargo update --dry-run --verbose`), and bump them in a change of their own that updates `release.yml` and runs real inference.
+- `openvino` and `openvino-sys` are pinned to each other with `=`. Bump both in one change, re-check the load-error strings that `src/inference/openvino/runtime.rs` classifies (they come from `openvino-sys`), and rerun the hardware recipe on an Intel GPU (`birda openvino devices`, then the same file with `--cpu` and `--openvino`, comparing the CSV) before merging: the tests cannot exercise a real runtime.
 - `rubato` and `audioadapter-buffers` must resolve to the same major version: `src/audio/resample.rs` builds `audioadapter_buffers::direct::SequentialSlice` and hands it to rubato. Bump both in one change; `cargo tree -i audioadapter-buffers` should show a single copy.
 - `arrow` and `parquet` must share a major version, since `parquet` depends on the `arrow-*` crates of its own major and `src/output/parquet.rs` passes values between them. Bump both in one change.
 - Dependabot opens a separate PR for each crate in a coupled pair. Combine them on one branch and close the other. `cargo tree -d -e normal` lists duplicated crates.

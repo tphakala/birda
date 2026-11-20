@@ -1,11 +1,13 @@
 //! Inference classifier wrapper around birdnet-onnx.
 
 use crate::config::{
-    InferenceDevice, ModelConfig as BirdaModelConfig, ModelType, tensorrt_cache_dir,
+    InferenceDevice, ModelConfig as BirdaModelConfig, ModelType, OpenVinoSettings,
+    tensorrt_cache_dir,
 };
 use crate::error::{Error, Result};
 use crate::inference::geomodel::{GeomodelScores, SpeciesMapping};
 use crate::inference::geomodel_filter::{FilterSettings, filter_predictions};
+use crate::inference::openvino::{DeviceReport, OpenVinoEngine};
 use birdnet_onnx::{
     BatchInferenceContext, BsgPostProcessor, Classifier, ClassifierBuilder, ExecutionProviderInfo,
     InferenceOptions, PredictionResult, TensorRTConfig, available_execution_providers,
@@ -146,9 +148,33 @@ fn build_range_filter_data(
     })
 }
 
+/// The engine that runs the network: ONNX Runtime through birdnet-onnx, or the
+/// native `OpenVINO` backend. Which one is decided once, by the requested
+/// device, and never changes during a run.
+enum Engine {
+    Ort(Classifier),
+    OpenVino(Box<OpenVinoEngine>),
+}
+
+impl Engine {
+    fn config(&self) -> &birdnet_onnx::ModelConfig {
+        match self {
+            Self::Ort(classifier) => classifier.config(),
+            Self::OpenVino(engine) => engine.config(),
+        }
+    }
+
+    fn labels(&self) -> &[String] {
+        match self {
+            Self::Ort(classifier) => classifier.labels(),
+            Self::OpenVino(engine) => engine.labels(),
+        }
+    }
+}
+
 /// Wrapper around birdnet-onnx Classifier with birda configuration.
 pub struct BirdClassifier {
-    inner: Classifier,
+    inner: Engine,
     /// Projected geomodel scores, filter settings and coverage counts.
     /// None when range filtering is not active for this run.
     range_filter_data: Option<RangeFilterData>,
@@ -172,11 +198,13 @@ pub struct BirdClassifier {
 /// Which batch sizes a classifier has already been warmed up for.
 ///
 /// Execution providers compile a graph per input shape, and the first
-/// inference at a shape is the one that pays for it. Under `OpenVINO` that first
-/// inference does not merely cost time: for `Perch` v2 it returns output
-/// tensors that were never filled, so the batch is silently scored as noise.
-/// Warming a shape absorbs that first run, leaving every batch the caller
-/// actually cares about at least the second of its shape.
+/// inference at a shape is the one that pays for it. Under the ONNX Runtime
+/// `OpenVINO` execution provider that first inference did not merely cost time:
+/// for `Perch` v2 it returned output tensors that were never filled, so the
+/// batch was silently scored as noise. The native `OpenVINO` backend compiles
+/// static shapes only, and its warmup is the compile and verification of the
+/// shapes it will use. Warming a shape absorbs the first run, leaving every
+/// batch the caller actually cares about at least the second of its shape.
 #[derive(Debug, Default)]
 struct WarmupRegistry {
     sizes: Mutex<HashSet<usize>>,
@@ -206,55 +234,37 @@ impl WarmupRegistry {
 
 impl BirdClassifier {
     /// Build a classifier from birda model configuration.
+    ///
+    /// `OpenVINO` is a separate engine, not an ONNX Runtime provider: when
+    /// `device` is `OpenVino`, the native backend is built and any failure is
+    /// returned, with no fallback to ONNX Runtime or to another device.
     pub fn from_config(
         model_config: &BirdaModelConfig,
         device: InferenceDevice,
+        openvino: &OpenVinoSettings,
         min_confidence: f32,
         top_k: usize,
         range_filter_config: Option<crate::inference::RangeFilterConfig>,
         species_list: Option<HashSet<String>>,
     ) -> Result<Self> {
-        // Check available execution providers at compile-time
-        let available_providers = available_execution_providers();
-        debug!(
-            "Available execution providers: {}",
-            available_providers
-                .iter()
-                .map(|p| format!("{p:?}"))
-                .collect::<Vec<_>>()
-                .join(", ")
-        );
-
-        let builder = ClassifierBuilder::new()
-            .model_path(model_config.path.to_string_lossy().to_string())
-            .labels_path(model_config.labels.to_string_lossy().to_string())
-            .top_k(top_k)
-            .min_confidence(min_confidence);
-
-        let ProviderSelection {
-            builder,
-            device_name: actual_device_msg,
-            status: ep_status,
-        } = select_execution_provider(builder, device, &available_providers)?;
-
-        let inner = builder.build().map_err(|e| Error::ClassifierBuild {
-            reason: e.to_string(),
-        })?;
-
-        // Get the requested provider from the classifier
-        let requested_provider = inner.requested_provider();
-        debug!(
-            "Classifier reports requested provider: {:?}",
-            requested_provider
-        );
-
-        info!(
-            "Loaded model: {:?}, sample_rate: {}, segment_duration: {}s, device: {}",
-            model_config.model_type,
-            inner.config().sample_rate,
-            inner.config().segment_duration,
-            actual_device_msg
-        );
+        let (inner, ep_status, uses_tensorrt) = if device == InferenceDevice::OpenVino {
+            let engine = OpenVinoEngine::new(model_config, openvino, top_k, min_confidence)?;
+            info!(
+                "Loaded model: {:?}, sample_rate: {}, segment_duration: {}s, device: OpenVINO {}",
+                model_config.model_type,
+                engine.config().sample_rate,
+                engine.config().segment_duration,
+                engine.report().device.name
+            );
+            let status = ExecutionProviderStatus {
+                requested: "openvino".to_string(),
+                actual: "OpenVINO".to_string(),
+                fallback_reason: None,
+            };
+            (Engine::OpenVino(Box::new(engine)), status, false)
+        } else {
+            Self::build_ort(model_config, device, min_confidence, top_k)?
+        };
 
         // Build the range filter and project its scores into this classifier's
         // label space. Which models range filter at all is decided once, by
@@ -266,9 +276,6 @@ impl BirdClassifier {
         } else {
             None
         };
-
-        // Check if TensorRT is being used (for warmup messaging)
-        let uses_tensorrt = requested_provider == birdnet_onnx::ExecutionProviderInfo::TensorRt;
 
         // Build BSG post-processor if this is a BSG model
         let bsg_processor = if model_config.model_type == ModelType::BsgFinland {
@@ -315,6 +322,61 @@ impl BirdClassifier {
         })
     }
 
+    /// Build the ONNX Runtime engine for every device except `OpenVINO`.
+    fn build_ort(
+        model_config: &BirdaModelConfig,
+        device: InferenceDevice,
+        min_confidence: f32,
+        top_k: usize,
+    ) -> Result<(Engine, ExecutionProviderStatus, bool)> {
+        // Check available execution providers at compile-time
+        let available_providers = available_execution_providers();
+        debug!(
+            "Available execution providers: {}",
+            available_providers
+                .iter()
+                .map(|p| format!("{p:?}"))
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
+
+        let builder = ClassifierBuilder::new()
+            .model_path(model_config.path.to_string_lossy().to_string())
+            .labels_path(model_config.labels.to_string_lossy().to_string())
+            .top_k(top_k)
+            .min_confidence(min_confidence);
+
+        let ProviderSelection {
+            builder,
+            device_name: actual_device_msg,
+            status: ep_status,
+        } = select_execution_provider(builder, device, &available_providers)?;
+
+        let inner = builder.build().map_err(|e| Error::ClassifierBuild {
+            reason: e.to_string(),
+        })?;
+
+        // Get the requested provider from the classifier
+        let requested_provider = inner.requested_provider();
+        debug!(
+            "Classifier reports requested provider: {:?}",
+            requested_provider
+        );
+
+        info!(
+            "Loaded model: {:?}, sample_rate: {}, segment_duration: {}s, device: {}",
+            model_config.model_type,
+            inner.config().sample_rate,
+            inner.config().segment_duration,
+            actual_device_msg
+        );
+
+        // Whether TensorRT is being used (for warmup messaging)
+        let uses_tensorrt = requested_provider == ExecutionProviderInfo::TensorRt;
+
+        Ok((Engine::Ort(inner), ep_status, uses_tensorrt))
+    }
+
     /// Get the model configuration.
     pub fn config(&self) -> &birdnet_onnx::ModelConfig {
         self.inner.config()
@@ -333,6 +395,15 @@ impl BirdClassifier {
     /// Get the expected sample count per segment.
     pub fn sample_count(&self) -> usize {
         self.inner.config().sample_count
+    }
+
+    /// The device the native `OpenVINO` backend resolved to, with the runtime
+    /// and precision; `None` when ONNX Runtime runs the model.
+    pub fn openvino_report(&self) -> Option<&DeviceReport> {
+        match &self.inner {
+            Engine::OpenVino(engine) => Some(engine.report()),
+            Engine::Ort(_) => None,
+        }
     }
 
     /// Check if `TensorRT` is being used.
@@ -365,8 +436,9 @@ impl BirdClassifier {
     /// Every batch size a run submits has to go through this before it carries
     /// real audio. Warming one shape does nothing for another: providers key
     /// their compiled graph on the input shape, so each distinct batch size
-    /// pays its own first-inference cost, and under `OpenVINO` that first
-    /// inference returns unpopulated outputs rather than merely being slow.
+    /// pays its own first-inference cost. Under the ONNX Runtime `OpenVINO`
+    /// provider that first inference returned unpopulated outputs for `Perch` v2
+    /// rather than merely being slow.
     ///
     /// Repeat calls for a shape already warmed return without running
     /// inference, so this is cheap to call once per file.
@@ -400,13 +472,19 @@ impl BirdClassifier {
     ///
     /// Prefer [`Self::ensure_warm`], which skips shapes already warmed.
     pub fn warmup(&self, batch_size: usize) -> Result<()> {
+        let inner = match &self.inner {
+            Engine::Ort(classifier) => classifier,
+            // The native engine compiles its two shapes and verifies each one
+            // against ONNX Runtime, which also runs inference on both.
+            Engine::OpenVino(engine) => return engine.prepare(batch_size),
+        };
         let sample_count = self.inner.config().sample_count;
         let dummy_segment = vec![0.0f32; sample_count];
         let options = InferenceOptions::default();
 
         if batch_size <= 1 {
             // Single inference warmup
-            self.inner
+            inner
                 .predict(&dummy_segment, &options)
                 .map_err(|e| Error::Inference {
                     reason: format!("warmup inference failed: {e}"),
@@ -414,7 +492,7 @@ impl BirdClassifier {
         } else {
             // Batch inference warmup - TensorRT needs to build engine for this batch size
             let segments = vec![dummy_segment.as_slice(); batch_size];
-            self.inner
+            inner
                 .predict_batch(&segments, &options)
                 .map_err(|e| Error::Inference {
                     reason: format!("warmup batch inference failed: {e}"),
@@ -426,11 +504,16 @@ impl BirdClassifier {
 
     /// Run inference on a single audio segment.
     pub fn predict(&self, segment: &[f32], options: &InferenceOptions) -> Result<PredictionResult> {
-        self.inner
-            .predict(segment, options)
-            .map_err(|e| Error::Inference {
-                reason: e.to_string(),
-            })
+        match &self.inner {
+            Engine::Ort(classifier) => {
+                classifier
+                    .predict(segment, options)
+                    .map_err(|e| Error::Inference {
+                        reason: e.to_string(),
+                    })
+            }
+            Engine::OpenVino(engine) => engine.predict(segment),
+        }
     }
 
     /// Run inference on a batch of audio segments.
@@ -439,11 +522,16 @@ impl BirdClassifier {
         segments: &[&[f32]],
         options: &InferenceOptions,
     ) -> Result<Vec<PredictionResult>> {
-        self.inner
-            .predict_batch(segments, options)
-            .map_err(|e| Error::Inference {
-                reason: e.to_string(),
-            })
+        match &self.inner {
+            Engine::Ort(classifier) => {
+                classifier
+                    .predict_batch(segments, options)
+                    .map_err(|e| Error::Inference {
+                        reason: e.to_string(),
+                    })
+            }
+            Engine::OpenVino(engine) => engine.predict_batch(segments),
+        }
     }
 
     /// Check if this classifier has BSG post-processing enabled.
@@ -516,11 +604,19 @@ impl BirdClassifier {
     ///
     /// Currently supports `BirdNET` v2.4 and v3.0 only. Returns an error for `PerchV2`.
     pub fn create_batch_context(&self, max_batch_size: usize) -> Result<BatchInferenceContext> {
-        self.inner
-            .create_batch_context(max_batch_size)
-            .map_err(|e| Error::Inference {
-                reason: format!("failed to create batch context: {e}"),
-            })
+        match &self.inner {
+            Engine::Ort(classifier) => {
+                classifier
+                    .create_batch_context(max_batch_size)
+                    .map_err(|e| Error::Inference {
+                        reason: format!("failed to create batch context: {e}"),
+                    })
+            }
+            // The pipeline treats this error as "use predict_batch".
+            Engine::OpenVino(_) => Err(Error::Inference {
+                reason: "the OpenVINO backend keeps its own input buffers".to_string(),
+            }),
+        }
     }
 
     /// Run inference on a batch of audio segments using a pre-allocated context.
@@ -533,11 +629,18 @@ impl BirdClassifier {
         segments: &[&[f32]],
         options: &InferenceOptions,
     ) -> Result<Vec<PredictionResult>> {
-        self.inner
-            .predict_batch_with_context(context, segments, options)
-            .map_err(|e| Error::Inference {
-                reason: e.to_string(),
-            })
+        match &self.inner {
+            Engine::Ort(classifier) => classifier
+                .predict_batch_with_context(context, segments, options)
+                .map_err(|e| Error::Inference {
+                    reason: e.to_string(),
+                }),
+            // Unreachable through the pipeline, which only has a context when
+            // `create_batch_context` succeeded; answered with an error anyway.
+            Engine::OpenVino(_) => Err(Error::Inference {
+                reason: "the OpenVINO backend has no batch context".to_string(),
+            }),
+        }
     }
 
     /// Apply range filtering to predictions if configured.
@@ -640,7 +743,6 @@ fn select_execution_provider(
         (ExecutionProviderInfo::Cuda, "CUDA"),
         (ExecutionProviderInfo::DirectMl, "DirectML"),
         (ExecutionProviderInfo::Rocm, "ROCm"),
-        (ExecutionProviderInfo::OpenVino, "OpenVINO"),
     ];
 
     // Include CoreML in auto-selection only on non-macOS platforms
@@ -834,12 +936,13 @@ fn select_execution_provider(
             ExecutionProviderInfo::Rocm,
             "ROCm",
         )?,
-        InferenceDevice::OpenVino => configure_explicit_provider(
-            builder,
-            available_providers,
-            ExecutionProviderInfo::OpenVino,
-            "OpenVINO",
-        )?,
+        // Built by the native backend before this function is reached
+        // (`BirdClassifier::from_config`); never an ONNX Runtime provider.
+        InferenceDevice::OpenVino => {
+            return Err(Error::ClassifierBuild {
+                reason: "OpenVINO runs on the native backend, not on ONNX Runtime".to_string(),
+            });
+        }
         InferenceDevice::OneDnn => configure_explicit_provider(
             builder,
             available_providers,
@@ -992,8 +1095,8 @@ fn add_execution_provider(
     #[allow(deprecated)]
     use ort_execution_providers::{
         ACLExecutionProvider, ArmNNExecutionProvider, CoreMLExecutionProvider,
-        DirectMLExecutionProvider, OneDNNExecutionProvider, OpenVINOExecutionProvider,
-        QNNExecutionProvider, ROCmExecutionProvider,
+        DirectMLExecutionProvider, OneDNNExecutionProvider, QNNExecutionProvider,
+        ROCmExecutionProvider,
     };
 
     match provider_info {
@@ -1022,9 +1125,6 @@ fn add_execution_provider(
             builder.execution_provider(CoreMLExecutionProvider::default())
         }
         ExecutionProviderInfo::Rocm => builder.execution_provider(ROCmExecutionProvider::default()),
-        ExecutionProviderInfo::OpenVino => {
-            builder.execution_provider(OpenVINOExecutionProvider::default())
-        }
         ExecutionProviderInfo::OneDnn => {
             builder.execution_provider(OneDNNExecutionProvider::default())
         }

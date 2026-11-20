@@ -5,6 +5,7 @@ mod cuda_detection;
 pub mod geomodel;
 pub mod geomodel_filter;
 mod library_detection;
+pub mod openvino;
 mod provider;
 pub mod range_filter;
 mod runtime;

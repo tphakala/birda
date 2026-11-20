@@ -263,6 +263,9 @@ birda --version
 # Check available GPU providers
 birda providers
 
+# List Intel GPUs usable through OpenVINO (untested on Windows)
+birda openvino devices
+
 # Configuration commands
 birda config init      # Create config file
 birda config show      # Show current config
@@ -297,6 +300,7 @@ birda [OPTIONS] <FILES>
       --cpu                 # Force CPU inference
       --cuda                # Use CUDA explicitly
       --tensorrt            # Use TensorRT explicitly
+      --openvino            # Use OpenVINO on an Intel GPU (see docs/openvino.md)
 
 # Range filtering
       --lat <LAT>           # Latitude (-90.0 to 90.0)

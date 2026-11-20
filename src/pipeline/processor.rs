@@ -563,13 +563,15 @@ pub fn process_file(
     // A short file therefore runs every one of its batches at a shape the
     // startup warmup never touched.
     //
-    // That is not just a missed optimization. Under OpenVINO the first
-    // inference at a new shape comes back with output tensors that were never
-    // filled, which for `Perch` v2 means the whole batch is scored as noise:
-    // no error, no warning, just a file's worth of wrong detections. With the
-    // default batch size of 16 and Perch's 5-second segments, that covers
-    // every recording under 80 seconds, and a single-batch file has no second
-    // batch to come out right.
+    // That is not just a missed optimization. Under the ONNX Runtime OpenVINO
+    // execution provider the first inference at a new shape came back with
+    // output tensors that were never filled, which for `Perch` v2 means the
+    // whole batch is scored as noise: no error, no warning, just a file's worth
+    // of wrong detections. With a batch size of 16 and Perch's 5-second
+    // segments, that covers every recording under 80 seconds, and a
+    // single-batch file has no second batch to come out right. The native
+    // OpenVINO backend compiles static shapes only, and its own warmup
+    // compiles and verifies the shapes it will use.
     //
     // Warming the effective size here means the first real batch is at least
     // the second inference of its shape. `ensure_warm` skips sizes already

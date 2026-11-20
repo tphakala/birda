@@ -94,6 +94,8 @@ pub enum ResultType {
     ModelInstalled,
     /// Documented projection of a registry model's manifest.
     ModelManifest,
+    /// Intel GPUs the `OpenVINO` runtime lists.
+    OpenvinoDevices,
 }
 
 /// Error severity level.
@@ -207,6 +209,10 @@ pub struct ExecutionProviderInfo {
     /// Reason for fallback if we didn't use requested provider.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub fallback_reason: Option<String>,
+    /// The device the run executes on. Present only for the native `OpenVINO`
+    /// backend; absent for ONNX Runtime providers and in older output.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub device: Option<InferenceDeviceInfo>,
 }
 
 impl From<crate::inference::ExecutionProviderStatus> for ExecutionProviderInfo {
@@ -215,6 +221,50 @@ impl From<crate::inference::ExecutionProviderStatus> for ExecutionProviderInfo {
             requested: status.requested,
             actual: status.actual,
             fallback_reason: status.fallback_reason,
+            device: None,
+        }
+    }
+}
+
+/// The device an inference run executes on.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct InferenceDeviceInfo {
+    /// The device spec as configured, e.g. "auto" or "pci:0000:03:00.0".
+    pub requested: String,
+    /// `OpenVINO`'s name for the device, e.g. "GPU" or "GPU.1".
+    pub name: String,
+    /// Device kind, e.g. "gpu".
+    pub kind: String,
+    /// GPU class: "integrated", "discrete" or "unknown".
+    pub class: String,
+    /// Marketing name of the device, when the runtime reports it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub full_name: Option<String>,
+    /// PCI address as `DDDD:BB:DD.F`, when the runtime reports it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pci_address: Option<String>,
+    /// Device UUID (32 hex digits), when the runtime reports it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub uuid: Option<String>,
+    /// Precision the model is compiled at, e.g. "f32".
+    pub precision: String,
+    /// Build number of the `OpenVINO` runtime.
+    pub runtime_version: String,
+}
+
+impl From<&crate::inference::openvino::DeviceReport> for InferenceDeviceInfo {
+    fn from(report: &crate::inference::openvino::DeviceReport) -> Self {
+        let device = &report.device;
+        Self {
+            requested: report.requested.clone(),
+            name: device.name.clone(),
+            kind: device.kind.as_str().to_string(),
+            class: device.class.as_str().to_string(),
+            full_name: device.full_name.clone(),
+            pci_address: device.pci.map(|pci| pci.to_string()),
+            uuid: device.uuid.clone(),
+            precision: report.precision.to_string(),
+            runtime_version: report.runtime_version.clone(),
         }
     }
 }
@@ -503,6 +553,104 @@ pub struct ModelDetails {
     /// registry record to take them from).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub license: Option<LicenseDetails>,
+}
+
+/// Payload for the `openvino devices` result.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OpenVinoDevicesPayload {
+    /// Result type discriminator.
+    pub result_type: ResultType,
+    /// Build number of the `OpenVINO` runtime.
+    pub runtime_version: String,
+    /// The runtime library that was loaded, when loaded by path.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub library: Option<PathBuf>,
+    /// The configured device spec.
+    pub configured: String,
+    /// The device the configured spec resolves to, when it resolves.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resolved: Option<String>,
+    /// Why the configured spec does not resolve, when it does not.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resolve_error: Option<String>,
+    /// Every device `OpenVINO` lists.
+    pub devices: Vec<OpenVinoDeviceEntry>,
+}
+
+/// One device in the `openvino devices` result.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OpenVinoDeviceEntry {
+    /// `OpenVINO`'s name for the device.
+    pub name: String,
+    /// One of `cpu`, `gpu`, `gpu_tile`, `npu` or `other`.
+    pub kind: String,
+    /// GPU class: "integrated", "discrete" or "unknown".
+    pub class: String,
+    /// Marketing name, when reported.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub full_name: Option<String>,
+    /// Whether the runtime names Intel as the vendor.
+    pub intel: bool,
+    /// Whether birda can run on this device.
+    pub selectable: bool,
+    /// Why birda cannot run on it, when it cannot.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub refusal: Option<String>,
+    /// PCI address as `DDDD:BB:DD.F`, when reported.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pci_address: Option<String>,
+    /// Device UUID, when reported.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub uuid: Option<String>,
+    /// Device memory in bytes, when reported.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub memory_bytes: Option<u64>,
+    /// `DEVICE_ARCHITECTURE` as reported.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub architecture: Option<String>,
+    /// Optimization capabilities as reported.
+    pub capabilities: Vec<String>,
+    /// Values of `--openvino-device` that resolve to this device.
+    pub selectors: Vec<String>,
+}
+
+impl From<&crate::inference::openvino::DeviceListing> for OpenVinoDevicesPayload {
+    fn from(listing: &crate::inference::openvino::DeviceListing) -> Self {
+        let (resolved, resolve_error) = match &listing.resolved {
+            Ok(device) => (Some(device.clone()), None),
+            Err(reason) => (None, Some(reason.clone())),
+        };
+        Self {
+            result_type: ResultType::OpenvinoDevices,
+            runtime_version: listing.runtime_version.clone(),
+            library: listing.library.clone(),
+            configured: listing.configured.clone(),
+            resolved,
+            resolve_error,
+            devices: listing
+                .devices
+                .iter()
+                .map(|listed| {
+                    let device = &listed.device;
+                    OpenVinoDeviceEntry {
+                        name: device.name.clone(),
+                        kind: device.kind.as_str().to_string(),
+                        class: device.class.as_str().to_string(),
+                        full_name: device.full_name.clone(),
+                        intel: device.intel,
+                        selectable: listed.refusal.is_none(),
+                        refusal: listed.refusal.clone(),
+                        pci_address: device.pci.map(|pci| pci.to_string()),
+                        uuid: device.uuid.clone(),
+                        memory_bytes: device.memory_bytes,
+                        architecture: device.architecture.clone(),
+                        capabilities: device.capabilities.clone(),
+                        selectors: listed.selectors.clone(),
+                    }
+                })
+                .collect(),
+        }
+    }
 }
 
 /// Payload for providers result.
@@ -990,6 +1138,7 @@ mod tests {
                 requested: "auto".to_string(),
                 actual: "CPU".to_string(),
                 fallback_reason: None,
+                device: None,
             },
             range_filter: None,
         };
@@ -1007,6 +1156,7 @@ mod tests {
             requested: "auto".to_string(),
             actual: "CUDA".to_string(),
             fallback_reason: Some("TensorRT libraries not found".to_string()),
+            device: None,
         };
 
         let json = serde_json::to_string(&info).expect("serialize");
@@ -1027,6 +1177,7 @@ mod tests {
             requested: "cuda".to_string(),
             actual: "CUDA".to_string(),
             fallback_reason: None,
+            device: None,
         };
 
         let json = serde_json::to_string(&info).expect("serialize");
@@ -1052,6 +1203,7 @@ mod tests {
                 requested: "auto".to_string(),
                 actual: "TensorRT".to_string(),
                 fallback_reason: None,
+                device: None,
             },
             range_filter: None,
         };
@@ -1062,6 +1214,120 @@ mod tests {
         assert!(json.contains("\"execution_provider\""));
         assert!(json.contains("\"requested\":\"auto\""));
         assert!(json.contains("\"actual\":\"TensorRT\""));
+    }
+
+    fn iris_xe_report() -> crate::inference::openvino::DeviceReport {
+        use crate::config::PciAddress;
+        use crate::inference::openvino::{DeviceReport, GpuClass, OvDevice};
+
+        DeviceReport {
+            requested: "auto".to_string(),
+            device: OvDevice {
+                full_name: Some("Intel(R) Iris(R) Xe Graphics (iGPU)".to_string()),
+                class: GpuClass::Integrated,
+                intel: true,
+                uuid: Some("8680a6460c0000000002000000000000".to_string()),
+                pci: Some(PciAddress {
+                    domain: 0,
+                    bus: 0,
+                    device: 2,
+                    function: 0,
+                }),
+                ..OvDevice::named("GPU")
+            },
+            runtime_version: "2025.4.1-19314".to_string(),
+            library: None,
+            precision: "f32",
+        }
+    }
+
+    #[test]
+    fn test_execution_provider_info_without_a_device_serializes_as_before() {
+        let info = ExecutionProviderInfo {
+            requested: "cpu".to_string(),
+            actual: "CPU".to_string(),
+            fallback_reason: None,
+            device: None,
+        };
+
+        assert_eq!(
+            serde_json::to_value(&info).expect("serialize"),
+            serde_json::json!({"requested": "cpu", "actual": "CPU"})
+        );
+        // Output written before the field existed still deserializes.
+        let old: ExecutionProviderInfo =
+            serde_json::from_str(r#"{"requested":"cpu","actual":"CPU"}"#).expect("deserialize");
+        assert_eq!(old.device, None);
+    }
+
+    #[test]
+    fn test_execution_provider_info_with_a_device_adds_exactly_that_object() {
+        let info = ExecutionProviderInfo {
+            requested: "openvino".to_string(),
+            actual: "OpenVINO".to_string(),
+            fallback_reason: None,
+            device: Some(InferenceDeviceInfo::from(&iris_xe_report())),
+        };
+
+        assert_eq!(
+            serde_json::to_value(&info).expect("serialize"),
+            serde_json::json!({
+                "requested": "openvino",
+                "actual": "OpenVINO",
+                "device": {
+                    "requested": "auto",
+                    "name": "GPU",
+                    "kind": "gpu",
+                    "class": "integrated",
+                    "full_name": "Intel(R) Iris(R) Xe Graphics (iGPU)",
+                    "pci_address": "0000:00:02.0",
+                    "uuid": "8680a6460c0000000002000000000000",
+                    "precision": "f32",
+                    "runtime_version": "2025.4.1-19314"
+                }
+            })
+        );
+    }
+
+    #[test]
+    fn test_openvino_devices_payload_whole_value() {
+        use crate::inference::openvino::listing::{DeviceListing, ListedDevice};
+
+        let report = iris_xe_report();
+        let listing = DeviceListing {
+            runtime_version: report.runtime_version.clone(),
+            library: Some(PathBuf::from("/usr/lib/libopenvino_c.so")),
+            configured: "auto".to_string(),
+            resolved: Ok("GPU (Intel(R) Iris(R) Xe Graphics (iGPU), integrated)".to_string()),
+            devices: vec![ListedDevice {
+                device: report.device,
+                refusal: None,
+                selectors: vec!["gpu".to_string(), "gpu.0".to_string()],
+            }],
+        };
+
+        assert_eq!(
+            serde_json::to_value(OpenVinoDevicesPayload::from(&listing)).expect("serialize"),
+            serde_json::json!({
+                "result_type": "openvino_devices",
+                "runtime_version": "2025.4.1-19314",
+                "library": "/usr/lib/libopenvino_c.so",
+                "configured": "auto",
+                "resolved": "GPU (Intel(R) Iris(R) Xe Graphics (iGPU), integrated)",
+                "devices": [{
+                    "name": "GPU",
+                    "kind": "gpu",
+                    "class": "integrated",
+                    "full_name": "Intel(R) Iris(R) Xe Graphics (iGPU)",
+                    "intel": true,
+                    "selectable": true,
+                    "pci_address": "0000:00:02.0",
+                    "uuid": "8680a6460c0000000002000000000000",
+                    "capabilities": [],
+                    "selectors": ["gpu", "gpu.0"]
+                }]
+            })
+        );
     }
 
     #[test]

@@ -7,7 +7,7 @@ Birda is a Rust CLI tool for analyzing audio files using BirdNET and Google Perc
 ## Tech Stack
 
 - **Language:** Rust, edition 2024. The minimum supported version is `rust-version` in `Cargo.toml`, and the CI MSRV job builds on exactly that toolchain.
-- **Inference:** `birdnet-onnx` from crates.io (source: `tphakala/rust-birdnet-onnx`), on top of `ort`. ONNX Runtime is loaded at run time, because both dependencies are declared with `load-dynamic`.
+- **Inference:** `birdnet-onnx` (source: `tphakala/rust-birdnet-onnx`), on top of `ort`. ONNX Runtime is loaded at run time, because both dependencies are declared with `load-dynamic`.
 - **Intel GPUs:** the `openvino` and `openvino-sys` crates, built with `runtime-linking`, drive the user's own OpenVINO runtime (`src/inference/openvino/`). OpenVINO is not an ONNX Runtime provider in birda, and the OpenVINO CPU device is never used: CPU inference stays on ONNX Runtime.
 - **Audio decoding:** `symphonia`, pinned to the `feature/rf64-support` branch of the `tphakala/Symphonia` fork
 - **Resampling:** `rubato`, fed through `audioadapter-buffers`

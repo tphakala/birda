@@ -46,6 +46,9 @@ pub struct Chunk {
 /// Full chunks of `large` first; a remainder of at most half of `large` runs as
 /// single segments, since padding it to the large shape would compute more
 /// rows than it carries; any other remainder is padded to one `large` chunk.
+/// The pipeline pads a partial batch to the batch size itself
+/// (`src/pipeline/processor.rs:244`), so a short remainder reaches this function
+/// only for a file whose length is known up front and that is shorter than a batch.
 /// The chunks cover `0..n` in order, so results map back to inputs by position.
 #[must_use]
 pub fn plan_chunks(n: usize, large: usize) -> Vec<Chunk> {

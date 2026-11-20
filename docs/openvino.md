@@ -71,7 +71,7 @@ On a computer with more than one GPU, pin the one you want with `pci:` or `uuid:
 
 - **Float32.** The compiled model runs at 32-bit float precision, which is not the GPU default (16-bit). At 16 bits the detections of BirdNET v2.4 and v3.0 change. birda reads the precision back from the compiled model and stops if the device did not honour it.
 - **Checked against ONNX Runtime.** The first time each batch shape is compiled in a run, birda feeds the same deterministic test signal (a different one in every batch row) through ONNX Runtime on the CPU and through the GPU and compares the raw scores and embeddings. If they differ by more than 0.01 anywhere, the run stops with an `OpenVINO ... gives different results from ONNX Runtime` error. This also covers GPUs, drivers and runtime versions nobody has tested.
-- **Two compiled shapes.** One for a single segment and one for the run's batch size (default 8, `-b` to change it). A partial last batch of at most half the batch size is run as single segments, a larger one is padded.
+- **Two compiled shapes.** One for a single segment and one for the run's batch size (default 8, `-b` to change it). A file whose length is known up front and that has at most half a batch of segments is run as single segments; any other partial batch is padded to the batch size.
 
 ## The compiled-model cache
 
@@ -87,7 +87,7 @@ Compiling a model for a GPU takes a few seconds, and more for large models. bird
 | `OpenVINO runtime ... is too old` | Install 2025.1 or newer. |
 | `no permission to use the Intel GPU render node` | Add your user to the `render` group. |
 | `OpenVINO device '...' is not available` | The requested device is not in OpenVINO's list. The message lists what OpenVINO found and, on Linux, whether a render node or the compute runtime is missing. |
-| `OpenVINO backend: ...` | The request names something unsupported: the NPU, a non-Intel GPU, a GPU tile, or this platform. |
+| `OpenVINO backend: ...` | The request names something unsupported: the NPU, a non-Intel GPU, or this platform. |
 | `OpenVINO could not load the model` | OpenVINO could not read, reshape or compile the model; the message carries OpenVINO's reason. |
 | `OpenVINO on ... gives different results from ONNX Runtime` | The check described above failed. Use `--cpu`, another device, or update the GPU driver and the OpenVINO runtime. |
 

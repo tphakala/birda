@@ -268,8 +268,8 @@ pub struct InferenceConfig {
 
     /// Which Intel GPU the native `OpenVINO` backend runs on.
     ///
-    /// Only read when `device` is `openvino`. Omitted from the file when it is
-    /// the default, so configs written before this key existed are not changed
+    /// Read when `device` is `openvino` and by `birda openvino devices`. Omitted
+    /// from the file when it is the default, so configs written before this key existed are not changed
     /// by a later `config set`.
     #[serde(skip_serializing_if = "OpenVinoDeviceSpec::is_auto")]
     pub openvino_device: OpenVinoDeviceSpec,

@@ -22,12 +22,13 @@ pub use json_envelope::{
     ClipExtractionEntry, ClipExtractionFailure, ClipExtractionPayload, ConfigPathPayload,
     ConfigPayload, DetectionInfo, DetectionsPayload, DownloadProgress, ErrorPayload, ErrorSeverity,
     EventType, ExecutionProviderInfo, FileCompletedPayload, FileErrorInfo, FileProgress,
-    FileStartedPayload, FileStatus, GeomodelInfo, JsonEnvelope, LicenseDetails, ManifestVariant,
-    ModelCheckEntry, ModelCheckPayload, ModelDetails, ModelEntry, ModelInfoPayload,
-    ModelInstalledPayload, ModelListPayload, ModelManifest, ModelManifestPayload,
-    ModelRemovedPayload, OutputFiles, PipelineCompletedPayload, PipelineStartedPayload,
-    PipelineStatus, ProgressPayload, ProviderInfo, ProvidersPayload, RangeFilterInfo, ResultType,
-    SPEC_VERSION, SpeciesEntry, SpeciesListPayload, VersionPayload,
+    FileStartedPayload, FileStatus, GeomodelInfo, InferenceDeviceInfo, JsonEnvelope,
+    LicenseDetails, ManifestVariant, ModelCheckEntry, ModelCheckPayload, ModelDetails, ModelEntry,
+    ModelInfoPayload, ModelInstalledPayload, ModelListPayload, ModelManifest, ModelManifestPayload,
+    ModelRemovedPayload, OpenVinoDeviceEntry, OpenVinoDevicesPayload, OutputFiles,
+    PipelineCompletedPayload, PipelineStartedPayload, PipelineStatus, ProgressPayload,
+    ProviderInfo, ProvidersPayload, RangeFilterInfo, ResultType, SPEC_VERSION, SpeciesEntry,
+    SpeciesListPayload, VersionPayload,
 };
 pub use kaleidoscope::KaleidoscopeWriter;
 pub use parquet::ParquetWriter;

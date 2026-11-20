@@ -1,6 +1,6 @@
 //! Platform-specific configuration paths.
 
-use crate::constants::{APP_NAME, CONFIG_DIR_ENV, tensorrt};
+use crate::constants::{APP_NAME, CONFIG_DIR_ENV, openvino, tensorrt};
 use crate::error::{Error, Result};
 use directories::ProjectDirs;
 use std::ffi::OsString;
@@ -88,6 +88,19 @@ pub fn config_file_path() -> Result<PathBuf> {
 /// - Windows: `%LOCALAPPDATA%\birda\cache\tensorrt_cache\`
 pub fn tensorrt_cache_dir() -> Result<PathBuf> {
     Ok(cache_dir()?.join(tensorrt::CACHE_DIR))
+}
+
+/// Get the cache directory for compiled `OpenVINO` models.
+///
+/// Like the `TensorRT` cache, it holds large machine-specific blobs that are
+/// safely regenerable. The runtime version is a subdirectory chosen by the
+/// caller, so a runtime upgrade starts from an empty directory.
+///
+/// - Linux: `~/.cache/birda/openvino_cache/`
+/// - macOS: `~/Library/Caches/birda/openvino_cache/`
+/// - Windows: `%LOCALAPPDATA%\birda\cache\openvino_cache\`
+pub fn openvino_cache_dir() -> Result<PathBuf> {
+    Ok(cache_dir()?.join(openvino::CACHE_DIR))
 }
 
 #[cfg(test)]

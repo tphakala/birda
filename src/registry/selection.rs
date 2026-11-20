@@ -139,6 +139,12 @@ fn device_key(device: InferenceDevice, probe: &dyn HardwareProbe) -> Option<Stri
         | InferenceDevice::ArmNn => None,
         InferenceDevice::Cuda => Some(KEY_CUDA.to_string()),
         InferenceDevice::TensorRt => Some(KEY_TENSORRT.to_string()),
+        // The `openvino-cpu` key, not `openvino-gpu`, although the native
+        // backend runs on a GPU: for `BirdNET` v3.0 the `openvino-gpu` key names
+        // the fp16 file, and that file's output differed from ONNX Runtime by
+        // 1.9e-2 on an Intel Iris Xe GPU at the backend's forced f32 precision
+        // (nordic region, batch 8, tolerance 1e-2), so the startup check
+        // refuses it. The `openvino-cpu` key names the fp32 file.
         InferenceDevice::OpenVino => Some(format!("{arch}/openvino-cpu")),
         InferenceDevice::CoreMl => Some(format!("{arch}/coreml")),
         InferenceDevice::Xnnpack => Some(format!("{arch}/xnnpack")),

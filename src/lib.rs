@@ -48,10 +48,11 @@ pub mod update;
 pub mod utils;
 
 use clap::Parser;
-use cli::{AnalyzeArgs, Cli, Command};
+use cli::{AnalyzeArgs, Cli, Command, OpenvinoAction};
 use config::{
-    BatConfig, Config, InferenceDevice, ModelConfig, ModelType, OutputFormat, OutputMode,
-    config_file_path, load_default_config, range_filter::build_range_filter_config,
+    BatConfig, Config, InferenceDevice, ModelConfig, ModelType, OpenVinoDeviceSpec,
+    OpenVinoSettings, OutputFormat, OutputMode, config_file_path, load_default_config,
+    range_filter::build_range_filter_config,
 };
 use constants::DEFAULT_TOP_K;
 use inference::BirdClassifier;
@@ -413,7 +414,10 @@ fn determine_default_batch_size(
         // TensorRT with any model
         (_, "TensorRT") => batch_size::TENSORRT,
 
-        // Other GPU providers (DirectML, ROCm, OpenVINO, CoreML, etc.)
+        // Native OpenVINO backend (Intel GPU)
+        (_, constants::openvino::PROVIDER_ACTUAL) => batch_size::OPENVINO,
+
+        // Other GPU providers (DirectML, ROCm, CoreML, etc.)
         _ => {
             tracing::debug!(
                 "Using conservative batch size {} for model {:?} with provider {}",
@@ -532,7 +536,14 @@ pub fn run() -> Result<()> {
     // whichever side of the subcommand name they were written on.
     if let Some(command) = cli.command {
         let geomodel_request = cli.analyze.geomodel_request();
-        return handle_command(command, &config, output_mode, &reporter, geomodel_request);
+        return handle_command(
+            command,
+            &config,
+            output_mode,
+            &reporter,
+            geomodel_request,
+            cli.analyze.openvino_device.clone(),
+        );
     }
 
     // Default: analyze files
@@ -582,6 +593,10 @@ fn command_requires_valid_config(command: Option<&Command>, has_no_inputs: bool)
         // run the updater over a config it never reads would block the route to
         // a build that fixes the config handling.
         //
+        // `openvino` reads two `[inference]` keys, but it is the command a
+        // user runs to find out what to put in them, so a bad value elsewhere
+        // in the file must not stop it.
+        //
         // `species` takes `--lat` and `--lon` as required arguments, so it
         // never reads the coordinate defaults. Failing it on a stale
         // `defaults.latitude` would reject a run that could not have used it.
@@ -590,6 +605,7 @@ fn command_requires_valid_config(command: Option<&Command>, has_no_inputs: bool)
             | Command::Models { .. }
             | Command::Species { .. }
             | Command::Providers
+            | Command::Openvino { .. }
             | Command::Clip(_)
             | Command::Update { .. },
         ) => false,
@@ -644,6 +660,61 @@ fn resolve_device(args: &AnalyzeArgs, config: &Config) -> InferenceDevice {
     .into_iter()
     .find(|(flag, _)| *flag)
     .map_or(config.inference.device, |(_, device)| device)
+}
+
+/// Build the `OpenVINO` settings for this run and refuse what cannot work.
+///
+/// Runs before ONNX Runtime is initialised, so a mistake in the `OpenVINO`
+/// arguments or configuration is reported on a machine that has no ONNX Runtime
+/// installed too. The checks are cheap and need no runtime:
+///
+/// * `--openvino-device` without `OpenVINO` as the resolved device is an
+///   error, because the flag would otherwise be silently ignored.
+/// * An `inference.openvino_path` that does not exist is an error.
+/// * On a platform without an `OpenVINO` GPU backend the request is refused.
+fn resolve_openvino_settings(
+    args: &AnalyzeArgs,
+    config: &Config,
+    device: InferenceDevice,
+) -> Result<OpenVinoSettings> {
+    if device != InferenceDevice::OpenVino {
+        if args.openvino_device.is_some() {
+            return Err(Error::ConfigValidation {
+                message: format!(
+                    "--openvino-device needs --openvino (or inference.device = \"openvino\"), \
+                     but the inference device for this run is {}",
+                    format!("{device:?}").to_lowercase()
+                ),
+            });
+        }
+        return Ok(OpenVinoSettings::default());
+    }
+
+    let settings = openvino_settings(args.openvino_device.clone(), config);
+    check_openvino_path(&settings)?;
+    if inference::openvino::runtime::Os::current().is_none() {
+        return Err(inference::openvino::runtime::unsupported_platform());
+    }
+    Ok(settings)
+}
+
+/// The `OpenVINO` settings: the flag wins over the config key.
+fn openvino_settings(flag: Option<OpenVinoDeviceSpec>, config: &Config) -> OpenVinoSettings {
+    OpenVinoSettings {
+        device: flag.unwrap_or_else(|| config.inference.openvino_device.clone()),
+        runtime_path: config.inference.openvino_path.clone(),
+    }
+}
+
+/// Fail when an explicitly configured `OpenVINO` runtime path does not exist.
+fn check_openvino_path(settings: &OpenVinoSettings) -> Result<()> {
+    match &settings.runtime_path {
+        Some(path) if !path.exists() => Err(Error::OpenVinoPathInvalid {
+            path: path.clone(),
+            reason: "it does not exist".to_string(),
+        }),
+        _ => Ok(()),
+    }
 }
 
 /// Load species list from file if no range filter is active.
@@ -1065,10 +1136,21 @@ fn analyze_files(
 
     let total_start = Instant::now();
 
+    // Resolve the device and check the OpenVINO arguments first: these are
+    // the checks that need neither a model nor ONNX Runtime.
+    let device = resolve_device(args, config);
+    let openvino_settings = resolve_openvino_settings(args, config, device)?;
+
     // Fail fast on configuration errors before scanning filesystem
     // Resolve model configuration using priority-based resolution
     let (model_config, model_name) = resolve_model_config(args, config)?;
     validate_model_files(&model_config)?;
+    if device == InferenceDevice::OpenVino
+        && let Some(warning) =
+            config::openvino::unverified_variant_warning(&model_config, &model_name)
+    {
+        warn!("{warning}");
+    }
 
     // Bat mode: validate the backbone family and resolve the region's files,
     // BEFORE touching the runtime, so a wrong `-m` or an uninstalled region
@@ -1185,9 +1267,6 @@ fn analyze_files(
     let force = args.force;
     let fail_fast = args.fail_fast;
 
-    // Resolve device from command-line flags or config
-    let device = resolve_device(args, config);
-
     // Reject a malformed threshold BEFORE resolving the geomodel, because
     // resolution may prompt for and download roughly 15 MB and aborting after
     // that spends the user's bandwidth to report something knowable up front.
@@ -1273,6 +1352,7 @@ fn analyze_files(
     let classifier = BirdClassifier::from_config(
         &model_config,
         device,
+        &openvino_settings,
         min_confidence,
         DEFAULT_TOP_K,
         range_filter_config,
@@ -1306,7 +1386,11 @@ fn analyze_files(
     warmup_classifier(&classifier, batch_size)?;
 
     // Report pipeline start with execution provider info
-    let ep_info = classifier.execution_provider_status().clone().into();
+    let mut ep_info: output::ExecutionProviderInfo =
+        classifier.execution_provider_status().clone().into();
+    ep_info.device = classifier
+        .openvino_report()
+        .map(output::InferenceDeviceInfo::from);
     let range_filter_info = classifier.range_filter_info();
     reporter.pipeline_started(
         files.len(),
@@ -1389,6 +1473,7 @@ fn handle_command(
     output_mode: OutputMode,
     _reporter: &Arc<dyn ProgressReporter>,
     geomodel_request: config::GeomodelRequest<'_>,
+    openvino_device: Option<OpenVinoDeviceSpec>,
 ) -> Result<()> {
     match command {
         Command::Config { action } => handle_config_command(action, output_mode),
@@ -1398,6 +1483,9 @@ fn handle_command(
         Command::Providers => {
             handle_providers_command(output_mode);
             Ok(())
+        }
+        Command::Openvino { action } => {
+            handle_openvino_command(&action, config, openvino_device, output_mode)
         }
         Command::Species {
             output,
@@ -1424,6 +1512,28 @@ fn handle_command(
         ),
         Command::Clip(args) => clipper::command::execute(&args, output_mode),
         Command::Update { check } => handle_update_command(check, output_mode),
+    }
+}
+
+/// Handle the `openvino` subcommand.
+fn handle_openvino_command(
+    action: &OpenvinoAction,
+    config: &Config,
+    device_flag: Option<OpenVinoDeviceSpec>,
+    output_mode: OutputMode,
+) -> Result<()> {
+    match action {
+        OpenvinoAction::Devices => {
+            let settings = openvino_settings(device_flag, config);
+            check_openvino_path(&settings)?;
+            let listing = inference::openvino::list(&settings)?;
+            if output_mode.is_structured() {
+                emit_json_result(&output::OpenVinoDevicesPayload::from(&listing));
+            } else {
+                print!("{}", inference::openvino::listing::render_human(&listing));
+            }
+            Ok(())
+        }
     }
 }
 
@@ -1469,13 +1579,9 @@ fn handle_providers_command(output_mode: OutputMode) {
     println!("  (default)      Auto-select (GPU if available, silent CPU fallback)");
     println!("  --cpu          Force CPU only");
     #[cfg(target_os = "macos")]
-    println!(
-        "  --gpu          Auto-select best GPU (TensorRT → CUDA → DirectML → ROCm → OpenVINO)"
-    );
+    println!("  --gpu          Auto-select best GPU (TensorRT → CUDA → DirectML → ROCm)");
     #[cfg(not(target_os = "macos"))]
-    println!(
-        "  --gpu          Auto-select best GPU (TensorRT → CUDA → DirectML → CoreML → ROCm → OpenVINO)"
-    );
+    println!("  --gpu          Auto-select best GPU (TensorRT → CUDA → DirectML → CoreML → ROCm)");
     println!();
     println!("Explicit providers (fail if unavailable):");
     let explicit_providers = [
@@ -1484,7 +1590,10 @@ fn handle_providers_command(output_mode: OutputMode) {
         ("directml", "Use DirectML"),
         ("coreml", "Use CoreML"),
         ("rocm", "Use ROCm"),
-        ("openvino", "Use OpenVINO"),
+        (
+            "openvino",
+            "Use OpenVINO on an Intel GPU (native runtime; see `birda openvino devices`)",
+        ),
         ("onednn", "Use oneDNN"),
         ("qnn", "Use QNN"),
         ("acl", "Use ACL"),
@@ -4286,6 +4395,95 @@ mod tests {
         assert_eq!(device, InferenceDevice::Cpu);
     }
 
+    // Tests for the OpenVINO arguments
+
+    #[test]
+    fn test_openvino_device_flag_without_openvino_is_refused_with_the_device_named() {
+        let mut args = default_args();
+        args.openvino_device = Some(OpenVinoDeviceSpec::Dgpu(None));
+        args.cuda = true;
+
+        let device = resolve_device(&args, &Config::default());
+        let err = resolve_openvino_settings(&args, &Config::default(), device).unwrap_err();
+
+        assert_eq!(
+            err.to_string(),
+            "configuration validation failed: --openvino-device needs --openvino (or \
+             inference.device = \"openvino\"), but the inference device for this run is cuda"
+        );
+    }
+
+    #[test]
+    fn test_openvino_device_flag_is_accepted_when_the_config_selects_openvino() {
+        // The device comes from config.inference.device, not from a flag.
+        let mut args = default_args();
+        args.openvino_device = Some(OpenVinoDeviceSpec::Igpu(None));
+        let mut config = Config::default();
+        config.inference.device = InferenceDevice::OpenVino;
+
+        let device = resolve_device(&args, &config);
+        assert_eq!(device, InferenceDevice::OpenVino);
+        // The flag guard passes. Whether the platform supports OpenVINO decides
+        // the rest: Linux and Windows accept, other platforms refuse.
+        let result = resolve_openvino_settings(&args, &config, device);
+        match result {
+            Ok(settings) => assert_eq!(settings.device, OpenVinoDeviceSpec::Igpu(None)),
+            Err(Error::OpenVinoUnsupported { .. }) => {}
+            Err(other) => panic!("unexpected error: {other}"),
+        }
+    }
+
+    #[test]
+    fn test_openvino_settings_prefer_the_flag_over_the_config_key() {
+        let mut config = Config::default();
+        config.inference.openvino_device = OpenVinoDeviceSpec::Dgpu(Some(1));
+        config.inference.openvino_path = Some(PathBuf::from("/opt/intel/openvino_2026"));
+
+        assert_eq!(
+            openvino_settings(None, &config),
+            OpenVinoSettings {
+                device: OpenVinoDeviceSpec::Dgpu(Some(1)),
+                runtime_path: Some(PathBuf::from("/opt/intel/openvino_2026")),
+            }
+        );
+        assert_eq!(
+            openvino_settings(Some(OpenVinoDeviceSpec::Igpu(None)), &config).device,
+            OpenVinoDeviceSpec::Igpu(None)
+        );
+        assert_eq!(
+            openvino_settings(None, &Config::default()),
+            OpenVinoSettings {
+                device: OpenVinoDeviceSpec::Auto,
+                runtime_path: None,
+            }
+        );
+    }
+
+    #[test]
+    fn test_openvino_runtime_path_that_does_not_exist_is_refused_before_anything_loads() {
+        let dir = tempfile::tempdir().unwrap();
+        let missing = dir.path().join("no-such-openvino");
+        let mut config = Config::default();
+        config.inference.device = InferenceDevice::OpenVino;
+        config.inference.openvino_path = Some(missing.clone());
+
+        let err = resolve_openvino_settings(&default_args(), &config, InferenceDevice::OpenVino)
+            .unwrap_err();
+
+        assert_eq!(
+            err.to_string(),
+            format!(
+                "inference.openvino_path is set to '{}', but it does not exist",
+                missing.display()
+            )
+        );
+        // Only an OpenVINO run looks at the key.
+        assert_eq!(
+            resolve_openvino_settings(&default_args(), &config, InferenceDevice::Cpu).unwrap(),
+            OpenVinoSettings::default()
+        );
+    }
+
     #[test]
     fn test_resolve_device_tensorrt_flag() {
         let mut args = default_args();
@@ -4474,6 +4672,27 @@ mod tests {
     }
 
     #[test]
+    fn test_batch_size_openvino_is_the_openvino_default_for_every_model() {
+        // The status the classifier itself reports for an OpenVINO run.
+        let ep_status = inference::ExecutionProviderStatus::openvino();
+
+        // 8, where the generic GPU arm would give 16.
+        for model_type in [
+            ModelType::BirdnetV24,
+            ModelType::BirdnetV30,
+            ModelType::PerchV2,
+            ModelType::BsgFinland,
+        ] {
+            assert_eq!(
+                determine_default_batch_size(model_type, &ep_status),
+                constants::batch_size::OPENVINO,
+                "{model_type:?}"
+            );
+        }
+        assert_eq!(constants::batch_size::OPENVINO, 8);
+    }
+
+    #[test]
     fn test_batch_size_cpu_fallback() {
         let ep_status = inference::ExecutionProviderStatus {
             requested: "gpu".to_string(),
@@ -4627,6 +4846,20 @@ mod tests {
                     "{argv:?} must stay reachable with an invalid config"
                 );
             }
+        }
+
+        #[test]
+        fn test_openvino_subcommand_is_exempt() {
+            // The command a user runs to find out what to put in the
+            // `[inference]` keys, so a bad value elsewhere must not stop it.
+            assert!(!gated(&["birda", "openvino", "devices"]));
+            assert!(!gated(&[
+                "birda",
+                "openvino",
+                "devices",
+                "--openvino-device",
+                "dgpu"
+            ]));
         }
 
         #[test]

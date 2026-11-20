@@ -70,6 +70,13 @@ pub mod batch_size {
 
     /// Conservative default for unknown/other GPU providers.
     pub const OTHER_GPU: usize = 16;
+
+    /// Native `OpenVINO` backend batch size for all models.
+    ///
+    /// Batching gained little on the Intel integrated GPUs it was measured on,
+    /// so the generic GPU default would only enlarge the second compiled shape
+    /// and the padding of a trailing partial batch.
+    pub const OPENVINO: usize = super::DEFAULT_BATCH_SIZE;
 }
 
 /// Valid range for the day of year used by BSG SDM seasonal adjustment.
@@ -609,4 +616,107 @@ pub mod onnx_runtime {
     #[cfg(target_os = "windows")]
     /// Common Windows library directories to probe before letting ORT fall back to loader defaults.
     pub const COMMON_SEARCH_DIRS: &[&str] = &["C:\\Windows\\System32", "C:\\Windows", "."];
+}
+
+/// Native `OpenVINO` backend constants.
+pub mod openvino {
+    /// Directory name, inside the platform cache directory, for compiled
+    /// model blobs.
+    pub const CACHE_DIR: &str = "openvino_cache";
+
+    /// Size cap for the compiled-model cache, in bytes (8 GiB).
+    ///
+    /// Each compiled shape of a model leaves a blob of one to two and a half
+    /// times the model's size, so the cache would otherwise grow with every
+    /// model, shape and runtime version it has ever seen.
+    pub const CACHE_SIZE_CAP_BYTES: u64 = 8 * 1024 * 1024 * 1024;
+
+    /// Oldest `OpenVINO` runtime birda accepts, as `year.minor` for messages.
+    pub const MIN_RUNTIME_VERSION: &str = "2025.1";
+
+    /// Largest per-value difference from the ONNX Runtime CPU reference that
+    /// the startup verification accepts.
+    ///
+    /// Measured agreement on Intel GPUs at f32 is below 2e-4; the measured
+    /// failures at f16 were 4.3e-2 and above.
+    pub const VERIFY_TOLERANCE: f32 = 1e-2;
+
+    /// Segments the ONNX Runtime reference is computed for in one call.
+    pub const REFERENCE_CHUNK: usize = 16;
+
+    /// Name of the native backend in `ExecutionProviderStatus::actual`.
+    ///
+    /// The default batch size is chosen by matching this string, so the
+    /// producer and the matcher share it.
+    pub const PROVIDER_ACTUAL: &str = "OpenVINO";
+
+    /// What the status reports as the requested device.
+    pub const PROVIDER_REQUESTED: &str = "openvino";
+
+    /// Precision every compiled model is forced to and checked against.
+    pub const PRECISION: &str = "f32";
+
+    /// Marker in `DEVICE_ARCHITECTURE` that identifies an Intel device.
+    pub const INTEL_VENDOR_MARKER: &str = "vendor=0x8086";
+
+    /// Environment variable holding an `OpenVINO` install root.
+    pub const INSTALL_DIR_ENV: &str = "INTEL_OPENVINO_DIR";
+
+    /// Amplitude of the deterministic probe segment (peak of the tone mix).
+    pub const PROBE_AMPLITUDE: f32 = 0.05;
+
+    /// Amplitude of the deterministic noise added to the probe segment.
+    pub const PROBE_NOISE_AMPLITUDE: f32 = 0.01;
+
+    /// Linux file name of the C API library.
+    pub const LINUX_LIBRARY_FILE: &str = "libopenvino_c.so";
+
+    /// Windows file name of the C API library.
+    pub const WINDOWS_LIBRARY_FILE: &str = "openvino_c.dll";
+
+    /// Install-root subdirectory holding the libraries on Linux.
+    pub const LINUX_INSTALL_LIB_DIR: &str = "runtime/lib/intel64";
+
+    /// Install-root subdirectory holding the libraries on Windows.
+    pub const WINDOWS_INSTALL_LIB_DIR: &str = "runtime/bin/intel64/Release";
+
+    /// Prefix of the install roots Intel's archives and installers create.
+    pub const INSTALL_ROOT_PREFIX: &str = "openvino";
+
+    /// Directories searched for install roots on Linux.
+    pub const LINUX_INSTALL_PARENTS: &[&str] = &["/opt/intel"];
+
+    /// Directories searched for install roots on Windows.
+    pub const WINDOWS_INSTALL_PARENTS: &[&str] =
+        &["C:\\Program Files\\Intel", "C:\\Program Files (x86)\\Intel"];
+
+    /// System library directories searched on Linux.
+    pub const LINUX_SYSTEM_LIB_DIRS: &[&str] = &[
+        "/usr/lib",
+        "/usr/lib/x86_64-linux-gnu",
+        "/usr/lib/aarch64-linux-gnu",
+        "/usr/lib64",
+        "/usr/local/lib",
+        "/lib",
+        "/lib/x86_64-linux-gnu",
+    ];
+
+    /// Directory listing the DRM render nodes on Linux.
+    pub const DRM_DEVICE_DIR: &str = "/dev/dri";
+
+    /// File-name prefix of a render node in [`DRM_DEVICE_DIR`].
+    pub const RENDER_NODE_PREFIX: &str = "renderD";
+
+    /// Directory holding per-node sysfs data on Linux.
+    pub const DRM_SYSFS_DIR: &str = "/sys/class/drm";
+
+    /// PCI vendor id of Intel, as sysfs prints it.
+    pub const INTEL_PCI_VENDOR_ID: u32 = 0x8086;
+
+    /// Model variant that failed the startup check on every Intel GPU tested
+    /// (`BirdNET` v3.0 fp16).
+    pub const UNVERIFIED_VARIANT: &str = "fp16";
+
+    /// Model variant to install instead of [`UNVERIFIED_VARIANT`].
+    pub const RECOMMENDED_VARIANT: &str = "fp32";
 }

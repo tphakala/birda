@@ -1,5 +1,6 @@
 //! Configuration type definitions.
 
+use super::openvino::OpenVinoDeviceSpec;
 use crate::constants::{DEFAULT_MIN_CONFIDENCE, DEFAULT_OVERLAP};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -264,6 +265,19 @@ pub enum InferenceDevice {
 pub struct InferenceConfig {
     /// Device to use for inference.
     pub device: InferenceDevice,
+
+    /// Which Intel GPU the native `OpenVINO` backend runs on.
+    ///
+    /// Read when `device` is `openvino` and by `birda openvino devices`. Omitted
+    /// from the file when it is the default, so configs written before this key existed are not changed
+    /// by a later `config set`.
+    #[serde(skip_serializing_if = "OpenVinoDeviceSpec::is_auto")]
+    pub openvino_device: OpenVinoDeviceSpec,
+
+    /// Location of the `OpenVINO` runtime: the `openvino_c` library file, or
+    /// the directory holding it or an install root. Searched for when unset.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub openvino_path: Option<PathBuf>,
 }
 
 /// CLI output mode for structured output.
@@ -429,6 +443,53 @@ impl std::str::FromStr for ModelType {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_default_inference_config_serializes_without_the_openvino_keys() {
+        // `config set` rewrites the whole file, so a default must not appear.
+        let config = Config::default();
+        let text = toml::to_string(&config).unwrap();
+        let section = text
+            .split("[inference]")
+            .nth(1)
+            .and_then(|rest| rest.split("\n[").next())
+            .unwrap();
+
+        assert_eq!(section, "\ndevice = \"auto\"\n");
+    }
+
+    #[test]
+    fn test_openvino_inference_keys_round_trip_and_a_bad_device_fails_to_load() {
+        let mut config = Config::default();
+        config.inference.device = InferenceDevice::OpenVino;
+        config.inference.openvino_device = OpenVinoDeviceSpec::Dgpu(Some(1));
+        config.inference.openvino_path = Some(PathBuf::from("/opt/intel/openvino_2026"));
+
+        let text = toml::to_string(&config).unwrap();
+        assert!(text.contains("openvino_device = \"dgpu.1\"\n"), "{text}");
+        let back: Config = toml::from_str(&text).unwrap();
+        assert_eq!(
+            back.inference.openvino_device,
+            OpenVinoDeviceSpec::Dgpu(Some(1))
+        );
+        assert_eq!(
+            back.inference.openvino_path,
+            Some(PathBuf::from("/opt/intel/openvino_2026"))
+        );
+
+        // A file written before the keys existed still loads, with the defaults.
+        let old: Config = toml::from_str("[inference]\ndevice = \"cpu\"\n").unwrap();
+        assert_eq!(old.inference.openvino_device, OpenVinoDeviceSpec::Auto);
+        assert_eq!(old.inference.openvino_path, None);
+
+        let err =
+            toml::from_str::<Config>("[inference]\nopenvino_device = \"bogus\"\n").unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("'bogus' is not an OpenVINO device"),
+            "{err}"
+        );
+    }
 
     #[test]
     fn test_unmatched_policy_defaults_to_keep() {

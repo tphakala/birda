@@ -10,5 +10,5 @@ pub mod species;
 // spellings of one rule are only claimed to agree.
 pub(crate) mod validators;
 
-pub use args::{AnalyzeArgs, Cli, Command, ConfigAction, ModelsAction, SortOrder};
+pub use args::{AnalyzeArgs, Cli, Command, ConfigAction, ModelsAction, OpenvinoAction, SortOrder};
 pub use clip::ClipArgs;

@@ -10,7 +10,7 @@ A fast, cross-platform CLI tool for bird species detection using [BirdNET](https
 ## Features
 
 - **Multiple AI Models**: Support for BirdNET v2.4, BirdNET v3.0, Google Perch v2, BSG Finnish Birds, and BattyBirdNET bat classifiers
-- **GPU Acceleration**: Optional CUDA support for faster inference on NVIDIA GPUs
+- **GPU Acceleration**: Optional CUDA support for faster inference on NVIDIA GPUs, and OpenVINO for Intel GPUs (Iris Xe, Arc)
 - **Species Filtering**: Dynamic range filtering by location/date or static species list files
 - **Multiple Output Formats**: CSV, Parquet, JSON, Raven selection tables, Audacity labels, Kaleidoscope CSV
 - **JSON Output Mode**: Structured JSON/NDJSON output for GUI integration and automation
@@ -53,6 +53,18 @@ Download the CUDA package from [Releases](https://github.com/tphakala/birda/rele
 Requirements:
 - NVIDIA GPU with CUDA support
 - Up-to-date NVIDIA GPU drivers
+
+### Intel GPU Support (OpenVINO)
+
+On Linux (and, untested, Windows) birda can run models on an Intel integrated or discrete GPU through the OpenVINO runtime. OpenVINO is not bundled: install the runtime and the Intel GPU driver yourself, then:
+
+```bash
+birda openvino devices            # list the Intel GPUs birda can use
+birda --openvino recording.wav    # run on the best one
+birda --openvino --openvino-device pci:0000:03:00.0 recording.wav
+```
+
+OpenVINO in birda is for Intel GPUs only; CPU inference uses ONNX Runtime. `--openvino` never falls back to another engine or device. See [docs/openvino.md](docs/openvino.md) for installation, device selection and the startup check against ONNX Runtime.
 
 ### TensorRT Support (Optional)
 
@@ -110,7 +122,7 @@ Returns structured JSON output:
 **Important Notes:**
 
 - **Compile-time vs Runtime**: The `providers` command shows what was available when the binary was built. Actual runtime availability may differ based on drivers and hardware.
-- **Provider Selection**: Use `--gpu` for CUDA, `--cpu` for CPU-only, or omit both for auto-selection (GPU if available with CPU fallback).
+- **Provider Selection**: Use `--gpu` for CUDA, `--cpu` for CPU-only, or omit both for auto-selection (GPU if available with CPU fallback). OpenVINO on Intel GPUs is only used when you ask for it with `--openvino`.
 - **Verification**: During analysis, birda logs which provider was requested and whether it's available. However, due to ONNX Runtime limitations, it cannot detect if a runtime fallback from GPU to CPU occurred.
 - **Best Practice**: Check the log output during analysis to verify device selection. If using GPU mode, the logs will indicate whether CUDA is available at compile-time.
 
@@ -234,6 +246,7 @@ Commands:
   config     Manage configuration
   models     Manage models (install, list, add, check, info)
   providers  Show available execution providers (CPU, CUDA, etc.)
+  openvino   Inspect the OpenVINO runtime and its Intel GPUs
   species    Generate species list from range filter
   help       Print help information
 
@@ -251,6 +264,8 @@ Options:
       --bat <REGION>            Enable bat detection with a regional classifier
       --gpu                     Enable CUDA GPU acceleration
       --cpu                     Force CPU inference
+      --openvino                Use OpenVINO on an Intel GPU
+      --openvino-device <DEVICE>  Intel GPU for --openvino (see birda openvino devices)
       --force                   Reprocess files even if output exists
       --fail-fast               Stop on first error
   -q, --quiet                   Suppress progress output
@@ -360,7 +375,9 @@ batch_size = 1
 include = []
 
 [inference]
-device = "auto"  # auto, gpu, or cpu
+device = "auto"  # auto, gpu, cpu, cuda, tensorrt, openvino, ...
+# openvino_device = "auto"  # used with device = "openvino" and by `birda openvino devices`: auto, igpu, dgpu, gpu.N, pci:..., uuid:...
+# openvino_path = "/opt/intel/openvino_2026"  # where to find the OpenVINO runtime
 
 [output]
 default_format = "human"  # human, json, or ndjson

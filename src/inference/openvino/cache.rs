@@ -68,6 +68,9 @@ pub fn select_prune(entries: &[CacheEntry], cap: u64) -> Vec<PathBuf> {
 }
 
 /// Every regular file under `root`.
+///
+/// Symlinks are skipped, not followed: `DirEntry::metadata` describes the link
+/// itself, which is neither a directory nor a regular file.
 fn collect(root: &Path) -> Vec<CacheEntry> {
     let mut entries = Vec::new();
     let mut pending = vec![root.to_path_buf()];
@@ -172,6 +175,24 @@ mod tests {
         assert!(!old.exists());
         assert!(new.exists());
         assert_eq!(prune(dir.path(), 1000), 0);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn prune_never_follows_a_symlink_out_of_the_cache() {
+        let cache = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        let foreign = outside.path().join("foreign.bin");
+        std::fs::write(&foreign, vec![0_u8; 600]).unwrap();
+        std::os::unix::fs::symlink(outside.path(), cache.path().join("linked_dir")).unwrap();
+        std::os::unix::fs::symlink(&foreign, cache.path().join("linked_file")).unwrap();
+        let own = cache.path().join("own.blob");
+        std::fs::write(&own, vec![0_u8; 600]).unwrap();
+
+        // A cap of zero deletes every file the walk collects.
+        assert_eq!(prune(cache.path(), 0), 1);
+        assert!(!own.exists());
+        assert!(foreign.exists());
     }
 
     #[test]

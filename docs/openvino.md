@@ -65,7 +65,7 @@ There is no value for the CPU, and the NPU is not supported yet (`npu` is reserv
 
 On a computer with more than one GPU, pin the one you want with `pci:` or `uuid:`. The numbered forms depend on the order in which OpenVINO lists devices, which changes when a GPU is added or removed, or when an integrated GPU is disabled in firmware. `pci:` and `uuid:` do not.
 
-`birda openvino devices` shows the runtime birda found, what your configured device resolves to, and for every device its class, PCI address, UUID, memory, and the exact values that select it. `birda openvino devices --openvino-device dgpu` shows what a particular value resolves to. Add `--output-mode json` for a machine-readable form.
+`birda openvino devices` shows the runtime birda found, what your configured device resolves to, and every device OpenVINO lists. Each GPU comes with its class, PCI address, UUID and memory, each device birda will not use with the reason, and each usable GPU with the exact values that select it. `birda openvino devices --openvino-device dgpu` shows what a particular value resolves to. Add `--output-mode json` for a machine-readable form.
 
 ## What birda guarantees
 

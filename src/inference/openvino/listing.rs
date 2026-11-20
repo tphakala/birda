@@ -125,9 +125,12 @@ pub fn render_human(listing: &DeviceListing) -> String {
         );
         if let Some(reason) = &listed.refusal {
             let _ = writeln!(out, "    not selectable: {reason}");
-            continue;
         }
-        let _ = writeln!(out, "    class: {}", device.class.as_str());
+        // Only GPUs have their properties read, so a class on any other device
+        // would always be "unknown".
+        if matches!(device.kind, DeviceKind::Gpu(_)) {
+            let _ = writeln!(out, "    class: {}", device.class.as_str());
+        }
         if let Some(pci) = device.pci {
             let _ = writeln!(out, "    pci: {pci}");
         }
@@ -143,11 +146,13 @@ pub fn render_human(listing: &DeviceListing) -> String {
         if !device.capabilities.is_empty() {
             let _ = writeln!(out, "    capabilities: {}", device.capabilities.join(" "));
         }
-        let _ = writeln!(
-            out,
-            "    select with --openvino-device: {}",
-            listed.selectors.join(" | ")
-        );
+        if listed.refusal.is_none() {
+            let _ = writeln!(
+                out,
+                "    select with --openvino-device: {}",
+                listed.selectors.join(" | ")
+            );
+        }
     }
     out
 }
@@ -225,6 +230,43 @@ mod tests {
             Some(
                 "Configured device: dgpu -> not available: OpenVINO device 'dgpu' is not available"
             )
+        );
+    }
+
+    #[test]
+    fn a_refused_gpu_still_shows_how_to_identify_it() {
+        let nvidia = OvDevice {
+            kind: DeviceKind::Gpu(1),
+            full_name: Some("NVIDIA GeForce RTX 3060".to_string()),
+            class: GpuClass::Discrete,
+            uuid: Some("0123456789abcdef0123456789abcdef".to_string()),
+            pci: Some(PciAddress {
+                domain: 0,
+                bus: 1,
+                device: 0,
+                function: 0,
+            }),
+            memory_bytes: Some(12_884_901_888),
+            ..OvDevice::named("GPU.1")
+        };
+        let mut listing = iris_xe_listing();
+        listing.devices = vec![ListedDevice {
+            refusal: refusal(&nvidia),
+            selectors: selectors_for(&nvidia, std::slice::from_ref(&nvidia)),
+            device: nvidia,
+        }];
+        let text = render_human(&listing);
+        let device_lines: Vec<&str> = text.lines().skip(3).collect();
+        assert_eq!(
+            device_lines,
+            [
+                "GPU.1  NVIDIA GeForce RTX 3060",
+                "    not selectable: not an Intel GPU",
+                "    class: discrete",
+                "    pci: 0000:01:00.0",
+                "    uuid: 0123456789abcdef0123456789abcdef",
+                "    memory: 12.0 GiB",
+            ]
         );
     }
 

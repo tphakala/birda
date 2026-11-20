@@ -569,6 +569,10 @@ pub mod onnx_runtime {
     /// Environment variable used to override the ONNX Runtime dynamic library path.
     pub const DYLIB_PATH_ENV: &str = "ORT_DYLIB_PATH";
 
+    /// Seconds to wait for the ONNX Runtime library to load before reporting
+    /// that it could not be loaded. A healthy load takes well under a second.
+    pub const LOAD_TIME_LIMIT_SECS: u64 = 30;
+
     #[cfg(target_os = "linux")]
     /// Name of the ONNX Runtime shared library on Linux.
     pub const LIBRARY_FILE_NAME: &str = "libonnxruntime.so";

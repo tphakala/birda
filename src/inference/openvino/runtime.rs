@@ -813,6 +813,10 @@ mod tests {
         Located::File(PathBuf::from(path))
     }
 
+    // Unix layout only: the fixtures use drive-less absolute paths, and on
+    // Windows `std::path::absolute` adds the current drive to the explicit
+    // path before the lookup, so the keys would not match.
+    #[cfg(unix)]
     #[test]
     fn an_explicit_file_or_directory_is_used_and_nothing_else_is_searched() {
         let fs = fake_fs(&[
@@ -894,6 +898,10 @@ mod tests {
         );
     }
 
+    // Unix layout only: the fixtures use drive-less absolute paths, and on
+    // Windows `std::path::absolute` adds the current drive to the explicit
+    // path before the lookup, so the keys would not match.
+    #[cfg(unix)]
     #[test]
     fn a_directory_without_the_library_names_what_is_missing() {
         let fs = fake_fs(&[("/opt/empty", &["README"])]);

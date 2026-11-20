@@ -562,7 +562,22 @@ impl Runtime {
             })?;
 
         let library = open_located(located, os, &mut open_library)?;
-        create_runtime(library)
+        // A library that passed the version check can still lack a function
+        // the core or the device listing calls, which panics in the binding
+        // like a missing version function does.
+        let shown = library.clone();
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| create_runtime(library)))
+            .unwrap_or_else(|_| {
+                Err(Error::OpenVinoRuntimeLoadFailed {
+                    reason: format!(
+                        "{} lacks a function of the OpenVINO C API that birda calls",
+                        shown.as_deref().map_or_else(
+                            || os.library_file().to_string(),
+                            |path| path.display().to_string()
+                        )
+                    ),
+                })
+            })
     }
 }
 

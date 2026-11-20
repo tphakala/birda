@@ -76,7 +76,7 @@ On a computer with more than one GPU, pin the one you want with `pci:` or `uuid:
 
 ## The compiled-model cache
 
-Compiling a model for a GPU takes a few seconds, and more for large models. birda keeps the compiled result in its cache directory (`~/.cache/birda/openvino_cache/<runtime version>/` on Linux, `~/Library/Caches` on macOS, `%LOCALAPPDATA%\birda\cache\openvino_cache\` on Windows), so later runs start in a fraction of a second. Each compiled shape of a model takes roughly one to two and a half times the model's size on disk. When the cache grows past 8 GiB, birda deletes the oldest files at the next start. To clear it, delete the directory.
+Compiling a model for a GPU takes a few seconds, and more for large models. birda keeps the compiled result in its cache directory (`~/.cache/birda/openvino_cache/<runtime version>/` on Linux, `~/Library/Caches` on macOS, `%LOCALAPPDATA%\birda\cache\openvino_cache\` on Windows), so later runs start in a fraction of a second. Each compiled shape of a model takes roughly one to two and a half times the model's size on disk. When the cache grows past 8 GiB, birda deletes the files used longest ago (by access or modification time) at the next start. To clear it, delete the directory.
 
 ## Errors
 

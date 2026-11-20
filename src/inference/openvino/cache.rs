@@ -13,8 +13,10 @@ pub struct CacheEntry {
     pub path: PathBuf,
     /// Size in bytes.
     pub size: u64,
-    /// Last modification time.
-    pub modified: SystemTime,
+    /// When the file was last used: the later of its access and modification
+    /// times. Loading a cached blob reads it without writing it, so the
+    /// modification time alone would rank a blob every run loads as old.
+    pub last_used: SystemTime,
 }
 
 /// Name of the per-runtime subdirectory, derived from the build number.
@@ -41,7 +43,8 @@ pub fn runtime_subdir(build_number: &str) -> String {
     }
 }
 
-/// Delete files, oldest first, until the total size is at most `cap`.
+/// Delete files, least recently used first, until the total size is at most
+/// `cap`.
 ///
 /// `remove` deletes one file and reports whether it is gone. A file it could
 /// not delete still counts towards the total, so the next older one is tried.
@@ -54,8 +57,8 @@ fn prune_entries(
     let mut total: u64 = entries.iter().map(|entry| entry.size).sum();
     let mut by_age: Vec<&CacheEntry> = entries.iter().collect();
     by_age.sort_by(|a, b| {
-        a.modified
-            .cmp(&b.modified)
+        a.last_used
+            .cmp(&b.last_used)
             .then_with(|| a.path.cmp(&b.path))
     });
     let mut removed = Vec::new();
@@ -92,7 +95,11 @@ fn collect(root: &Path) -> Vec<CacheEntry> {
                 entries.push(CacheEntry {
                     path: item.path(),
                     size: metadata.len(),
-                    modified: metadata.modified().unwrap_or(SystemTime::UNIX_EPOCH),
+                    last_used: metadata
+                        .accessed()
+                        .ok()
+                        .max(metadata.modified().ok())
+                        .unwrap_or(SystemTime::UNIX_EPOCH),
                 });
             }
         }
@@ -100,7 +107,8 @@ fn collect(root: &Path) -> Vec<CacheEntry> {
     entries
 }
 
-/// Delete the oldest files under `root` until the cache is within `cap`.
+/// Delete the least recently used files under `root` until the cache is
+/// within `cap`.
 ///
 /// Returns how many files were removed. Failures to delete are skipped: the
 /// cache is an optimisation and a file that stays only costs disk space.
@@ -120,7 +128,7 @@ mod tests {
         CacheEntry {
             path: PathBuf::from(name),
             size,
-            modified: SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000 - age_secs),
+            last_used: SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000 - age_secs),
         }
     }
 
@@ -189,17 +197,44 @@ mod tests {
         std::fs::write(&old, vec![0_u8; 600]).unwrap();
         std::fs::write(&new, vec![0_u8; 600]).unwrap();
         let past = SystemTime::now() - Duration::from_secs(3600);
-        std::fs::File::options()
-            .write(true)
-            .open(&old)
-            .unwrap()
-            .set_modified(past)
-            .unwrap();
+        set_times(&old, past, past);
 
         assert_eq!(prune(dir.path(), 1000), 1);
         assert!(!old.exists());
         assert!(new.exists());
         assert_eq!(prune(dir.path(), 1000), 0);
+    }
+
+    fn set_times(path: &Path, accessed: SystemTime, modified: SystemTime) {
+        std::fs::File::options()
+            .write(true)
+            .open(path)
+            .unwrap()
+            .set_times(
+                std::fs::FileTimes::new()
+                    .set_accessed(accessed)
+                    .set_modified(modified),
+            )
+            .unwrap();
+    }
+
+    #[test]
+    fn a_blob_read_recently_outlives_a_newer_one_left_unread() {
+        let dir = tempfile::tempdir().unwrap();
+        let read = dir.path().join("read.blob");
+        let unread = dir.path().join("unread.blob");
+        std::fs::write(&read, vec![0_u8; 600]).unwrap();
+        std::fs::write(&unread, vec![0_u8; 600]).unwrap();
+        let now = SystemTime::now();
+        let hours_ago = |hours: u64| now - Duration::from_secs(hours * 3600);
+        // Written three hours ago but read just now, against one written two
+        // hours ago and not read since.
+        set_times(&read, now, hours_ago(3));
+        set_times(&unread, hours_ago(2), hours_ago(2));
+
+        assert_eq!(prune(dir.path(), 1000), 1);
+        assert!(read.exists());
+        assert!(!unread.exists());
     }
 
     #[cfg(unix)]

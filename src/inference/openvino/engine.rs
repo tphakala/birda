@@ -26,7 +26,6 @@ use openvino::{
 };
 use std::borrow::Cow;
 use std::collections::BTreeMap;
-use std::path::PathBuf;
 use std::sync::{Mutex, MutexGuard};
 use std::time::Instant;
 use tracing::{debug, info, warn};
@@ -90,8 +89,6 @@ pub struct DeviceReport {
     pub device: OvDevice,
     /// Runtime build number.
     pub runtime_version: String,
-    /// The library file that was loaded, when it was loaded by path.
-    pub library: Option<PathBuf>,
     /// Precision the model is compiled at.
     pub precision: &'static str,
 }
@@ -162,9 +159,7 @@ pub(super) fn resolve_error(error: ResolveError, runtime: &Runtime) -> Error {
     match error {
         ResolveError::Unsupported { reason, .. } => Error::OpenVinoUnsupported { reason },
         ResolveError::NotFound { requested, found } => {
-            let diagnosis = runtime
-                .selectable()
-                .is_empty()
+            let diagnosis = (!runtime.devices.iter().any(OvDevice::is_selectable))
                 .then(|| diagnose(&gather_render_nodes()));
             if let Some(Diagnosis::AccessDenied { node }) = diagnosis {
                 return Error::OpenVinoGpuAccessDenied { node };
@@ -240,7 +235,6 @@ impl OpenVinoEngine {
             requested: settings.device.to_string(),
             device,
             runtime_version: runtime.version.clone(),
-            library: runtime.library.clone(),
             precision: ov::PRECISION,
         };
         info!(
@@ -611,9 +605,9 @@ impl OpenVinoEngine {
                 worst = worst.max(max_abs_diff(a, r).map_err(|_| mismatch("embedding"))?);
             }
         }
-        // `!(worst <= tolerance)` also fails on NaN, which `worst > tolerance`
-        // would let through; `max_abs_diff` already maps NaN to infinity.
-        if worst > ov::VERIFY_TOLERANCE || !worst.is_finite() {
+        // A NaN or infinite value makes `max_abs_diff` return infinity, which
+        // exceeds the tolerance.
+        if worst > ov::VERIFY_TOLERANCE {
             return Err(Error::OpenVinoVerificationFailed {
                 device: self.report.device.describe(),
                 shape: shape.batch,

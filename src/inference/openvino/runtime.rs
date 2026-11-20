@@ -9,8 +9,8 @@
 //! are pure functions, tested without a runtime.
 
 use super::device::{
-    OvDevice, classify, is_intel_architecture, parse_capabilities, parse_gpu_class,
-    parse_memory_bytes, parse_pci_info,
+    OvDevice, is_intel_architecture, parse_capabilities, parse_gpu_class, parse_memory_bytes,
+    parse_pci_info,
 };
 use crate::constants::openvino as ov;
 use crate::error::{Error, Result};
@@ -312,6 +312,16 @@ impl LoadFailure {
     }
 }
 
+/// The error for a platform without an `OpenVINO` GPU backend.
+#[must_use]
+pub fn unsupported_platform() -> Error {
+    Error::OpenVinoUnsupported {
+        reason: "this platform is not supported; the OpenVINO backend runs on Linux and \
+                 Windows, where OpenVINO has a GPU plugin"
+            .to_string(),
+    }
+}
+
 /// A DRM render node and what is known about it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RenderNode {
@@ -445,11 +455,7 @@ impl Runtime {
     /// unsupported-platform runtime.
     pub fn load(explicit: Option<&Path>) -> Result<Self> {
         let Some(os) = Os::current() else {
-            return Err(Error::OpenVinoUnsupported {
-                reason: "this platform is not supported; the OpenVINO backend runs on Linux \
-                         and Windows, where OpenVINO has a GPU plugin"
-                    .to_string(),
-            });
+            return Err(unsupported_platform());
         };
         let env = SearchEnv::from_process(os);
         let located =
@@ -477,15 +483,6 @@ impl Runtime {
             }
         };
         load_core(&load_target, library)
-    }
-
-    /// The devices birda may run on, in listing order.
-    #[must_use]
-    pub fn selectable(&self) -> Vec<&OvDevice> {
-        self.devices
-            .iter()
-            .filter(|device| device.is_selectable())
-            .collect()
     }
 }
 
@@ -556,7 +553,6 @@ fn enumerate(core: &Core) -> Result<Vec<OvDevice>> {
                 .get_property(&id, &PropertyKey::DeviceCapabilities)
                 .map(|value| parse_capabilities(&value))
                 .unwrap_or_default();
-            device.kind = classify(name);
             device
         })
         .collect())

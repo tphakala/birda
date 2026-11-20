@@ -693,11 +693,7 @@ fn resolve_openvino_settings(
     let settings = openvino_settings(args.openvino_device.clone(), config);
     check_openvino_path(&settings)?;
     if inference::openvino::runtime::Os::current().is_none() {
-        return Err(Error::OpenVinoUnsupported {
-            reason: "this platform is not supported; the OpenVINO backend runs on Linux \
-                     and Windows, where OpenVINO has a GPU plugin"
-                .to_string(),
-        });
+        return Err(inference::openvino::runtime::unsupported_platform());
     }
     Ok(settings)
 }

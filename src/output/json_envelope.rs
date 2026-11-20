@@ -1236,7 +1236,6 @@ mod tests {
                 ..OvDevice::named("GPU")
             },
             runtime_version: "2025.4.1-19314".to_string(),
-            library: None,
             precision: "f32",
         }
     }

@@ -5,6 +5,7 @@ use crate::error::{Error, Result};
 use ort::init_from;
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
 use std::time::Duration;
 
@@ -121,9 +122,11 @@ fn initialize_runtime(path: &Path) -> Result<()> {
     // same lock (`load_dylib_from_path` in ort's `src/lib.rs`), so a library
     // that fails to load blocks forever instead of returning the error. Load on
     // a separate thread and give up after a time limit; the blocked thread ends
-    // with the process.
+    // with the process. While it is blocked, later calls fail at once instead
+    // of starting another load that would block on the same lock.
     let owned_path = path.to_path_buf();
     let outcome = run_with_time_limit(
+        &LOAD_IN_PROGRESS,
         move || {
             init_from(&owned_path)
                 .map(|builder| {
@@ -143,16 +146,39 @@ fn initialize_runtime(path: &Path) -> Result<()> {
     }
 }
 
+/// Set while a runtime load started by `initialize_runtime` is still running,
+/// including one whose caller already gave up waiting.
+static LOAD_IN_PROGRESS: AtomicBool = AtomicBool::new(false);
+
+/// Clears the in-progress flag when the work finishes or panics.
+struct InProgressGuard(&'static AtomicBool);
+
+impl Drop for InProgressGuard {
+    fn drop(&mut self) {
+        self.0.store(false, Ordering::SeqCst);
+    }
+}
+
 /// Run `work` on a new thread and return its result, or `None` when it has not
-/// finished within `limit`.
+/// finished within `limit`. Returns `None` at once, without running `work`,
+/// while earlier work started with the same `in_progress` flag is still running.
 fn run_with_time_limit<T: Send + 'static>(
+    in_progress: &'static AtomicBool,
     work: impl FnOnce() -> T + Send + 'static,
     limit: Duration,
 ) -> Option<T> {
+    if in_progress.swap(true, Ordering::SeqCst) {
+        return None;
+    }
+    let guard = InProgressGuard(in_progress);
     let (sender, receiver) = mpsc::channel();
     std::thread::spawn(move || {
+        let result = work();
+        // Clear the flag before sending, so a caller that receives the result
+        // can start new work straight away.
+        drop(guard);
         // The receiver is gone when the caller already gave up; nothing to do.
-        let _ = sender.send(work());
+        let _ = sender.send(result);
     });
     receiver.recv_timeout(limit).ok()
 }
@@ -245,26 +271,79 @@ mod tests {
         assert_eq!(resolve_without_override(None, || None, || None), None);
     }
 
+    /// Wait for `flag` to clear, failing the test if it stays set.
+    fn wait_until_clear(flag: &AtomicBool) {
+        let deadline = std::time::Instant::now() + Duration::from_secs(10);
+        while flag.load(Ordering::SeqCst) {
+            assert!(
+                std::time::Instant::now() < deadline,
+                "the in-progress flag was never cleared"
+            );
+            std::thread::sleep(Duration::from_millis(10));
+        }
+    }
+
     #[test]
     fn test_run_with_time_limit_returns_the_result_of_work_that_finishes() {
+        static IN_PROGRESS: AtomicBool = AtomicBool::new(false);
         assert_eq!(
-            run_with_time_limit(|| 42, Duration::from_secs(10)),
+            run_with_time_limit(&IN_PROGRESS, || 42, Duration::from_secs(10)),
             Some(42)
+        );
+        assert!(!IN_PROGRESS.load(Ordering::SeqCst));
+        assert_eq!(
+            run_with_time_limit(&IN_PROGRESS, || 43, Duration::from_secs(10)),
+            Some(43)
         );
     }
 
     #[test]
     fn test_run_with_time_limit_gives_up_on_work_that_does_not_finish() {
-        let (_keep_blocked, blocked) = mpsc::channel::<()>();
+        static IN_PROGRESS: AtomicBool = AtomicBool::new(false);
+        let (release, blocked) = mpsc::channel::<()>();
         let outcome = run_with_time_limit(
+            &IN_PROGRESS,
             move || {
-                // Blocks until the sender is dropped at the end of the test.
+                // Blocks until `release` is dropped below.
                 let _ = blocked.recv();
                 1
             },
             Duration::from_millis(50),
         );
         assert_eq!(outcome, None);
+
+        // While the first work is still blocked, new work is not started. It
+        // would return 2 well within the limit if it ran.
+        assert_eq!(
+            run_with_time_limit(&IN_PROGRESS, || 2, Duration::from_secs(10)),
+            None
+        );
+
+        // Once the first work finishes, new work runs again.
+        drop(release);
+        wait_until_clear(&IN_PROGRESS);
+        assert_eq!(
+            run_with_time_limit(&IN_PROGRESS, || 3, Duration::from_secs(10)),
+            Some(3)
+        );
+    }
+
+    #[test]
+    fn test_run_with_time_limit_clears_the_flag_when_work_panics() {
+        static IN_PROGRESS: AtomicBool = AtomicBool::new(false);
+        assert_eq!(
+            run_with_time_limit(
+                &IN_PROGRESS,
+                || -> i32 { panic!("work panicked on purpose") },
+                Duration::from_secs(10),
+            ),
+            None
+        );
+        wait_until_clear(&IN_PROGRESS);
+        assert_eq!(
+            run_with_time_limit(&IN_PROGRESS, || 4, Duration::from_secs(10)),
+            Some(4)
+        );
     }
 
     #[test]

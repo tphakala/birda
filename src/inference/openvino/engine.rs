@@ -12,7 +12,7 @@
 use super::cache;
 use super::device::{OvDevice, ResolveError, resolve};
 use super::parity::{max_abs_diff, probe_segment};
-use super::runtime::{Diagnosis, Runtime, diagnose, gather_render_nodes};
+use super::runtime::{Diagnosis, Os, Runtime, gather_render_nodes, render_diagnosis};
 use crate::config::{ModelConfig as BirdaModelConfig, OpenVinoSettings, openvino_cache_dir};
 use crate::constants::openvino as ov;
 use crate::error::{Error, Result};
@@ -162,8 +162,11 @@ pub(super) fn resolve_error(error: ResolveError, runtime: &Runtime) -> Error {
     match error {
         ResolveError::Unsupported { reason, .. } => Error::OpenVinoUnsupported { reason },
         ResolveError::NotFound { requested, found } => {
-            let diagnosis = (!runtime.devices.iter().any(OvDevice::is_selectable))
-                .then(|| diagnose(&gather_render_nodes()));
+            let diagnosis = render_diagnosis(
+                Os::current(),
+                runtime.devices.iter().any(OvDevice::is_selectable),
+                gather_render_nodes,
+            );
             if let Some(Diagnosis::AccessDenied { node }) = diagnosis {
                 return Error::OpenVinoGpuAccessDenied { node };
             }

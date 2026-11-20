@@ -378,6 +378,20 @@ pub fn diagnose(nodes: &[RenderNode]) -> Diagnosis {
     }
 }
 
+/// The diagnosis to attach to a "device not available" error, if any.
+///
+/// Only Linux has render nodes to read, and only a host where `OpenVINO` lists
+/// no Intel GPU at all needs one. `gather` is called only then, because
+/// gathering opens each node.
+#[must_use]
+pub fn render_diagnosis(
+    os: Option<Os>,
+    any_selectable: bool,
+    gather: impl FnOnce() -> Vec<RenderNode>,
+) -> Option<Diagnosis> {
+    (os == Some(Os::Linux) && !any_selectable).then(|| diagnose(&gather()))
+}
+
 impl Diagnosis {
     /// Text appended to a device-unavailable error, starting with a newline.
     #[must_use]
@@ -982,6 +996,26 @@ mod tests {
         assert_eq!(
             diagnose(&[node("/dev/dri/renderD128", None, false)]),
             Diagnosis::NoIntelGpu
+        );
+    }
+
+    #[test]
+    fn render_diagnosis_runs_only_on_linux_when_no_gpu_is_listed() {
+        let denied = || vec![node("/dev/dri/renderD128", Some(0x8086), false)];
+        let expected = Some(Diagnosis::AccessDenied {
+            node: "/dev/dri/renderD128".to_string(),
+        });
+
+        assert_eq!(render_diagnosis(Some(Os::Linux), false, denied), expected);
+        // Windows and unsupported platforms have no render nodes to read.
+        assert_eq!(render_diagnosis(Some(Os::Windows), false, denied), None);
+        assert_eq!(render_diagnosis(None, false, denied), None);
+        // A listed Intel GPU means the nodes are not consulted at all.
+        assert_eq!(
+            render_diagnosis(Some(Os::Linux), true, || {
+                panic!("the render nodes must not be gathered when a GPU is listed")
+            }),
+            None
         );
     }
 

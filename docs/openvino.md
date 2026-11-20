@@ -18,6 +18,7 @@ birda does not ship OpenVINO. Install it yourself:
 - **The Intel GPU driver and compute runtime.** On Linux that is the `intel-opencl-icd` package. GPUs older than Tiger Lake (Skylake to Ice Lake, which includes Kaby Lake Iris Plus) need `intel-opencl-icd-legacy1` instead, because the current packages dropped them.
 - **Access to the GPU.** On Linux your user needs access to the render node, which normally means membership of the `render` group: `sudo usermod -aG render $USER`, then log in again. Arc cards want Linux kernel 6.2 or newer.
 - **An ONNX Runtime**, as for every birda run. birda still loads it, because the startup check compares the GPU's output with ONNX Runtime on the CPU.
+- **The fp32 file of BirdNET v3.0.** The `fp16` file failed the startup check on both Intel GPUs tested, even though birda compiles it at 32-bit precision. `birda models install` picks the `fp32` file when the configured device is `openvino`, but `--openvino` runs whichever file is installed, and an install made for CUDA or TensorRT gets the `fp16` file. birda warns when it finds one. To switch, run `birda models install birdnet-v30 --variant fp32`, with `--region <region>` for a regional model.
 
 Platforms: Linux (tested) and Windows (**untested**, see below). macOS is not supported: `--openvino` reports an error there.
 

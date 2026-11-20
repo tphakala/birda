@@ -185,6 +185,10 @@ pub fn is_intel_architecture(value: &str) -> bool {
 /// with a `0x` prefix: `operator<<` for `PCIInfo` at
 /// `src/inference/include/openvino/runtime/properties.hpp:1262-1265` in the
 /// `OpenVINO` 2026.2.0 sources.
+///
+/// The all-zero address is treated as not reported: on x86 PCI it belongs to
+/// the host bridge, not to a GPU, so offering it as a pin could only match the
+/// wrong device.
 #[must_use]
 pub fn parse_pci_info(value: &str) -> Option<PciAddress> {
     let inner = value.trim().strip_prefix('{')?.strip_suffix('}')?;
@@ -198,10 +202,23 @@ pub fn parse_pci_info(value: &str) -> Option<PciAddress> {
     let device = u8::from_str_radix(field("device:")?.strip_prefix("0x")?, 16).ok()?;
     let function = field("function:")?.parse::<u8>().ok()?;
     words.next().is_none().then_some(())?;
+    if (domain, bus, device, function) == (0, 0, 0, 0) {
+        return None;
+    }
     // Reject what a PCI address cannot hold rather than pin a wrong device.
     format!("{domain:04x}:{bus:02x}:{device:02x}.{function:x}")
         .parse()
         .ok()
+}
+
+/// Parse `DEVICE_UUID` into the lowercase form `uuid:` pins compare against.
+///
+/// An all-zero value is treated as not reported: it identifies no particular
+/// GPU, so a pin made from it would match any other GPU that reports zeros.
+#[must_use]
+pub fn parse_uuid(value: &str) -> Option<String> {
+    let uuid = value.trim().to_ascii_lowercase();
+    (!uuid.is_empty() && !uuid.chars().all(|c| c == '0')).then_some(uuid)
 }
 
 /// Parse `GPU_DEVICE_TOTAL_MEM_SIZE`.
@@ -718,6 +735,16 @@ mod tests {
     }
 
     #[test]
+    fn a_uuid_is_lowercased_and_an_all_zero_one_is_none() {
+        assert_eq!(
+            parse_uuid("8680A6460C0000000002000000000000").as_deref(),
+            Some("8680a6460c0000000002000000000000")
+        );
+        assert_eq!(parse_uuid("00000000000000000000000000000000"), None);
+        assert_eq!(parse_uuid(""), None);
+    }
+
+    #[test]
     fn malformed_pci_info_is_none() {
         for value in [
             "",
@@ -728,6 +755,8 @@ mod tests {
             "{domain: 0 bus: 300 device: 0x2 function: 0}",
             "{domain: 0 bus: 0 device: 0x2 function: 0 extra}",
             "{bus: 0 domain: 0 device: 0x2 function: 0}",
+            // All zero: the host bridge's address, never a GPU's.
+            "{domain: 0 bus: 0 device: 0x0 function: 0}",
         ] {
             assert_eq!(parse_pci_info(value), None, "{value:?}");
         }

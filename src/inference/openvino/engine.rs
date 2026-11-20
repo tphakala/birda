@@ -406,9 +406,7 @@ impl OpenVinoEngine {
     /// Any compile or verification failure. The run must not continue.
     pub fn prepare(&self, batch_size: usize) -> Result<()> {
         let mut state = self.lock()?;
-        if state.large == 1 && batch_size > 1 && state.shapes.is_empty() {
-            state.large = batch_size;
-        }
+        state.large = large_shape(state.large, batch_size);
         let large = state.large;
         for shape in [1, large] {
             self.ensure_shape(&mut state, shape)?;
@@ -664,6 +662,18 @@ impl OpenVinoEngine {
     }
 }
 
+/// The large batch shape after a `prepare` call that asks for `requested`.
+///
+/// The first request for more than one row sets it, whatever single-row shape
+/// is already compiled; later requests leave it alone.
+const fn large_shape(current: usize, requested: usize) -> usize {
+    if current == 1 && requested > 1 {
+        requested
+    } else {
+        current
+    }
+}
+
 /// Decide whether a compiled shape reproduced the ONNX Runtime reference.
 ///
 /// `actual` holds one result per batch row and `reference` the ONNX Runtime
@@ -818,6 +828,16 @@ mod tests {
     }
 
     #[test]
+    fn the_first_multi_row_request_sets_the_large_shape() {
+        // A single-row warmup first does not keep the large shape at one.
+        assert_eq!(large_shape(1, 1), 1);
+        assert_eq!(large_shape(large_shape(1, 1), 8), 8);
+        // Once set, a later request does not move it.
+        assert_eq!(large_shape(8, 16), 8);
+        assert_eq!(large_shape(8, 1), 8);
+    }
+
+    #[test]
     fn a_zero_large_shape_is_treated_as_one() {
         assert_eq!(plan_chunks(2, 0).len(), 2);
     }
@@ -959,7 +979,7 @@ mod tests {
         vec![RenderNode {
             path: "/dev/dri/renderD128".to_string(),
             vendor: Some(0x8086),
-            openable: false,
+            access: crate::inference::openvino::runtime::NodeAccess::Denied,
         }]
     }
 

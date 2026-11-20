@@ -41,30 +41,34 @@ pub fn runtime_subdir(build_number: &str) -> String {
     }
 }
 
-/// Files to delete so the total size is at most `cap`, oldest first.
+/// Delete files, oldest first, until the total size is at most `cap`.
 ///
-/// Deletes nothing when the total is already within the cap.
-#[must_use]
-pub fn select_prune(entries: &[CacheEntry], cap: u64) -> Vec<PathBuf> {
+/// `remove` deletes one file and reports whether it is gone. A file it could
+/// not delete still counts towards the total, so the next older one is tried.
+/// Returns the files removed, in order.
+fn prune_entries(
+    entries: &[CacheEntry],
+    cap: u64,
+    remove: &mut dyn FnMut(&Path) -> bool,
+) -> Vec<PathBuf> {
     let mut total: u64 = entries.iter().map(|entry| entry.size).sum();
-    if total <= cap {
-        return Vec::new();
-    }
     let mut by_age: Vec<&CacheEntry> = entries.iter().collect();
     by_age.sort_by(|a, b| {
         a.modified
             .cmp(&b.modified)
             .then_with(|| a.path.cmp(&b.path))
     });
-    let mut doomed = Vec::new();
+    let mut removed = Vec::new();
     for entry in by_age {
         if total <= cap {
             break;
         }
-        total -= entry.size;
-        doomed.push(entry.path.clone());
+        if remove(&entry.path) {
+            total -= entry.size;
+            removed.push(entry.path.clone());
+        }
     }
-    doomed
+    removed
 }
 
 /// Every regular file under `root`.
@@ -101,10 +105,10 @@ fn collect(root: &Path) -> Vec<CacheEntry> {
 /// Returns how many files were removed. Failures to delete are skipped: the
 /// cache is an optimisation and a file that stays only costs disk space.
 pub fn prune(root: &Path, cap: u64) -> usize {
-    select_prune(&collect(root), cap)
-        .iter()
-        .filter(|path| std::fs::remove_file(path).is_ok())
-        .count()
+    prune_entries(&collect(root), cap, &mut |path| {
+        std::fs::remove_file(path).is_ok()
+    })
+    .len()
 }
 
 #[cfg(test)]
@@ -120,11 +124,32 @@ mod tests {
         }
     }
 
+    /// Prune with a remover that deletes every file.
+    fn select_prune(entries: &[CacheEntry], cap: u64) -> Vec<PathBuf> {
+        prune_entries(entries, cap, &mut |_| true)
+    }
+
     #[test]
     fn nothing_is_deleted_within_the_cap() {
         let entries = [entry("a", 40, 30), entry("b", 60, 10)];
         assert_eq!(select_prune(&entries, 100), Vec::<PathBuf>::new());
         assert_eq!(select_prune(&[], 0), Vec::<PathBuf>::new());
+    }
+
+    #[test]
+    fn a_file_that_cannot_be_deleted_does_not_stop_the_pruning() {
+        // 30 + 30 + 60 = 120 against a cap of 60, and the oldest is stuck.
+        let entries = [
+            entry("stuck", 30, 30),
+            entry("older", 30, 20),
+            entry("newest", 60, 10),
+        ];
+        let removed = prune_entries(&entries, 60, &mut |path| path != Path::new("stuck"));
+        // Removing older leaves 90, still over the cap, so newest goes too.
+        assert_eq!(
+            removed,
+            vec![PathBuf::from("older"), PathBuf::from("newest")]
+        );
     }
 
     #[test]

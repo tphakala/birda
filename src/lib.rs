@@ -1145,6 +1145,12 @@ fn analyze_files(
     // Resolve model configuration using priority-based resolution
     let (model_config, model_name) = resolve_model_config(args, config)?;
     validate_model_files(&model_config)?;
+    if device == InferenceDevice::OpenVino
+        && let Some(warning) =
+            config::openvino::unverified_variant_warning(&model_config, &model_name)
+    {
+        warn!("{warning}");
+    }
 
     // Bat mode: validate the backbone family and resolve the region's files,
     // BEFORE touching the runtime, so a wrong `-m` or an uninstalled region

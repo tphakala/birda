@@ -10,12 +10,13 @@
 
 use super::device::{
     OvDevice, is_intel_architecture, parse_capabilities, parse_gpu_class, parse_memory_bytes,
-    parse_pci_info,
+    parse_pci_info, parse_uuid,
 };
 use crate::constants::openvino as ov;
 use crate::error::{Error, Result};
 use openvino::{Core, DeviceType, PropertyKey};
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 
 /// Operating systems the runtime search knows the layout of.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -234,11 +235,18 @@ fn install_roots(os: Os, list_dir: ListDir<'_>) -> Vec<PathBuf> {
 
 /// Resolve `inference.openvino_path`: a library file, a directory holding it,
 /// or an install root.
+///
+/// A relative path is made absolute against the working directory first, so a
+/// bare file name names the file there and the loader never searches for it.
 fn resolve_explicit(
     path: &Path,
     os: Os,
     list_dir: ListDir<'_>,
 ) -> std::result::Result<PathBuf, PathProblem> {
+    let absolute = std::path::absolute(path).map_err(|e| PathProblem {
+        reason: format!("it cannot be made absolute: {e}"),
+    })?;
+    let path = absolute.as_path();
     if list_dir(path).is_some() {
         let candidates = [path.to_path_buf(), path.join(os.install_lib_dir())];
         return candidates
@@ -380,8 +388,19 @@ pub struct RenderNode {
     pub path: String,
     /// PCI vendor id from sysfs, when readable.
     pub vendor: Option<u32>,
-    /// Whether this process can open the node read-write.
-    pub openable: bool,
+    /// What happened when this process opened the node read-write.
+    pub access: NodeAccess,
+}
+
+/// The outcome of opening a render node read-write.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NodeAccess {
+    /// The node opened.
+    Open,
+    /// The open was refused for lack of permission.
+    Denied,
+    /// The open failed for another reason, such as the node having gone.
+    Failed,
 }
 
 /// What the render nodes say about why no GPU is usable.
@@ -398,28 +417,37 @@ pub enum Diagnosis {
     /// An Intel render node can be opened but `OpenVINO` found no GPU: the
     /// `OpenCL` compute runtime is probably missing.
     ComputeRuntimeMissing,
-    /// Render nodes exist, none of them Intel's.
+    /// Render nodes exist, and every one has a known vendor other than Intel.
     NoIntelGpu,
 }
 
 /// Decide what the render nodes imply for a host where `OpenVINO` found no
 /// usable Intel GPU. Pure over the node records.
+///
+/// `None` when the nodes do not support a diagnosis: a node whose vendor could
+/// not be read may be an Intel GPU, and an Intel node that failed to open for a
+/// reason other than permissions says nothing about the user's access.
 #[must_use]
-pub fn diagnose(nodes: &[RenderNode]) -> Diagnosis {
+pub fn diagnose(nodes: &[RenderNode]) -> Option<Diagnosis> {
     let intel: Vec<&RenderNode> = nodes
         .iter()
         .filter(|node| node.vendor == Some(ov::INTEL_PCI_VENDOR_ID))
         .collect();
     if nodes.is_empty() {
-        Diagnosis::NoRenderNodes
+        Some(Diagnosis::NoRenderNodes)
     } else if intel.is_empty() {
-        Diagnosis::NoIntelGpu
-    } else if let Some(node) = intel.iter().find(|node| !node.openable) {
-        Diagnosis::AccessDenied {
+        nodes
+            .iter()
+            .all(|node| node.vendor.is_some())
+            .then_some(Diagnosis::NoIntelGpu)
+    } else if let Some(node) = intel.iter().find(|node| node.access == NodeAccess::Denied) {
+        Some(Diagnosis::AccessDenied {
             node: node.path.clone(),
-        }
+        })
+    } else if intel.iter().any(|node| node.access == NodeAccess::Open) {
+        Some(Diagnosis::ComputeRuntimeMissing)
     } else {
-        Diagnosis::ComputeRuntimeMissing
+        None
     }
 }
 
@@ -434,7 +462,7 @@ pub fn render_diagnosis(
     any_selectable: bool,
     gather: impl FnOnce() -> Vec<RenderNode>,
 ) -> Option<Diagnosis> {
-    (os == Some(Os::Linux) && !any_selectable).then(|| diagnose(&gather()))
+    (os == Some(Os::Linux) && !any_selectable).then(|| diagnose(&gather()))?
 }
 
 impl Diagnosis {
@@ -483,15 +511,19 @@ pub fn gather_render_nodes() -> Vec<RenderNode> {
             )
             .ok()
             .and_then(|text| u32::from_str_radix(text.trim().trim_start_matches("0x"), 16).ok());
-            let openable = std::fs::OpenOptions::new()
+            let access = match std::fs::OpenOptions::new()
                 .read(true)
                 .write(true)
                 .open(&path)
-                .is_ok();
+            {
+                Ok(_) => NodeAccess::Open,
+                Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => NodeAccess::Denied,
+                Err(_) => NodeAccess::Failed,
+            };
             RenderNode {
                 path: path.display().to_string(),
                 vendor,
-                openable,
+                access,
             }
         })
         .collect();
@@ -613,8 +645,50 @@ fn fallback_error(searched: &[String], os: Os, failure: LoadFailure) -> Error {
 }
 
 /// Open the `openvino_c` library and check its version.
+/// The library this process handed to `openvino-sys`, once one was opened.
+///
+/// `openvino-sys` 0.11.1 keeps the first library it opens for the life of the
+/// process and turns every later `load_from` into a no-op
+/// (`src/linking/runtime.rs:97-100`), so a different path asked for later would
+/// be reported while the first library does the work.
+static LOADED_LIBRARY: Mutex<Option<PathBuf>> = Mutex::new(None);
+
+/// Open the runtime library at `target` through `openvino-sys`.
+///
+/// `openvino-sys` 0.11.1 reads the version through a function it looked up in
+/// the library, and panics when that function is missing (`src/lib.rs:92-100`
+/// and `src/linking/runtime.rs:128-134`): any shared library that is not the
+/// `OpenVINO` C API does that. The panic is caught and reported as a load
+/// failure. The binding's own panic message is still printed first.
 fn open_library(target: &Path) -> std::result::Result<(), LoadFailure> {
-    openvino_sys::library::load_from(target).map_err(|message| classify_load_error(&message))
+    let mut loaded = LOADED_LIBRARY
+        .lock()
+        .map_err(|_| LoadFailure::Other("an earlier OpenVINO runtime load failed".to_string()))?;
+    if let Some(previous) = loaded.as_deref()
+        && previous != target
+    {
+        return Err(LoadFailure::Other(format!(
+            "this process already loaded the OpenVINO runtime {}, and a process can load only \
+             one; {} was not loaded",
+            previous.display(),
+            target.display()
+        )));
+    }
+    let outcome = std::panic::catch_unwind(|| openvino_sys::library::load_from(target));
+    let failure = match outcome {
+        Ok(Ok(())) => None,
+        Ok(Err(message)) => Some(classify_load_error(&message)),
+        Err(_) => Some(LoadFailure::Other(format!(
+            "{} is not the OpenVINO C API library: it lacks the functions birda calls",
+            target.display()
+        ))),
+    };
+    // Only a library the loader refused is not held by the binding.
+    if !matches!(failure, Some(LoadFailure::CouldNotOpen(_))) {
+        *loaded = Some(target.to_path_buf());
+    }
+    drop(loaded);
+    failure.map_or(Ok(()), Err)
 }
 
 fn create_runtime(library: Option<PathBuf>) -> Result<Runtime> {
@@ -673,7 +747,7 @@ fn enumerate(core: &Core) -> Result<Vec<OvDevice>> {
                 .architecture
                 .as_deref()
                 .is_some_and(is_intel_architecture);
-            device.uuid = read(core, &id, "DEVICE_UUID").map(|value| value.to_ascii_lowercase());
+            device.uuid = read(core, &id, "DEVICE_UUID").and_then(|value| parse_uuid(&value));
             device.pci =
                 read(core, &id, "DEVICE_PCI_INFO").and_then(|value| parse_pci_info(&value));
             device.memory_bytes = read(core, &id, "GPU_DEVICE_TOTAL_MEM_SIZE")
@@ -761,6 +835,47 @@ mod tests {
         assert_eq!(
             locate_in(Some("/opt/ov/lib/libopenvino.so.2025.4.1"), &env, &fs),
             Ok(file("/opt/ov/lib/libopenvino.so.2025.4.1"))
+        );
+    }
+
+    #[test]
+    fn a_bare_file_name_names_the_file_in_the_working_directory() {
+        let cwd = std::env::current_dir().unwrap();
+        let fs = HashMap::from([(cwd.clone(), vec!["libopenvino_c.so".to_string()])]);
+        let expected = Ok(Located::File(cwd.join("libopenvino_c.so")));
+        assert_eq!(
+            locate_in(Some("libopenvino_c.so"), &linux_env(), &fs),
+            expected
+        );
+        assert_eq!(
+            locate_in(Some("./libopenvino_c.so"), &linux_env(), &fs),
+            expected
+        );
+    }
+
+    // Loads a real shared library into this test process. No other unit test
+    // opens a library, so the process-wide state it leaves behind is unused.
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    #[test]
+    fn a_library_that_is_not_openvino_fails_to_load_and_stays_the_only_one() {
+        let not_openvino = if cfg!(target_os = "macos") {
+            "/usr/lib/libSystem.B.dylib"
+        } else {
+            "libc.so.6"
+        };
+        assert_eq!(
+            open_library(Path::new(not_openvino)),
+            Err(LoadFailure::Other(format!(
+                "{not_openvino} is not the OpenVINO C API library: it lacks the functions \
+                 birda calls"
+            )))
+        );
+        assert_eq!(
+            open_library(Path::new("/opt/other/libopenvino_c.so")),
+            Err(LoadFailure::Other(format!(
+                "this process already loaded the OpenVINO runtime {not_openvino}, and a process \
+                 can load only one; /opt/other/libopenvino_c.so was not loaded"
+            )))
         );
     }
 
@@ -1178,49 +1293,67 @@ mod tests {
         ));
     }
 
-    fn node(path: &str, vendor: Option<u32>, openable: bool) -> RenderNode {
+    fn node(path: &str, vendor: Option<u32>, access: NodeAccess) -> RenderNode {
         RenderNode {
             path: path.to_string(),
             vendor,
-            openable,
+            access,
         }
     }
 
     #[test]
     fn render_nodes_tell_the_failure_causes_apart() {
-        assert_eq!(diagnose(&[]), Diagnosis::NoRenderNodes);
+        use NodeAccess::{Denied, Failed, Open};
+        let intel = Some(0x8086);
+        let nvidia = Some(0x10de);
+        assert_eq!(diagnose(&[]), Some(Diagnosis::NoRenderNodes));
         assert_eq!(
-            diagnose(&[node("/dev/dri/renderD128", Some(0x8086), false)]),
-            Diagnosis::AccessDenied {
+            diagnose(&[node("/dev/dri/renderD128", intel, Denied)]),
+            Some(Diagnosis::AccessDenied {
                 node: "/dev/dri/renderD128".to_string()
-            }
+            })
         );
         assert_eq!(
-            diagnose(&[node("/dev/dri/renderD128", Some(0x8086), true)]),
-            Diagnosis::ComputeRuntimeMissing
+            diagnose(&[node("/dev/dri/renderD128", intel, Open)]),
+            Some(Diagnosis::ComputeRuntimeMissing)
         );
         assert_eq!(
-            diagnose(&[node("/dev/dri/renderD128", Some(0x10de), true)]),
-            Diagnosis::NoIntelGpu
+            diagnose(&[node("/dev/dri/renderD128", nvidia, Open)]),
+            Some(Diagnosis::NoIntelGpu)
         );
         // A closed non-Intel node does not mask an openable Intel one.
         assert_eq!(
             diagnose(&[
-                node("/dev/dri/renderD128", Some(0x10de), false),
-                node("/dev/dri/renderD129", Some(0x8086), true),
+                node("/dev/dri/renderD128", nvidia, Denied),
+                node("/dev/dri/renderD129", intel, Open),
             ]),
-            Diagnosis::ComputeRuntimeMissing
+            Some(Diagnosis::ComputeRuntimeMissing)
         );
-        // An unreadable vendor is not assumed to be Intel.
+        // An unreadable vendor is neither assumed Intel nor assumed not Intel.
         assert_eq!(
-            diagnose(&[node("/dev/dri/renderD128", None, false)]),
-            Diagnosis::NoIntelGpu
+            diagnose(&[
+                node("/dev/dri/renderD128", nvidia, Open),
+                node("/dev/dri/renderD129", None, Denied),
+            ]),
+            None
+        );
+        // An Intel node that failed to open for a reason other than
+        // permissions earns no advice about the render group.
+        assert_eq!(
+            diagnose(&[node("/dev/dri/renderD128", intel, Failed)]),
+            None
         );
     }
 
     #[test]
     fn render_diagnosis_runs_only_on_linux_when_no_gpu_is_listed() {
-        let denied = || vec![node("/dev/dri/renderD128", Some(0x8086), false)];
+        let denied = || {
+            vec![node(
+                "/dev/dri/renderD128",
+                Some(0x8086),
+                NodeAccess::Denied,
+            )]
+        };
         let expected = Some(Diagnosis::AccessDenied {
             node: "/dev/dri/renderD128".to_string(),
         });

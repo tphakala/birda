@@ -708,4 +708,11 @@ pub mod openvino {
 
     /// PCI vendor id of Intel, as sysfs prints it.
     pub const INTEL_PCI_VENDOR_ID: u32 = 0x8086;
+
+    /// Model variant that failed the startup check on every Intel GPU tested
+    /// (`BirdNET` v3.0 fp16).
+    pub const UNVERIFIED_VARIANT: &str = "fp16";
+
+    /// Model variant to install instead of [`UNVERIFIED_VARIANT`].
+    pub const RECOMMENDED_VARIANT: &str = "fp32";
 }

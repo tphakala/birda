@@ -255,37 +255,51 @@ mod tests {
 
     #[test]
     fn rejected_specs_name_the_input() {
+        let generic = |input: &str| {
+            format!(
+                "'{input}' is not an OpenVINO device. Use auto, gpu, igpu, dgpu, gpu.N, igpu.N, \
+                 dgpu.N, pci:DDDD:BB:DD.F or uuid:<32 hex digits>; \
+                 `birda openvino devices` lists what is available"
+            )
+        };
+        let index = |input: &str, prefix: &str| {
+            format!("'{input}': the device number after '{prefix}.' must be a whole number")
+        };
+        let pci = |input: &str| {
+            format!(
+                "'{input}' is not a PCI address; write it as DDDD:BB:DD.F, the way `lspci -D` \
+                 prints it"
+            )
+        };
+        let uuid = |input: &str| format!("'{input}': a device UUID is 32 hex digits");
+        let short_uuid = "uuid:8680a6460c000000000200000000000";
+        let bad_uuid = "uuid:8680a6460c000000000200000000000g";
+
         let rejected = [
-            "",
-            "cpu",
-            "gpu.",
-            "gpu.x",
-            "gpu.+1",
-            "gpu.-1",
-            "igpu.1.2",
-            "gpu0",
-            "pci:zz",
-            "pci:0000:00:02",
-            "pci:0000:00:20.0",
-            "pci:0000:00:02.8",
-            "pci:000:00:02.0",
-            "uuid:",
-            "uuid:8680a6460c000000000200000000000",
-            "uuid:8680a6460c000000000200000000000g",
+            ("", generic("")),
+            ("cpu", generic("cpu")),
+            ("gpu0", generic("gpu0")),
+            ("gpu.", index("gpu.", "gpu")),
+            ("gpu.x", index("gpu.x", "gpu")),
+            ("gpu.+1", index("gpu.+1", "gpu")),
+            ("gpu.-1", index("gpu.-1", "gpu")),
+            ("igpu.1.2", index("igpu.1.2", "igpu")),
+            ("pci:zz", pci("zz")),
+            ("pci:0000:00:02", pci("0000:00:02")),
+            ("pci:0000:00:20.0", pci("0000:00:20.0")),
+            ("pci:0000:00:02.8", pci("0000:00:02.8")),
+            ("pci:000:00:02.0", pci("000:00:02.0")),
+            ("uuid:", uuid("uuid:")),
+            (short_uuid, uuid(short_uuid)),
+            (bad_uuid, uuid(bad_uuid)),
         ];
-        for text in rejected {
-            let err = text.parse::<OpenVinoDeviceSpec>().unwrap_err();
-            assert!(
-                !err.to_string().is_empty(),
-                "{text:?} must be rejected with a message"
+        for (text, message) in rejected {
+            assert_eq!(
+                text.parse::<OpenVinoDeviceSpec>().unwrap_err().to_string(),
+                message,
+                "rejecting {text:?}"
             );
         }
-        assert_eq!(
-            "cpu".parse::<OpenVinoDeviceSpec>().unwrap_err().to_string(),
-            "'cpu' is not an OpenVINO device. Use auto, gpu, igpu, dgpu, gpu.N, igpu.N, \
-             dgpu.N, pci:DDDD:BB:DD.F or uuid:<32 hex digits>; \
-             `birda openvino devices` lists what is available"
-        );
     }
 
     #[test]

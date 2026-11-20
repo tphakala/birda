@@ -4846,6 +4846,20 @@ mod tests {
         }
 
         #[test]
+        fn test_openvino_subcommand_is_exempt() {
+            // The command a user runs to find out what to put in the
+            // `[inference]` keys, so a bad value elsewhere must not stop it.
+            assert!(!gated(&["birda", "openvino", "devices"]));
+            assert!(!gated(&[
+                "birda",
+                "openvino",
+                "devices",
+                "--openvino-device",
+                "dgpu"
+            ]));
+        }
+
+        #[test]
         fn test_models_subcommand_is_exempt() {
             // `defaults.model` naming a model that is not in the file is the
             // one fault `config set` cannot fix by setting the offending key,

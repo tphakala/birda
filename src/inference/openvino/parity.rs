@@ -135,6 +135,12 @@ mod tests {
     }
 
     #[test]
+    fn a_large_difference_early_in_the_buffer_is_not_hidden_by_a_later_small_one() {
+        assert_eq!(max_abs_diff(&[3.0, 0.0, 0.5], &[0.0, 0.0, 0.0]), Ok(3.0));
+        assert_eq!(max_abs_diff(&[0.0, 0.0, 0.5], &[0.0, 0.0, 0.0]), Ok(0.5));
+    }
+
+    #[test]
     fn nan_and_infinity_never_pass() {
         assert_eq!(
             max_abs_diff(&[f32::NAN, 0.0], &[0.0, 0.0]),

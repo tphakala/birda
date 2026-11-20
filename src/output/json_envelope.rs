@@ -1330,6 +1330,44 @@ mod tests {
     }
 
     #[test]
+    fn test_openvino_devices_payload_reports_a_refused_device_and_an_unresolved_spec() {
+        use crate::inference::openvino::OvDevice;
+        use crate::inference::openvino::listing::{DeviceListing, ListedDevice};
+
+        let listing = DeviceListing {
+            runtime_version: "2025.4.1-19314".to_string(),
+            library: None,
+            configured: "dgpu".to_string(),
+            resolved: Err("OpenVINO device 'dgpu' is not available".to_string()),
+            devices: vec![ListedDevice {
+                device: OvDevice::named("CPU"),
+                refusal: Some("CPU inference runs on ONNX Runtime; use --cpu".to_string()),
+                selectors: Vec::new(),
+            }],
+        };
+
+        assert_eq!(
+            serde_json::to_value(OpenVinoDevicesPayload::from(&listing)).expect("serialize"),
+            serde_json::json!({
+                "result_type": "openvino_devices",
+                "runtime_version": "2025.4.1-19314",
+                "configured": "dgpu",
+                "resolve_error": "OpenVINO device 'dgpu' is not available",
+                "devices": [{
+                    "name": "CPU",
+                    "kind": "cpu",
+                    "class": "unknown",
+                    "intel": false,
+                    "selectable": false,
+                    "refusal": "CPU inference runs on ONNX Runtime; use --cpu",
+                    "capabilities": [],
+                    "selectors": []
+                }]
+            })
+        );
+    }
+
+    #[test]
     fn test_event_type_serialization() {
         assert_eq!(
             serde_json::to_string(&EventType::PipelineStarted).expect("serialize"),

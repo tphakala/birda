@@ -640,6 +640,15 @@ pub mod openvino {
     /// Segments the ONNX Runtime reference is computed for in one call.
     pub const REFERENCE_CHUNK: usize = 16;
 
+    /// Name of the native backend in `ExecutionProviderStatus::actual`.
+    ///
+    /// The default batch size is chosen by matching this string, so the
+    /// producer and the matcher share it.
+    pub const PROVIDER_ACTUAL: &str = "OpenVINO";
+
+    /// What the status reports as the requested device.
+    pub const PROVIDER_REQUESTED: &str = "openvino";
+
     /// Precision every compiled model is forced to and checked against.
     pub const PRECISION: &str = "f32";
 

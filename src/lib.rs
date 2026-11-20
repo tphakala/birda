@@ -415,7 +415,7 @@ fn determine_default_batch_size(
         (_, "TensorRT") => batch_size::TENSORRT,
 
         // Native OpenVINO backend (Intel GPU)
-        (_, "OpenVINO") => batch_size::OPENVINO,
+        (_, constants::openvino::PROVIDER_ACTUAL) => batch_size::OPENVINO,
 
         // Other GPU providers (DirectML, ROCm, CoreML, etc.)
         _ => {
@@ -4667,11 +4667,8 @@ mod tests {
 
     #[test]
     fn test_batch_size_openvino_is_the_openvino_default_for_every_model() {
-        let ep_status = inference::ExecutionProviderStatus {
-            requested: "openvino".to_string(),
-            actual: "OpenVINO".to_string(),
-            fallback_reason: None,
-        };
+        // The status the classifier itself reports for an OpenVINO run.
+        let ep_status = inference::ExecutionProviderStatus::openvino();
 
         // 8, where the generic GPU arm would give 16.
         for model_type in [

@@ -31,6 +31,23 @@ pub struct ExecutionProviderStatus {
     pub fallback_reason: Option<String>,
 }
 
+impl ExecutionProviderStatus {
+    /// The status of a run on the native `OpenVINO` backend.
+    ///
+    /// The only place that spells the provider name, so the default batch
+    /// size, which matches on it, cannot drift from what the classifier
+    /// reports.
+    #[must_use]
+    pub fn openvino() -> Self {
+        use crate::constants::openvino::{PROVIDER_ACTUAL, PROVIDER_REQUESTED};
+        Self {
+            requested: PROVIDER_REQUESTED.to_string(),
+            actual: PROVIDER_ACTUAL.to_string(),
+            fallback_reason: None,
+        }
+    }
+}
+
 /// Range filtering data, computed once at initialization.
 ///
 /// The `birdnet_onnx::RangeFilter` itself is not retained: it is queried once
@@ -256,11 +273,7 @@ impl BirdClassifier {
                 engine.config().segment_duration,
                 engine.report().device.name
             );
-            let status = ExecutionProviderStatus {
-                requested: "openvino".to_string(),
-                actual: "OpenVINO".to_string(),
-                fallback_reason: None,
-            };
+            let status = ExecutionProviderStatus::openvino();
             (Engine::OpenVino(Box::new(engine)), status, false)
         } else {
             Self::build_ort(model_config, device, min_confidence, top_k)?

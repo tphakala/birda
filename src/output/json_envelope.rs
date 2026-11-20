@@ -1261,12 +1261,9 @@ mod tests {
 
     #[test]
     fn test_execution_provider_info_with_a_device_adds_exactly_that_object() {
-        let info = ExecutionProviderInfo {
-            requested: "openvino".to_string(),
-            actual: "OpenVINO".to_string(),
-            fallback_reason: None,
-            device: Some(InferenceDeviceInfo::from(&iris_xe_report())),
-        };
+        let mut info =
+            ExecutionProviderInfo::from(crate::inference::ExecutionProviderStatus::openvino());
+        info.device = Some(InferenceDeviceInfo::from(&iris_xe_report()));
 
         assert_eq!(
             serde_json::to_value(&info).expect("serialize"),

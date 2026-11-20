@@ -99,9 +99,16 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # Windows builds with Rust 1.99.1: Cargo 1.100 moved build script output
+      # one directory deeper (target/<profile>/build/<crate>/<hash>/out), and
+      # ort-sys 2.0.0-rc.12 finds the folder it copies onnxruntime's DLLs into
+      # by counting parent directories of OUT_DIR, so on Windows the copy fails
+      # and the build stops. birdnet-onnx enables ort's copy-dylibs feature.
+      # Remove the pin with the coordinated ort bump.
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@master
         with:
+          toolchain: ${{ matrix.os == 'windows-latest' && '1.99.1' || 'stable' }}
           targets: ${{ matrix.target }}
 
       - name: Cache cargo registry
@@ -678,9 +685,12 @@ jobs:
           Write-Host "=== After cleanup ==="
           Get-PSDrive -PSProvider FileSystem | Select-Object Name, @{N='Free(GB)';E={[math]::Round($_.Free/1GB,2)}}
 
+      # Rust 1.99.1 for the reason given in the build job (ort-sys 2.0.0-rc.12
+      # and Cargo 1.100's build directory layout).
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@master
         with:
+          toolchain: '1.99.1'
           targets: ${{ env.TARGET }}
 
       - name: Cache cargo registry

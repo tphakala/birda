@@ -11,12 +11,12 @@ SECTION 1: RUST DEPENDENCIES
 SUMMARY
 -------
 
-MIT License: 302 crate(s)
-Apache License 2.0: 28 crate(s)
+MIT License: 306 crate(s)
+Apache License 2.0: 31 crate(s)
 Unicode License v3: 19 crate(s)
 Mozilla Public License 2.0: 14 crate(s)
 BSD 3-Clause "New" or "Revised" License: 13 crate(s)
-ISC License: 6 crate(s)
+ISC License: 7 crate(s)
 BSD 2-Clause "Simplified" License: 1 crate(s)
 Creative Commons Zero v1.0 Universal: 1 crate(s)
 Community Data License Agreement Permissive 2.0: 1 crate(s)
@@ -1529,6 +1529,9 @@ Used by:
   - aws-lc-sys 0.45.0
   - dunce 1.0.5
   - flatbuffers 25.12.19
+  - openvino-finder 0.11.1
+  - openvino-sys 0.11.1
+  - openvino 0.11.1
   - ryu 1.0.23
   - sync_wrapper 1.0.2
 
@@ -2206,6 +2209,7 @@ ISC License
 --------------------------------------------------------------------------------
 
 Used by:
+  - libloading 0.8.9
   - libloading 0.9.0
 
 Copyright © 2015, Simonas Kazlauskas
@@ -5014,6 +5018,8 @@ Used by:
   - clap_derive 4.6.7
   - clap_lex 1.1.1
   - colorchoice 1.0.5
+  - env_filter 2.0.0
+  - env_logger 0.11.11
   - is_terminal_polyfill 1.70.2
   - once_cell_polyfill 1.70.2
   - predicates-core 1.0.10
@@ -5824,7 +5830,7 @@ MIT License
 
 Used by:
   - birda 1.10.0
-  - birdnet-onnx 2.0.0-rc.16
+  - birdnet-onnx 2.0.0-rc.17
 
 MIT License
 
@@ -6305,6 +6311,8 @@ Used by:
   - byteorder 1.5.0
   - csv-core 0.1.13
   - csv 1.4.0
+  - jiff-core 0.1.8
+  - jiff 0.2.46
   - memchr 2.8.3
   - walkdir 2.5.0
 

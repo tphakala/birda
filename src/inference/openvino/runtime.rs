@@ -171,18 +171,63 @@ fn find_in(dir: &Path, os: Os, list_dir: ListDir<'_>) -> Option<PathBuf> {
     pick_library(&names, os).map(|name| dir.join(name))
 }
 
-/// Install roots found under the OS's usual parents, highest name first.
+/// Version of an install root's directory name: `openvino_2025.4` is
+/// `[2025, 4]`, a bare `openvino` is `[]` (a symlink or an unversioned install),
+/// and a name whose suffix is not numeric, such as an archive directory with a
+/// platform in its name, has none.
+fn root_version(name: &str) -> Option<Vec<u64>> {
+    let rest = name.strip_prefix(ov::INSTALL_ROOT_PREFIX)?;
+    if rest.is_empty() {
+        return Some(Vec::new());
+    }
+    let suffix = rest.strip_prefix('_').or_else(|| rest.strip_prefix('-'))?;
+    suffix.split('.').map(|part| part.parse().ok()).collect()
+}
+
+/// Compare two versions, a missing component counting as 0.
+fn compare_versions(a: &[u64], b: &[u64]) -> std::cmp::Ordering {
+    (0..a.len().max(b.len()))
+        .map(|i| {
+            (
+                a.get(i).copied().unwrap_or(0),
+                b.get(i).copied().unwrap_or(0),
+            )
+        })
+        .map(|(x, y)| x.cmp(&y))
+        .find(|order| order.is_ne())
+        .unwrap_or(std::cmp::Ordering::Equal)
+}
+
+/// Install-root directory names, newest version first.
+///
+/// Compared by the parsed version, so `openvino_2025.10` ranks above
+/// `openvino_2025.4`. A bare `openvino` counts as version 0, and names without
+/// a parsable version come last. Ties are broken by name, descending.
+fn order_install_roots(mut names: Vec<String>) -> Vec<String> {
+    names.sort_by(|a, b| match (root_version(a), root_version(b)) {
+        (Some(va), Some(vb)) => compare_versions(&vb, &va).then_with(|| b.cmp(a)),
+        (Some(_), None) => std::cmp::Ordering::Less,
+        (None, Some(_)) => std::cmp::Ordering::Greater,
+        (None, None) => b.cmp(a),
+    });
+    names
+}
+
+/// Install roots found under the OS's usual parents, newest version first.
 fn install_roots(os: Os, list_dir: ListDir<'_>) -> Vec<PathBuf> {
     let mut roots = Vec::new();
     for parent in os.install_parents() {
         let parent = Path::new(parent);
-        let mut names: Vec<String> = list_dir(parent)
+        let names: Vec<String> = list_dir(parent)
             .unwrap_or_default()
             .into_iter()
             .filter(|name| name.starts_with(ov::INSTALL_ROOT_PREFIX))
             .collect();
-        names.sort_unstable_by(|a, b| b.cmp(a));
-        roots.extend(names.into_iter().map(|name| parent.join(name)));
+        roots.extend(
+            order_install_roots(names)
+                .into_iter()
+                .map(|name| parent.join(name)),
+        );
     }
     roots
 }
@@ -484,23 +529,41 @@ impl Runtime {
                 reason: problem.reason,
             })?;
 
-        match located {
-            Located::File(file) => {
-                open_library(&file).map_err(LoadFailure::into_error)?;
-                create_runtime(Some(file))
+        let library = open_located(located, os, &mut open_library)?;
+        create_runtime(library)
+    }
+}
+
+/// Open the runtime library for a search result, through `open`.
+///
+/// Returns the file that was opened, or `None` when the system loader found
+/// the bare library name. `open` is a parameter so the decisions here can be
+/// tested without a runtime:
+///
+/// * a located file is opened as it is, and a failure is final on every OS: a
+///   path the search or the user chose never falls back to another runtime;
+/// * with nothing located, only Linux asks the system loader for the bare name
+///   (see [`Os::has_loader_fallback`]); Windows reports the places searched.
+fn open_located(
+    located: Located,
+    os: Os,
+    open: &mut dyn FnMut(&Path) -> std::result::Result<(), LoadFailure>,
+) -> Result<Option<PathBuf>> {
+    match located {
+        Located::File(file) => {
+            open(&file).map_err(LoadFailure::into_error)?;
+            Ok(Some(file))
+        }
+        Located::NotFound { searched } => {
+            // The Linux loader has its own search path (ld.so.conf.d, RUNPATH)
+            // that the directory search cannot see. On Windows a bare name
+            // would also be searched for in the working directory.
+            if !os.has_loader_fallback() {
+                return Err(runtime_not_found(&searched, os, None));
             }
-            Located::NotFound { searched } => {
-                // The Linux loader has its own search path (ld.so.conf.d,
-                // RUNPATH) that the directory search cannot see. On Windows a
-                // bare name would also be searched for in the working
-                // directory, so there is no fallback there.
-                if !os.has_loader_fallback() {
-                    return Err(runtime_not_found(&searched, os, None));
-                }
-                open_library(Path::new(os.library_file()))
-                    .map_err(|failure| fallback_error(&searched, os, failure))?;
-                create_runtime(None)
-            }
+            open(Path::new(os.library_file()))
+                .map_err(|failure| fallback_error(&searched, os, failure))?;
+            Ok(None)
         }
     }
 }
@@ -924,6 +987,162 @@ mod tests {
             ),
             Error::OpenVinoRuntimeTooOld { .. }
         ));
+    }
+
+    #[test]
+    fn install_roots_are_ordered_by_parsed_version() {
+        let ordered = |names: &[&str]| {
+            order_install_roots(names.iter().map(ToString::to_string).collect::<Vec<_>>())
+        };
+        // 2025.10 is newer than 2025.4, which a string sort gets backwards.
+        assert_eq!(
+            ordered(&["openvino_2025.4", "openvino_2025.10"]),
+            ["openvino_2025.10", "openvino_2025.4"]
+        );
+        // A later year beats a higher minor of the year before.
+        assert_eq!(
+            ordered(&["openvino_2025.10", "openvino_2026.2"]),
+            ["openvino_2026.2", "openvino_2025.10"]
+        );
+        // A bare name is version 0: below every numbered root, above an
+        // unparsable one. Missing components count as 0.
+        assert_eq!(
+            ordered(&[
+                "openvino_toolkit_ubuntu22_2026.2.0",
+                "openvino",
+                "openvino_2025",
+                "openvino_2025.0.1",
+                "openvino_2025.0",
+            ]),
+            [
+                "openvino_2025.0.1",
+                "openvino_2025.0",
+                "openvino_2025",
+                "openvino",
+                "openvino_toolkit_ubuntu22_2026.2.0",
+            ]
+        );
+        // Equal versions (2026 and 2026.0) fall back to the name, descending;
+        // unparsable names also go by name, descending.
+        assert_eq!(
+            ordered(&["openvino_2026", "openvino_2026.0"]),
+            ["openvino_2026.0", "openvino_2026"]
+        );
+        assert_eq!(
+            ordered(&["openvino_a", "openvino_b"]),
+            ["openvino_b", "openvino_a"]
+        );
+    }
+
+    #[test]
+    fn the_install_root_search_takes_the_newest_version_not_the_last_name() {
+        let fs = fake_fs(&[
+            ("/opt/intel", &["openvino_2025.4", "openvino_2025.10"]),
+            (
+                "/opt/intel/openvino_2025.10/runtime/lib/intel64",
+                &["libopenvino_c.so"],
+            ),
+            (
+                "/opt/intel/openvino_2025.4/runtime/lib/intel64",
+                &["libopenvino_c.so"],
+            ),
+        ]);
+        assert_eq!(
+            locate_in(None, &linux_env(), &fs),
+            Ok(file(
+                "/opt/intel/openvino_2025.10/runtime/lib/intel64/libopenvino_c.so"
+            ))
+        );
+    }
+
+    /// Records every path handed to the loader and answers from a script.
+    fn scripted_open(
+        calls: &mut Vec<String>,
+        fail_with: Option<LoadFailure>,
+    ) -> impl FnMut(&Path) -> std::result::Result<(), LoadFailure> + '_ {
+        move |path| {
+            calls.push(path.display().to_string());
+            fail_with.clone().map_or(Ok(()), Err)
+        }
+    }
+
+    fn nothing_found() -> Located {
+        Located::NotFound {
+            searched: vec!["  system library directory: /usr/lib".to_string()],
+        }
+    }
+
+    #[test]
+    fn nothing_located_asks_the_loader_for_the_bare_name_on_linux_only() {
+        let mut calls = Vec::new();
+        let opened = open_located(
+            nothing_found(),
+            Os::Linux,
+            &mut scripted_open(&mut calls, None),
+        );
+        assert_eq!(opened.unwrap(), None);
+        assert_eq!(calls, ["libopenvino_c.so"]);
+
+        let mut calls = Vec::new();
+        let err = open_located(
+            nothing_found(),
+            Os::Windows,
+            &mut scripted_open(&mut calls, None),
+        )
+        .unwrap_err();
+        assert_eq!(
+            calls,
+            Vec::<String>::new(),
+            "Windows must not load a bare name"
+        );
+        assert_eq!(
+            err.to_string(),
+            "OpenVINO runtime not found. Searched:\n\
+             \x20 system library directory: /usr/lib\n\
+             Install OpenVINO 2025.1 or newer (see docs/openvino.md) or set \
+             inference.openvino_path in the config file to the directory holding openvino_c.dll"
+        );
+    }
+
+    #[test]
+    fn a_located_file_that_fails_to_load_never_falls_back_to_the_bare_name() {
+        let failure = LoadFailure::CouldNotOpen(
+            "the shared library at /opt/ov/lib/libopenvino_c.so could not be opened: \
+             libtbb.so.12: cannot open shared object file"
+                .to_string(),
+        );
+        for (os, name) in [
+            (Os::Linux, "/opt/ov/lib/libopenvino_c.so"),
+            (Os::Windows, "C:\\ov\\openvino_c.dll"),
+        ] {
+            let mut calls = Vec::new();
+            let err = open_located(
+                Located::File(PathBuf::from(name)),
+                os,
+                &mut scripted_open(&mut calls, Some(failure.clone())),
+            )
+            .unwrap_err();
+            assert_eq!(calls, [name], "only the located file is tried on {os:?}");
+            assert!(
+                matches!(err, Error::OpenVinoRuntimeLoadFailed { .. }),
+                "{os:?}: {err}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_located_file_that_loads_is_the_library_in_use() {
+        let mut calls = Vec::new();
+        let opened = open_located(
+            Located::File(PathBuf::from("/usr/lib/libopenvino_c.so")),
+            Os::Linux,
+            &mut scripted_open(&mut calls, None),
+        );
+        assert_eq!(
+            opened.unwrap(),
+            Some(PathBuf::from("/usr/lib/libopenvino_c.so"))
+        );
+        assert_eq!(calls, ["/usr/lib/libopenvino_c.so"]);
     }
 
     #[test]

@@ -267,6 +267,16 @@ pub enum Error {
         reason: String,
     },
 
+    /// The `OpenVINO` runtime loaded but could not list its devices.
+    #[error(
+        "OpenVINO could not list its devices: {reason}. \
+         Check the Intel GPU driver and the compute runtime"
+    )]
+    OpenVinoDeviceListing {
+        /// `OpenVINO`'s message.
+        reason: String,
+    },
+
     /// The `OpenVINO` runtime is older than birda supports.
     #[error("OpenVINO runtime {found} is too old; birda needs {minimum} or newer")]
     OpenVinoRuntimeTooOld {

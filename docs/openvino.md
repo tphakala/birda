@@ -84,6 +84,7 @@ Compiling a model for a GPU takes a few seconds, and more for large models. bird
 | `OpenVINO runtime not found` | No `libopenvino_c` in the searched places. Install OpenVINO, or set `inference.openvino_path`. |
 | `inference.openvino_path is set to ...` | The configured path does not exist, or has no runtime in it. |
 | `could not load the OpenVINO runtime` | The library was found but the loader refused it, usually because the runtime's own library directory or TBB is not on the loader path. |
+| `OpenVINO could not list its devices` | The runtime loaded but listing its devices failed; check the GPU driver and the compute runtime. |
 | `OpenVINO runtime ... is too old` | Install 2025.1 or newer. |
 | `no permission to use the Intel GPU render node` | Add your user to the `render` group. |
 | `OpenVINO device '...' is not available` | The requested device is not in OpenVINO's list. The message lists what OpenVINO found and, on Linux, whether a render node or the compute runtime is missing. |

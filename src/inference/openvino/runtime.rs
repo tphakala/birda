@@ -48,6 +48,12 @@ impl Os {
         }
     }
 
+    /// Whether a bare library name may be handed to the system loader: only
+    /// on Linux, where `dlopen` does not search the working directory.
+    const fn has_loader_fallback(self) -> bool {
+        matches!(self, Self::Linux)
+    }
+
     const fn install_lib_dir(self) -> &'static str {
         match self {
             Self::Linux => ov::LINUX_INSTALL_LIB_DIR,
@@ -464,31 +470,77 @@ impl Runtime {
                 reason: problem.reason,
             })?;
 
-        let (library, load_target) = match located {
-            Located::File(file) => (Some(file.clone()), file),
-            // The OS loader has its own search path (ld.so.conf.d, RUNPATH)
-            // that the directory search cannot see.
-            Located::NotFound { searched } => {
-                return load_core(Path::new(os.library_file()), None).map_err(|e| match e {
-                    Error::OpenVinoRuntimeLoadFailed { .. } => Error::OpenVinoRuntimeNotFound {
-                        searched: format!(
-                            "{}\n  the system loader path: {}",
-                            searched.join("\n"),
-                            os.library_file()
-                        ),
-                        library: os.library_file(),
-                    },
-                    other => other,
-                });
+        match located {
+            Located::File(file) => {
+                open_library(&file).map_err(LoadFailure::into_error)?;
+                create_runtime(Some(file))
             }
-        };
-        load_core(&load_target, library)
+            Located::NotFound { searched } => {
+                // The Linux loader has its own search path (ld.so.conf.d,
+                // RUNPATH) that the directory search cannot see. On Windows a
+                // bare name would also be searched for in the working
+                // directory, so there is no fallback there.
+                if !os.has_loader_fallback() {
+                    return Err(runtime_not_found(&searched, os, None));
+                }
+                open_library(Path::new(os.library_file()))
+                    .map_err(|failure| fallback_error(&searched, os, failure))?;
+                create_runtime(None)
+            }
+        }
     }
 }
 
-fn load_core(target: &Path, library: Option<PathBuf>) -> Result<Runtime> {
-    openvino_sys::library::load_from(target)
-        .map_err(|message| classify_load_error(&message).into_error())?;
+/// The error for a runtime that no searched place has.
+///
+/// `loader_reason` is what the system loader said when it was asked for the
+/// bare library name, when it was asked.
+fn runtime_not_found(searched: &[String], os: Os, loader_reason: Option<&str>) -> Error {
+    let mut lines = searched.to_vec();
+    if let Some(reason) = loader_reason {
+        lines.push(format!(
+            "  the system loader path: {} ({reason})",
+            os.library_file()
+        ));
+    }
+    Error::OpenVinoRuntimeNotFound {
+        searched: lines.join("\n"),
+        library: os.library_file(),
+    }
+}
+
+/// Map a failed load of the bare library name through the system loader.
+///
+/// A loader reason that starts with the library's own name means the library
+/// is not there, which is "not found". A reason that names another file means
+/// the library was found and one of its dependencies was not, which is a load
+/// failure that carries the loader's message. The loader prints a missing file
+/// as `<file>: cannot open shared object file` on glibc; the dependency case
+/// is NOT MEASURED, the missing-library case is the shape in the test below.
+fn fallback_error(searched: &[String], os: Os, failure: LoadFailure) -> Error {
+    match failure {
+        LoadFailure::CouldNotOpen(message) => {
+            let reason = message
+                .split_once("could not be opened: ")
+                .map_or(message.as_str(), |(_, reason)| reason);
+            if reason.starts_with(os.library_file()) {
+                runtime_not_found(searched, os, Some(reason))
+            } else {
+                LoadFailure::CouldNotOpen(message).into_error()
+            }
+        }
+        // `load_from` never reports "library not found" in any other shape, so
+        // these mean the library opened and then failed (version query, age).
+        other => other.into_error(),
+    }
+}
+
+/// Open the `openvino_c` library and check its version.
+fn open_library(target: &Path) -> std::result::Result<(), LoadFailure> {
+    openvino_sys::library::load_from(target).map_err(|message| classify_load_error(&message))
+}
+
+fn create_runtime(library: Option<PathBuf>) -> Result<Runtime> {
     let core = Core::new().map_err(|e| Error::OpenVinoRuntimeLoadFailed {
         reason: e.to_string(),
     })?;
@@ -516,8 +568,8 @@ fn read(core: &Core, device: &DeviceType<'_>, key: &str) -> Option<String> {
 fn enumerate(core: &Core) -> Result<Vec<OvDevice>> {
     let names: Vec<String> = core
         .available_devices()
-        .map_err(|e| Error::OpenVinoModelLoad {
-            reason: format!("listing devices failed: {e}"),
+        .map_err(|e| Error::OpenVinoDeviceListing {
+            reason: e.to_string(),
         })?
         .iter()
         .map(ToString::to_string)
@@ -794,6 +846,87 @@ mod tests {
         assert_eq!(
             classify_load_error("Unable to find the `openvino_c` library to load"),
             LoadFailure::Other("Unable to find the `openvino_c` library to load".to_string())
+        );
+    }
+
+    #[test]
+    fn fallback_error_tells_a_missing_runtime_from_a_failed_dependency() {
+        let searched = vec!["  system library directory: /usr/lib".to_string()];
+        let opened = |reason: &str| {
+            LoadFailure::CouldNotOpen(format!(
+                "the shared library at libopenvino_c.so could not be opened: {reason}"
+            ))
+        };
+
+        // The library itself is absent: not found, with the loader's reason.
+        assert_eq!(
+            fallback_error(
+                &searched,
+                Os::Linux,
+                opened(
+                    "libopenvino_c.so: cannot open shared object file: No such file or directory"
+                )
+            )
+            .to_string(),
+            "OpenVINO runtime not found. Searched:\n\
+             \x20 system library directory: /usr/lib\n\
+             \x20 the system loader path: libopenvino_c.so (libopenvino_c.so: cannot open shared object file: No such file or directory)\n\
+             Install OpenVINO 2025.1 or newer (see docs/openvino.md) or set \
+             inference.openvino_path in the config file to the directory holding libopenvino_c.so"
+        );
+
+        // A dependency is absent: the runtime was found, so this is a load failure.
+        assert_eq!(
+            fallback_error(
+                &searched,
+                Os::Linux,
+                opened("libtbb.so.12: cannot open shared object file: No such file or directory")
+            )
+            .to_string(),
+            "could not load the OpenVINO runtime: the shared library at libopenvino_c.so could not be \
+             opened: libtbb.so.12: cannot open shared object file: No such file or directory\n\
+             The runtime and its TBB library directories must be on the loader path \
+             (LD_LIBRARY_PATH, or PATH on Windows), as OpenVINO's setupvars script does \
+             (see docs/openvino.md)"
+        );
+
+        // A runtime that opened and then failed its version query is a load
+        // failure, not a missing one.
+        assert!(matches!(
+            fallback_error(
+                &searched,
+                Os::Linux,
+                LoadFailure::Other("failed to get OpenVINO version: GENERAL_ERROR".to_string())
+            ),
+            Error::OpenVinoRuntimeLoadFailed { .. }
+        ));
+
+        // A too old runtime stays too old.
+        assert!(matches!(
+            fallback_error(
+                &searched,
+                Os::Linux,
+                LoadFailure::TooOld("2024.6".to_string())
+            ),
+            Error::OpenVinoRuntimeTooOld { .. }
+        ));
+    }
+
+    #[test]
+    fn only_linux_hands_a_bare_library_name_to_the_loader() {
+        assert!(Os::Linux.has_loader_fallback());
+        assert!(!Os::Windows.has_loader_fallback());
+    }
+
+    #[test]
+    fn a_not_found_error_without_a_loader_reason_lists_only_the_searched_places() {
+        let searched = vec!["  loader path: C:\\openvino".to_string()];
+        assert_eq!(
+            runtime_not_found(&searched, Os::Windows, None).to_string(),
+            "OpenVINO runtime not found. Searched:\n\
+             \x20 loader path: C:\\openvino\n\
+             Install OpenVINO 2025.1 or newer (see docs/openvino.md) or set \
+             inference.openvino_path in the config file to the directory holding openvino_c.dll"
         );
     }
 

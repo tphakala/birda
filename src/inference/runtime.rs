@@ -104,16 +104,28 @@ fn find_runtime_in_directory(directory: &Path) -> Option<PathBuf> {
     {
         if let Ok(entries) = std::fs::read_dir(directory) {
             return entries.flatten().find_map(|entry| {
-                entry
-                    .file_name()
-                    .to_string_lossy()
-                    .starts_with(onnx_runtime::LIBRARY_FILE_NAME)
-                    .then_some(entry.path())
+                let path = entry.path();
+                (is_versioned_library_name(&entry.file_name().to_string_lossy()) && path.is_file())
+                    .then_some(path)
             });
         }
     }
 
     None
+}
+
+/// Whether `name` is the library file name followed by a dotted numeric
+/// version, such as `libonnxruntime.so.1.22.0`. Names that only start with the
+/// library file name, such as `libonnxruntime.so.backup`, do not match.
+#[cfg(any(target_os = "linux", test))]
+fn is_versioned_library_name(name: &str) -> bool {
+    name.strip_prefix(onnx_runtime::LIBRARY_FILE_NAME)
+        .and_then(|rest| rest.strip_prefix('.'))
+        .is_some_and(|version| {
+            version
+                .split('.')
+                .all(|part| !part.is_empty() && part.bytes().all(|byte| byte.is_ascii_digit()))
+        })
 }
 
 fn initialize_runtime(path: &Path) -> Result<()> {
@@ -485,6 +497,46 @@ mod tests {
             find_runtime_in_directory(temp_dir.path()),
             Some(library_path)
         );
+    }
+
+    #[test]
+    fn test_is_versioned_library_name_accepts_only_a_numeric_version_suffix() {
+        let name = onnx_runtime::LIBRARY_FILE_NAME;
+        for accepted in [format!("{name}.1"), format!("{name}.1.22.0")] {
+            assert!(is_versioned_library_name(&accepted), "{accepted}");
+        }
+        for rejected in [
+            name.to_owned(),
+            format!("{name}."),
+            format!("{name}.backup"),
+            format!("{name}.1.22.0.bak"),
+            format!("{name}.1..0"),
+            format!("{name}1.22.0"),
+            format!("x{name}.1.22.0"),
+        ] {
+            assert!(!is_versioned_library_name(&rejected), "{rejected}");
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn test_find_runtime_in_directory_skips_names_that_only_share_the_prefix() {
+        let temp_dir = tempfile::tempdir().expect("temp dir should be created");
+        std::fs::write(
+            temp_dir
+                .path()
+                .join(format!("{}.backup", onnx_runtime::LIBRARY_FILE_NAME)),
+            [],
+        )
+        .expect("decoy file should be created");
+        std::fs::create_dir(
+            temp_dir
+                .path()
+                .join(format!("{}.1.21.0", onnx_runtime::LIBRARY_FILE_NAME)),
+        )
+        .expect("decoy directory should be created");
+
+        assert_eq!(find_runtime_in_directory(temp_dir.path()), None);
     }
 
     #[cfg(target_os = "linux")]

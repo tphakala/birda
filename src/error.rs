@@ -226,6 +226,29 @@ pub enum Error {
         reason: String,
     },
 
+    /// A stored `softmax_rest_logit` in `config.toml` is not a finite number.
+    #[error(
+        "invalid softmax_rest_logit {value} for model '{model}' in config.toml \
+         (must be a finite number); remove the key or reinstall the model"
+    )]
+    InvalidStoredRestLogit {
+        /// Name of the model entry.
+        model: String,
+        /// The offending value.
+        value: f32,
+    },
+
+    /// The inference library refused a softmax rest logit.
+    #[error("cannot apply softmax_rest_logit {rest_logit} to {path}: {reason}")]
+    ScoreCalibration {
+        /// Path to the model file the value was meant for.
+        path: std::path::PathBuf,
+        /// The rejected value.
+        rest_logit: f32,
+        /// Why the library refused it.
+        reason: String,
+    },
+
     /// Inference failed.
     #[error("inference failed: {reason}")]
     Inference {

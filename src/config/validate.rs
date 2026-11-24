@@ -64,6 +64,8 @@ pub enum ViolationField {
     Longitude,
     /// `defaults.range_threshold`.
     RangeThreshold,
+    /// `models.<name>.softmax_rest_logit`.
+    ModelScoreCalibration,
 }
 
 /// Collect every configuration rule failure rather than stopping at the first.
@@ -74,6 +76,7 @@ pub fn collect_violations(config: &Config) -> Vec<Violation> {
     let mut violations = Vec::new();
     collect_defaults_violations(config, &mut violations);
     collect_range_filter_violations(config, &mut violations);
+    collect_model_violations(config, &mut violations);
     violations
 }
 
@@ -299,6 +302,38 @@ fn collect_defaults_violations(config: &Config, violations: &mut Vec<Violation>)
     }
 }
 
+/// Reject a stored `softmax_rest_logit` that is not a finite number.
+///
+/// The inference library refuses a non-finite value too, but only when the
+/// model loads. Checking here keeps a bad value out of `config.toml`, and makes
+/// `models check` report the entry instead of printing OK.
+fn check_stored_rest_logit(name: &str, model: &ModelConfig) -> Result<()> {
+    match model.softmax_rest_logit {
+        Some(value) if !value.is_finite() => Err(Error::InvalidStoredRestLogit {
+            model: name.to_string(),
+            value,
+        }),
+        _ => Ok(()),
+    }
+}
+
+/// Collect `[models.*]` rule failures into `violations`. See [`collect_violations`].
+///
+/// Models are visited in name order: `config.models` is a `HashMap`, so the
+/// fail-fast error would otherwise depend on hash order.
+fn collect_model_violations(config: &Config, violations: &mut Vec<Violation>) {
+    let mut names: Vec<&String> = config.models.keys().collect();
+    names.sort();
+    for name in names {
+        if let Err(error) = check_stored_rest_logit(name, &config.models[name]) {
+            violations.push(Violation {
+                field: ViolationField::ModelScoreCalibration,
+                error,
+            });
+        }
+    }
+}
+
 /// Validate a model configuration and check files exist.
 #[allow(clippy::needless_pass_by_value)]
 pub fn validate_model_config(name: &str, model: &ModelConfig) -> Result<()> {
@@ -313,6 +348,8 @@ pub fn validate_model_config(name: &str, model: &ModelConfig) -> Result<()> {
             path: model.labels.clone(),
         });
     }
+
+    check_stored_rest_logit(name, model)?;
 
     // Model type validation is handled by the ModelType enum
 
@@ -755,5 +792,78 @@ mod tests {
             matches!(err, Error::InvalidRangeThreshold { .. }),
             "validate_config must reach validate_range_filter, got {err:?}"
         );
+    }
+
+    /// A config with one model per `(name, rest logit as TOML text)` pair.
+    fn config_with_rest_logits(models: &[(&str, &str)]) -> Config {
+        use std::fmt::Write as _;
+        let mut text = String::new();
+        for (name, value) in models {
+            write!(
+                text,
+                "[models.{name}]\npath = \"/m/{name}.onnx\"\nlabels = \"/m/{name}.txt\"\n\
+                 type = \"perch-v2\"\nsoftmax_rest_logit = {value}\n"
+            )
+            .unwrap();
+        }
+        toml::from_str(&text).unwrap()
+    }
+
+    #[test]
+    fn test_validate_rejects_a_non_finite_stored_rest_logit() {
+        // Hash order must not pick the error: "a" sorts before "b" and "c".
+        let config = config_with_rest_logits(&[("c", "9.75"), ("b", "nan"), ("a", "inf")]);
+
+        let err = validate_config(&config).unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            "invalid softmax_rest_logit inf for model 'a' in config.toml \
+             (must be a finite number); remove the key or reinstall the model"
+        );
+
+        let violations = collect_violations(&config);
+        assert_eq!(violations.len(), 2);
+        assert!(
+            violations
+                .iter()
+                .all(|v| v.field == ViolationField::ModelScoreCalibration)
+        );
+
+        let negative = config_with_rest_logits(&[("a", "-inf")]);
+        assert!(matches!(
+            validate_config(&negative).unwrap_err(),
+            Error::InvalidStoredRestLogit { .. }
+        ));
+    }
+
+    #[test]
+    fn test_validate_accepts_a_finite_stored_rest_logit() {
+        let config = config_with_rest_logits(&[("a", "9.75"), ("b", "-3.5")]);
+        assert!(validate_config(&config).is_ok());
+    }
+
+    #[test]
+    fn test_validate_model_config_reports_a_non_finite_stored_rest_logit() {
+        // `models check` goes through `validate_model_config`, not the config
+        // rules, so it needs its own check or it would print OK for the entry.
+        let dir = tempfile::tempdir().unwrap();
+        let model_path = dir.path().join("b.onnx");
+        let labels_path = dir.path().join("b.txt");
+        std::fs::write(&model_path, b"").unwrap();
+        std::fs::write(&labels_path, b"").unwrap();
+        let mut config = config_with_rest_logits(&[("b", "nan")]);
+        let model = config.models.get_mut("b").unwrap();
+        model.path = model_path;
+        model.labels = labels_path;
+
+        let err = validate_model_config("b", &config.models["b"]).unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            "invalid softmax_rest_logit NaN for model 'b' in config.toml \
+             (must be a finite number); remove the key or reinstall the model"
+        );
+
+        config.models.get_mut("b").unwrap().softmax_rest_logit = Some(9.75);
+        assert!(validate_model_config("b", &config.models["b"]).is_ok());
     }
 }

@@ -365,10 +365,10 @@ min_confidence = 0.25
     }
 
     #[test]
-    fn test_accepted_documents_survive_a_config_round_trip() {
+    fn test_install_records_survive_a_config_round_trip() {
         use crate::config::{AcceptedDocument, ModelConfig, ModelType};
 
-        let model = |accepted_documents| ModelConfig {
+        let model = |accepted_documents, softmax_rest_logit| ModelConfig {
             path: PathBuf::from("/path/to/model.onnx"),
             labels: PathBuf::from("/path/to/labels.txt"),
             model_type: ModelType::BirdnetV24,
@@ -381,6 +381,7 @@ min_confidence = 0.25
             installed_build: None,
             region: None,
             variant: None,
+            softmax_rest_logit,
             accepted_documents,
         };
         let accepted = vec![
@@ -398,8 +399,10 @@ min_confidence = 0.25
         let mut config = Config::default();
         config
             .models
-            .insert("a".to_string(), model(accepted.clone()));
-        config.models.insert("b".to_string(), model(Vec::new()));
+            .insert("a".to_string(), model(accepted.clone(), Some(9.75)));
+        config
+            .models
+            .insert("b".to_string(), model(Vec::new(), None));
 
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("config.toml");
@@ -412,9 +415,30 @@ min_confidence = 0.25
             "one table per recorded document and no key for the model without a record, \
              got:\n{text}"
         );
+        assert!(
+            text.lines().any(|line| line == "softmax_rest_logit = 9.75"),
+            "the rest logit is written as a plain number, got:\n{text}"
+        );
+        assert_eq!(
+            text.matches("softmax_rest_logit").count(),
+            1,
+            "no key for the model without a value, got:\n{text}"
+        );
         let loaded = load_config_file(&path).unwrap();
         assert_eq!(loaded.models["a"].accepted_documents, accepted);
         assert_eq!(loaded.models["b"].accepted_documents, Vec::new());
+        assert_eq!(
+            loaded.models["a"].softmax_rest_logit.map(f32::to_bits),
+            Some(9.75_f32.to_bits())
+        );
+        assert_eq!(loaded.models["b"].softmax_rest_logit, None);
+
+        // A config written before the key existed still loads, with no value.
+        let old: Config = toml::from_str(
+            "[models.old]\npath = \"/m.onnx\"\nlabels = \"/l.txt\"\ntype = \"perch-v2\"\n",
+        )
+        .unwrap();
+        assert_eq!(old.models["old"].softmax_rest_logit, None);
     }
 
     #[test]

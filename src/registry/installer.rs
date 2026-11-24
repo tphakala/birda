@@ -2,6 +2,7 @@
 
 use super::types::{
     BatBackbone, BatCatalog, BatRegionEntry, FileInfo, ModelEntry, ModelVariant, RangeFilterAsset,
+    ScoreCalibration,
 };
 use crate::error::{Error, Result};
 use futures_util::StreamExt;
@@ -59,6 +60,9 @@ pub struct InstalledModel {
     pub bsg_distribution_maps: Option<PathBuf>,
     /// What was installed, for variant-based entries.
     pub provenance: Option<InstallProvenance>,
+    /// Softmax rest logit of the installed variant, narrowed to the `f32` the
+    /// engines take. `None` for a file the registry publishes no calibration for.
+    pub softmax_rest_logit: Option<f32>,
 }
 
 /// What was installed, recorded in `config.toml`.
@@ -886,6 +890,7 @@ pub async fn install_model(model: &ModelEntry, language: Option<&str>) -> Result
         // Legacy entries predate provenance. Their filenames are stable across
         // versions, so there is nothing for cleanup to reclaim either.
         provenance: None,
+        softmax_rest_logit: None,
     })
 }
 
@@ -942,6 +947,10 @@ pub async fn install_variant(entry: &ModelEntry, variant: &ModelVariant) -> Resu
         bsg_migration: None,
         bsg_distribution_maps: None,
         provenance: Some(InstallProvenance::for_variant(entry, variant)),
+        softmax_rest_logit: variant
+            .score_calibration
+            .as_ref()
+            .map(ScoreCalibration::softmax_rest_logit),
     })
 }
 
@@ -2019,6 +2028,7 @@ mod tests {
             bsg_migration: None,
             bsg_distribution_maps: None,
             provenance: None,
+            softmax_rest_logit: None,
         };
 
         assert_eq!(

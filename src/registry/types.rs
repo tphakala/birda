@@ -300,6 +300,20 @@ pub enum ScoreCalibration {
     },
 }
 
+impl ScoreCalibration {
+    /// The softmax rest logit as the `f32` the inference engines take.
+    ///
+    /// A value beyond `f32` range becomes infinite here, which config
+    /// validation rejects before the entry is saved.
+    #[must_use]
+    pub fn softmax_rest_logit(&self) -> f32 {
+        match self {
+            #[allow(clippy::cast_possible_truncation)]
+            Self::SoftmaxRestLogit { rest_logit } => *rest_logit as f32,
+        }
+    }
+}
+
 /// A licence or usage document published with a model family.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct ModelDocument {

@@ -1,5 +1,6 @@
 //! Inference module for bird species detection.
 
+mod calibration;
 mod classifier;
 mod cuda_detection;
 pub mod geomodel;

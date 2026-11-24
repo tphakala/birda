@@ -101,6 +101,7 @@ mod tests {
             installed_build: Some(1),
             region: None,
             variant: Some("fp32".to_string()),
+            softmax_rest_logit: None,
             accepted_documents: Vec::new(),
         }
     }

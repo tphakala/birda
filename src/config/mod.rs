@@ -1,6 +1,7 @@
 //! Configuration loading and management.
 
 pub mod bat;
+pub mod calibration;
 mod file;
 pub mod geomodel;
 pub mod openvino;

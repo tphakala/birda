@@ -175,8 +175,8 @@ fn ranked<'a>(
 /// 3. A folded query found at the start of a word of a region name (rank 0), a
 ///    core country (1), a partial country (2) or a group name (3), the rank
 ///    order birda-gui's search uses. A word starts the text or follows a
-///    character that is not a letter or a digit, so "aland" finds "Åland
-///    Islands" and not "New Zealand".
+///    character that is not alphanumeric, so "aland" finds "Åland Islands"
+///    and not "New Zealand".
 ///
 /// Rules 1 and 2 put tiles that cover the country wholly before partial ones.
 /// Within a rank the order is that of [`ModelEntry::regions`]. A two-letter
@@ -223,14 +223,20 @@ pub fn regions_for_country<'a>(entry: &'a ModelEntry, query: &str) -> Vec<&'a Mo
 }
 
 /// Whether `needle` occurs in `haystack` starting at a word: at the start of the
-/// text, or right after a character that is not a letter or a digit.
+/// text, or right after a character that is not alphanumeric.
+///
+/// Every character position is tried, not only the non-overlapping matches
+/// `str::match_indices` would return, so an occurrence that overlaps an
+/// earlier mid-word one is still found.
 fn starts_a_word(haystack: &str, needle: &str) -> bool {
-    haystack.match_indices(needle).any(|(at, _)| {
-        haystack[..at]
-            .chars()
-            .next_back()
-            .is_none_or(|before| !before.is_alphanumeric())
-    })
+    let mut before: Option<char> = None;
+    for (at, current) in haystack.char_indices() {
+        if before.is_none_or(|c| !c.is_alphanumeric()) && haystack[at..].starts_with(needle) {
+            return true;
+        }
+        before = Some(current);
+    }
+    false
 }
 
 /// The rank of a folded query among a tile's texts, with birda-gui's order:
@@ -1080,7 +1086,11 @@ mod tests {
         nordic.countries = Some(countries(&["Åland Islands", "Finland"], &[]));
         let mut palearctic = tile("western-palearctic", "Western Palearctic", 1);
         palearctic.countries = Some(countries(&["Åland Islands"], &[]));
-        let entry = entry_with(vec![new_zealand, nordic, palearctic]);
+        // Synthetic names: "man" is mid-word in "Romania" before it starts
+        // "Mansion", and the second "a a" in "Ba A A" overlaps the first.
+        let mansion = tile("mansion", "Romania Mansion", 2);
+        let overlap = tile("overlap", "Ba A A", 2);
+        let entry = entry_with(vec![new_zealand, nordic, palearctic, mansion, overlap]);
         let by = |query: &str| slugs(&regions_for_country(&entry, query));
 
         // "aland" sits inside "zealand" and starts "Åland Islands": only the
@@ -1092,6 +1102,11 @@ mod tests {
         assert_eq!(by("land"), Vec::<String>::new());
         // A later word of a name starts a word too.
         assert_eq!(by("islands"), ["nordic", "western-palearctic"]);
+        // The first occurrence is mid-word and a later one starts a word:
+        // every occurrence is checked, not only the first.
+        assert_eq!(by("man"), ["mansion"]);
+        // A word-start occurrence that overlaps an earlier mid-word one.
+        assert_eq!(by("a a"), ["overlap"]);
     }
 
     #[test]

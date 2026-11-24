@@ -111,17 +111,11 @@ pub fn top_tier_ties<'a, 'b>(matches: &'b [&'a ModelVariant]) -> &'b [&'a ModelV
 /// family publishes one without a region, else the first without a region.
 #[must_use]
 pub fn global_variant(entry: &ModelEntry) -> Option<&ModelVariant> {
-    let default = entry.default_variant.as_deref();
-    let mut globals = entry.variants.iter().filter(|v| v.region.is_none());
-    let first = globals.next()?;
-    if default == Some(first.id.as_str()) {
-        return Some(first);
-    }
-    Some(
-        globals
-            .find(|v| default == Some(v.id.as_str()))
-            .unwrap_or(first),
-    )
+    entry
+        .default_variant
+        .as_deref()
+        .and_then(|id| entry.find_variant(None, id))
+        .or_else(|| entry.variants.iter().find(|v| v.region.is_none()))
 }
 
 /// Lowercase `text` and map the accented characters of ISO country names to

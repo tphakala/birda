@@ -2742,7 +2742,7 @@ fn handle_models_install(
         }
         registry::RegionResolution::Global => None,
         registry::RegionResolution::Named(slug) => Some(slug),
-        registry::RegionResolution::Located { point, matches } => {
+        registry::RegionResolution::Located { matches, .. } => {
             let picked = matches.first().and_then(|best| best.region.clone());
             if !output_mode.is_structured() {
                 println!("{}", registry::install_location_summary(&matches));

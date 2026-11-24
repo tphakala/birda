@@ -139,6 +139,16 @@ pub mod regions {
     /// `--region` value that picks the region covering a location.
     pub const AUTO: &str = "auto";
 
+    /// Config key of the configured latitude, as `birda config set` names it.
+    pub const CONFIG_LATITUDE_KEY: &str = "defaults.latitude";
+
+    /// Config key of the configured longitude, as `birda config set` names it.
+    pub const CONFIG_LONGITUDE_KEY: &str = "defaults.longitude";
+
+    /// Unicode combining diacritical marks, dropped before the country-name fold
+    /// so a decomposed spelling ("u" followed by U+0308) folds like "\u{fc}".
+    pub const COMBINING_MARKS: std::ops::RangeInclusive<char> = '\u{0300}'..='\u{036F}';
+
     /// `--region` value that pins the global model.
     pub const GLOBAL: &str = "global";
 

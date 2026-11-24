@@ -121,11 +121,14 @@ pub fn global_variant(entry: &ModelEntry) -> Option<&ModelVariant> {
 /// Lowercase `text` and map the accented characters of ISO country names to
 /// ASCII, so "Cote d'Ivoire" finds "Côte d’Ivoire".
 ///
-/// Not Unicode normalisation: the table in [`consts::FOLDS`] covers the names
-/// the ISO list contains, and a test fails when an update adds a character.
+/// Not Unicode normalisation: combining marks ([`consts::COMBINING_MARKS`]) are
+/// dropped, so a decomposed spelling folds like the precomposed one, and the
+/// table in [`consts::FOLDS`] covers the names the ISO list contains; a test
+/// fails when an update adds a character.
 #[must_use]
 pub fn fold(text: &str) -> String {
     text.chars()
+        .filter(|c| !consts::COMBINING_MARKS.contains(c))
         .flat_map(char::to_lowercase)
         .map(|c| {
             consts::FOLDS
@@ -356,11 +359,19 @@ fn checked(value: Option<f64>, min: f64, max: f64, error: fn(f64) -> Error) -> R
 /// `models` commands skip config validation, so a hand-edited out-of-range value
 /// reaches this point and would otherwise fail only when the install is saved.
 fn configured_point(lat: Option<f64>, lon: Option<f64>) -> Result<Option<GeoPoint>> {
-    let lat = checked(lat, LATITUDE_MIN, LATITUDE_MAX, |value| {
-        Error::InvalidLatitude { value }
+    let lat = checked(lat, LATITUDE_MIN, LATITUDE_MAX, |_| {
+        Error::ConfiguredCoordinateOutOfRange {
+            key: consts::CONFIG_LATITUDE_KEY,
+            min: LATITUDE_MIN,
+            max: LATITUDE_MAX,
+        }
     })?;
-    let lon = checked(lon, LONGITUDE_MIN, LONGITUDE_MAX, |value| {
-        Error::InvalidLongitude { value }
+    let lon = checked(lon, LONGITUDE_MIN, LONGITUDE_MAX, |_| {
+        Error::ConfiguredCoordinateOutOfRange {
+            key: consts::CONFIG_LONGITUDE_KEY,
+            min: LONGITUDE_MIN,
+            max: LONGITUDE_MAX,
+        }
     })?;
     Ok(lat.zip(lon).map(|(lat, lon)| GeoPoint { lat, lon }))
 }
@@ -378,8 +389,8 @@ fn configured_point(lat: Option<f64>, lon: Option<f64>) -> Result<Option<GeoPoin
 /// [`Error::LocationNeedsRegionAuto`], [`Error::RegionsNotSupported`],
 /// [`Error::RegionLocationMissing`], [`Error::RegionLocationBeforeModels`],
 /// [`Error::RegionGeometryMissing`], [`Error::VariantNotFound`] for a `variant`
-/// no variant of the entry has, and [`Error::InvalidLatitude`]/
-/// [`Error::InvalidLongitude`] for an out-of-range configured location (read
+/// no variant of the entry has, and [`Error::ConfiguredCoordinateOutOfRange`]
+/// for an out-of-range configured location (read
 /// only for `Auto` and for a question, and only for an entry with boundaries,
 /// so a broken config never changes a plain install or a model that cannot use
 /// a location).
@@ -472,7 +483,8 @@ pub fn located_summary(point: GeoPoint, matches: &[&ModelVariant]) -> String {
 /// The same coverage facts as [`located_summary`], without the coordinates.
 ///
 /// Install output often ends up in provisioning logs, and where a recorder
-/// sits can be sensitive, so an install names the region but not the point.
+/// sits can be sensitive, so an install names the region that covers the
+/// location, if one does, but never the point.
 #[must_use]
 pub fn install_location_summary(matches: &[&ModelVariant]) -> String {
     coverage_summary("this location", matches)
@@ -1128,6 +1140,15 @@ mod tests {
     }
 
     #[test]
+    fn test_fold_drops_combining_marks_so_decomposed_spellings_match() {
+        // Decomposed (u + U+0308), precomposed (U+00FC) and ASCII spellings of
+        // one name all fold to the same text.
+        assert_eq!(fold("Tu\u{0308}rkiye"), "turkiye");
+        assert_eq!(fold("T\u{fc}rkiye"), "turkiye");
+        assert_eq!(fold("Turkiye"), "turkiye");
+    }
+
+    #[test]
     fn test_fold_maps_iso_country_names_to_ascii() {
         let table: serde_json::Value =
             serde_json::from_str(include_str!("../../manifests/iso3166-1-alpha2.json")).unwrap();
@@ -1246,11 +1267,11 @@ mod tests {
                 &entry,
                 ask(configured(Some(200.0), Some(10.0)))
             )),
-            "error: invalid latitude: 200 (must be -90.0 to 90.0)"
+            "error: defaults.latitude in config.toml is out of range (must be -90.0 to 90.0); fix it with birda config set defaults.latitude <value>"
         );
         assert_eq!(
             shown(resolve_region(&entry, ask(configured(None, Some(200.0))))),
-            "error: invalid longitude: 200 (must be -180.0 to 180.0)"
+            "error: defaults.longitude in config.toml is out of range (must be -180.0 to 180.0); fix it with birda config set defaults.longitude <value>"
         );
         let typo = RegionInputs {
             variant: Some("int4"),
@@ -1313,7 +1334,7 @@ mod tests {
                 &entry,
                 auto(configured(Some(60.0), Some(200.0)))
             )),
-            "error: invalid longitude: 200 (must be -180.0 to 180.0)"
+            "error: defaults.longitude in config.toml is out of range (must be -180.0 to 180.0); fix it with birda config set defaults.longitude <value>"
         );
         assert_eq!(
             shown(resolve_region(

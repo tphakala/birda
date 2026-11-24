@@ -883,7 +883,7 @@ A regional install is registered under `<model-id>-<region>`, so a global and a 
 
 #### Picking a region at install time
 
-At a terminal, `birda models install birdnet-plus-v30` asks where you record. If you have set a location, it proposes the region that covers it and asks you to confirm. Otherwise, or if you decline, it asks for a country (a name or an ISO code) or coordinates as `lat,lon`, lists the matching regions with their species count and download size, and offers the global model as the last choice. Without a terminal, or with `--yes`, birda asks nothing and installs the global model, as before.
+At a terminal, `birda models install birdnet-plus-v30` asks where you record. If you have set a location, it proposes the region that covers it and asks you to confirm. Otherwise, or if you decline, it asks for a country (a name or an ISO code) or coordinates as `lat,lon`, lists the matching regions with their species count and download size, and offers the global model as the last choice. Without a terminal, or with `--yes`, birda asks nothing and installs the global model, as before. Without a terminal, a model whose publisher requires agreement to a document, such as BirdNET+, installs only with `--yes` (see above).
 
 To skip the question, name the region, ask for the one that covers a location, or pin the global model:
 

@@ -665,6 +665,22 @@ pub enum Error {
         value: f64,
     },
 
+    /// A configured coordinate is out of range.
+    ///
+    /// Names the config key but not the value: the value is the user's own
+    /// location, and install output often ends up in logs.
+    #[error(
+        "{key} in config.toml is out of range (must be {min:.1} to {max:.1}); fix it with birda config set {key} <value>"
+    )]
+    ConfiguredCoordinateOutOfRange {
+        /// The config key, `defaults.latitude` or `defaults.longitude`.
+        key: &'static str,
+        /// Lowest allowed value.
+        min: f64,
+        /// Highest allowed value.
+        max: f64,
+    },
+
     /// Invalid longitude value.
     #[error(
         "invalid longitude: {value} (must be {:.1} to {:.1})",

@@ -5,6 +5,11 @@
 //! at run time. This file decides where to look, loads the library from the
 //! first place that has it, and lists the devices the runtime reports.
 //!
+//! The library's own imports, oneTBB and the core library, are opened first by
+//! absolute path (see [`super::preload`]), so a runtime found through
+//! `INTEL_OPENVINO_DIR`, an install root or a Store package loads without its
+//! directories being on the loader path.
+//!
 //! The path logic, the load-error classification and the render-node diagnosis
 //! are pure functions, tested without a runtime.
 
@@ -12,8 +17,10 @@ use super::device::{
     OvDevice, is_intel_architecture, parse_capabilities, parse_gpu_class, parse_memory_bytes,
     parse_pci_info, parse_uuid,
 };
+use super::{msix, preload};
 use crate::constants::openvino as ov;
 use crate::error::{Error, Result};
+use crate::utils::text::strip_prefix_ignore_ascii_case;
 use openvino::{Core, DeviceType, PropertyKey};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
@@ -62,11 +69,33 @@ impl Os {
         }
     }
 
-    const fn install_parents(self) -> &'static [&'static str] {
+    /// The names and directories of the libraries `open_library` opens before
+    /// the C API library.
+    const fn preload_layout(self) -> preload::Layout {
         match self {
-            Self::Linux => ov::LINUX_INSTALL_PARENTS,
-            Self::Windows => ov::WINDOWS_INSTALL_PARENTS,
+            Self::Linux => preload::Layout {
+                c_api: ov::LINUX_LIBRARY_FILE,
+                core: ov::LINUX_CORE_LIBRARY_FILE,
+                tbb: ov::LINUX_TBB_LIBRARY_FILE,
+                lib_dir: ov::LINUX_INSTALL_LIB_DIR,
+                tbb_dir: ov::LINUX_TBB_DIR,
+                ignore_case: false,
+            },
+            Self::Windows => preload::Layout {
+                c_api: ov::WINDOWS_LIBRARY_FILE,
+                core: ov::WINDOWS_CORE_LIBRARY_FILE,
+                tbb: ov::WINDOWS_TBB_LIBRARY_FILE,
+                lib_dir: ov::WINDOWS_INSTALL_LIB_DIR,
+                tbb_dir: ov::WINDOWS_TBB_DIR,
+                ignore_case: true,
+            },
         }
+    }
+
+    /// Whether file names compare without regard to ASCII case: NTFS does not
+    /// tell `OpenVINO_C.dll` from `openvino_c.dll`.
+    const fn ignores_case(self) -> bool {
+        matches!(self, Self::Windows)
     }
 
     const fn system_lib_dirs(self) -> &'static [&'static str] {
@@ -82,10 +111,16 @@ impl Os {
 pub struct SearchEnv {
     /// Target OS.
     pub os: Os,
+    /// Directory of the running executable.
+    pub exe_dir: Option<PathBuf>,
     /// Value of `INTEL_OPENVINO_DIR`.
     pub install_dir: Option<PathBuf>,
     /// Entries of the loader path variable (`LD_LIBRARY_PATH`, `PATH`).
     pub loader_path: Vec<PathBuf>,
+    /// `%ProgramFiles%`; read on every OS, used only for Windows.
+    pub program_files: PathBuf,
+    /// `%ProgramFiles(x86)%`; read on every OS, used only for Windows.
+    pub program_files_x86: PathBuf,
 }
 
 impl SearchEnv {
@@ -96,16 +131,59 @@ impl SearchEnv {
             Os::Linux => "LD_LIBRARY_PATH",
             Os::Windows => "PATH",
         };
+        let env_path = |name: &str, default: &str| {
+            std::env::var_os(name)
+                .filter(|value| !value.is_empty())
+                .map_or_else(|| PathBuf::from(default), PathBuf::from)
+        };
         Self {
             os,
+            exe_dir: std::env::current_exe()
+                .ok()
+                .and_then(|exe| exe.parent().map(Path::to_path_buf)),
             install_dir: std::env::var_os(ov::INSTALL_DIR_ENV)
                 .filter(|value| !value.is_empty())
                 .map(PathBuf::from),
             loader_path: std::env::var_os(loader_var)
                 .map(|value| std::env::split_paths(&value).collect())
                 .unwrap_or_default(),
+            program_files: env_path(ov::PROGRAM_FILES_ENV, ov::DEFAULT_PROGRAM_FILES),
+            program_files_x86: env_path(ov::PROGRAM_FILES_X86_ENV, ov::DEFAULT_PROGRAM_FILES_X86),
         }
     }
+
+    /// The directories that hold install roots, in search order.
+    ///
+    /// On Windows, `<ProgramFiles>\Intel` then `<ProgramFiles(x86)>\Intel`,
+    /// with the second dropped when it is the first spelled in another case.
+    fn install_parents(&self) -> Vec<PathBuf> {
+        match self.os {
+            Os::Linux => ov::LINUX_INSTALL_PARENTS
+                .iter()
+                .map(PathBuf::from)
+                .collect(),
+            Os::Windows => {
+                let first = self.program_files.join(ov::WINDOWS_INSTALL_VENDOR_DIR);
+                let second = self.program_files_x86.join(ov::WINDOWS_INSTALL_VENDOR_DIR);
+                if same_path_ignoring_case(&first, &second) {
+                    vec![first]
+                } else {
+                    vec![first, second]
+                }
+            }
+        }
+    }
+
+    /// The directory that holds Microsoft Store packages.
+    fn windows_apps(&self) -> PathBuf {
+        self.program_files.join(ov::WINDOWS_APPS_DIR)
+    }
+}
+
+/// Whether two paths spell the same text apart from ASCII case.
+fn same_path_ignoring_case(a: &Path, b: &Path) -> bool {
+    a.to_string_lossy()
+        .eq_ignore_ascii_case(&b.to_string_lossy())
 }
 
 /// Lists a directory's entry names; `None` when it is not a readable directory.
@@ -150,11 +228,19 @@ fn version_key(name: &str, base: &str) -> Option<Vec<u64>> {
 }
 
 /// Pick the library from a directory listing: the exact name, else on Linux
-/// the highest versioned one.
+/// the highest versioned one. On Windows the exact name matches without regard
+/// to ASCII case and the listed spelling is returned.
 fn pick_library(names: &[String], os: Os) -> Option<String> {
     let exact = os.library_file();
-    if names.iter().any(|name| name == exact) {
-        return Some(exact.to_string());
+    let is_exact = |name: &str| {
+        if os.ignores_case() {
+            name.eq_ignore_ascii_case(exact)
+        } else {
+            name == exact
+        }
+    };
+    if let Some(name) = names.iter().find(|name| is_exact(name)) {
+        return Some(name.clone());
     }
     if os != Os::Linux {
         return None;
@@ -177,7 +263,7 @@ fn find_in(dir: &Path, os: Os, list_dir: ListDir<'_>) -> Option<PathBuf> {
 /// and a name whose suffix is not numeric, such as an archive directory with a
 /// platform in its name, has none.
 fn root_version(name: &str) -> Option<Vec<u64>> {
-    let rest = name.strip_prefix(ov::INSTALL_ROOT_PREFIX)?;
+    let rest = strip_prefix_ignore_ascii_case(name, ov::INSTALL_ROOT_PREFIX)?;
     if rest.is_empty() {
         return Some(Vec::new());
     }
@@ -214,23 +300,17 @@ fn order_install_roots(mut names: Vec<String>) -> Vec<String> {
     names
 }
 
-/// Install roots found under the OS's usual parents, newest version first.
-fn install_roots(os: Os, list_dir: ListDir<'_>) -> Vec<PathBuf> {
-    let mut roots = Vec::new();
-    for parent in os.install_parents() {
-        let parent = Path::new(parent);
-        let names: Vec<String> = list_dir(parent)
-            .unwrap_or_default()
-            .into_iter()
-            .filter(|name| name.starts_with(ov::INSTALL_ROOT_PREFIX))
-            .collect();
-        roots.extend(
-            order_install_roots(names)
-                .into_iter()
-                .map(|name| parent.join(name)),
-        );
-    }
-    roots
+/// Install roots found directly under `parent`, newest version first.
+fn install_roots(parent: &Path, list_dir: ListDir<'_>) -> Vec<PathBuf> {
+    let names: Vec<String> = list_dir(parent)
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|name| strip_prefix_ignore_ascii_case(name, ov::INSTALL_ROOT_PREFIX).is_some())
+        .collect();
+    order_install_roots(names)
+        .into_iter()
+        .map(|name| parent.join(name))
+        .collect()
 }
 
 /// Resolve `inference.openvino_path`: a library file, a directory holding it,
@@ -275,13 +355,93 @@ fn resolve_explicit(
     }
 }
 
+/// The places searched so far and what is needed to look in one more.
+struct Search<'a> {
+    os: Os,
+    list_dir: ListDir<'a>,
+    /// One line per place looked at, in order.
+    searched: Vec<String>,
+}
+
+impl Search<'_> {
+    /// Look for the library in `dir`, and record the place as `label`.
+    fn check(&mut self, label: &str, dir: &Path) -> Option<PathBuf> {
+        let found = find_in(dir, self.os, self.list_dir);
+        self.searched.push(format!("  {label}: {}", dir.display()));
+        found
+    }
+
+    /// Look in the library directory of each Store package folder in `roots`
+    /// that is not in `tried`, adding each to `tried`.
+    fn check_packages(&mut self, roots: Vec<PathBuf>, tried: &mut Vec<PathBuf>) -> Option<PathBuf> {
+        for root in roots {
+            if tried
+                .iter()
+                .any(|seen| same_path_ignoring_case(seen, &root))
+            {
+                continue;
+            }
+            let dir = root.join(self.os.install_lib_dir());
+            tried.push(root);
+            if let Some(file) = self.check("Microsoft Store package", &dir) {
+                return Some(file);
+            }
+        }
+        None
+    }
+}
+
+/// Find the library in a Microsoft Store package.
+///
+/// The `WindowsApps` listing is tried first. The registry is queried only when
+/// that produced no package holding the library, because the query starts a
+/// process and a standard user usually cannot list `WindowsApps` at all. A
+/// package is chosen only if its library directory lists the library, so a
+/// stale registry entry for an uninstalled package is skipped.
+fn find_in_store_packages(
+    search: &mut Search<'_>,
+    env: &SearchEnv,
+    registry: msix::RegistryQuery<'_>,
+) -> Option<PathBuf> {
+    let apps = env.windows_apps();
+    let mut tried = Vec::new();
+    let listed = (search.list_dir)(&apps)
+        .map(|names| msix::from_listing(&apps, &names))
+        .unwrap_or_default();
+    if let Some(file) = search.check_packages(listed, &mut tried) {
+        return Some(file);
+    }
+    let registered = registry()
+        .map(|output| msix::from_registry(&output))
+        .unwrap_or_default();
+    if let Some(file) = search.check_packages(registered, &mut tried) {
+        return Some(file);
+    }
+    if tried.is_empty() {
+        search.searched.push(format!(
+            "  Microsoft Store packages: none found in {} or the package registry",
+            apps.display()
+        ));
+    }
+    None
+}
+
 /// Find the `OpenVINO` C API library.
 ///
 /// An explicit path is the only place searched when it is given: a wrong
 /// configured path must not silently fall through to some other runtime.
-/// Otherwise, in order: `INTEL_OPENVINO_DIR`, the loader path variable, the
-/// system library directories, and the install roots under `/opt/intel` (or
-/// `Program Files\Intel`), highest name first.
+/// Otherwise, in order:
+///
+/// 1. the directory of the running executable, holding the library directly;
+/// 2. `INTEL_OPENVINO_DIR`;
+/// 3. the loader path variable;
+/// 4. the system library directories (Linux);
+/// 5. the install roots under `/opt/intel` (or `Program Files\Intel` and
+///    `Program Files (x86)\Intel`), newest version first;
+/// 6. Microsoft Store packages (Windows), newest first.
+///
+/// `registry` runs the package registry query for step 6 and is called at most
+/// once, and only on Windows.
 ///
 /// # Errors
 ///
@@ -290,42 +450,65 @@ pub fn locate(
     explicit: Option<&Path>,
     env: &SearchEnv,
     list_dir: ListDir<'_>,
+    registry: msix::RegistryQuery<'_>,
 ) -> std::result::Result<Located, PathProblem> {
     let os = env.os;
     if let Some(path) = explicit {
         return resolve_explicit(path, os, list_dir).map(Located::File);
     }
 
-    let mut searched = Vec::new();
-    let mut check = |label: String, dir: PathBuf| -> Option<PathBuf> {
-        let found = find_in(&dir, os, list_dir);
-        searched.push(format!("  {label}: {}", dir.display()));
-        found
+    let mut search = Search {
+        os,
+        list_dir,
+        searched: Vec::new(),
     };
 
+    if let Some(dir) = &env.exe_dir
+        && let Some(file) = search.check("executable directory", dir)
+    {
+        return Ok(Located::File(file));
+    }
     if let Some(root) = &env.install_dir {
         let dir = root.join(os.install_lib_dir());
-        if let Some(file) = check(ov::INSTALL_DIR_ENV.to_string(), dir) {
+        if let Some(file) = search.check(ov::INSTALL_DIR_ENV, &dir) {
             return Ok(Located::File(file));
         }
     }
     for dir in &env.loader_path {
-        if let Some(file) = check("loader path".to_string(), dir.clone()) {
+        if let Some(file) = search.check("loader path", dir) {
             return Ok(Located::File(file));
         }
     }
     for dir in os.system_lib_dirs() {
-        if let Some(file) = check("system library directory".to_string(), PathBuf::from(dir)) {
+        if let Some(file) = search.check("system library directory", Path::new(dir)) {
             return Ok(Located::File(file));
         }
     }
-    for root in install_roots(os, list_dir) {
-        let dir = root.join(os.install_lib_dir());
-        if let Some(file) = check("install directory".to_string(), dir) {
-            return Ok(Located::File(file));
+    for parent in env.install_parents() {
+        let roots = install_roots(&parent, list_dir);
+        if roots.is_empty() {
+            search.searched.push(format!(
+                "  install directory: {} (none)",
+                parent
+                    .join(format!("{}*", ov::INSTALL_ROOT_PREFIX))
+                    .display()
+            ));
+        }
+        for root in roots {
+            if let Some(file) = search.check("install directory", &root.join(os.install_lib_dir()))
+            {
+                return Ok(Located::File(file));
+            }
         }
     }
-    Ok(Located::NotFound { searched })
+    if os == Os::Windows
+        && let Some(file) = find_in_store_packages(&mut search, env, registry)
+    {
+        return Ok(Located::File(file));
+    }
+    Ok(Located::NotFound {
+        searched: search.searched,
+    })
 }
 
 /// How a library load failed, as far as the message tells.
@@ -555,13 +738,20 @@ impl Runtime {
             return Err(unsupported_platform());
         };
         let env = SearchEnv::from_process(os);
-        let located =
-            locate(explicit, &env, &list_dir_fs).map_err(|problem| Error::OpenVinoPathInvalid {
-                path: explicit.map(Path::to_path_buf).unwrap_or_default(),
-                reason: problem.reason,
-            })?;
+        let located = locate(
+            explicit,
+            &env,
+            &list_dir_fs,
+            &msix::query_package_repository,
+        )
+        .map_err(|problem| Error::OpenVinoPathInvalid {
+            path: explicit.map(Path::to_path_buf).unwrap_or_default(),
+            reason: problem.reason,
+        })?;
 
-        let library = open_located(located, os, &mut open_library)?;
+        let library = open_located(located, os, &mut |target, origin| {
+            open_library(target, origin, os)
+        })?;
         // A library that passed the version check can still lack a function
         // the core or the device listing calls, which panics in the binding
         // like a missing version function does.
@@ -581,6 +771,15 @@ impl Runtime {
     }
 }
 
+/// Where the path handed to the opener came from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Origin {
+    /// A file the search or the user chose.
+    Located,
+    /// A bare library name left to the system loader.
+    LoaderSearch,
+}
+
 /// Open the runtime library for a search result, through `open`.
 ///
 /// Returns the file that was opened, or `None` when the system loader found
@@ -588,17 +787,19 @@ impl Runtime {
 /// tested without a runtime:
 ///
 /// * a located file is opened as it is, and a failure is final on every OS: a
-///   path the search or the user chose never falls back to another runtime;
+///   path the search or the user chose never falls back to another runtime.
+///   Only a located file has its dependencies preloaded (see
+///   [`Origin::Located`]);
 /// * with nothing located, only Linux asks the system loader for the bare name
 ///   (see [`Os::has_loader_fallback`]); Windows reports the places searched.
 fn open_located(
     located: Located,
     os: Os,
-    open: &mut dyn FnMut(&Path) -> std::result::Result<(), LoadFailure>,
+    open: &mut dyn FnMut(&Path, Origin) -> std::result::Result<(), LoadFailure>,
 ) -> Result<Option<PathBuf>> {
     match located {
         Located::File(file) => {
-            open(&file).map_err(LoadFailure::into_error)?;
+            open(&file, Origin::Located).map_err(LoadFailure::into_error)?;
             Ok(Some(file))
         }
         Located::NotFound { searched } => {
@@ -608,7 +809,7 @@ fn open_located(
             if !os.has_loader_fallback() {
                 return Err(runtime_not_found(&searched, os, None));
             }
-            open(Path::new(os.library_file()))
+            open(Path::new(os.library_file()), Origin::LoaderSearch)
                 .map_err(|failure| fallback_error(&searched, os, failure))?;
             Ok(None)
         }
@@ -659,7 +860,6 @@ fn fallback_error(searched: &[String], os: Os, failure: LoadFailure) -> Error {
     }
 }
 
-/// Open the `openvino_c` library and check its version.
 /// The library this process handed to `openvino-sys`, once one was opened.
 ///
 /// `openvino-sys` 0.11.1 keeps the first library it opens for the life of the
@@ -675,7 +875,12 @@ static LOADED_LIBRARY: Mutex<Option<PathBuf>> = Mutex::new(None);
 /// and `src/linking/runtime.rs:128-134`): any shared library that is not the
 /// `OpenVINO` C API does that. The panic is caught and reported as a load
 /// failure. The binding's own panic message is still printed first.
-fn open_library(target: &Path) -> std::result::Result<(), LoadFailure> {
+///
+/// For a [`Origin::Located`] target, the oneTBB and core libraries beside it
+/// are opened first (see [`preload`]), but only while no runtime is held by
+/// this process: no file of a second install is loaded once any file of a first
+/// one is.
+fn open_library(target: &Path, origin: Origin, os: Os) -> std::result::Result<(), LoadFailure> {
     let mut loaded = LOADED_LIBRARY
         .lock()
         .map_err(|_| LoadFailure::Other("an earlier OpenVINO runtime load failed".to_string()))?;
@@ -689,6 +894,13 @@ fn open_library(target: &Path) -> std::result::Result<(), LoadFailure> {
             target.display()
         )));
     }
+    let preloaded = loaded.is_none()
+        && origin == Origin::Located
+        && preload::preload(&preload::dependency_files(
+            target,
+            &os.preload_layout(),
+            &list_dir_fs,
+        ));
     let outcome = std::panic::catch_unwind(|| openvino_sys::library::load_from(target));
     let failure = match outcome {
         Ok(Ok(())) => None,
@@ -698,12 +910,20 @@ fn open_library(target: &Path) -> std::result::Result<(), LoadFailure> {
             target.display()
         ))),
     };
-    // Only a library the loader refused is not held by the binding.
-    if !matches!(failure, Some(LoadFailure::CouldNotOpen(_))) {
+    if holds_runtime(preloaded, failure.as_ref()) {
         *loaded = Some(target.to_path_buf());
     }
     drop(loaded);
     failure.map_or(Ok(()), Err)
+}
+
+/// Whether this process now holds files of the runtime at the load target.
+///
+/// A library the loader refused is not held by the binding, but the
+/// dependencies preloaded for it stay resident and are never unloaded, so the
+/// target is recorded and no other runtime is loaded afterwards.
+fn holds_runtime(preloaded: bool, failure: Option<&LoadFailure>) -> bool {
+    preloaded || !matches!(failure, Some(LoadFailure::CouldNotOpen(_)))
 }
 
 fn create_runtime(library: Option<PathBuf>) -> Result<Runtime> {
@@ -793,12 +1013,19 @@ mod tests {
             .collect()
     }
 
-    fn linux_env() -> SearchEnv {
+    fn env_for(os: Os) -> SearchEnv {
         SearchEnv {
-            os: Os::Linux,
+            os,
+            exe_dir: None,
             install_dir: None,
             loader_path: Vec::new(),
+            program_files: PathBuf::from(ov::DEFAULT_PROGRAM_FILES),
+            program_files_x86: PathBuf::from(ov::DEFAULT_PROGRAM_FILES_X86),
         }
+    }
+
+    fn linux_env() -> SearchEnv {
+        env_for(Os::Linux)
     }
 
     fn locate_in(
@@ -806,7 +1033,12 @@ mod tests {
         env: &SearchEnv,
         fs: &HashMap<PathBuf, Vec<String>>,
     ) -> std::result::Result<Located, PathProblem> {
-        locate(explicit.map(Path::new), env, &|dir| fs.get(dir).cloned())
+        locate(
+            explicit.map(Path::new),
+            env,
+            &|dir| fs.get(dir).cloned(),
+            &|| None,
+        )
     }
 
     fn file(path: &str) -> Located {
@@ -883,14 +1115,18 @@ mod tests {
             "libc.so.6"
         };
         assert_eq!(
-            open_library(Path::new(not_openvino)),
+            open_library(Path::new(not_openvino), Origin::LoaderSearch, Os::Linux),
             Err(LoadFailure::Other(format!(
                 "{not_openvino} is not the OpenVINO C API library: it lacks the functions \
                  birda calls"
             )))
         );
         assert_eq!(
-            open_library(Path::new("/opt/other/libopenvino_c.so")),
+            open_library(
+                Path::new("/opt/other/libopenvino_c.so"),
+                Origin::Located,
+                Os::Linux
+            ),
             Err(LoadFailure::Other(format!(
                 "this process already loaded the OpenVINO runtime {not_openvino}, and a process \
                  can load only one; /opt/other/libopenvino_c.so was not loaded"
@@ -915,8 +1151,9 @@ mod tests {
     }
 
     #[test]
-    fn the_default_search_follows_install_dir_loader_path_system_dirs_then_roots() {
+    fn the_default_search_order_is_exe_dir_install_dir_loader_path_system_dirs_then_roots() {
         let fs = fake_fs(&[
+            ("/opt/birda", &["libopenvino_c.so"]),
             ("/home/u/ov/runtime/lib/intel64", &["libopenvino_c.so"]),
             ("/custom/lib", &["libopenvino_c.so"]),
             ("/usr/lib", &["libopenvino_c.so"]),
@@ -931,8 +1168,14 @@ mod tests {
             ),
         ]);
         let mut env = linux_env();
+        env.exe_dir = Some(PathBuf::from("/opt/birda"));
         env.install_dir = Some(PathBuf::from("/home/u/ov"));
         env.loader_path = vec![PathBuf::from("/empty"), PathBuf::from("/custom/lib")];
+        assert_eq!(
+            locate_in(None, &env, &fs),
+            Ok(file("/opt/birda/libopenvino_c.so"))
+        );
+        env.exe_dir = None;
         assert_eq!(
             locate_in(None, &env, &fs),
             Ok(file("/home/u/ov/runtime/lib/intel64/libopenvino_c.so"))
@@ -968,29 +1211,202 @@ mod tests {
         );
     }
 
+    fn strings(names: &[&str]) -> Vec<String> {
+        names.iter().map(ToString::to_string).collect()
+    }
+
+    fn windows_env(program_files: &str, program_files_x86: &str) -> SearchEnv {
+        SearchEnv {
+            program_files: PathBuf::from(program_files),
+            program_files_x86: PathBuf::from(program_files_x86),
+            ..env_for(Os::Windows)
+        }
+    }
+
     #[test]
     fn the_windows_layout_uses_its_own_library_name_and_directories() {
-        let parent = PathBuf::from(ov::WINDOWS_INSTALL_PARENTS[0]);
+        // A relocated Program Files, and an x86 one that is the same place in
+        // another case, so the second parent is not searched again.
+        let env = windows_env("D:\\Apps", "d:\\apps");
+        let parent = PathBuf::from("D:\\Apps").join("Intel");
         let newest = parent.join("openvino_2026.2");
         let lib_dir = newest.join(ov::WINDOWS_INSTALL_LIB_DIR);
         let fs: HashMap<PathBuf, Vec<String>> = HashMap::from([
-            (
-                parent,
-                vec!["openvino_2026.2".to_string(), "openvino_2025.4".to_string()],
-            ),
+            (parent, strings(&["openvino_2026.2", "openvino_2025.4"])),
             (
                 lib_dir.clone(),
-                vec!["openvino_c.dll".to_string(), "openvino.dll".to_string()],
+                strings(&["openvino_c.dll", "openvino.dll"]),
             ),
         ]);
-        let env = SearchEnv {
-            os: Os::Windows,
-            install_dir: None,
-            loader_path: Vec::new(),
+        let locate_win = |env: &SearchEnv| locate(None, env, &|dir| fs.get(dir).cloned(), &|| None);
+        assert_eq!(
+            locate_win(&env),
+            Ok(Located::File(lib_dir.join("openvino_c.dll")))
+        );
+
+        // Nothing holds the library: each install directory is listed once,
+        // and the x86 parent, which holds no roots, is the same place as the
+        // first.
+        let fs_empty: HashMap<PathBuf, Vec<String>> = HashMap::from([(
+            PathBuf::from("D:\\Apps").join("Intel"),
+            strings(&["openvino_2026.2"]),
+        )]);
+        let Ok(Located::NotFound { searched }) =
+            locate(None, &env, &|dir| fs_empty.get(dir).cloned(), &|| None)
+        else {
+            panic!("nothing is installed");
+        };
+        let install_lines: Vec<&String> = searched
+            .iter()
+            .filter(|line| line.starts_with("  install directory"))
+            .collect();
+        assert_eq!(
+            install_lines,
+            [&format!(
+                "  install directory: {}",
+                PathBuf::from("D:\\Apps")
+                    .join("Intel")
+                    .join("openvino_2026.2")
+                    .join(ov::WINDOWS_INSTALL_LIB_DIR)
+                    .display()
+            )]
+        );
+    }
+
+    #[test]
+    fn a_parent_without_install_roots_is_listed_as_empty() {
+        let env = windows_env("D:\\Apps", "E:\\Apps32");
+        let Ok(Located::NotFound { searched }) = locate(None, &env, &|_| None, &|| None) else {
+            panic!("nothing is installed");
+        };
+        let none_line = |root: &str| {
+            format!(
+                "  install directory: {} (none)",
+                PathBuf::from(root)
+                    .join("Intel")
+                    .join("openvino*")
+                    .display()
+            )
+        };
+        assert_eq!(searched[0], none_line("D:\\Apps"));
+        assert_eq!(searched[1], none_line("E:\\Apps32"));
+    }
+
+    #[test]
+    fn windows_names_match_without_regard_to_case() {
+        let env = windows_env("D:\\Apps", "D:\\Apps");
+        let parent = PathBuf::from("D:\\Apps").join("Intel");
+        let lib_dir = |root: &str| parent.join(root).join(ov::WINDOWS_INSTALL_LIB_DIR);
+        let fs: HashMap<PathBuf, Vec<String>> = HashMap::from([
+            (
+                parent.clone(),
+                strings(&["OpenVINO_2026.2", "openvino_2025.4"]),
+            ),
+            (lib_dir("OpenVINO_2026.2"), strings(&["OPENVINO_C.DLL"])),
+            (lib_dir("openvino_2025.4"), strings(&["openvino_c.dll"])),
+        ]);
+        // Each of the install-root filter, its version parse and the library
+        // name match must fold case, or the older root is picked.
+        assert_eq!(
+            locate(None, &env, &|dir| fs.get(dir).cloned(), &|| None),
+            Ok(Located::File(
+                lib_dir("OpenVINO_2026.2").join("OPENVINO_C.DLL")
+            ))
+        );
+        // The folding is Windows only: a Linux library name is case sensitive.
+        assert_eq!(
+            pick_library(&strings(&["LIBOPENVINO_C.SO"]), Os::Linux),
+            None
+        );
+    }
+
+    #[test]
+    fn store_packages_come_last_and_fall_back_to_the_registry() {
+        const OLD: &str = "Intel.OpenVINOToolkit.X_2026.9.0.0_x64__8wekyb3d8bbwe";
+        const NEW: &str = "Intel.OpenVINOToolkit.X_2026.10.0.0_x64__8wekyb3d8bbwe";
+        let env = windows_env("D:\\Apps", "D:\\Apps");
+        let apps = PathBuf::from("D:\\Apps").join(ov::WINDOWS_APPS_DIR);
+        let lib = |root: &Path| root.join(ov::WINDOWS_INSTALL_LIB_DIR);
+        let panics = || -> Option<String> { panic!("the registry must not be queried") };
+
+        // a. The newest package by version, not by string, wins from the
+        // listing, and the registry is not asked.
+        let fs: HashMap<PathBuf, Vec<String>> = HashMap::from([
+            (apps.clone(), strings(&[OLD, NEW])),
+            (lib(&apps.join(OLD)), strings(&["openvino_c.dll"])),
+            (lib(&apps.join(NEW)), strings(&["openvino_c.dll"])),
+        ]);
+        assert_eq!(
+            locate(None, &env, &|dir| fs.get(dir).cloned(), &panics),
+            Ok(Located::File(lib(&apps.join(NEW)).join("openvino_c.dll")))
+        );
+
+        // b. A listing the user may not read: the registry names a newer
+        // package whose folder is gone and an older one that is installed.
+        let registry = format!(
+            "{key}\\{NEW}\r\n    Path    REG_SZ    D:\\Gone\\{NEW}\r\n\r\n\
+             {key}\\{OLD}\r\n    Path    REG_SZ    D:\\Store\\{OLD}\r\n",
+            key = ov::PACKAGE_REPOSITORY_KEY
+        );
+        let installed = lib(Path::new(&format!("D:\\Store\\{OLD}")));
+        let fs: HashMap<PathBuf, Vec<String>> =
+            HashMap::from([(installed.clone(), strings(&["openvino_c.dll"]))]);
+        assert_eq!(
+            locate(None, &env, &|dir| fs.get(dir).cloned(), &|| Some(
+                registry.clone()
+            )),
+            Ok(Located::File(installed.join("openvino_c.dll")))
+        );
+        let none_installed: HashMap<PathBuf, Vec<String>> = HashMap::new();
+        let Ok(Located::NotFound { searched }) =
+            locate(None, &env, &|dir| none_installed.get(dir).cloned(), &|| {
+                Some(registry.clone())
+            })
+        else {
+            panic!("nothing is installed");
+        };
+        let store_lines: Vec<&String> = searched
+            .iter()
+            .filter(|line| line.starts_with("  Microsoft Store package"))
+            .collect();
+        assert_eq!(
+            store_lines,
+            [
+                &format!(
+                    "  Microsoft Store package: {}",
+                    lib(Path::new(&format!("D:\\Gone\\{NEW}"))).display()
+                ),
+                &format!(
+                    "  Microsoft Store package: {}",
+                    lib(Path::new(&format!("D:\\Store\\{OLD}"))).display()
+                ),
+            ]
+        );
+
+        // c. Nothing anywhere: one line says so.
+        let Ok(Located::NotFound { searched }) = locate(None, &env, &|_| None, &|| None) else {
+            panic!("nothing is installed");
         };
         assert_eq!(
-            locate(None, &env, &|dir| fs.get(dir).cloned()),
-            Ok(Located::File(lib_dir.join("openvino_c.dll")))
+            searched.last(),
+            Some(&format!(
+                "  Microsoft Store packages: none found in {} or the package registry",
+                apps.display()
+            ))
+        );
+
+        // d. An install root under Program Files\Intel beats a Store package.
+        let intel = PathBuf::from("D:\\Apps").join("Intel");
+        let root_lib = lib(&intel.join("openvino_2026.2"));
+        let fs: HashMap<PathBuf, Vec<String>> = HashMap::from([
+            (intel, strings(&["openvino_2026.2"])),
+            (root_lib.clone(), strings(&["openvino_c.dll"])),
+            (apps.clone(), strings(&[NEW])),
+            (lib(&apps.join(NEW)), strings(&["openvino_c.dll"])),
+        ]);
+        assert_eq!(
+            locate(None, &env, &|dir| fs.get(dir).cloned(), &panics),
+            Ok(Located::File(root_lib.join("openvino_c.dll")))
         );
     }
 
@@ -1029,19 +1445,28 @@ mod tests {
     fn not_found_lists_every_place_searched() {
         let fs = fake_fs(&[("/usr/lib", &["libm.so"])]);
         let mut env = linux_env();
+        env.exe_dir = Some(PathBuf::from("/opt/birda"));
         env.install_dir = Some(PathBuf::from("/home/u/ov"));
         env.loader_path = vec![PathBuf::from("/custom/lib")];
         let Ok(Located::NotFound { searched }) = locate_in(None, &env, &fs) else {
             panic!("nothing is installed");
         };
         let under_root = Path::new("/home/u/ov").join(ov::LINUX_INSTALL_LIB_DIR);
+        assert_eq!(searched[0], "  executable directory: /opt/birda");
         assert_eq!(
-            searched[0],
+            searched[1],
             format!("  INTEL_OPENVINO_DIR: {}", under_root.display())
         );
-        assert_eq!(searched[1], "  loader path: /custom/lib");
-        assert_eq!(searched[2], "  system library directory: /usr/lib");
-        assert_eq!(searched.len(), 2 + ov::LINUX_SYSTEM_LIB_DIRS.len());
+        assert_eq!(searched[2], "  loader path: /custom/lib");
+        assert_eq!(searched[3], "  system library directory: /usr/lib");
+        let last = searched.last().map(String::as_str);
+        assert_eq!(
+            last,
+            Some("  install directory: /opt/intel/openvino* (none)")
+        );
+        // Executable directory, INTEL_OPENVINO_DIR, loader path, the system
+        // directories, then the one empty install parent.
+        assert_eq!(searched.len(), 3 + ov::LINUX_SYSTEM_LIB_DIRS.len() + 1);
     }
 
     #[test]
@@ -1086,8 +1511,9 @@ mod tests {
             "OpenVINO runtime not found. Searched:\n\
              \x20 system library directory: /usr/lib\n\
              \x20 the system loader path: libopenvino_c.so (libopenvino_c.so: cannot open shared object file: No such file or directory)\n\
-             Install OpenVINO 2025.1 or newer (see docs/openvino.md) or set \
-             inference.openvino_path in the config file to the directory holding libopenvino_c.so"
+             Install OpenVINO 2025.1 or newer (see docs/openvino.md), set \
+             INTEL_OPENVINO_DIR to its install root, or set inference.openvino_path \
+             in the config file to the directory holding libopenvino_c.so"
         );
 
         // A dependency is absent: the runtime was found, so this is a load failure.
@@ -1100,8 +1526,9 @@ mod tests {
             .to_string(),
             "could not load the OpenVINO runtime: the shared library at libopenvino_c.so could not be \
              opened: libtbb.so.12: cannot open shared object file: No such file or directory\n\
-             The runtime and its TBB library directories must be on the loader path \
-             (LD_LIBRARY_PATH, or PATH on Windows), as OpenVINO's setupvars script does \
+             birda loads the runtime's TBB and core libraries from its own directory \
+             and from the install's runtime/3rdparty/tbb directory. Check that the \
+             OpenVINO install is complete, or run OpenVINO's setupvars script first \
              (see docs/openvino.md)"
         );
 
@@ -1193,13 +1620,14 @@ mod tests {
         );
     }
 
-    /// Records every path handed to the loader and answers from a script.
+    /// Records every path handed to the loader, with where it came from, and
+    /// answers from a script.
     fn scripted_open(
-        calls: &mut Vec<String>,
+        calls: &mut Vec<(String, Origin)>,
         fail_with: Option<LoadFailure>,
-    ) -> impl FnMut(&Path) -> std::result::Result<(), LoadFailure> + '_ {
-        move |path| {
-            calls.push(path.display().to_string());
+    ) -> impl FnMut(&Path, Origin) -> std::result::Result<(), LoadFailure> + '_ {
+        move |path, origin| {
+            calls.push((path.display().to_string(), origin));
             fail_with.clone().map_or(Ok(()), Err)
         }
     }
@@ -1219,7 +1647,10 @@ mod tests {
             &mut scripted_open(&mut calls, None),
         );
         assert_eq!(opened.unwrap(), None);
-        assert_eq!(calls, ["libopenvino_c.so"]);
+        assert_eq!(
+            calls,
+            [("libopenvino_c.so".to_string(), Origin::LoaderSearch)]
+        );
 
         let mut calls = Vec::new();
         let err = open_located(
@@ -1228,17 +1659,14 @@ mod tests {
             &mut scripted_open(&mut calls, None),
         )
         .unwrap_err();
-        assert_eq!(
-            calls,
-            Vec::<String>::new(),
-            "Windows must not load a bare name"
-        );
+        assert_eq!(calls, [], "Windows must not load a bare name");
         assert_eq!(
             err.to_string(),
             "OpenVINO runtime not found. Searched:\n\
              \x20 system library directory: /usr/lib\n\
-             Install OpenVINO 2025.1 or newer (see docs/openvino.md) or set \
-             inference.openvino_path in the config file to the directory holding openvino_c.dll"
+             Install OpenVINO 2025.1 or newer (see docs/openvino.md), set \
+             INTEL_OPENVINO_DIR to its install root, or set inference.openvino_path \
+             in the config file to the directory holding openvino_c.dll"
         );
     }
 
@@ -1260,7 +1688,11 @@ mod tests {
                 &mut scripted_open(&mut calls, Some(failure.clone())),
             )
             .unwrap_err();
-            assert_eq!(calls, [name], "only the located file is tried on {os:?}");
+            assert_eq!(
+                calls,
+                [(name.to_string(), Origin::Located)],
+                "only the located file is tried on {os:?}"
+            );
             assert!(
                 matches!(err, Error::OpenVinoRuntimeLoadFailed { .. }),
                 "{os:?}: {err}"
@@ -1280,7 +1712,23 @@ mod tests {
             opened.unwrap(),
             Some(PathBuf::from("/usr/lib/libopenvino_c.so"))
         );
-        assert_eq!(calls, ["/usr/lib/libopenvino_c.so"]);
+        assert_eq!(
+            calls,
+            [("/usr/lib/libopenvino_c.so".to_string(), Origin::Located)]
+        );
+    }
+
+    #[test]
+    fn the_runtime_is_held_unless_the_loader_refused_everything() {
+        let refused = LoadFailure::CouldNotOpen("x".to_string());
+        let other = LoadFailure::Other("x".to_string());
+        // Nothing preloaded and the loader refused the file: nothing is held.
+        assert!(!holds_runtime(false, Some(&refused)));
+        // Preloaded dependencies stay resident after a refusal.
+        assert!(holds_runtime(true, Some(&refused)));
+        // A file that opened is held, whether or not it then failed a check.
+        assert!(holds_runtime(false, None));
+        assert!(holds_runtime(false, Some(&other)));
     }
 
     #[test]
@@ -1296,8 +1744,9 @@ mod tests {
             runtime_not_found(&searched, Os::Windows, None).to_string(),
             "OpenVINO runtime not found. Searched:\n\
              \x20 loader path: C:\\openvino\n\
-             Install OpenVINO 2025.1 or newer (see docs/openvino.md) or set \
-             inference.openvino_path in the config file to the directory holding openvino_c.dll"
+             Install OpenVINO 2025.1 or newer (see docs/openvino.md), set \
+             INTEL_OPENVINO_DIR to its install root, or set inference.openvino_path \
+             in the config file to the directory holding openvino_c.dll"
         );
     }
 

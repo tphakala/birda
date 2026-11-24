@@ -884,7 +884,7 @@ fn guarded_load(
     loaded: &mut Option<PathBuf>,
     target: &Path,
     origin: Origin,
-    preload: &mut dyn FnMut(&Path) -> std::result::Result<bool, String>,
+    preload: &mut dyn FnMut(&Path) -> std::result::Result<preload::Outcome, String>,
     load: &mut dyn FnMut(&Path) -> Option<LoadFailure>,
 ) -> std::result::Result<(), LoadFailure> {
     let target = match origin {
@@ -893,15 +893,25 @@ fn guarded_load(
     };
     let target = target.as_path();
     let wanted = admit(loaded.as_deref(), target, origin)?;
-    let (preloaded, skipped) = if wanted {
+    let (preloaded, note) = if wanted {
         match preload(target) {
-            Ok(opened) => (opened, None),
+            Ok(outcome) => (
+                outcome.opened_any,
+                outcome
+                    .first_failure
+                    .map(|failure| format!("birda could not preload {failure}")),
+            ),
             Err(reason) => {
                 debug!(
                     "not preloading the dependencies of {}: {reason}",
                     target.display()
                 );
-                (false, Some(reason))
+                (
+                    false,
+                    Some(format!(
+                        "birda did not preload the runtime's dependencies: {reason}"
+                    )),
+                )
             }
         }
     } else {
@@ -909,7 +919,7 @@ fn guarded_load(
     };
     let failure = load(target);
     record(loaded, target, preloaded, failure.as_ref());
-    with_skipped_preload(failure, skipped.as_deref()).map_or(Ok(()), Err)
+    with_preload_note(failure, note.as_deref()).map_or(Ok(()), Err)
 }
 
 /// Whether to preload for `target`, or why it may not be loaded at all.
@@ -950,17 +960,13 @@ fn record(
     }
 }
 
-/// Add why nothing was preloaded to a refused load, so the error names the
-/// dependency that is missing instead of only the file the loader reported.
-fn with_skipped_preload(
-    failure: Option<LoadFailure>,
-    skipped: Option<&str>,
-) -> Option<LoadFailure> {
-    match (failure, skipped) {
-        (Some(LoadFailure::CouldNotOpen(message)), Some(reason)) => {
-            Some(LoadFailure::CouldNotOpen(format!(
-                "{message} (birda did not preload the runtime's dependencies: {reason})"
-            )))
+/// Add what went wrong with the preload to a refused load: why nothing was
+/// preloaded, or the first dependency that did not open. The error then names
+/// the dependency at fault instead of only the file the loader reported.
+fn with_preload_note(failure: Option<LoadFailure>, note: Option<&str>) -> Option<LoadFailure> {
+    match (failure, note) {
+        (Some(LoadFailure::CouldNotOpen(message)), Some(note)) => {
+            Some(LoadFailure::CouldNotOpen(format!("{message} ({note})")))
         }
         (failure, _) => failure,
     }
@@ -1916,7 +1922,12 @@ mod tests {
             origin,
             &mut |path| {
                 preloads.push(path.to_path_buf());
-                preload.map_err(str::to_string)
+                preload
+                    .map(|opened_any| preload::Outcome {
+                        opened_any,
+                        first_failure: None,
+                    })
+                    .map_err(str::to_string)
             },
             &mut |path| {
                 loads.push(path.to_path_buf());
@@ -2042,6 +2053,56 @@ mod tests {
             None,
         );
         assert_eq!(result, Ok(()));
+    }
+
+    #[test]
+    fn a_dependency_that_did_not_open_is_named_in_the_error_of_a_refused_load() {
+        // The loader names only the library that needed the dependency, so
+        // the dependency's own reason is added.
+        let cwd = std::env::current_dir().unwrap();
+        let library = cwd.join("ov").join("libopenvino_c.so");
+        let shown = library.display();
+        let refused = LoadFailure::CouldNotOpen(format!(
+            "the shared library at {shown} could not be opened: libopenvino.so.2630: \
+             cannot open shared object file"
+        ));
+        let outcome = |first_failure: Option<&str>| preload::Outcome {
+            opened_any: false,
+            first_failure: first_failure.map(ToString::to_string),
+        };
+        let mut loaded = None;
+        let result = guarded_load(
+            &mut loaded,
+            &library,
+            Origin::Located,
+            &mut |_| {
+                Ok(outcome(Some(
+                    "ov/libtbb.so.12: version `GLIBCXX_3.4.32' not found",
+                )))
+            },
+            &mut |_| Some(refused.clone()),
+        );
+        assert_eq!(
+            result,
+            Err(LoadFailure::CouldNotOpen(format!(
+                "the shared library at {shown} could not be opened: \
+                 libopenvino.so.2630: cannot open shared object file (birda could not preload \
+                 ov/libtbb.so.12: version `GLIBCXX_3.4.32' not found)"
+            )))
+        );
+        assert_eq!(loaded, None);
+
+        // A load that succeeds despite the failed preload says nothing about it.
+        let mut loaded = None;
+        let result = guarded_load(
+            &mut loaded,
+            &library,
+            Origin::Located,
+            &mut |_| Ok(outcome(Some("ov/libtbb.so.12: refused"))),
+            &mut |_| None,
+        );
+        assert_eq!(result, Ok(()));
+        assert_eq!(loaded, Some(library.clone()));
     }
 
     #[test]

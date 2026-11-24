@@ -170,24 +170,46 @@ pub fn dependency_files(
 /// Open each file with `open`, continuing past a failure. Returns what opened.
 ///
 /// A dependency that cannot be opened is not fatal here: the library that
-/// needs it is loaded next and its own error names what is missing.
+/// needs it is loaded next. The first failure is returned as `<file>: <error>`
+/// so a refused load can name it, since the loader's own error then names only
+/// the library that needed the dependency.
 fn open_each<T, E: std::fmt::Display>(
     files: &[PathBuf],
     mut open: impl FnMut(&Path) -> Result<T, E>,
-) -> Vec<T> {
-    files
-        .iter()
-        .filter_map(|file| match open(file) {
+) -> (Vec<T>, Option<String>) {
+    let mut opened = Vec::new();
+    let mut first_failure = None;
+    for file in files {
+        match open(file) {
             Ok(handle) => {
                 debug!("preloaded {}", file.display());
-                Some(handle)
+                opened.push(handle);
             }
             Err(error) => {
                 debug!("could not preload {}: {error}", file.display());
-                None
+                // glibc's dlopen message starts with the path already (measured
+                // with libloading 0.8.9 on Debian bookworm, glibc 2.36).
+                let (shown, error) = (file.display().to_string(), error.to_string());
+                first_failure.get_or_insert_with(|| {
+                    if error.starts_with(&shown) {
+                        error
+                    } else {
+                        format!("{shown}: {error}")
+                    }
+                });
             }
-        })
-        .collect()
+        }
+    }
+    (opened, first_failure)
+}
+
+/// What a preload did.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Outcome {
+    /// Whether any file opened, so files of this runtime are now resident.
+    pub opened_any: bool,
+    /// The first file that did not open, with the loader's reason.
+    pub first_failure: Option<String>,
 }
 
 /// Handles of the preloaded libraries. They are never dropped: unloading the
@@ -206,21 +228,23 @@ fn open_dependency(path: &Path) -> Result<libloading::Library, libloading::Error
     unsafe { libloading::Library::new(path) }
 }
 
-/// Open `files` and keep them loaded for the life of the process. Returns
-/// whether any of them opened.
+/// Open `files` and keep them loaded for the life of the process.
 ///
 /// Each file opens on its own: one that fails is logged and the others still
 /// open, and a handle that did open cannot be taken back.
-pub fn preload(files: &[PathBuf]) -> bool {
-    let opened = open_each(files, open_dependency);
-    if opened.is_empty() {
-        return false;
+pub fn preload(files: &[PathBuf]) -> Outcome {
+    let (opened, first_failure) = open_each(files, open_dependency);
+    let opened_any = !opened.is_empty();
+    if opened_any {
+        PRELOADED
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .extend(opened);
     }
-    PRELOADED
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
-        .extend(opened);
-    true
+    Outcome {
+        opened_any,
+        first_failure,
+    }
 }
 
 #[cfg(test)]
@@ -425,7 +449,7 @@ mod tests {
             PathBuf::from("/a/libopenvino.so"),
         ];
         let mut tried = Vec::new();
-        let opened = open_each(&paths, |path| {
+        let (opened, first_failure) = open_each(&paths, |path| {
             tried.push(path.to_path_buf());
             if path == paths[0] {
                 Err("refused")
@@ -435,5 +459,15 @@ mod tests {
         });
         assert_eq!(tried, paths);
         assert_eq!(opened, [paths[1].clone()]);
+        assert_eq!(first_failure.as_deref(), Some("/a/libtbb.so.12: refused"));
+
+        // A reason that already names the file is not prefixed with it again.
+        let (_, first_failure) = open_each(&paths[..1], |_| {
+            Err::<PathBuf, _>("/a/libtbb.so.12: file too short")
+        });
+        assert_eq!(
+            first_failure.as_deref(),
+            Some("/a/libtbb.so.12: file too short")
+        );
     }
 }

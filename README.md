@@ -841,6 +841,7 @@ birda models install perch-v2
 - **Sample rate**: 32kHz
 - **Segment duration**: 5 seconds
 - **Range filtering**: Supported (BirdNET Geomodel v3.0.2, 11,145 of 14,795 species covered)
+- **Regional models**: 44 region-sliced models. birda applies each one's score calibration, which `models install` stores as `softmax_rest_logit` in the model's `config.toml` entry (see [Regional models](#regional-models))
 - **Source**: [Perch-onnx on Hugging Face](https://huggingface.co/justinchuby/Perch-onnx) (ONNX conversion by Justin Chu)
 
 ### BirdNET+ V3.0
@@ -867,10 +868,13 @@ BirdNET+ V3.0 replaces the BirdNET v3.0 developer preview, and `birdnet-v30` is 
 
 ### Regional models
 
-BirdNET+ V3.0 and Perch v2 both publish region-sliced models alongside the global one. A regional model scores only the species of that region and needs less memory: on a Raspberry Pi 5 the publisher measured a peak of 198 MB for the BirdNET+ nordic model against 457 MB for the global model. It is numerically identical to the global model on the species it keeps, so accuracy is unchanged for those species. `birda models regions <id>` lists the regions each model publishes.
+BirdNET+ V3.0 and Perch v2 both publish region-sliced models alongside the global one, 44 regions each. A regional model scores only the species of that region and needs less memory: on a Raspberry Pi 5 the publisher measured a peak of 198 MB for the BirdNET+ nordic model against 457 MB for the global model. A BirdNET+ regional model is numerically identical to the global model on the species it keeps, so accuracy is unchanged for those species. `birda models regions <id>` lists the regions each model publishes.
+
+A Perch v2 model scores with a softmax across its species, so a smaller slice gives each remaining species a larger share than the global model gives it. Each Perch tile therefore carries a constant that birda applies when it scores, which brings the confidences back close to the global model's. `models install` stores it as `softmax_rest_logit` in the model's `config.toml` entry, and both ONNX Runtime and OpenVINO use it. A regional Perch install without a stored value runs uncalibrated, with higher confidences than the global model; birda warns once per run and prints the command that installs it again. At the same `--min-confidence`, a calibrated regional Perch model reports lower confidences than an uncalibrated one, so fewer detections pass. `--model-path` replaces the installed file and drops the stored value.
 
 ```bash
 birda models regions birdnet-plus-v30              # browse the tiles, grouped by continent
+birda models regions perch-v2                      # the Perch v2 tiles
 birda models install birdnet-plus-v30 --region nordic
 birda -m birdnet-plus-v30-nordic recording.wav
 ```
@@ -879,13 +883,15 @@ A regional install is registered under `<model-id>-<region>`, so a global and a 
 
 ### Choosing a variant
 
-Some models publish several files for different hardware: `no-dft-fp32` and `int8-arm` for Perch v2. BirdNET+ V3.0 publishes `fp32` only, so there is nothing to choose. birda picks one at install time from the configured inference device and the GPU libraries present on the system, prints which it chose and why, and accepts an override:
+Some models publish several files for different hardware: `fp32` and `no-dft-fp32` for Perch v2 (every Perch regional model is `no-dft-fp32`). BirdNET+ V3.0 publishes `fp32` only, so there is nothing to choose. birda picks one at install time from the configured inference device and the GPU libraries present on the system, prints which it chose and why, and accepts an override:
 
 ```bash
 birda models install perch-v2 --variant no-dft-fp32
 ```
 
 Auto-selection is deliberately conservative. It picks a narrow variant only on a definite signal, and otherwise installs the family default, which every backend supports. On a memory-constrained device prefer a regional model over the global one.
+
+Perch v2 no longer publishes `int8-arm`, so on aarch64 the default global install is `no-dft-fp32` (413 MB, against 131 MB for `int8-arm`), and `--variant int8-arm` is refused.
 
 ### Downloading through a mirror
 

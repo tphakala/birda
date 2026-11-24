@@ -770,6 +770,10 @@ pub mod openvino {
     pub const WINDOWS_APPS_DIR: &str = "WindowsApps";
 
     /// Prefix of the Microsoft Store package name of the `OpenVINO` toolkit.
+    ///
+    /// The 2026.3.0 winget package is named `Intel.OpenVINOToolkit.2026.3.0`
+    /// (the `Identity` element in the `AppxManifest.xml` of
+    /// `openvino_toolkit_2026.3.0.0.msix`).
     pub const MSIX_NAME_PREFIX: &str = "Intel.OpenVINOToolkit";
 
     /// Architecture field of the Store package birda loads.

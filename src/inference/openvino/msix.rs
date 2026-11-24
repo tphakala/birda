@@ -132,7 +132,12 @@ mod tests {
 
     #[test]
     fn package_names_give_a_version_only_for_x64_openvino_packages() {
-        let cases: [(&str, Option<[u16; 4]>); 10] = [
+        let cases: [(&str, Option<[u16; 4]>); 11] = [
+            // The full name of the 2026.3.0 winget package.
+            (
+                "Intel.OpenVINOToolkit.2026.3.0_2026.3.0.0_x64__aqcv7fbxf4wm4",
+                Some([2026, 3, 0, 0]),
+            ),
             (
                 "Intel.OpenVINOToolkit.X_2026.3.0.0_x64__8wekyb3d8bbwe",
                 Some([2026, 3, 0, 0]),

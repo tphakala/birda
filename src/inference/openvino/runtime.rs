@@ -308,19 +308,18 @@ fn resolve_explicit(
                 ),
             });
     }
-    let file_name = path.file_name().map(|name| name.to_string_lossy());
-    let listed = path
-        .parent()
-        .and_then(list_dir)
-        .zip(file_name)
-        .is_some_and(|(names, file)| os.layout().find(&names, &file).is_some());
-    if listed {
-        Ok(path.to_path_buf())
-    } else {
-        Err(PathProblem {
-            reason: "it does not exist".to_string(),
-        })
-    }
+    // The listed spelling is returned, so a Windows name matched without
+    // regard to case still opens in a case-sensitive directory.
+    let listed = path.parent().and_then(|parent| {
+        let names = list_dir(parent)?;
+        let file = path.file_name()?.to_string_lossy();
+        os.layout()
+            .find(&names, &file)
+            .map(|name| parent.join(name))
+    });
+    listed.ok_or_else(|| PathProblem {
+        reason: "it does not exist".to_string(),
+    })
 }
 
 /// The places searched so far and what is needed to look in one more.
@@ -1365,10 +1364,10 @@ mod tests {
     fn a_configured_windows_file_matches_without_regard_to_case() {
         let cwd = std::env::current_dir().unwrap();
         let fs = HashMap::from([(cwd.clone(), strings(&["openvino_c.dll"]))]);
-        // The configured spelling is kept; NTFS opens the file either way.
+        // The listed spelling is used, which a case-sensitive directory needs.
         assert_eq!(
             locate_in(Some("OPENVINO_C.DLL"), &env_for(Os::Windows), &fs),
-            Ok(Located::File(cwd.join("OPENVINO_C.DLL")))
+            Ok(Located::File(cwd.join("openvino_c.dll")))
         );
         // Linux file names are case sensitive.
         assert_eq!(
@@ -1656,8 +1655,9 @@ mod tests {
             .to_string(),
             "could not load the OpenVINO runtime: the shared library at libopenvino_c.so could not be \
              opened: libtbb.so.12: cannot open shared object file: No such file or directory\n\
-             birda loads the TBB and core libraries of a runtime it located from that \
-             install. On Linux, a runtime found only through the system loader needs \
+             birda tries to load the TBB and core libraries of a runtime it located from \
+             that install when it finds both there. On Linux, a runtime found only \
+             through the system loader needs \
              its TBB directory on LD_LIBRARY_PATH or in ld.so.conf.d (then run \
              ldconfig). Check that the OpenVINO install is complete \
              (see docs/openvino.md)"

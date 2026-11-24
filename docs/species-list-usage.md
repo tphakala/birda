@@ -440,4 +440,4 @@ Both methods are highly efficient and suitable for large-scale batch processing.
 
 - [BirdNET-Analyzer Species Lists](https://github.com/kahst/BirdNET-Analyzer#species-lists)
 - [BirdNET Meta Model Documentation](https://github.com/kahst/BirdNET-Analyzer#species-prediction)
-- [Range Filter Configuration](../README.md#configuration)
+- [Configuration Guide](configuration.md)

@@ -20,10 +20,10 @@ Download from the [Releases](https://github.com/tphakala/birda/releases) page:
 |---------|------|-------------|
 | `birda-windows-x64-cuda-setup.exe` | ~1 GB | **Recommended** - Installer with bundled CUDA |
 | `birda-windows-x64-cuda.zip` | ~1.5 GB | ZIP with bundled CUDA |
-| `birda-windows-x64.zip` | ~3.4 MB | Small package (uses system CUDA if available) |
+| `birda-windows-x64.zip` | ~3.4 MB | Small CPU-only package (no CUDA support) |
 
 **Installation:**
-1. Download the CUDA bundle for easy GPU setup, or the small package if you have CUDA installed
+1. Download the CUDA bundle for NVIDIA GPU acceleration, or the small package for CPU-only use
 2. Run the installer or extract ZIP to a folder (e.g., `C:\Tools\birda`)
 3. Add the folder to your PATH (optional but recommended):
    - Press `Win + X` → "System" → "Advanced system settings"
@@ -52,15 +52,12 @@ cargo build --release
 
 ## GPU Support
 
-All packages support GPU acceleration:
-- **CUDA bundles**: Include all required libraries - just download and run
-- **Small package**: Requires CUDA 12.x and cuDNN 9.x installed on your system
+CUDA packages (`birda-windows-x64-cuda-setup.exe` and `birda-windows-x64-cuda.zip`) include ONNX Runtime and all required CUDA 12.9 and cuDNN 9.17 libraries, so no separate CUDA Toolkit installation is needed. The smaller `birda-windows-x64.zip` package is built CPU-only (`--no-default-features`).
 
 ### Requirements
 
 - **NVIDIA GPU** with Compute Capability 5.0+ (GTX 10-series or newer)
 - **Up-to-date NVIDIA drivers** (check with `nvidia-smi`)
-- For small package: [CUDA Toolkit 12.x](https://developer.nvidia.com/cuda-downloads) and [cuDNN 9.x](https://developer.nvidia.com/cudnn)
 
 ### Verify GPU Setup
 
@@ -80,10 +77,11 @@ TensorRT provides ~2x additional speedup over CUDA. Unlike CUDA (which is bundle
 
 ### Installation
 
-1. Download [TensorRT 10.x](https://developer.nvidia.com/tensorrt) (requires free NVIDIA Developer account)
-2. Extract and add TensorRT `lib` folder to your PATH, or copy DLLs to the birda folder:
-   - `nvinfer*.dll`
-   - `nvonnxparser*.dll`
+1. Download **TensorRT 10.x** for CUDA 12.x from [NVIDIA TensorRT](https://developer.nvidia.com/tensorrt) (requires free NVIDIA Developer account; TensorRT 11.x is not compatible with ONNX Runtime 1.24)
+2. Extract and add TensorRT `lib` folder to your PATH, or copy the DLLs to the birda folder:
+   - `nvinfer_10.dll`
+   - `nvinfer_plugin_10.dll`
+   - `nvonnxparser_10.dll`
 
 ### Verify TensorRT Setup
 
@@ -136,7 +134,7 @@ birda -f raven recording.wav
 birda -f csv,raven,audacity recording.wav
 ```
 
-### 5. View Results
+### 3. View Results
 
 Results are saved in the same folder as the input file:
 
@@ -198,8 +196,8 @@ GPU drivers may be outdated or incompatible.
 TensorRT requires separate installation.
 
 **Solutions**:
-1. Verify CUDA Toolkit is installed: `nvcc --version`
-2. Verify TensorRT DLLs are in PATH or birda folder
+1. Confirm you installed a CUDA bundle (not the CPU-only `birda-windows-x64.zip`)
+2. Verify TensorRT 10.x DLLs (`nvinfer_10.dll`, `nvinfer_plugin_10.dll`, `nvonnxparser_10.dll`) are in PATH or the birda folder
 3. Check available providers: `birda providers`
 
 ### "Model file not found"
@@ -244,7 +242,7 @@ type = "birdnet-v24"
 [defaults]
 model = "birdnet"
 min_confidence = 0.1
-batch_size = 1
+# batch_size = 8  # omit to use the smart default per model and provider
 formats = ["csv"]
 
 [inference]

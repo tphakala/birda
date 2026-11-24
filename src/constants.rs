@@ -334,6 +334,17 @@ pub mod raven {
     pub const DEFAULT_HIGH_FREQ: u32 = 15000;
 }
 
+/// Registry constants.
+pub mod registry {
+    /// Registry ids that were withdrawn, each with the id that replaced it.
+    ///
+    /// Lets an unknown-model error name the replacement instead of only saying
+    /// the id is missing. An entry stays as long as configs that name the old
+    /// id may exist. A registry entry with the same id still wins over this
+    /// table (`registry::require_model`).
+    pub const REPLACED_MODEL_IDS: &[(&str, &str)] = &[("birdnet-v30", "birdnet-plus-v30")];
+}
+
 /// Range filter constants.
 pub mod range_filter {
     /// First week of the year, the lower bound for `--week`.

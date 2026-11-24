@@ -276,6 +276,43 @@ pub fn find_model<'a>(registry: &'a Registry, id: &str) -> Option<&'a ModelEntry
     registry.models.iter().find(|m| m.id == id)
 }
 
+/// The id that replaced the withdrawn registry id `id`, if it was withdrawn.
+#[must_use]
+pub fn replacement_for(id: &str) -> Option<&'static str> {
+    crate::constants::registry::REPLACED_MODEL_IDS
+        .iter()
+        .find(|(retired, _)| *retired == id)
+        .map(|&(_, replacement)| replacement)
+}
+
+/// The error for a withdrawn registry id, or `None` when `id` was not withdrawn.
+///
+/// For callers that already know the id is not in the registry, such as the
+/// `models info` fallback to the configuration.
+#[must_use]
+pub fn replaced_model_error(id: &str) -> Option<Error> {
+    replacement_for(id).map(|replacement| Error::ModelReplaced {
+        id: id.to_string(),
+        replacement: replacement.to_string(),
+    })
+}
+
+/// Find model entry by ID, or say why there is none.
+///
+/// A registry entry always wins; only an id the registry does not hold is
+/// checked against the withdrawn ids, so a registry that reuses one serves it.
+///
+/// # Errors
+///
+/// [`Error::ModelReplaced`] when `id` was withdrawn in favour of another model,
+/// [`Error::ModelNotFoundInRegistry`] for any other unknown id.
+pub fn require_model<'a>(registry: &'a Registry, id: &str) -> Result<&'a ModelEntry> {
+    find_model(registry, id).ok_or_else(|| {
+        replaced_model_error(id)
+            .unwrap_or_else(|| Error::ModelNotFoundInRegistry { id: id.to_string() })
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -780,9 +817,45 @@ mod tests {
 
         // Verify we have expected models
         assert!(find_model(&registry, "birdnet-v24").is_some());
-        assert!(find_model(&registry, "birdnet-v30").is_some());
+        assert!(find_model(&registry, "birdnet-plus-v30").is_some());
         assert!(find_model(&registry, "perch-v2").is_some());
         assert!(find_model(&registry, "bsg-fi-v44").is_some());
+        // The retired preview must not survive regeneration as a carried entry
+        // (see the generator's treatment of variant-based entries): a
+        // self-consistent drift check cannot see that.
+        assert!(find_model(&registry, "birdnet-v30").is_none());
+    }
+
+    #[test]
+    fn test_require_model_names_the_replacement_of_a_retired_id() {
+        const BUNDLED_REGISTRY: &str = include_str!("../../registry.json");
+        let mut registry = serde_json::from_str::<Registry>(BUNDLED_REGISTRY).unwrap();
+        let entry = |id: &str| {
+            let mut entry = find_model(&registry, "birdnet-v24").unwrap().clone();
+            entry.id = id.to_string();
+            entry
+        };
+
+        // A retired id with no entry names its replacement.
+        assert_eq!(
+            require_model(&registry, "birdnet-v30")
+                .unwrap_err()
+                .to_string(),
+            "model 'birdnet-v30' was replaced by 'birdnet-plus-v30'; \
+             run 'birda models install birdnet-plus-v30'"
+        );
+        // Any other unknown id keeps the plain message.
+        assert_eq!(
+            require_model(&registry, "not-a-model")
+                .unwrap_err()
+                .to_string(),
+            "model 'not-a-model' not found in registry"
+        );
+        // A registry entry wins over the table, so a future registry that
+        // reuses the id serves it.
+        let reused = entry("birdnet-v30");
+        registry.models.push(reused.clone());
+        assert_eq!(require_model(&registry, "birdnet-v30").ok(), Some(&reused));
     }
 
     #[test]

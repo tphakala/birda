@@ -29,28 +29,27 @@ schema_version = "2.0"
 # cache, instead of a manual step that is easy to forget.
 
 [[model]]
-id = "birdnet-v30"
-manifest = "BirdNET-v3.0-Models.models.json"
-regions = "BirdNET-v3.0-Models.regions.json"
-name = "BirdNET v3.0"
-description = "11,560 species worldwide. 5 second window at 32 kHz"
+id = "birdnet-plus-v30"
+manifest = "BirdNET-Plus-V3.0.models.json"
+regions = "BirdNET-Plus-V3.0.regions.json"
+groups = "BirdNET-Plus-V3.0.groups.json"
+name = "BirdNET+ V3.0"
+description = "11,725 classes worldwide: birds, other wildlife and 16 sound classes. 5 second window at 32 kHz"
 vendor = "Cornell Lab of Ornithology & Chemnitz University of Technology"
 model_type = "birdnet-v30"
 recommended = false
-# fp32 rather than fp16: supported on every backend the manifest lists, and on
-# a CPU host fp16 is not a memory saving.
+# The only precision published.
 default_variant = "fp32"
 
-# CC BY-SA 4.0, per TERMS_OF_USE.txt in the model repository. Note this differs
-# from BirdNET v2.4, which is CC BY-NC-SA: the v3.0 preview permits commercial
-# use. The developer preview terms add prohibitions beyond the licence; they
-# are in the repository, not restated here.
+# Apache-2.0, per LICENSE-v3.0.1.md in the model repository. The acceptable
+# use policy is a document in the manifest's family_meta, carried into the
+# registry by gen-registry, so it is not restated here.
 [model.license]
-type = "CC-BY-SA-4.0"
-url = "https://creativecommons.org/licenses/by-sa/4.0/"
+type = "Apache-2.0"
+url = "https://www.apache.org/licenses/LICENSE-2.0"
 commercial_use = true
 attribution_required = true
-share_alike = true
+share_alike = false
 
 [[model]]
 id = "perch-v2"

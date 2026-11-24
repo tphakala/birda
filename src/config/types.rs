@@ -178,7 +178,8 @@ pub struct DefaultsConfig {
 /// No classifier's label set is a subset of the geomodel's 12,012 species.
 /// `BirdNET` v2.4 has 305 labels with no geomodel entry, mostly eBird taxonomic
 /// revisions plus non-species labels such as Dog and Siren; Perch v2 has 3,650,
-/// mostly sound classes, insects and amphibians.
+/// mostly sound classes, insects and amphibians; `BirdNET+` V3.0 has 1,192,
+/// including its 16 sound classes and Homo sapiens.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, clap::ValueEnum)]
 #[serde(rename_all = "kebab-case")]
 pub enum UnmatchedPolicy {
@@ -426,7 +427,7 @@ pub enum ModelType {
     /// `BirdNET` v2.4 model.
     #[value(name = "birdnet-v24")]
     BirdnetV24,
-    /// `BirdNET` v3.0 model.
+    /// `BirdNET` v3.0 models: `BirdNET+` V3.0 and the v3.0 developer preview.
     #[value(name = "birdnet-v30")]
     BirdnetV30,
     /// Google Perch v2 model.

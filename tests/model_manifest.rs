@@ -70,41 +70,73 @@ fn manifest_payload(id: &str) -> Value {
 }
 
 #[test]
-fn test_manifest_projects_every_region_and_variant() {
-    let payload = manifest_payload("birdnet-v30");
+fn test_manifest_projects_every_region_variant_and_document() {
+    let payload = manifest_payload("birdnet-plus-v30");
     let manifest = &payload["manifest"];
-    assert_eq!(manifest["id"], "birdnet-v30");
-    // The full catalogue: 2 global + 39 regions x 2 variants = 80.
+    assert_eq!(manifest["id"], "birdnet-plus-v30");
+    // The full catalogue: 1 global + 44 regions, one fp32 file each. A trimmed
+    // or wrong vendored file, or the retired preview's, changes this.
     let variants = manifest["variants"].as_array().expect("variants array");
-    assert_eq!(variants.len(), 80, "manifest keeps every combination");
-    // The licence record travels whole, so a consumer can show the share-alike
-    // obligation (this was the gap #300 closed for `list-available`).
-    assert!(manifest["license"]["share_alike"].is_boolean());
-    assert!(manifest["default_variant"].is_string());
-    assert!(manifest["selection"].is_object());
+    assert_eq!(variants.len(), 45, "manifest keeps every combination");
+    // fp32 is the only precision BirdNET+ publishes, so no variant id and no
+    // hardware key can resolve to anything else.
+    assert!(variants.iter().all(|v| v["id"] == "fp32"));
+    let selection = manifest["selection"].as_object().expect("selection map");
+    assert!(selection.values().all(|v| v == "fp32"), "{selection:?}");
+    assert_eq!(variants[0]["classes"], 11725);
+    // The licence record travels whole, so a consumer can show the obligations
+    // (this was the gap #300 closed for `list-available`).
+    assert_eq!(manifest["license"]["type"], "Apache-2.0");
+    assert_eq!(manifest["license"]["share_alike"], false);
+    assert_eq!(manifest["default_variant"], "fp32");
+    // Both documents, pinned to the revision they were published at. The
+    // acceptable use policy is the one `models install` asks agreement to.
+    let base = "https://huggingface.co/tphakala/BirdNET-Plus-V3.0/resolve/\
+                f90c3ba818b179adf5f4c9eabf2e6f8b801e4c06";
+    let revision = "f90c3ba818b179adf5f4c9eabf2e6f8b801e4c06";
+    assert_eq!(
+        manifest["documents"],
+        serde_json::json!([
+            {
+                "kind": "license",
+                "requires_agreement": false,
+                "url": format!("{base}/LICENSE-v3.0.1.md"),
+                "revision": revision,
+                "sha256": "ec0c349bd674520989b4df63afd50601695bd99a01768b8e46a04694573afd47",
+            },
+            {
+                "kind": "acceptable_use",
+                "requires_agreement": true,
+                "url": format!("{base}/ACCEPTABLE_USE-v3.0.1.md"),
+                "revision": revision,
+                "sha256": "4495ebf9a088a83f902bbbef95ec17f635b51c94ade5d95b5d248646ea70a04e",
+            },
+        ])
+    );
 }
 
 #[test]
 fn test_manifest_carries_country_coverage_for_a_region() {
-    let payload = manifest_payload("birdnet-v30");
+    let payload = manifest_payload("birdnet-plus-v30");
     let variants = payload["manifest"]["variants"].as_array().unwrap();
-    let amazonia = variants
+    let nordic = variants
         .iter()
-        .find(|v| v["region"] == "amazonia")
-        .expect("amazonia is a published region");
-    let core = amazonia["countries"]["core"]
-        .as_array()
-        .expect("core country list");
-    assert!(
-        core.iter().any(|c| c == "Brazil"),
-        "amazonia core coverage should list Brazil, got: {core:?}"
+        .find(|v| v["region"] == "nordic")
+        .expect("nordic is a published region");
+    assert_eq!(
+        nordic["countries"],
+        serde_json::json!({"core": ["Åland Islands", "Denmark", "Finland", "Norway", "Sweden"]})
     );
-    assert!(amazonia["region_name"].is_string());
+    assert_eq!(
+        nordic["country_codes"],
+        serde_json::json!({"core": ["AX", "DK", "FI", "NO", "SE"]})
+    );
+    assert!(nordic["region_name"].is_string());
 }
 
 #[test]
 fn test_manifest_emits_resolved_download_urls() {
-    let payload = manifest_payload("birdnet-v30");
+    let payload = manifest_payload("birdnet-plus-v30");
     let variants = payload["manifest"]["variants"].as_array().unwrap();
     let v = &variants[0];
     assert!(
@@ -123,7 +155,13 @@ fn test_manifest_applies_hf_endpoint_once_in_birda() {
     // through the same mirror, so the rewrite has to happen here, not there.
     let output = run(
         &[("HF_ENDPOINT", "https://hf-mirror.com")],
-        &["--output-mode", "json", "models", "manifest", "birdnet-v30"],
+        &[
+            "--output-mode",
+            "json",
+            "models",
+            "manifest",
+            "birdnet-plus-v30",
+        ],
     );
     assert!(output.status.success());
     let stdout = String::from_utf8(output.stdout).unwrap();
@@ -178,7 +216,7 @@ fn test_manifest_rejects_an_unknown_model() {
 
 #[test]
 fn test_manifest_human_form_is_a_short_summary() {
-    let output = run(&[], &["models", "manifest", "birdnet-v30"]);
+    let output = run(&[], &["models", "manifest", "birdnet-plus-v30"]);
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("Global variants:"), "got: {stdout}");

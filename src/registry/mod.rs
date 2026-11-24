@@ -22,7 +22,7 @@ pub use license::{
     LicensedAsset, accepted_documents, disclosure_line, license_details, license_line,
     prompt_license_acceptance, side_install_notice,
 };
-pub use loader::{find_model, load_registry};
+pub use loader::{find_model, load_registry, replaced_model_error, replacement_for, require_model};
 // Only what callers outside this module actually name. `HardwareProbe`,
 // `VariantChoice` and `SelectionReason` stay reachable as
 // `registry::selection::*` rather than crowding the root: they are the shape of
@@ -285,10 +285,7 @@ pub fn show_bat_info(catalog: &BatCatalog, entry: &BatRegionEntry) {
 }
 
 /// Show detailed information about a specific model.
-pub fn show_info(registry: &Registry, id: &str) -> Result<()> {
-    let model = find_model(registry, id)
-        .ok_or_else(|| Error::ModelNotFoundInRegistry { id: id.to_string() })?;
-
+pub fn show_info(model: &ModelEntry) -> Result<()> {
     println!("Model: {}", model.name);
     println!("ID: {}", model.id);
     // The version is the exact upstream identity, preview status included, and
@@ -375,8 +372,7 @@ pub fn show_manifest(
     id: &str,
     output_mode: crate::config::OutputMode,
 ) -> Result<()> {
-    let model = find_model(registry, id)
-        .ok_or_else(|| Error::ModelNotFoundInRegistry { id: id.to_string() })?;
+    let model = require_model(registry, id)?;
 
     let manifest = project_manifest(model);
 
@@ -572,8 +568,7 @@ fn print_manifest_human(manifest: &crate::output::ModelManifest) {
 /// Regions are what a user picks; the variant is picked for them, so this lists
 /// each tile once rather than once per hardware variant.
 pub fn show_regions(registry: &Registry, id: &str) -> Result<()> {
-    let model = find_model(registry, id)
-        .ok_or_else(|| Error::ModelNotFoundInRegistry { id: id.to_string() })?;
+    let model = require_model(registry, id)?;
 
     let regions = model.regions();
     if regions.is_empty() {
@@ -613,10 +608,7 @@ pub fn show_regions(registry: &Registry, id: &str) -> Result<()> {
 }
 
 /// Show available languages for a model.
-pub fn show_languages(registry: &Registry, id: &str) -> Result<()> {
-    let model = find_model(registry, id)
-        .ok_or_else(|| Error::ModelNotFoundInRegistry { id: id.to_string() })?;
-
+pub fn show_languages(model: &ModelEntry) -> Result<()> {
     // Variant-based families publish a labels file per region, all English, so
     // there are no translations to list. Saying that is more use than printing
     // an empty list.
@@ -624,7 +616,7 @@ pub fn show_languages(registry: &Registry, id: &str) -> Result<()> {
         .files
         .as_ref()
         .ok_or_else(|| Error::ModelHasNoLanguages {
-            model_id: id.to_string(),
+            model_id: model.id.clone(),
         })?;
 
     println!("Model: {}", model.name);

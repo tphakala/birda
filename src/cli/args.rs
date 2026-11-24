@@ -239,7 +239,7 @@ pub enum ModelsAction {
         /// Region slug for a regional model. See `birda models regions <id>`.
         #[arg(long)]
         region: Option<String>,
-        /// Variant to install, e.g. fp32, fp16, int8-arm. Auto-detected by default.
+        /// Variant to install (see `birda models manifest <id>`). Auto-detected by default.
         #[arg(long)]
         variant: Option<String>,
         /// Set as default model.

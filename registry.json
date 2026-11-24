@@ -1,7 +1,2636 @@
 {
   "schema_version": "2.0",
-  "registry_version": 8,
+  "registry_version": 9,
   "models": [
+    {
+      "id": "birdnet-plus-v30",
+      "name": "BirdNET+ V3.0",
+      "description": "11,725 classes worldwide: birds, other wildlife and 16 sound classes. 5 second window at 32 kHz",
+      "vendor": "Cornell Lab of Ornithology & Chemnitz University of Technology",
+      "version": "3.0.1",
+      "model_type": "birdnet-v30",
+      "license": {
+        "type": "Apache-2.0",
+        "url": "https://www.apache.org/licenses/LICENSE-2.0",
+        "commercial_use": true,
+        "attribution_required": true,
+        "share_alike": false
+      },
+      "build": 1,
+      "default_variant": "fp32",
+      "selection": {
+        "aarch64/onnxruntime": "fp32",
+        "cuda": "fp32",
+        "tensorrt": "fp32",
+        "x86-64/onnxruntime": "fp32",
+        "x86-64/openvino-cpu": "fp32",
+        "x86-64/openvino-gpu": "fp32"
+      },
+      "variants": [
+        {
+          "id": "fp32",
+          "group_order": 0,
+          "classes": 11725,
+          "model": {
+            "url": "https://huggingface.co/tphakala/BirdNET-Plus-V3.0/resolve/main/full/birdnet-plus-v3.0.1-fp32-b1.onnx",
+            "filename": "birdnet-plus-v3.0.1-fp32-b1.onnx",
+            "sha256": "835efeb33c84c5ac8c1591d33dd99c61cdb306d5bc273e811290de625a19b88e",
+            "size_bytes": 344606647
+          },
+          "labels": {
+            "url": "https://huggingface.co/tphakala/BirdNET-Plus-V3.0/resolve/main/full/birdnet-plus-v3.0.1-labels-b1.txt",
+            "filename": "birdnet-plus-v3.0.1-labels-b1.txt",
+            "sha256": "ab212fdd39cc0f8be920308fbe7e793abad17d3dca07310b1590d032c36e4dc3",
+            "size_bytes": 470040
+          }
+        },
+        {
+          "id": "fp32",
+          "region": "amazonia",
+          "region_name": "Amazonia",
+          "group": "south-america",
+          "group_name": "South America",
+          "group_order": 3,
+          "classes": 3196,
+          "model": {
+            "url": "https://huggingface.co/tphakala/BirdNET-Plus-V3.0/resolve/main/regional/amazonia/birdnet-plus-v3.0.1-amazonia-fp32-b2.onnx",
+            "filename": "birdnet-plus-v3.0.1-amazonia-fp32-b2.onnx",
+            "sha256": "21dc250ef2e0624f4f49b1e1958585bfc53b98af3f421763f89890281309667f",
+            "size_bytes": 161028440
+          },
+          "labels": {
+            "url": "https://huggingface.co/tphakala/BirdNET-Plus-V3.0/resolve/main/regional/amazonia/birdnet-plus-v3.0.1-amazonia-labels-b2.txt",
+            "filename": "birdnet-plus-v3.0.1-amazonia-labels-b2.txt",
+            "sha256": "4b0a2b147bdbbe63d22683c416d00108e6f98204e75f56898c986bea59d924e4",
+            "size_bytes": 130539
+          },
+          "countries": {
+            "core": [
+              "Brazil",
+              "Colombia",
+              "Ecuador",
+              "Guyana",
+              "Peru",
+              "Suriname",
+              "Trinidad & Tobago",
+              "Venezuela"
+            ],
+            "partial": [
+              "Bolivia",
+              "Panama"
+            ]
+          },
+          "build": 2,
+          "country_codes": {
+            "core": [
+              "BR",
+              "CO",
+              "EC",
+              "GY",
+              "PE",
+              "SR",
+              "TT",
+              "VE"
+            ],
+            "partial": [
+              "BO",
+              "PA"
+            ]
+          },
+          "tier": 50,
+          "bboxes": [
+            {
+              "lat_min": -13.0,
+              "lat_max": 10.0,
+              "lon_min": -79.0,
+              "lon_max": -44.0
+            }
+          ],
+          "centroid": {
+            "lat": -1.5,
+            "lon": -61.5
+          }
+        },
+        {
+          "id": "fp32",
+          "region": "andes",
+          "region_name": "Andes",
+          "group": "south-america",
+          "group_name": "South America",
+          "group_order": 3,
+          "classes": 3325,
+          "model": {
+            "url": "https://huggingface.co/tphakala/BirdNET-Plus-V3.0/resolve/main/regional/andes/birdnet-plus-v3.0.1-andes-fp32-b2.onnx",
+            "filename": "birdnet-plus-v3.0.1-andes-fp32-b2.onnx",
+            "sha256": "38caffbe00f0012314ac5e2f2af6534def2da6501d7cc6fb87e75d6c47b7449c",
+            "size_bytes": 163805036
+          },
+          "labels": {
+            "url": "https://huggingface.co/tphakala/BirdNET-Plus-V3.0/resolve/main/regional/andes/birdnet-plus-v3.0.1-andes-labels-b2.txt",
+            "filename": "birdnet-plus-v3.0.1-andes-labels-b2.txt",
+            "sha256": "cc3fe37d48d4b49244a1d95c1be20c52a3245aca09e0012a458837cb24194749",
+            "size_bytes": 135601
+          },
+          "countries": {
+            "core": [
+              "Argentina",
+              "Aruba",
+              "Bolivia",
+              "Brazil",
+              "Chile",
+              "Colombia",
+              "Curaçao",
+              "Ecuador",
+              "Grenada",
+              "Panama",
+              "Peru",
+              "Venezuela"
+            ]
+          },
+          "build": 2,
+          "country_codes": {
+            "core": [
+              "AR",
+              "AW",
+              "BO",
+              "BR",
+              "CL",
+              "CO",
+              "CW",
+              "EC",
+              "GD",
+              "PA",
+              "PE",
+              "VE"
+            ]
+          },
+          "tier": 50,
+          "bboxes": [
+            {
+              "lat_min": -40.0,
+              "lat_max": 12.0,
+              "lon_min": -81.0,
+              "lon_max": -62.0
+            }
+          ],
+          "centroid": {
+            "lat": -14.0,
+            "lon": -71.5
+          }
+        },
+        {
+          "id": "fp32",
+          "region": "australia-east",
+          "region_name": "Australia (Southeast)",
+          "group": "oceania",
+          "group_name": "Oceania",
+          "group_order": 5,
+          "classes": 766,
+          "model": {
+            "url": "https://huggingface.co/tphakala/BirdNET-Plus-V3.0/resolve/main/regional/australia-east/birdnet-plus-v3.0.1-australia-east-fp32-b2.onnx",
+            "filename": "birdnet-plus-v3.0.1-australia-east-fp32-b2.onnx",
+            "sha256": "3096ec5954997bc02f62190e740118e8e0187cf8bbe6e6f7373e06da2847bc7e",
+            "size_bytes": 108725120
+          },
+          "labels": {
+            "url": "https://huggingface.co/tphakala/BirdNET-Plus-V3.0/resolve/main/regional/australia-east/birdnet-plus-v3.0.1-australia-east-labels-b2.txt",
+            "filename": "birdnet-plus-v3.0.1-australia-east-labels-b2.txt",
+            "sha256": "547358821f03f52f1eae0d163255cb24cea79ce2529ab30d2fb29be1b977c296",
+            "size_bytes": 28602
+          },
+          "countries": {
+            "core": [
+              "Australia"
+            ]
+          },
+          "build": 2,
+          "country_codes": {
+            "core": [
+              "AU"
+            ]
+          },
+          "tier": 50,
+          "bboxes": [
+            {
+              "lat_min": -44.0,
+              "lat_max": -24.0,
+              "lon_min": 138.0,
+              "lon_max": 154.0
+            }
+          ],
+          "centroid": {
+            "lat": -34.0,
+            "lon": 146.0
+          }
+        },
+        {
+          "id": "fp32",
+          "region": "azores",
+          "region_name": "Azores",
+          "group": "europe",
+          "group_name": "Europe",
+          "group_order": 0,
+          "classes": 263,
+          "model": {
+            "url": "https://huggingface.co/tphakala/BirdNET-Plus-V3.0/resolve/main/regional/azores/birdnet-plus-v3.0.1-azores-fp32-b2.onnx",
+            "filename": "birdnet-plus-v3.0.1-azores-fp32-b2.onnx",
+            "sha256": "9df8bae14f32fb2edfd8fafeeb61fdb0314b4d4fc1c24051b2c6df97a92961c1",
+            "size_bytes": 97898538
+          },
+          "labels": {
+            "url": "https://huggingface.co/tphakala/BirdNET-Plus-V3.0/resolve/main/regional/azores/birdnet-plus-v3.0.1-azores-labels-b2.txt",
+            "filename": "birdnet-plus-v3.0.1-azores-labels-b2.txt",
+            "sha256": "f18878c8473e467353f5c5f5e1fa6dee933af2f9cc6d94f5f4ad49521a651e9c",
+            "size_bytes": 8506
+          },
+          "countries": {
+            "core": [
+              "Portugal"
+            ]
+          },
+          "build": 2,
+          "country_codes": {
+            "core": [
+              "PT"
+            ]
+          },
+          "tier": 90,
+          "bboxes": [
+            {
+              "lat_min": 36.5,
+              "lat_max": 40.0,
+              "lon_min": -31.5,
+              "lon_max": -24.8
+            }
+          ],
+          "centroid": {
+            "lat": 38.25,
+            "lon": -28.15
+          }
+        },
+        {
+          "id": "fp32",
+          "region": "baltics",
+          "region_name": "Baltics",
+          "group": "europe",
+          "group_name": "Europe",
+          "group_order": 0,
+          "classes": 479,
+          "model": {
+            "url": "https://huggingface.co/tphakala/BirdNET-Plus-V3.0/resolve/main/regional/baltics/birdnet-plus-v3.0.1-baltics-fp32-b2.onnx",
+            "filename": "birdnet-plus-v3.0.1-baltics-fp32-b2.onnx",
+            "sha256": "c4758d9ba0d3321e8871929267dd0269d7f8b7f0d15f0acbdcd3f48802279710",
+            "size_bytes": 102547724
+          },
+          "labels": {
+            "url": "https://huggingface.co/tphakala/BirdNET-Plus-V3.0/resolve/main/regional/baltics/birdnet-plus-v3.0.1-baltics-labels-b2.txt",
+            "filename": "birdnet-plus-v3.0.1-baltics-labels-b2.txt",
+            "sha256": "bba54ec9cbcc9ca306a8b24ef03625767b1dea0f7d590f0bc9634ec8ab78da49",
+            "size_bytes": 15987
+          },
+          "countries": {
+            "core": [
+              "Belarus",
+              "Estonia",
+              "Lithuania",
+              "Latvia",
+              "Russia"
+            ]
+          },
+          "build": 2,
+          "country_codes": {
+            "core": [
+              "BY",
+              "EE",
+              "LT",
+              "LV",
+              "RU"
+            ]
+          },
+          "tier": 50,
+          "bboxes": [
+            {
+              "lat_min": 53.5,
+              "lat_max": 59.8,
+              "lon_min": 20.0,
+              "lon_max": 30.0
+            }
+          ],
+          "centroid": {
+            "lat": 56.65,
+            "lon": 25.0
+          }
+        },
+        {
+          "id": "fp32",
+          "region": "british-isles",
+          "region_name": "British Isles",
+          "group": "europe",
+          "group_name": "Europe",
+          "group_order": 0,
+          "classes": 590,
+          "model": {
+            "url": "https://huggingface.co/tphakala/BirdNET-Plus-V3.0/resolve/main/regional/british-isles/birdnet-plus-v3.0.1-british-isles-fp32-b2.onnx",
+            "filename": "birdnet-plus-v3.0.1-british-isles-fp32-b2.onnx",
+            "sha256": "e202556aa0c91dfb7b83d4fc2e7a0eca3290f8782cf8f6ec2b568ab516551b4a",
+            "size_bytes": 104936896
+          },
+          "labels": {
+            "url": "https://huggingface.co/tphakala/BirdNET-Plus-V3.0/resolve/main/regional/british-isles/birdnet-plus-v3.0.1-british-isles-labels-b2.txt",
+            "filename": "birdnet-plus-v3.0.1-british-isles-labels-b2.txt",
+            "sha256": "80b22273957aca2ff8c51567577600dc267f79399bb0a0dd30748a9b108758dc",
+            "size_bytes": 20034
+          },
+          "countries": {
+            "core": [
+              "United Kingdom",
+              "Ireland",
+              "Isle of Man"
+            ],
+            "partial": [
+              "Guernsey"
+            ]
+          },
+          "build": 2,
+          "country_codes": {
+            "core": [
+              "GB",
+              "IE",
+              "IM"
+            ],
+            "partial": [
+              "GG"
+            ]
+          },
+          "tier": 50,
+          "bboxes": [
+            {
+              "lat_min": 49.5,
+              "lat_max": 61.0,
+              "lon_min": -11.0,
+              "lon_max": 2.5
+            }
+          ],
+          "centroid": {
+            "lat": 55.25,
+            "lon": -4.25
+          }
+        },
+        {
+          "id": "fp32",
+          "region": "canada-alaska",
+          "region_name": "Canada Alaska",
+          "group": "north-america",
+          "group_name": "North America",
+          "group_order": 2,
+          "classes": 793,
+          "model": {
+            "url": "https://huggingface.co/tphakala/BirdNET-Plus-V3.0/resolve/main/regional/canada-alaska/birdnet-plus-v3.0.1-canada-alaska-fp32-b2.onnx",
+            "filename": "birdnet-plus-v3.0.1-canada-alaska-fp32-b2.onnx",
+            "sha256": "e0c6f5aa947849111a79ad4d90ebc6732d87d27f27a66d3a880b541989fc7e6b",
+            "size_bytes": 109306268
+          },
+          "labels": {
+            "url": "https://huggingface.co/tphakala/BirdNET-Plus-V3.0/resolve/main/regional/canada-alaska/birdnet-plus-v3.0.1-canada-alaska-labels-b2.txt",
+            "filename": "birdnet-plus-v3.0.1-canada-alaska-labels-b2.txt",
+            "sha256": "304b4e7c6bb38bb9d89ce4953bd196baa2fc8b9398171a2dd0369b4a3d4c2724",
+            "size_bytes": 28134
+          },
+          "countries": {
+            "core": [
+              "Canada",
+              "United States"
+            ]
+          },
+          "build": 2,
+          "country_codes": {
+            "core": [
+              "CA",
+              "US"
+            ]
+          },
+          "tier": 10,
+          "bboxes": [
+            {
+              "lat_min": 49.0,
+              "lat_max": 71.0,
+              "lon_min": -168.0,
+              "lon_max": -52.0
+            }
+          ],
+          "centroid": {
+            "lat": 60.0,
+            "lon": -110.0
+          }
+        },
+        {
+          "id": "fp32",
+          "region": "canary-islands",
+          "region_name": "Canary Islands",
+          "group": "europe",
+          "group_name": "Europe",
+          "group_order": 0,
+          "classes": 428,
+          "model": {
+            "url": "https://huggingface.co/tphakala/BirdNET-Plus-V3.0/resolve/main/regional/canary-islands/birdnet-plus-v3.0.1-canary-islands-fp32-b2.onnx",
+            "filename": "birdnet-plus-v3.0.1-canary-islands-fp32-b2.onnx",
+            "sha256": "31761e980ddc500fca486ba028ff0b67bdabce74318457b2e13582a26b02d78d",
+            "size_bytes": 101450000
+          },
+          "labels": {
+            "url": "https://huggingface.co/tphakala/BirdNET-Plus-V3.0/resolve/main/regional/canary-islands/birdnet-plus-v3.0.1-canary-islands-labels-b2.txt",
+            "filename": "birdnet-plus-v3.0.1-canary-islands-labels-b2.txt",
+            "sha256": "2f5daccc55fdad70875a1891811292bddfb73b1eb102790cbc7841377e58af06",
+            "size_bytes": 14578
+          },
+          "countries": {
+            "core": [
+              "Spain",
+              "Morocco"
+            ]
+          },
+          "build": 2,
+          "country_codes": {
+            "core": [
+              "ES",
+              "MA"
+            ]
+          },
+          "tier": 90,
+          "bboxes": [
+            {
+              "lat_min": 27.0,
+              "lat_max": 29.8,
+              "lon_min": -18.5,
+              "lon_max": -13.0
+            }
+          ],
+          "centroid": {
+            "lat": 28.4,
+            "lon": -15.75
+          }
+        },
+        {
+          "id": "fp32",
+          "region": "cape-verde",
+          "region_name": "Cape Verde",
+          "group": "africa",
+          "group_name": "Africa",
+          "group_order": 4,
+          "classes": 187,
+          "model": {
+            "url": "https://huggingface.co/tphakala/BirdNET-Plus-V3.0/resolve/main/regional/cape-verde/birdnet-plus-v3.0.1-cape-verde-fp32-b2.onnx",
+            "filename": "birdnet-plus-v3.0.1-cape-verde-fp32-b2.onnx",
+            "sha256": "f0e2ff8bf6f8e92387ab0017b7144cf0e1be000b66a76d15df831d6ff7535a25",
+            "size_bytes": 96262714
+          },
+          "labels": {
+            "url": "https://huggingface.co/tphakala/BirdNET-Plus-V3.0/resolve/main/regional/cape-verde/birdnet-plus-v3.0.1-cape-verde-labels-b2.txt",
+            "filename": "birdnet-plus-v3.0.1-cape-verde-labels-b2.txt",
+            "sha256": "db64a57f1445e5d76544a447b22750eb12353621f0b023ffd6754d4be70a46c2",
+            "size_bytes": 6205
+          },
+          "countries": {
+            "core": [
+              "Cape Verde"
+            ]
+          },
+          "build": 2,
+          "country_codes": {
+            "core": [
+              "CV"
+            ]
+          },
+          "tier": 90,
+          "bboxes": [
+            {
+              "lat_min": 14.7,
+              "lat_max": 17.3,
+              "lon_min": -25.5,
+              "lon_max": -22.6
+            }
+          ],
+          "centroid": {
+            "lat": 16.0,
+            "lon": -24.05
+          }
+        },
+        {
+          "id": "fp32",
+          "region": "central-africa",
+          "region_name": "Central Africa",
+          "group": "africa",
+          "group_name": "Africa",
+          "group_order": 4,
+          "classes": 1556,
+          "model": {
+            "url": "https://huggingface.co/tphakala/BirdNET-Plus-V3.0/resolve/main/regional/central-africa/birdnet-plus-v3.0.1-central-africa-fp32-b2.onnx",
+            "filename": "birdnet-plus-v3.0.1-central-africa-fp32-b2.onnx",
+            "sha256": "d4a89b56c6032cd3e86a9f474fb7cf83f84216ac5addffd8bb148fb7a5c50f01",
+            "size_bytes": 125729080
+          },
+          "labels": {
+            "url": "https://huggingface.co/tphakala/BirdNET-Plus-V3.0/resolve/main/regional/central-africa/birdnet-plus-v3.0.1-central-africa-labels-b2.txt",
+            "filename": "birdnet-plus-v3.0.1-central-africa-labels-b2.txt",
+            "sha256": "f3965813610611cfb27521ce72e7a35456db573fd046d946c8a01a481c0b77b4",
+            "size_bytes": 60500
+          },
+          "countries": {
+            "core": [
+              "Angola",
+              "Burundi",
+              "Congo - Kinshasa",
+              "Central African Republic",
+              "Congo - Brazzaville",
+              "Cameroon",
+              "Gabon",
+              "Equatorial Guinea",
+              "Rwanda",
+              "Zambia"
+            ],
+            "partial": [
+              "Nigeria",
+              "South Sudan",
+              "Chad"
+            ]
+          },
+          "build": 2,
+          "country_codes": {
+            "core": [
+              "AO",
+              "BI",
+              "CD",
+              "CF",
+              "CG",
+              "CM",
+              "GA",
+              "GQ",
+              "RW",
+              "ZM"
+            ],
+            "partial": [
+              "NG",
+              "SS",
+              "TD"
+            ]
+          },
+          "tier": 50,
+          "bboxes": [
+            {
+              "lat_min": -17.0,
+              "lat_max": 11.0,
+              "lon_min": 8.0,
+              "lon_max": 31.0
+            }
+          ],
+          "centroid": {
+            "lat": -3.0,
+            "lon": 19.5
+          }
+        },
+        {
+          "id": "fp32",
+          "region": "central-europe",
+          "region_name": "Central Europe",
+          "group": "europe",
+          "group_name": "Europe",
+          "group_order": 0,
+          "classes": 673,
+          "model": {
+            "url": "https://huggingface.co/tphakala/BirdNET-Plus-V3.0/resolve/main/regional/central-europe/birdnet-plus-v3.0.1-central-europe-fp32-b2.onnx",
+            "filename": "birdnet-plus-v3.0.1-central-europe-fp32-b2.onnx",
+            "sha256": "c8ddd0c2cd73346ce35e4d4ebec61100fd702ca3ff0e3cd69bd70478fbb372da",
+            "size_bytes": 106723388
+          },
+          "labels": {
+            "url": "https://huggingface.co/tphakala/BirdNET-Plus-V3.0/resolve/main/regional/central-europe/birdnet-plus-v3.0.1-central-europe-labels-b2.txt",
+            "filename": "birdnet-plus-v3.0.1-central-europe-labels-b2.txt",
+            "sha256": "93670abe2bb19c599a65840e9aa0ca9375437e4112371fb6f841d717cb70f55c",
+            "size_bytes": 23208
+          },
+          "countries": {
+            "core": [
+              "Austria",
+              "Belgium",
+              "Switzerland",
+              "Czechia",
+              "Germany",
+              "France",
+              "Croatia",
+              "Hungary",
+              "Liechtenstein",
+              "Luxembourg",
+              "Netherlands",
+              "Poland",
+              "Slovenia",
+              "Slovakia"
+            ],
+            "partial": [
+              "Bosnia & Herzegovina",
+              "Denmark",
+              "Italy",
+              "Lithuania",
+              "Romania",
+              "Serbia"
+            ]
+          },
+          "build": 2,
+          "country_codes": {
+            "core": [
+              "AT",
+              "BE",
+              "CH",
+              "CZ",
+              "DE",
+              "FR",
+              "HR",
+              "HU",
+              "LI",
+              "LU",
+              "NL",
+              "PL",
+              "SI",
+              "SK"
+            ],
+            "partial": [
+              "BA",
+              "DK",
+              "IT",
+              "LT",
+              "RO",
+              "RS"
+            ]
+          },
+          "tier": 50,
+          "bboxes": [
+            {
+              "lat_min": 45.0,
+              "lat_max": 55.5,
+              "lon_min": 2.0,
+              "lon_max": 24.0
+            }
+          ],
+          "centroid": {
+            "lat": 50.25,
+            "lon": 13.0
+          }
+        },
+        {
+          "id": "fp32",
+          "region": "china-north-central",
+          "region_name": "China (North-Central)",
+          "group": "asia",
+          "group_name": "Asia",
+          "group_order": 1,
+          "classes": 809,
+          "model": {
+            "url": "https://huggingface.co/tphakala/BirdNET-Plus-V3.0/resolve/main/regional/china-north-central/birdnet-plus-v3.0.1-china-north-central-fp32-b2.onnx",
+            "filename": "birdnet-plus-v3.0.1-china-north-central-fp32-b2.onnx",
+            "sha256": "c61cec742ef2a33edb26c597e2c7a41f44ae27d2ed1c52df55cb27448c160467",
+            "size_bytes": 109650652
+          },
+          "labels": {
+            "url": "https://huggingface.co/tphakala/BirdNET-Plus-V3.0/resolve/main/regional/china-north-central/birdnet-plus-v3.0.1-china-north-central-labels-b2.txt",
+            "filename": "birdnet-plus-v3.0.1-china-north-central-labels-b2.txt",
+            "sha256": "0677ce0de47a2d0beb973d184c6f08bc393d0639fdea45bd44f4d5659ec0efd1",
+            "size_bytes": 29910
+          },
+          "countries": {
+            "core": [
+              "China"
+            ]
+          },
+          "build": 2,
+          "country_codes": {
+            "core": [
+              "CN"
+            ]
+          },
+          "tier": 50,
+          "bboxes": [
+            {
+              "lat_min": 33.0,
+              "lat_max": 42.0,
+              "lon_min": 106.0,
+              "lon_max": 122.0
+            }
+          ],
+          "centroid": {
+            "lat": 37.5,
+            "lon": 114.0
+          }
+        },
+        {
+          "id": "fp32",
+          "region": "china-northeast",
+          "region_name": "China (Northeast)",
+          "group": "asia",
+          "group_name": "Asia",
+          "group_order": 1,
+          "classes": 706,
+          "model": {
+            "url": "https://huggingface.co/tphakala/BirdNET-Plus-V3.0/resolve/main/regional/china-northeast/birdnet-plus-v3.0.1-china-northeast-fp32-b2.onnx",
+            "filename": "birdnet-plus-v3.0.1-china-northeast-fp32-b2.onnx",
+            "sha256": "425189484361a2104a9db63efc62a757137624ba38ce6482d0155f45e0e4a853",
+            "size_bytes": 107433680
+          },
+          "labels": {
+            "url": "https://huggingface.co/tphakala/BirdNET-Plus-V3.0/resolve/main/regional/china-northeast/birdnet-plus-v3.0.1-china-northeast-labels-b2.txt",
+            "filename": "birdnet-plus-v3.0.1-china-northeast-labels-b2.txt",
+            "sha256": "dfc05f07a8bdf9d1fe44e7b24155eef0ba72be15e3e603401613efdaebcab666",
+            "size_bytes": 25326
+          },
+          "countries": {
+            "core": [
+              "China",
+              "North Korea",
+              "Russia"
+            ],
+            "partial": [
+              "Mongolia"
+            ]
+          },
+          "build": 2,
+          "country_codes": {
+            "core": [
+              "CN",
+              "KP",
+              "RU"
+            ],
+            "partial": [
+              "MN"
+            ]
+          },
+          "tier": 50,
+          "bboxes": [
+            {
+              "lat_min": 38.0,
+              "lat_max": 54.0,
+              "lon_min": 115.0,
+              "lon_max": 135.0
+            }
+          ],
+          "centroid": {
+            "lat": 46.0,
+            "lon": 125.0
+          }
+        },
+        {
+          "id": "fp32",
+          "region": "china-southeast",
+          "region_name": "China (Southeast)",
+          "group": "asia",
+          "group_name": "Asia",
+          "group_order": 1,
+          "classes": 1191,
+          "model": {
+            "url": "https://huggingface.co/tphakala/BirdNET-Plus-V3.0/resolve/main/regional/china-southeast/birdnet-plus-v3.0.1-china-southeast-fp32-b2.onnx",
+            "filename": "birdnet-plus-v3.0.1-china-southeast-fp32-b2.onnx",
+            "sha256": "f52a85cd25a0666c1cf9d402e258b572304e365bbb3cfa25f4e9767e6c2ea415",
+            "size_bytes": 117872820
+          },
+          "labels": {
+            "url": "https://huggingface.co/tphakala/BirdNET-Plus-V3.0/resolve/main/regional/china-southeast/birdnet-plus-v3.0.1-china-southeast-labels-b2.txt",
+            "filename": "birdnet-plus-v3.0.1-china-southeast-labels-b2.txt",
+            "sha256": "3a8c843fa2a63613d6a57006cc01e92fd4321838c269892a02c326188a63fab5",
+            "size_bytes": 45563
+          },
+          "countries": {
+            "core": [
+              "China",
+              "Hong Kong SAR China",
+              "Macao SAR China",
+              "Taiwan"
+            ]
+          },
+          "build": 2,
+          "country_codes": {
+            "core": [
+              "CN",
+              "HK",
+              "MO",
+              "TW"
+            ]
+          },
+          "tier": 50,
+          "bboxes": [
+            {
+              "lat_min": 20.0,
+              "lat_max": 31.0,
+              "lon_min": 106.0,
+              "lon_max": 122.0
+            }
+          ],
+          "centroid": {
+            "lat": 25.5,
+            "lon": 114.0
+          }
+        },
+        {
+          "id": "fp32",
+          "region": "china-southwest",
+          "region_name": "China (Southwest)",
+          "group": "asia",
+          "group_name": "Asia",
+          "group_order": 1,
+          "classes": 1256,
+          "model": {
+            "url": "https://huggingface.co/tphakala/BirdNET-Plus-V3.0/resolve/main/regional/china-southwest/birdnet-plus-v3.0.1-china-southwest-fp32-b2.onnx",
+            "filename": "birdnet-plus-v3.0.1-china-southwest-fp32-b2.onnx",
+            "sha256": "5d71acb54e84b595b310e77c09b2fb73e033d78c5da391eb50666477f45b24d8",
+            "size_bytes": 119271880
+          },
+          "labels": {
+            "url": "https://huggingface.co/tphakala/BirdNET-Plus-V3.0/resolve/main/regional/china-southwest/birdnet-plus-v3.0.1-china-southwest-labels-b2.txt",
+            "filename": "birdnet-plus-v3.0.1-china-southwest-labels-b2.txt",
+            "sha256": "d5cc23cce02f05711b3f5f51ed116f7f8af693170a67d95c8101bb88c86346d9",
+            "size_bytes": 48499
+          },
+          "countries": {
+            "core": [
+              "China"
+            ],
+            "partial": [
+              "Myanmar (Burma)",
+              "Vietnam"
+            ]
+          },
+          "build": 2,
+          "country_codes": {
+            "core": [
+              "CN"
+            ],
+            "partial": [
+              "MM",
+              "VN"
+            ]
+          },
+          "tier": 50,
+          "bboxes": [
+            {
+              "lat_min": 22.0,
+              "lat_max": 34.0,
+              "lon_min": 97.0,
+              "lon_max": 108.0
+            }
+          ],
+          "centroid": {
+            "lat": 28.0,
+            "lon": 102.5
+          }
+        },
+        {
+          "id": "fp32",
+          "region": "east-africa",
+          "region_name": "East Africa",
+          "group": "africa",
+          "group_name": "Africa",
+          "group_order": 4,
+          "classes": 1840,
+          "model": {
+            "url": "https://huggingface.co/tphakala/BirdNET-Plus-V3.0/resolve/main/regional/east-africa/birdnet-plus-v3.0.1-east-africa-fp32-b2.onnx",
+            "filename": "birdnet-plus-v3.0.1-east-africa-fp32-b2.onnx",
+            "sha256": "2a969c2eae8d1f730ed7b3f19fd0aeb430b1484a8d21b4692f84396ff2f9b472",
+            "size_bytes": 131841896
+          },
+          "labels": {
+            "url": "https://huggingface.co/tphakala/BirdNET-Plus-V3.0/resolve/main/regional/east-africa/birdnet-plus-v3.0.1-east-africa-labels-b2.txt",
+            "filename": "birdnet-plus-v3.0.1-east-africa-labels-b2.txt",
+            "sha256": "3a2ba2e7476278259717bfa7bf7a9df03241007176d5d3ad899bc4b15e5b859d",
+            "size_bytes": 70876
+          },
+          "countries": {
+            "core": [
+              "Burundi",
+              "Djibouti",
+              "Eritrea",
+              "Ethiopia",
+              "Kenya",
+              "Comoros",
+              "Malawi",
+              "Mozambique",
+              "Rwanda",
+              "Somalia",
+              "South Sudan",
+              "Tanzania",
+              "Uganda",
+              "Yemen"
+            ],
+            "partial": [
+              "Congo - Kinshasa",
+              "Madagascar",
+              "Sudan",
+              "Zambia",
+              "Zimbabwe"
+            ]
+          },
+          "build": 2,
+          "country_codes": {
+            "core": [
+              "BI",
+              "DJ",
+              "ER",
+              "ET",
+              "KE",
+              "KM",
+              "MW",
+              "MZ",
+              "RW",
+              "SO",
+              "SS",
+              "TZ",
+              "UG",
+              "YE"
+            ],
+            "partial": [
+              "CD",
+              "MG",
+              "SD",
+              "ZM",
+              "ZW"
+            ]
+          },
+          "tier": 50,
+          "bboxes": [
+            {
+              "lat_min": -17.0,
+              "lat_max": 18.0,
+              "lon_min": 28.0,
+              "lon_max": 52.0
+            }
+          ],
+          "centroid": {
+            "lat": 0.5,
+            "lon": 40.0
+          }
+        },
+        {
+          "id": "fp32",
+          "region": "eastern-brazil",
+          "region_name": "Eastern Brazil",
+          "group": "south-america",
+          "group_name": "South America",
+          "group_order": 3,
+          "classes": 1986,
+          "model": {
+            "url": "https://huggingface.co/tphakala/BirdNET-Plus-V3.0/resolve/main/regional/eastern-brazil/birdnet-plus-v3.0.1-eastern-brazil-fp32-b2.onnx",
+            "filename": "birdnet-plus-v3.0.1-eastern-brazil-fp32-b2.onnx",
+            "sha256": "29a83879349dabdc4dc5ada36e42a0fa28c226efcbe03a70833860bdbfb59426",
+            "size_bytes": 134984400
+          },
+          "labels": {
+            "url": "https://huggingface.co/tphakala/BirdNET-Plus-V3.0/resolve/main/regional/eastern-brazil/birdnet-plus-v3.0.1-eastern-brazil-labels-b2.txt",
+            "filename": "birdnet-plus-v3.0.1-eastern-brazil-labels-b2.txt",
+            "sha256": "d8076f36bbcf2df0dbe93879cd5714d9c23156273b1e9e1082d631f7b43578cc",
+            "size_bytes": 80273
+          },
+          "countries": {
+            "core": [
+              "Brazil",
+              "Paraguay",
+              "Uruguay"
+            ],
+            "partial": [
+              "Argentina"
+            ]
+          },
+          "build": 2,
+          "country_codes": {
+            "core": [
+              "BR",
+              "PY",
+              "UY"
+            ],
+            "partial": [
+              "AR"
+            ]
+          },
+          "tier": 50,
+          "bboxes": [
+            {
+              "lat_min": -33.0,
+              "lat_max": -2.0,
+              "lon_min": -60.0,
+              "lon_max": -34.0
+            }
+          ],
+          "centroid": {
+            "lat": -17.5,
+            "lon": -47.0
+          }
+        },
+        {
+          "id": "fp32",
+          "region": "eastern-europe",
+          "region_name": "Eastern Europe",
+          "group": "europe",
+          "group_name": "Europe",
+          "group_order": 0,
+          "classes": 556,
+          "model": {
+            "url": "https://huggingface.co/tphakala/BirdNET-Plus-V3.0/resolve/main/regional/eastern-europe/birdnet-plus-v3.0.1-eastern-europe-fp32-b2.onnx",
+            "filename": "birdnet-plus-v3.0.1-eastern-europe-fp32-b2.onnx",
+            "sha256": "61090cba46ea740ac78f9776dbe89993989816bb0594e63f1d716d3d9ac6489d",
+            "size_bytes": 104205080
+          },
+          "labels": {
+            "url": "https://huggingface.co/tphakala/BirdNET-Plus-V3.0/resolve/main/regional/eastern-europe/birdnet-plus-v3.0.1-eastern-europe-labels-b2.txt",
+            "filename": "birdnet-plus-v3.0.1-eastern-europe-labels-b2.txt",
+            "sha256": "04e2ded1c4b2bb2c1f88595d2dcc7257813279d2993b8c552274e8e0a001033d",
+            "size_bytes": 19066
+          },
+          "countries": {
+            "core": [
+              "Moldova",
+              "Romania",
+              "Russia",
+              "Ukraine"
+            ],
+            "partial": [
+              "Belarus",
+              "Poland"
+            ]
+          },
+          "build": 2,
+          "country_codes": {
+            "core": [
+              "MD",
+              "RO",
+              "RU",
+              "UA"
+            ],
+            "partial": [
+              "BY",
+              "PL"
+            ]
+          },
+          "tier": 50,
+          "bboxes": [
+            {
+              "lat_min": 44.0,
+              "lat_max": 53.0,
+              "lon_min": 22.0,
+              "lon_max": 40.0
+            }
+          ],
+          "centroid": {
+            "lat": 48.5,
+            "lon": 31.0
+          }
+        },
+        {
+          "id": "fp32",
+          "region": "galapagos",
+          "region_name": "Galapagos",
+          "group": "south-america",
+          "group_name": "South America",
+          "group_order": 3,
+          "classes": 181,
+          "model": {
+            "url": "https://huggingface.co/tphakala/BirdNET-Plus-V3.0/resolve/main/regional/galapagos/birdnet-plus-v3.0.1-galapagos-fp32-b2.onnx",
+            "filename": "birdnet-plus-v3.0.1-galapagos-fp32-b2.onnx",
+            "sha256": "8289e58566262252fb0f37b3aa66894bc61351e8cb1fb00e4c32d99116572957",
+            "size_bytes": 96133570
+          },
+          "labels": {
+            "url": "https://huggingface.co/tphakala/BirdNET-Plus-V3.0/resolve/main/regional/galapagos/birdnet-plus-v3.0.1-galapagos-labels-b2.txt",
+            "filename": "birdnet-plus-v3.0.1-galapagos-labels-b2.txt",
+            "sha256": "3a0e0ae141643c362525c4998fcd60f0153ee6a0e6eaeb0d7cd44da31f1d08b1",
+            "size_bytes": 5998
+          },
+          "countries": {
+            "core": [
+              "Ecuador"
+            ]
+          },
+          "build": 2,
+          "country_codes": {
+            "core": [
+              "EC"
+            ]
+          },
+          "tier": 90,
+          "bboxes": [
+            {
+              "lat_min": -1.6,
+              "lat_max": 1.8,
+              "lon_min": -92.0,
+              "lon_max": -89.0
+            }
+          ],
+          "centroid": {
+            "lat": 0.1,
+            "lon": -90.5
+          }
+        },
+        {
+          "id": "fp32",
+          "region": "hawaii",
+          "region_name": "Hawaii",
+          "group": "oceania",
+          "group_name": "Oceania",
+          "group_order": 5,
+          "classes": 304,
+          "model": {
+            "url": "https://huggingface.co/tphakala/BirdNET-Plus-V3.0/resolve/main/regional/hawaii/birdnet-plus-v3.0.1-hawaii-fp32-b2.onnx",
+            "filename": "birdnet-plus-v3.0.1-hawaii-fp32-b2.onnx",
+            "sha256": "36ba34334226359a5c2989751dade90e09592ceb3b09763d122d3453b972c91a",
+            "size_bytes": 98781022
+          },
+          "labels": {
+            "url": "https://huggingface.co/tphakala/BirdNET-Plus-V3.0/resolve/main/regional/hawaii/birdnet-plus-v3.0.1-hawaii-labels-b2.txt",
+            "filename": "birdnet-plus-v3.0.1-hawaii-labels-b2.txt",
+            "sha256": "eae84a975805cdd7764dc0173869776128700a58b5d159dbe1416d96e3ffc0d8",
+            "size_bytes": 10237
+          },
+          "countries": {
+            "core": [
+              "United States"
+            ]
+          },
+          "build": 2,
+          "country_codes": {
+            "core": [
+              "US"
+            ]
+          },
+          "tier": 90,
+          "bboxes": [
+            {
+              "lat_min": 18.0,
+              "lat_max": 23.0,
+              "lon_min": -161.0,
+              "lon_max": -154.0
+            }
+          ],
+          "centroid": {
+            "lat": 20.5,
+            "lon": -157.5
+          }
+        },
+        {
+          "id": "fp32",
+          "region": "himalaya",
+          "region_name": "Himalaya",
+          "group": "asia",
+          "group_name": "Asia",
+          "group_order": 1,
+          "classes": 1254,
+          "model": {
+            "url": "https://huggingface.co/tphakala/BirdNET-Plus-V3.0/resolve/main/regional/himalaya/birdnet-plus-v3.0.1-himalaya-fp32-b2.onnx",
+            "filename": "birdnet-plus-v3.0.1-himalaya-fp32-b2.onnx",
+            "sha256": "76988f74083b2ea53973d21b84bc35765824f6f83b72569d07ee485802f2e4e7",
+            "size_bytes": 119228832
+          },
+          "labels": {
+            "url": "https://huggingface.co/tphakala/BirdNET-Plus-V3.0/resolve/main/regional/himalaya/birdnet-plus-v3.0.1-himalaya-labels-b2.txt",
+            "filename": "birdnet-plus-v3.0.1-himalaya-labels-b2.txt",
+            "sha256": "741926feb73ef2dcb0700c6a482b334b11c0500342c09c261515de1ed07a8902",
+            "size_bytes": 47852
+          },
+          "countries": {
+            "core": [
+              "Bhutan",
+              "China",
+              "India",
+              "Nepal"
+            ],
+            "partial": [
+              "Pakistan"
+            ]
+          },
+          "build": 2,
+          "country_codes": {
+            "core": [
+              "BT",
+              "CN",
+              "IN",
+              "NP"
+            ],
+            "partial": [
+              "PK"
+            ]
+          },
+          "tier": 50,
+          "bboxes": [
+            {
+              "lat_min": 27.0,
+              "lat_max": 36.0,
+              "lon_min": 72.0,
+              "lon_max": 97.0
+            }
+          ],
+          "centroid": {
+            "lat": 31.5,
+            "lon": 84.5
+          }
+        },
+        {
+          "id": "fp32",
+          "region": "iberia",
+          "region_name": "Iberia",
+          "group": "europe",
+          "group_name": "Europe",
+          "group_order": 0,
+          "classes": 654,
+          "model": {
+            "url": "https://huggingface.co/tphakala/BirdNET-Plus-V3.0/resolve/main/regional/iberia/birdnet-plus-v3.0.1-iberia-fp32-b2.onnx",
+            "filename": "birdnet-plus-v3.0.1-iberia-fp32-b2.onnx",
+            "sha256": "f981a94fe70856497b5e6d2194ba169879db63f4342c70f2ce617230873869ad",
+            "size_bytes": 106314432
+          },
+          "labels": {
+            "url": "https://huggingface.co/tphakala/BirdNET-Plus-V3.0/resolve/main/regional/iberia/birdnet-plus-v3.0.1-iberia-labels-b2.txt",
+            "filename": "birdnet-plus-v3.0.1-iberia-labels-b2.txt",
+            "sha256": "ea5faa3e3126f532b6ee4a9d95698d50f753721ef00fa38d9d300e1cfa0c9632",
+            "size_bytes": 22638
+          },
+          "countries": {
+            "core": [
+              "Andorra",
+              "Spain",
+              "Portugal"
+            ],
+            "partial": [
+              "France"
+            ]
+          },
+          "build": 2,
+          "country_codes": {
+            "core": [
+              "AD",
+              "ES",
+              "PT"
+            ],
+            "partial": [
+              "FR"
+            ]
+          },
+          "tier": 50,
+          "bboxes": [
+            {
+              "lat_min": 35.5,
+              "lat_max": 44.5,
+              "lon_min": -10.0,
+              "lon_max": 3.5
+            }
+          ],
+          "centroid": {
+            "lat": 40.0,
+            "lon": -3.25
+          }
+        },
+        {
+          "id": "fp32",
+          "region": "iceland",
+          "region_name": "Iceland",
+          "group": "europe",
+          "group_name": "Europe",
+          "group_order": 0,
+          "classes": 429,
+          "model": {
+            "url": "https://huggingface.co/tphakala/BirdNET-Plus-V3.0/resolve/main/regional/iceland/birdnet-plus-v3.0.1-iceland-fp32-b2.onnx",
+            "filename": "birdnet-plus-v3.0.1-iceland-fp32-b2.onnx",
+            "sha256": "91104ed814058b35ad7e15f39f3649112eef00a13897727802560d622250fd7a",
+            "size_bytes": 101471524
+          },
+          "labels": {
+            "url": "https://huggingface.co/tphakala/BirdNET-Plus-V3.0/resolve/main/regional/iceland/birdnet-plus-v3.0.1-iceland-labels-b2.txt",
+            "filename": "birdnet-plus-v3.0.1-iceland-labels-b2.txt",
+            "sha256": "84eaef03b3737a953017dc9c6688543c63b383a11d57e0fdadaf03e61a61ab96",
+            "size_bytes": 14229
+          },
+          "countries": {
+            "core": [
+              "Iceland"
+            ]
+          },
+          "build": 2,
+          "country_codes": {
+            "core": [
+              "IS"
+            ]
+          },
+          "tier": 90,
+          "bboxes": [
+            {
+              "lat_min": 63.0,
+              "lat_max": 67.0,
+              "lon_min": -25.0,
+              "lon_max": -13.0
+            }
+          ],
+          "centroid": {
+            "lat": 65.0,
+            "lon": -19.0
+          }
+        },
+        {
+          "id": "fp32",
+          "region": "indo-gangetic",
+          "region_name": "Indo-Gangetic Plain",
+          "group": "asia",
+          "group_name": "Asia",
+          "group_order": 1,
+          "classes": 1212,
+          "model": {
+            "url": "https://huggingface.co/tphakala/BirdNET-Plus-V3.0/resolve/main/regional/indo-gangetic/birdnet-plus-v3.0.1-indo-gangetic-fp32-b2.onnx",
+            "filename": "birdnet-plus-v3.0.1-indo-gangetic-fp32-b2.onnx",
+            "sha256": "78025640866a92a01f7114baf54592d0fd8fb2b9792a9a703a3cfcdeb2ca9b2b",
+            "size_bytes": 118324824
+          },
+          "labels": {
+            "url": "https://huggingface.co/tphakala/BirdNET-Plus-V3.0/resolve/main/regional/indo-gangetic/birdnet-plus-v3.0.1-indo-gangetic-labels-b2.txt",
+            "filename": "birdnet-plus-v3.0.1-indo-gangetic-labels-b2.txt",
+            "sha256": "a2c7791bcf19d696edd06ed5c1a997c4fd2843b534d5a3fca4c9926bef8ce4ba",
+            "size_bytes": 46067
+          },
+          "countries": {
+            "core": [
+              "Bangladesh",
+              "Bhutan",
+              "India",
+              "Nepal",
+              "Pakistan"
+            ],
+            "partial": [
+              "China"
+            ]
+          },
+          "build": 2,
+          "country_codes": {
+            "core": [
+              "BD",
+              "BT",
+              "IN",
+              "NP",
+              "PK"
+            ],
+            "partial": [
+              "CN"
+            ]
+          },
+          "tier": 50,
+          "bboxes": [
+            {
+              "lat_min": 21.0,
+              "lat_max": 30.0,
+              "lon_min": 68.0,
+              "lon_max": 90.0
+            }
+          ],
+          "centroid": {
+            "lat": 25.5,
+            "lon": 79.0
+          }
+        },
+        {
+          "id": "fp32",
+          "region": "japan",
+          "region_name": "Japan",
+          "group": "asia",
+          "group_name": "Asia",
+          "group_order": 1,
+          "classes": 629,
+          "model": {
+            "url": "https://huggingface.co/tphakala/BirdNET-Plus-V3.0/resolve/main/regional/japan/birdnet-plus-v3.0.1-japan-fp32-b2.onnx",
+            "filename": "birdnet-plus-v3.0.1-japan-fp32-b2.onnx",
+            "sha256": "5e31daa260c5ad50b6c407fda58e19e1515161170b79dccec5a40e2e4e444e62",
+            "size_bytes": 105776332
+          },
+          "labels": {
+            "url": "https://huggingface.co/tphakala/BirdNET-Plus-V3.0/resolve/main/regional/japan/birdnet-plus-v3.0.1-japan-labels-b2.txt",
+            "filename": "birdnet-plus-v3.0.1-japan-labels-b2.txt",
+            "sha256": "c963b9820e4934057e8e9c14838343d7e49de60685ee270aa7e6df163d9eb5b3",
+            "size_bytes": 22560
+          },
+          "countries": {
+            "core": [
+              "Japan",
+              "South Korea"
+            ],
+            "partial": [
+              "China",
+              "North Korea",
+              "Russia"
+            ]
+          },
+          "build": 2,
+          "country_codes": {
+            "core": [
+              "JP",
+              "KR"
+            ],
+            "partial": [
+              "CN",
+              "KP",
+              "RU"
+            ]
+          },
+          "tier": 50,
+          "bboxes": [
+            {
+              "lat_min": 30.0,
+              "lat_max": 46.0,
+              "lon_min": 128.0,
+              "lon_max": 146.0
+            }
+          ],
+          "centroid": {
+            "lat": 38.0,
+            "lon": 137.0
+          }
+        },
+        {
+          "id": "fp32",
+          "region": "madeira",
+          "region_name": "Madeira",
+          "group": "europe",
+          "group_name": "Europe",
+          "group_order": 0,
+          "classes": 293,
+          "model": {
+            "url": "https://huggingface.co/tphakala/BirdNET-Plus-V3.0/resolve/main/regional/madeira/birdnet-plus-v3.0.1-madeira-fp32-b2.onnx",
+            "filename": "birdnet-plus-v3.0.1-madeira-fp32-b2.onnx",
+            "sha256": "61b926141c5df41ced1e892436f3d5b9cf7d98d2f31e877eb9f6088e6136c7d0",
+            "size_bytes": 98544258
+          },
+          "labels": {
+            "url": "https://huggingface.co/tphakala/BirdNET-Plus-V3.0/resolve/main/regional/madeira/birdnet-plus-v3.0.1-madeira-labels-b2.txt",
+            "filename": "birdnet-plus-v3.0.1-madeira-labels-b2.txt",
+            "sha256": "278db151d95913b65458a1a7c03aa05d8fdbfdadfee259adf19c0987ea4145d8",
+            "size_bytes": 9669
+          },
+          "countries": {
+            "core": [
+              "Portugal"
+            ]
+          },
+          "build": 2,
+          "country_codes": {
+            "core": [
+              "PT"
+            ]
+          },
+          "tier": 90,
+          "bboxes": [
+            {
+              "lat_min": 32.3,
+              "lat_max": 33.2,
+              "lon_min": -17.4,
+              "lon_max": -16.2
+            }
+          ],
+          "centroid": {
+            "lat": 32.75,
+            "lon": -16.8
+          }
+        },
+        {
+          "id": "fp32",
+          "region": "mauritius",
+          "region_name": "Mauritius",
+          "group": "africa",
+          "group_name": "Africa",
+          "group_order": 4,
+          "classes": 116,
+          "model": {
+            "url": "https://huggingface.co/tphakala/BirdNET-Plus-V3.0/resolve/main/regional/mauritius/birdnet-plus-v3.0.1-mauritius-fp32-b2.onnx",
+            "filename": "birdnet-plus-v3.0.1-mauritius-fp32-b2.onnx",
+            "sha256": "93010ecb840b0d83295a7e4d5b4f51f3c907dc43dd86457b3e52d7efd2bc22ab",
+            "size_bytes": 94734474
+          },
+          "labels": {
+            "url": "https://huggingface.co/tphakala/BirdNET-Plus-V3.0/resolve/main/regional/mauritius/birdnet-plus-v3.0.1-mauritius-labels-b2.txt",
+            "filename": "birdnet-plus-v3.0.1-mauritius-labels-b2.txt",
+            "sha256": "9ca516b26a4bcc3f5e58391b716a0f59826eaefedebae1e4a2e375c312f63aa1",
+            "size_bytes": 3647
+          },
+          "countries": {
+            "core": [
+              "Mauritius"
+            ]
+          },
+          "build": 2,
+          "country_codes": {
+            "core": [
+              "MU"
+            ]
+          },
+          "tier": 90,
+          "bboxes": [
+            {
+              "lat_min": -20.6,
+              "lat_max": -19.9,
+              "lon_min": 57.2,
+              "lon_max": 57.9
+            }
+          ],
+          "centroid": {
+            "lat": -20.25,
+            "lon": 57.55
+          }
+        },
+        {
+          "id": "fp32",
+          "region": "new-caledonia",
+          "region_name": "New Caledonia",
+          "group": "oceania",
+          "group_name": "Oceania",
+          "group_order": 5,
+          "classes": 214,
+          "model": {
+            "url": "https://huggingface.co/tphakala/BirdNET-Plus-V3.0/resolve/main/regional/new-caledonia/birdnet-plus-v3.0.1-new-caledonia-fp32-b2.onnx",
+            "filename": "birdnet-plus-v3.0.1-new-caledonia-fp32-b2.onnx",
+            "sha256": "cfccb2f328f51e0f3fb475fd2a22e75c78e7577b329297f3e4080a6d99495f85",
+            "size_bytes": 96843862
+          },
+          "labels": {
+            "url": "https://huggingface.co/tphakala/BirdNET-Plus-V3.0/resolve/main/regional/new-caledonia/birdnet-plus-v3.0.1-new-caledonia-labels-b2.txt",
+            "filename": "birdnet-plus-v3.0.1-new-caledonia-labels-b2.txt",
+            "sha256": "8acf787049b651e0315ab6a49388d0a05001678c3134b449c826a84fc83edaeb",
+            "size_bytes": 7490
+          },
+          "countries": {
+            "core": [
+              "New Caledonia"
+            ]
+          },
+          "build": 2,
+          "country_codes": {
+            "core": [
+              "NC"
+            ]
+          },
+          "tier": 90,
+          "bboxes": [
+            {
+              "lat_min": -22.8,
+              "lat_max": -19.5,
+              "lon_min": 163.5,
+              "lon_max": 168.2
+            }
+          ],
+          "centroid": {
+            "lat": -21.15,
+            "lon": 165.85
+          }
+        },
+        {
+          "id": "fp32",
+          "region": "new-zealand",
+          "region_name": "New Zealand",
+          "group": "oceania",
+          "group_name": "Oceania",
+          "group_order": 5,
+          "classes": 302,
+          "model": {
+            "url": "https://huggingface.co/tphakala/BirdNET-Plus-V3.0/resolve/main/regional/new-zealand/birdnet-plus-v3.0.1-new-zealand-fp32-b2.onnx",
+            "filename": "birdnet-plus-v3.0.1-new-zealand-fp32-b2.onnx",
+            "sha256": "e6876ad56b28884d9d036b2e6512e5538a5def09919d8e9db7bf9667617d6adb",
+            "size_bytes": 98737974
+          },
+          "labels": {
+            "url": "https://huggingface.co/tphakala/BirdNET-Plus-V3.0/resolve/main/regional/new-zealand/birdnet-plus-v3.0.1-new-zealand-labels-b2.txt",
+            "filename": "birdnet-plus-v3.0.1-new-zealand-labels-b2.txt",
+            "sha256": "6ded0d2b7b75872b0238288f81039fefae2d9977960991d147b17db8c0710f9d",
+            "size_bytes": 10494
+          },
+          "countries": {
+            "core": [
+              "New Zealand"
+            ]
+          },
+          "build": 2,
+          "country_codes": {
+            "core": [
+              "NZ"
+            ]
+          },
+          "tier": 50,
+          "bboxes": [
+            {
+              "lat_min": -48.0,
+              "lat_max": -34.0,
+              "lon_min": 166.0,
+              "lon_max": 179.0
+            }
+          ],
+          "centroid": {
+            "lat": -41.0,
+            "lon": 172.5
+          }
+        },
+        {
+          "id": "fp32",
+          "region": "nordic",
+          "region_name": "Nordic",
+          "group": "europe",
+          "group_name": "Europe",
+          "group_order": 0,
+          "classes": 464,
+          "model": {
+            "url": "https://huggingface.co/tphakala/BirdNET-Plus-V3.0/resolve/main/regional/nordic/birdnet-plus-v3.0.1-nordic-fp32-b2.onnx",
+            "filename": "birdnet-plus-v3.0.1-nordic-fp32-b2.onnx",
+            "sha256": "5b9e8d4292bde2d4e74dd70fef0880585e7b19b4b6036895590d4ab92c9d5d36",
+            "size_bytes": 102224864
+          },
+          "labels": {
+            "url": "https://huggingface.co/tphakala/BirdNET-Plus-V3.0/resolve/main/regional/nordic/birdnet-plus-v3.0.1-nordic-labels-b2.txt",
+            "filename": "birdnet-plus-v3.0.1-nordic-labels-b2.txt",
+            "sha256": "5f18020e5c3dc5af6f8961da6b37afd9e7ace033f764fc1a2c8c988088e8e71a",
+            "size_bytes": 15388
+          },
+          "countries": {
+            "core": [
+              "Åland Islands",
+              "Denmark",
+              "Finland",
+              "Norway",
+              "Sweden"
+            ]
+          },
+          "build": 2,
+          "country_codes": {
+            "core": [
+              "AX",
+              "DK",
+              "FI",
+              "NO",
+              "SE"
+            ]
+          },
+          "tier": 50,
+          "bboxes": [
+            {
+              "lat_min": 53.1,
+              "lat_max": 72.66,
+              "lon_min": 3.32,
+              "lon_max": 32.05
+            }
+          ],
+          "centroid": {
+            "lat": 62.88,
+            "lon": 17.685
+          }
+        },
+        {
+          "id": "fp32",
+          "region": "north-america-east",
+          "region_name": "North America (East)",
+          "group": "north-america",
+          "group_name": "North America",
+          "group_order": 2,
+          "classes": 846,
+          "model": {
+            "url": "https://huggingface.co/tphakala/BirdNET-Plus-V3.0/resolve/main/regional/north-america-east/birdnet-plus-v3.0.1-north-america-east-fp32-b2.onnx",
+            "filename": "birdnet-plus-v3.0.1-north-america-east-fp32-b2.onnx",
+            "sha256": "8da6eb9f047ffeca29a7c68ffdc05ea5766f9795e5eb75dd8aaaccca9bc758cb",
+            "size_bytes": 110447040
+          },
+          "labels": {
+            "url": "https://huggingface.co/tphakala/BirdNET-Plus-V3.0/resolve/main/regional/north-america-east/birdnet-plus-v3.0.1-north-america-east-labels-b2.txt",
+            "filename": "birdnet-plus-v3.0.1-north-america-east-labels-b2.txt",
+            "sha256": "4ab1471a61acb6efcdce3a85dfdacf66d95f0c6f18606d7514469462a92d4e8d",
+            "size_bytes": 30843
+          },
+          "countries": {
+            "core": [
+              "Bermuda",
+              "Canada",
+              "United States"
+            ]
+          },
+          "build": 2,
+          "country_codes": {
+            "core": [
+              "BM",
+              "CA",
+              "US"
+            ]
+          },
+          "tier": 50,
+          "bboxes": [
+            {
+              "lat_min": 25.0,
+              "lat_max": 50.0,
+              "lon_min": -95.0,
+              "lon_max": -60.0
+            }
+          ],
+          "centroid": {
+            "lat": 37.5,
+            "lon": -77.5
+          }
+        },
+        {
+          "id": "fp32",
+          "region": "north-america-west",
+          "region_name": "North America (West)",
+          "group": "north-america",
+          "group_name": "North America",
+          "group_order": 2,
+          "classes": 847,
+          "model": {
+            "url": "https://huggingface.co/tphakala/BirdNET-Plus-V3.0/resolve/main/regional/north-america-west/birdnet-plus-v3.0.1-north-america-west-fp32-b2.onnx",
+            "filename": "birdnet-plus-v3.0.1-north-america-west-fp32-b2.onnx",
+            "sha256": "c2fe24e1aac4e8e5fa0e304a5ba50c6fff9fd4a6b7ce714fe3fca1cb6acaf59f",
+            "size_bytes": 110468564
+          },
+          "labels": {
+            "url": "https://huggingface.co/tphakala/BirdNET-Plus-V3.0/resolve/main/regional/north-america-west/birdnet-plus-v3.0.1-north-america-west-labels-b2.txt",
+            "filename": "birdnet-plus-v3.0.1-north-america-west-labels-b2.txt",
+            "sha256": "2450f6c41e7a60eeff52de917c5ede83fd69d96b6318857d006359473d775d28",
+            "size_bytes": 30793
+          },
+          "countries": {
+            "core": [
+              "Canada",
+              "United States"
+            ]
+          },
+          "build": 2,
+          "country_codes": {
+            "core": [
+              "CA",
+              "US"
+            ]
+          },
+          "tier": 50,
+          "bboxes": [
+            {
+              "lat_min": 31.0,
+              "lat_max": 55.0,
+              "lon_min": -125.0,
+              "lon_max": -100.0
+            }
+          ],
+          "centroid": {
+            "lat": 43.0,
+            "lon": -112.5
+          }
+        },
+        {
+          "id": "fp32",
+          "region": "reunion",
+          "region_name": "Reunion",
+          "group": "africa",
+          "group_name": "Africa",
+          "group_order": 4,
+          "classes": 118,
+          "model": {
+            "url": "https://huggingface.co/tphakala/BirdNET-Plus-V3.0/resolve/main/regional/reunion/birdnet-plus-v3.0.1-reunion-fp32-b2.onnx",
+            "filename": "birdnet-plus-v3.0.1-reunion-fp32-b2.onnx",
+            "sha256": "aabe2a9e3c62c40c73906687a516f8b089a83a3d5a0dad86f6ea156bf609d20d",
+            "size_bytes": 94777522
+          },
+          "labels": {
+            "url": "https://huggingface.co/tphakala/BirdNET-Plus-V3.0/resolve/main/regional/reunion/birdnet-plus-v3.0.1-reunion-labels-b2.txt",
+            "filename": "birdnet-plus-v3.0.1-reunion-labels-b2.txt",
+            "sha256": "11ef5f4459a6dc618bc6bf3079cf6d94e0e7e770f85e91e45d0354982d1c1b4f",
+            "size_bytes": 3725
+          },
+          "countries": {
+            "core": [
+              "Réunion"
+            ]
+          },
+          "build": 2,
+          "country_codes": {
+            "core": [
+              "RE"
+            ]
+          },
+          "tier": 90,
+          "bboxes": [
+            {
+              "lat_min": -21.7,
+              "lat_max": -20.7,
+              "lon_min": 55.0,
+              "lon_max": 56.2
+            }
+          ],
+          "centroid": {
+            "lat": -21.2,
+            "lon": 55.6
+          }
+        },
+        {
+          "id": "fp32",
+          "region": "sao-tome-principe",
+          "region_name": "Sao Tome & Principe",
+          "group": "africa",
+          "group_name": "Africa",
+          "group_order": 4,
+          "classes": 159,
+          "model": {
+            "url": "https://huggingface.co/tphakala/BirdNET-Plus-V3.0/resolve/main/regional/sao-tome-principe/birdnet-plus-v3.0.1-sao-tome-principe-fp32-b2.onnx",
+            "filename": "birdnet-plus-v3.0.1-sao-tome-principe-fp32-b2.onnx",
+            "sha256": "ad957e8a4ffab617cc9b87b1cdd7749c7550c241a28b3a79b204c1c0f48007b0",
+            "size_bytes": 95660042
+          },
+          "labels": {
+            "url": "https://huggingface.co/tphakala/BirdNET-Plus-V3.0/resolve/main/regional/sao-tome-principe/birdnet-plus-v3.0.1-sao-tome-principe-labels-b2.txt",
+            "filename": "birdnet-plus-v3.0.1-sao-tome-principe-labels-b2.txt",
+            "sha256": "e59821a75864c805a69e1a7337a5228e356a4ce6161e93e448d69f31a03bb6a5",
+            "size_bytes": 5161
+          },
+          "countries": {
+            "core": [
+              "São Tomé & Príncipe"
+            ]
+          },
+          "build": 2,
+          "country_codes": {
+            "core": [
+              "ST"
+            ]
+          },
+          "tier": 90,
+          "bboxes": [
+            {
+              "lat_min": -0.7,
+              "lat_max": 2.0,
+              "lon_min": 6.2,
+              "lon_max": 7.7
+            }
+          ],
+          "centroid": {
+            "lat": 0.65,
+            "lon": 6.95
+          }
+        },
+        {
+          "id": "fp32",
+          "region": "seychelles",
+          "region_name": "Seychelles",
+          "group": "africa",
+          "group_name": "Africa",
+          "group_order": 4,
+          "classes": 162,
+          "model": {
+            "url": "https://huggingface.co/tphakala/BirdNET-Plus-V3.0/resolve/main/regional/seychelles/birdnet-plus-v3.0.1-seychelles-fp32-b2.onnx",
+            "filename": "birdnet-plus-v3.0.1-seychelles-fp32-b2.onnx",
+            "sha256": "92b8141ee7bffacc9fddbdd7d61b2fca7c1808f619dfe66908ec028768b47454",
+            "size_bytes": 95724614
+          },
+          "labels": {
+            "url": "https://huggingface.co/tphakala/BirdNET-Plus-V3.0/resolve/main/regional/seychelles/birdnet-plus-v3.0.1-seychelles-labels-b2.txt",
+            "filename": "birdnet-plus-v3.0.1-seychelles-labels-b2.txt",
+            "sha256": "a66f191cbb05cec1dc31b8d1369d03afeadb4009a7171d053befccf4c0b2dc8f",
+            "size_bytes": 5238
+          },
+          "countries": {
+            "core": [
+              "Seychelles"
+            ]
+          },
+          "build": 2,
+          "country_codes": {
+            "core": [
+              "SC"
+            ]
+          },
+          "tier": 90,
+          "bboxes": [
+            {
+              "lat_min": -5.0,
+              "lat_max": -3.7,
+              "lon_min": 55.2,
+              "lon_max": 56.0
+            }
+          ],
+          "centroid": {
+            "lat": -4.35,
+            "lon": 55.6
+          }
+        },
+        {
+          "id": "fp32",
+          "region": "south-asia-peninsular",
+          "region_name": "South India & Sri Lanka",
+          "group": "asia",
+          "group_name": "Asia",
+          "group_order": 1,
+          "classes": 690,
+          "model": {
+            "url": "https://huggingface.co/tphakala/BirdNET-Plus-V3.0/resolve/main/regional/south-asia-peninsular/birdnet-plus-v3.0.1-south-asia-peninsular-fp32-b2.onnx",
+            "filename": "birdnet-plus-v3.0.1-south-asia-peninsular-fp32-b2.onnx",
+            "sha256": "11c3f17bbbe77e6c322324f0d68e7470e7eb81051d1a0deec0b5d2085e517f8c",
+            "size_bytes": 107089296
+          },
+          "labels": {
+            "url": "https://huggingface.co/tphakala/BirdNET-Plus-V3.0/resolve/main/regional/south-asia-peninsular/birdnet-plus-v3.0.1-south-asia-peninsular-labels-b2.txt",
+            "filename": "birdnet-plus-v3.0.1-south-asia-peninsular-labels-b2.txt",
+            "sha256": "e74e20fa8361a36763064104b03192522d11ac06609442e745e14f665b4917fe",
+            "size_bytes": 25350
+          },
+          "countries": {
+            "core": [
+              "India",
+              "Sri Lanka"
+            ]
+          },
+          "build": 2,
+          "country_codes": {
+            "core": [
+              "IN",
+              "LK"
+            ]
+          },
+          "tier": 50,
+          "bboxes": [
+            {
+              "lat_min": 5.5,
+              "lat_max": 21.0,
+              "lon_min": 72.0,
+              "lon_max": 88.0
+            }
+          ],
+          "centroid": {
+            "lat": 13.25,
+            "lon": 80.0
+          }
+        },
+        {
+          "id": "fp32",
+          "region": "southern-africa",
+          "region_name": "Southern Africa",
+          "group": "africa",
+          "group_name": "Africa",
+          "group_order": 4,
+          "classes": 847,
+          "model": {
+            "url": "https://huggingface.co/tphakala/BirdNET-Plus-V3.0/resolve/main/regional/southern-africa/birdnet-plus-v3.0.1-southern-africa-fp32-b2.onnx",
+            "filename": "birdnet-plus-v3.0.1-southern-africa-fp32-b2.onnx",
+            "sha256": "f82b77e1f5ed1a2723c8d677a5005057b0199a2b2aaf82613f0361896190ae7c",
+            "size_bytes": 110468564
+          },
+          "labels": {
+            "url": "https://huggingface.co/tphakala/BirdNET-Plus-V3.0/resolve/main/regional/southern-africa/birdnet-plus-v3.0.1-southern-africa-labels-b2.txt",
+            "filename": "birdnet-plus-v3.0.1-southern-africa-labels-b2.txt",
+            "sha256": "9757f235f86e0c3f7ad580744cc849f4fc6e7198c88e4ebe456cc3a6b38881d8",
+            "size_bytes": 31670
+          },
+          "countries": {
+            "core": [
+              "Botswana",
+              "Lesotho",
+              "Namibia",
+              "Eswatini",
+              "South Africa",
+              "Zimbabwe"
+            ]
+          },
+          "build": 2,
+          "country_codes": {
+            "core": [
+              "BW",
+              "LS",
+              "NA",
+              "SZ",
+              "ZA",
+              "ZW"
+            ]
+          },
+          "tier": 50,
+          "bboxes": [
+            {
+              "lat_min": -35.0,
+              "lat_max": -17.0,
+              "lon_min": 15.0,
+              "lon_max": 33.0
+            }
+          ],
+          "centroid": {
+            "lat": -26.0,
+            "lon": 24.0
+          }
+        },
+        {
+          "id": "fp32",
+          "region": "southern-cone",
+          "region_name": "Southern Cone",
+          "group": "south-america",
+          "group_name": "South America",
+          "group_order": 3,
+          "classes": 1648,
+          "model": {
+            "url": "https://huggingface.co/tphakala/BirdNET-Plus-V3.0/resolve/main/regional/southern-cone/birdnet-plus-v3.0.1-southern-cone-fp32-b2.onnx",
+            "filename": "birdnet-plus-v3.0.1-southern-cone-fp32-b2.onnx",
+            "sha256": "1455fc60fea723670d2b3ea2d6b732f959374afbab95f6cdddc5e5217c738de9",
+            "size_bytes": 127709288
+          },
+          "labels": {
+            "url": "https://huggingface.co/tphakala/BirdNET-Plus-V3.0/resolve/main/regional/southern-cone/birdnet-plus-v3.0.1-southern-cone-labels-b2.txt",
+            "filename": "birdnet-plus-v3.0.1-southern-cone-labels-b2.txt",
+            "sha256": "f03976e63c29475ea9fc73cfb870e65785fa692f1f30dc027ad0f96b3225d83d",
+            "size_bytes": 65648
+          },
+          "countries": {
+            "core": [
+              "Argentina",
+              "Chile",
+              "Falkland Islands",
+              "Paraguay",
+              "Uruguay"
+            ],
+            "partial": [
+              "Bolivia",
+              "Brazil"
+            ]
+          },
+          "build": 2,
+          "country_codes": {
+            "core": [
+              "AR",
+              "CL",
+              "FK",
+              "PY",
+              "UY"
+            ],
+            "partial": [
+              "BO",
+              "BR"
+            ]
+          },
+          "tier": 50,
+          "bboxes": [
+            {
+              "lat_min": -56.0,
+              "lat_max": -20.0,
+              "lon_min": -77.0,
+              "lon_max": -53.0
+            }
+          ],
+          "centroid": {
+            "lat": -38.0,
+            "lon": -65.0
+          }
+        },
+        {
+          "id": "fp32",
+          "region": "southern-europe",
+          "region_name": "Southern Europe",
+          "group": "europe",
+          "group_name": "Europe",
+          "group_order": 0,
+          "classes": 653,
+          "model": {
+            "url": "https://huggingface.co/tphakala/BirdNET-Plus-V3.0/resolve/main/regional/southern-europe/birdnet-plus-v3.0.1-southern-europe-fp32-b2.onnx",
+            "filename": "birdnet-plus-v3.0.1-southern-europe-fp32-b2.onnx",
+            "sha256": "63d8bd46048b9964af02fdaa3788a6e89b165dc226f273c5790f5e8ffea967bf",
+            "size_bytes": 106292908
+          },
+          "labels": {
+            "url": "https://huggingface.co/tphakala/BirdNET-Plus-V3.0/resolve/main/regional/southern-europe/birdnet-plus-v3.0.1-southern-europe-labels-b2.txt",
+            "filename": "birdnet-plus-v3.0.1-southern-europe-labels-b2.txt",
+            "sha256": "6346c59412656a5f6c7359d1c7fda52d627fe344c2e7d282f3be6a793c2b27d1",
+            "size_bytes": 22678
+          },
+          "countries": {
+            "core": [
+              "Albania",
+              "Bosnia & Herzegovina",
+              "Bulgaria",
+              "Greece",
+              "Croatia",
+              "Italy",
+              "Monaco",
+              "Montenegro",
+              "North Macedonia",
+              "Malta",
+              "Romania",
+              "Serbia",
+              "Slovenia",
+              "San Marino",
+              "Vatican City",
+              "Kosovo"
+            ],
+            "partial": [
+              "Switzerland",
+              "Hungary",
+              "Tunisia",
+              "Türkiye"
+            ]
+          },
+          "build": 2,
+          "country_codes": {
+            "core": [
+              "AL",
+              "BA",
+              "BG",
+              "GR",
+              "HR",
+              "IT",
+              "MC",
+              "ME",
+              "MK",
+              "MT",
+              "RO",
+              "RS",
+              "SI",
+              "SM",
+              "VA",
+              "XK"
+            ],
+            "partial": [
+              "CH",
+              "HU",
+              "TN",
+              "TR"
+            ]
+          },
+          "tier": 50,
+          "bboxes": [
+            {
+              "lat_min": 36.0,
+              "lat_max": 47.0,
+              "lon_min": 6.0,
+              "lon_max": 29.0
+            }
+          ],
+          "centroid": {
+            "lat": 41.5,
+            "lon": 17.5
+          }
+        },
+        {
+          "id": "fp32",
+          "region": "svalbard",
+          "region_name": "Svalbard",
+          "group": "europe",
+          "group_name": "Europe",
+          "group_order": 0,
+          "classes": 323,
+          "model": {
+            "url": "https://huggingface.co/tphakala/BirdNET-Plus-V3.0/resolve/main/regional/svalbard/birdnet-plus-v3.0.1-svalbard-fp32-b2.onnx",
+            "filename": "birdnet-plus-v3.0.1-svalbard-fp32-b2.onnx",
+            "sha256": "071942dd78007e17572de23197cbb5d1b9f905e73e542ec80cbaea54b44b90aa",
+            "size_bytes": 99189978
+          },
+          "labels": {
+            "url": "https://huggingface.co/tphakala/BirdNET-Plus-V3.0/resolve/main/regional/svalbard/birdnet-plus-v3.0.1-svalbard-labels-b2.txt",
+            "filename": "birdnet-plus-v3.0.1-svalbard-labels-b2.txt",
+            "sha256": "36443e9265daa107818d2e111081a8354efa2cfa494378b30dc1935923680a38",
+            "size_bytes": 10340
+          },
+          "countries": {
+            "core": [
+              "Svalbard & Jan Mayen"
+            ]
+          },
+          "build": 2,
+          "country_codes": {
+            "core": [
+              "SJ"
+            ]
+          },
+          "tier": 90,
+          "bboxes": [
+            {
+              "lat_min": 74.0,
+              "lat_max": 81.0,
+              "lon_min": 9.0,
+              "lon_max": 34.0
+            }
+          ],
+          "centroid": {
+            "lat": 77.5,
+            "lon": 21.5
+          }
+        },
+        {
+          "id": "fp32",
+          "region": "tibet",
+          "region_name": "Tibetan Plateau",
+          "group": "asia",
+          "group_name": "Asia",
+          "group_order": 1,
+          "classes": 1239,
+          "model": {
+            "url": "https://huggingface.co/tphakala/BirdNET-Plus-V3.0/resolve/main/regional/tibet/birdnet-plus-v3.0.1-tibet-fp32-b2.onnx",
+            "filename": "birdnet-plus-v3.0.1-tibet-fp32-b2.onnx",
+            "sha256": "33c839628e062d945db0b75a43d14e3408c5effb09e68a0cb3e24b549359b759",
+            "size_bytes": 118905972
+          },
+          "labels": {
+            "url": "https://huggingface.co/tphakala/BirdNET-Plus-V3.0/resolve/main/regional/tibet/birdnet-plus-v3.0.1-tibet-labels-b2.txt",
+            "filename": "birdnet-plus-v3.0.1-tibet-labels-b2.txt",
+            "sha256": "0093ccca9f58ec40ddc6553e6f4e053315e3cda9c772b68205a13d756fbf0ea3",
+            "size_bytes": 47165
+          },
+          "countries": {
+            "core": [
+              "China"
+            ],
+            "partial": [
+              "Nepal"
+            ]
+          },
+          "build": 2,
+          "country_codes": {
+            "core": [
+              "CN"
+            ],
+            "partial": [
+              "NP"
+            ]
+          },
+          "tier": 50,
+          "bboxes": [
+            {
+              "lat_min": 29.0,
+              "lat_max": 37.0,
+              "lon_min": 79.0,
+              "lon_max": 99.0
+            }
+          ],
+          "centroid": {
+            "lat": 33.0,
+            "lon": 89.0
+          }
+        },
+        {
+          "id": "fp32",
+          "region": "west-africa",
+          "region_name": "West Africa",
+          "group": "africa",
+          "group_name": "Africa",
+          "group_order": 4,
+          "classes": 1043,
+          "model": {
+            "url": "https://huggingface.co/tphakala/BirdNET-Plus-V3.0/resolve/main/regional/west-africa/birdnet-plus-v3.0.1-west-africa-fp32-b2.onnx",
+            "filename": "birdnet-plus-v3.0.1-west-africa-fp32-b2.onnx",
+            "sha256": "cc14485b9f779036558d10f6c36677b2021d318b96b29238f3c7adfda59b1afb",
+            "size_bytes": 114687268
+          },
+          "labels": {
+            "url": "https://huggingface.co/tphakala/BirdNET-Plus-V3.0/resolve/main/regional/west-africa/birdnet-plus-v3.0.1-west-africa-labels-b2.txt",
+            "filename": "birdnet-plus-v3.0.1-west-africa-labels-b2.txt",
+            "sha256": "c55ea346512a6817232b882bf4bef84452d751478128ec6a861a50b6e635cc81",
+            "size_bytes": 39927
+          },
+          "countries": {
+            "core": [
+              "Burkina Faso",
+              "Benin",
+              "Côte d’Ivoire",
+              "Cameroon",
+              "Ghana",
+              "Gambia",
+              "Guinea",
+              "Guinea-Bissau",
+              "Liberia",
+              "Mali",
+              "Niger",
+              "Nigeria",
+              "Sierra Leone",
+              "Senegal",
+              "Togo"
+            ],
+            "partial": [
+              "Mauritania"
+            ]
+          },
+          "build": 2,
+          "country_codes": {
+            "core": [
+              "BF",
+              "BJ",
+              "CI",
+              "CM",
+              "GH",
+              "GM",
+              "GN",
+              "GW",
+              "LR",
+              "ML",
+              "NE",
+              "NG",
+              "SL",
+              "SN",
+              "TG"
+            ],
+            "partial": [
+              "MR"
+            ]
+          },
+          "tier": 50,
+          "bboxes": [
+            {
+              "lat_min": 4.0,
+              "lat_max": 17.0,
+              "lon_min": -18.0,
+              "lon_max": 15.0
+            }
+          ],
+          "centroid": {
+            "lat": 10.5,
+            "lon": -1.5
+          }
+        },
+        {
+          "id": "fp32",
+          "region": "western-palearctic",
+          "region_name": "Western Palearctic",
+          "group": "europe",
+          "group_name": "Europe",
+          "group_order": 0,
+          "classes": 1446,
+          "model": {
+            "url": "https://huggingface.co/tphakala/BirdNET-Plus-V3.0/resolve/main/regional/western-palearctic/birdnet-plus-v3.0.1-western-palearctic-fp32-b2.onnx",
+            "filename": "birdnet-plus-v3.0.1-western-palearctic-fp32-b2.onnx",
+            "sha256": "b794795941bfd780e04899b6e6a0e0ba2c7d9db0fd3235d5bd03c55b302889d5",
+            "size_bytes": 123361440
+          },
+          "labels": {
+            "url": "https://huggingface.co/tphakala/BirdNET-Plus-V3.0/resolve/main/regional/western-palearctic/birdnet-plus-v3.0.1-western-palearctic-labels-b2.txt",
+            "filename": "birdnet-plus-v3.0.1-western-palearctic-labels-b2.txt",
+            "sha256": "0225321c63eb314bca409d6b07f3fd717ec99da0032b2adebbd034051eacd8ff",
+            "size_bytes": 52800
+          },
+          "countries": {
+            "core": [
+              "Andorra",
+              "United Arab Emirates",
+              "Albania",
+              "Armenia",
+              "Austria",
+              "Åland Islands",
+              "Azerbaijan",
+              "Bosnia & Herzegovina",
+              "Belgium",
+              "Bulgaria",
+              "Bahrain",
+              "Belarus",
+              "Switzerland",
+              "Cyprus",
+              "Czechia",
+              "Germany",
+              "Denmark",
+              "Algeria",
+              "Estonia",
+              "Egypt",
+              "Western Sahara",
+              "Eritrea",
+              "Spain",
+              "Finland",
+              "Faroe Islands",
+              "France",
+              "United Kingdom",
+              "Georgia",
+              "Guernsey",
+              "Greece",
+              "Croatia",
+              "Hungary",
+              "Ireland",
+              "Israel",
+              "Isle of Man",
+              "Iraq",
+              "Iran",
+              "Italy",
+              "Jersey",
+              "Jordan",
+              "Kuwait",
+              "Lebanon",
+              "Liechtenstein",
+              "Lithuania",
+              "Luxembourg",
+              "Latvia",
+              "Libya",
+              "Morocco",
+              "Monaco",
+              "Moldova",
+              "Montenegro",
+              "North Macedonia",
+              "Mauritania",
+              "Malta",
+              "Niger",
+              "Netherlands",
+              "Norway",
+              "Oman",
+              "Poland",
+              "Palestinian Territories",
+              "Portugal",
+              "Qatar",
+              "Romania",
+              "Serbia",
+              "Saudi Arabia",
+              "Sudan",
+              "Sweden",
+              "Slovenia",
+              "Slovakia",
+              "San Marino",
+              "Syria",
+              "Chad",
+              "Tunisia",
+              "Türkiye",
+              "Ukraine",
+              "Vatican City",
+              "Kosovo",
+              "Yemen"
+            ],
+            "partial": [
+              "Djibouti",
+              "Ethiopia",
+              "Mali",
+              "Russia",
+              "Turkmenistan"
+            ]
+          },
+          "build": 2,
+          "country_codes": {
+            "core": [
+              "AD",
+              "AE",
+              "AL",
+              "AM",
+              "AT",
+              "AX",
+              "AZ",
+              "BA",
+              "BE",
+              "BG",
+              "BH",
+              "BY",
+              "CH",
+              "CY",
+              "CZ",
+              "DE",
+              "DK",
+              "DZ",
+              "EE",
+              "EG",
+              "EH",
+              "ER",
+              "ES",
+              "FI",
+              "FO",
+              "FR",
+              "GB",
+              "GE",
+              "GG",
+              "GR",
+              "HR",
+              "HU",
+              "IE",
+              "IL",
+              "IM",
+              "IQ",
+              "IR",
+              "IT",
+              "JE",
+              "JO",
+              "KW",
+              "LB",
+              "LI",
+              "LT",
+              "LU",
+              "LV",
+              "LY",
+              "MA",
+              "MC",
+              "MD",
+              "ME",
+              "MK",
+              "MR",
+              "MT",
+              "NE",
+              "NL",
+              "NO",
+              "OM",
+              "PL",
+              "PS",
+              "PT",
+              "QA",
+              "RO",
+              "RS",
+              "SA",
+              "SD",
+              "SE",
+              "SI",
+              "SK",
+              "SM",
+              "SY",
+              "TD",
+              "TN",
+              "TR",
+              "UA",
+              "VA",
+              "XK",
+              "YE"
+            ],
+            "partial": [
+              "DJ",
+              "ET",
+              "ML",
+              "RU",
+              "TM"
+            ]
+          },
+          "tier": 10,
+          "bboxes": [
+            {
+              "lat_min": 35.0,
+              "lat_max": 71.0,
+              "lon_min": -11.0,
+              "lon_max": 45.0
+            },
+            {
+              "lat_min": 26.0,
+              "lat_max": 40.0,
+              "lon_min": -32.0,
+              "lon_max": -13.0
+            },
+            {
+              "lat_min": 20.0,
+              "lat_max": 37.0,
+              "lon_min": -13.0,
+              "lon_max": 37.0
+            },
+            {
+              "lat_min": 30.0,
+              "lat_max": 42.0,
+              "lon_min": 34.0,
+              "lon_max": 50.0
+            },
+            {
+              "lat_min": 12.0,
+              "lat_max": 32.0,
+              "lon_min": 34.0,
+              "lon_max": 60.0
+            }
+          ],
+          "centroid": {
+            "lat": 41.5,
+            "lon": 14.0
+          }
+        },
+        {
+          "id": "fp32",
+          "region": "central-india",
+          "region_name": "Central India",
+          "group": "asia",
+          "group_name": "Asia",
+          "group_order": 1,
+          "classes": 708,
+          "model": {
+            "url": "https://huggingface.co/tphakala/BirdNET-Plus-V3.0/resolve/main/regional/central-india/birdnet-plus-v3.0.1-central-india-fp32-b3.onnx",
+            "filename": "birdnet-plus-v3.0.1-central-india-fp32-b3.onnx",
+            "sha256": "4dae3fab00e9beb0ce39a9a3737f555cd6a36d13db3d3811efdd1f3fded58748",
+            "size_bytes": 107476728
+          },
+          "labels": {
+            "url": "https://huggingface.co/tphakala/BirdNET-Plus-V3.0/resolve/main/regional/central-india/birdnet-plus-v3.0.1-central-india-labels-b3.txt",
+            "filename": "birdnet-plus-v3.0.1-central-india-labels-b3.txt",
+            "sha256": "a49c2f57c8631340ac0ac0bb0f859b08ddda8aa54ebdecd75c938c9fa1060a13",
+            "size_bytes": 26012
+          },
+          "countries": {
+            "core": [
+              "India"
+            ]
+          },
+          "build": 3,
+          "country_codes": {
+            "core": [
+              "IN"
+            ]
+          },
+          "tier": 90,
+          "bboxes": [
+            {
+              "lat_min": 16.0,
+              "lat_max": 26.0,
+              "lon_min": 73.0,
+              "lon_max": 86.5
+            }
+          ],
+          "centroid": {
+            "lat": 21.0,
+            "lon": 79.75
+          }
+        }
+      ],
+      "documents": [
+        {
+          "kind": "license",
+          "requires_agreement": false,
+          "url": "https://huggingface.co/tphakala/BirdNET-Plus-V3.0/resolve/f90c3ba818b179adf5f4c9eabf2e6f8b801e4c06/LICENSE-v3.0.1.md",
+          "revision": "f90c3ba818b179adf5f4c9eabf2e6f8b801e4c06",
+          "sha256": "ec0c349bd674520989b4df63afd50601695bd99a01768b8e46a04694573afd47"
+        },
+        {
+          "kind": "acceptable_use",
+          "requires_agreement": true,
+          "url": "https://huggingface.co/tphakala/BirdNET-Plus-V3.0/resolve/f90c3ba818b179adf5f4c9eabf2e6f8b801e4c06/ACCEPTABLE_USE-v3.0.1.md",
+          "revision": "f90c3ba818b179adf5f4c9eabf2e6f8b801e4c06",
+          "sha256": "4495ebf9a088a83f902bbbef95ec17f635b51c94ade5d95b5d248646ea70a04e"
+        }
+      ],
+      "recommended": false
+    },
     {
       "id": "birdnet-v24",
       "name": "BirdNET v2.4",
@@ -250,2401 +2879,6 @@
         }
       },
       "recommended": true
-    },
-    {
-      "id": "birdnet-v30",
-      "name": "BirdNET v3.0",
-      "description": "11,560 species worldwide. 5 second window at 32 kHz",
-      "vendor": "Cornell Lab of Ornithology & Chemnitz University of Technology",
-      "version": "3.0-preview3.1",
-      "model_type": "birdnet-v30",
-      "license": {
-        "type": "CC-BY-SA-4.0",
-        "url": "https://creativecommons.org/licenses/by-sa/4.0/",
-        "commercial_use": true,
-        "attribution_required": true,
-        "share_alike": true
-      },
-      "build": 1,
-      "default_variant": "fp32",
-      "selection": {
-        "aarch64-a76/openvino": "fp32",
-        "aarch64/onnxruntime": "fp32",
-        "cuda": "fp16",
-        "tensorrt": "fp16",
-        "x86-64/onnxruntime": "fp32",
-        "x86-64/openvino-cpu": "fp32",
-        "x86-64/openvino-gpu": "fp16"
-      },
-      "variants": [
-        {
-          "id": "fp32",
-          "group_order": 0,
-          "classes": 11560,
-          "model": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/full/birdnet-v3.0-preview3.1-fp32-b1.onnx",
-            "filename": "birdnet-v3.0-preview3.1-fp32-b1.onnx",
-            "sha256": "05535c3ef6ce3f9e523706dd3e144cb6db96bc202e9047f4973961256acbf997",
-            "size_bytes": 557212256
-          },
-          "labels": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/full/birdnet-v3.0-preview3.1-labels-b1.txt",
-            "filename": "birdnet-v3.0-preview3.1-labels-b1.txt"
-          }
-        },
-        {
-          "id": "fp16",
-          "group_order": 0,
-          "classes": 11560,
-          "model": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/full/birdnet-v3.0-preview3.1-fp16-b1.onnx",
-            "filename": "birdnet-v3.0-preview3.1-fp16-b1.onnx",
-            "sha256": "18fc932b9ac7478720ac8ca9077694b6ea62fb00675aa488e77b15e722244e67",
-            "size_bytes": 278787557
-          },
-          "labels": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/full/birdnet-v3.0-preview3.1-labels-b1.txt",
-            "filename": "birdnet-v3.0-preview3.1-labels-b1.txt"
-          }
-        },
-        {
-          "id": "fp32",
-          "region": "amazonia",
-          "region_name": "Amazonia",
-          "group": "south-america",
-          "group_name": "South America",
-          "group_order": 3,
-          "classes": 809,
-          "model": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/amazonia/birdnet-v3.0-preview3.1-amazonia-fp32-b1.onnx",
-            "filename": "birdnet-v3.0-preview3.1-amazonia-fp32-b1.onnx",
-            "sha256": "ef395f9cf3e9db65bf9e5f0a5e3ca857615c013e155e94037043299a9fe1e73e",
-            "size_bytes": 149658055
-          },
-          "labels": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/amazonia/birdnet-v3.0-preview3.1-amazonia-labels-b1.txt",
-            "filename": "birdnet-v3.0-preview3.1-amazonia-labels-b1.txt"
-          },
-          "countries": {
-            "core": [
-              "Brazil",
-              "Colombia",
-              "Ecuador",
-              "Guyana",
-              "Peru",
-              "Suriname",
-              "Trinidad and Tobago",
-              "Venezuela"
-            ],
-            "partial": [
-              "Bolivia",
-              "Panama"
-            ]
-          }
-        },
-        {
-          "id": "fp16",
-          "region": "amazonia",
-          "region_name": "Amazonia",
-          "group": "south-america",
-          "group_name": "South America",
-          "group_order": 3,
-          "classes": 809,
-          "model": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/amazonia/birdnet-v3.0-preview3.1-amazonia-fp16-b1.onnx",
-            "filename": "birdnet-v3.0-preview3.1-amazonia-fp16-b1.onnx",
-            "sha256": "17d78ec07209fd7faa6753ba643b489df52db9abcd2420c90a6058990e120bba",
-            "size_bytes": 75013090
-          },
-          "labels": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/amazonia/birdnet-v3.0-preview3.1-amazonia-labels-b1.txt",
-            "filename": "birdnet-v3.0-preview3.1-amazonia-labels-b1.txt"
-          },
-          "countries": {
-            "core": [
-              "Brazil",
-              "Colombia",
-              "Ecuador",
-              "Guyana",
-              "Peru",
-              "Suriname",
-              "Trinidad and Tobago",
-              "Venezuela"
-            ],
-            "partial": [
-              "Bolivia",
-              "Panama"
-            ]
-          }
-        },
-        {
-          "id": "fp32",
-          "region": "andes",
-          "region_name": "Andes",
-          "group": "south-america",
-          "group_name": "South America",
-          "group_order": 3,
-          "classes": 809,
-          "model": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/andes/birdnet-v3.0-preview3.1-andes-fp32-b1.onnx",
-            "filename": "birdnet-v3.0-preview3.1-andes-fp32-b1.onnx",
-            "sha256": "bcbbf32b126261b70bea8648b2ff880a4dcd8d1902bf663cd952a6eb4d374c61",
-            "size_bytes": 149658055
-          },
-          "labels": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/andes/birdnet-v3.0-preview3.1-andes-labels-b1.txt",
-            "filename": "birdnet-v3.0-preview3.1-andes-labels-b1.txt"
-          },
-          "countries": {
-            "core": [
-              "Argentina",
-              "Aruba",
-              "Bolivia",
-              "Brazil",
-              "Chile",
-              "Colombia",
-              "Curaçao",
-              "Ecuador",
-              "Grenada",
-              "Panama",
-              "Peru",
-              "Venezuela"
-            ]
-          }
-        },
-        {
-          "id": "fp16",
-          "region": "andes",
-          "region_name": "Andes",
-          "group": "south-america",
-          "group_name": "South America",
-          "group_order": 3,
-          "classes": 809,
-          "model": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/andes/birdnet-v3.0-preview3.1-andes-fp16-b1.onnx",
-            "filename": "birdnet-v3.0-preview3.1-andes-fp16-b1.onnx",
-            "sha256": "ec9f1bbc04ffb7485595292782fad35dc846fa39c3ec3d9047b1efb0937c299f",
-            "size_bytes": 75013090
-          },
-          "labels": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/andes/birdnet-v3.0-preview3.1-andes-labels-b1.txt",
-            "filename": "birdnet-v3.0-preview3.1-andes-labels-b1.txt"
-          },
-          "countries": {
-            "core": [
-              "Argentina",
-              "Aruba",
-              "Bolivia",
-              "Brazil",
-              "Chile",
-              "Colombia",
-              "Curaçao",
-              "Ecuador",
-              "Grenada",
-              "Panama",
-              "Peru",
-              "Venezuela"
-            ]
-          }
-        },
-        {
-          "id": "fp32",
-          "region": "australia-east",
-          "region_name": "Australia (Southeast)",
-          "group": "oceania",
-          "group_name": "Oceania",
-          "group_order": 5,
-          "classes": 708,
-          "model": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/australia-east/birdnet-v3.0-preview3.1-australia-east-fp32-b1.onnx",
-            "filename": "birdnet-v3.0-preview3.1-australia-east-fp32-b1.onnx",
-            "sha256": "c57a62b9abb7e13614eb24073f8f9b219dc38950be6d25a91f61000549c0eeec",
-            "size_bytes": 145829347
-          },
-          "labels": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/australia-east/birdnet-v3.0-preview3.1-australia-east-labels-b1.txt",
-            "filename": "birdnet-v3.0-preview3.1-australia-east-labels-b1.txt"
-          },
-          "countries": {
-            "core": [
-              "Australia"
-            ]
-          }
-        },
-        {
-          "id": "fp16",
-          "region": "australia-east",
-          "region_name": "Australia (Southeast)",
-          "group": "oceania",
-          "group_name": "Oceania",
-          "group_order": 5,
-          "classes": 708,
-          "model": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/australia-east/birdnet-v3.0-preview3.1-australia-east-fp16-b1.onnx",
-            "filename": "birdnet-v3.0-preview3.1-australia-east-fp16-b1.onnx",
-            "sha256": "e631d2714c241093065e2d01de934dd925d1a35369a324da6af141e1f0fd540b",
-            "size_bytes": 73098736
-          },
-          "labels": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/australia-east/birdnet-v3.0-preview3.1-australia-east-labels-b1.txt",
-            "filename": "birdnet-v3.0-preview3.1-australia-east-labels-b1.txt"
-          },
-          "countries": {
-            "core": [
-              "Australia"
-            ]
-          }
-        },
-        {
-          "id": "fp32",
-          "region": "azores",
-          "region_name": "Azores",
-          "group": "europe",
-          "group_name": "Europe",
-          "group_order": 0,
-          "classes": 224,
-          "model": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/azores/birdnet-v3.0-preview3.1-azores-fp32-b1.onnx",
-            "filename": "birdnet-v3.0-preview3.1-azores-fp32-b1.onnx",
-            "sha256": "340fe271f7f921b23c4ed64743ad7b606ee10217f32c47e41cd4342140176fe3",
-            "size_bytes": 127481865
-          },
-          "labels": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/azores/birdnet-v3.0-preview3.1-azores-labels-b1.txt",
-            "filename": "birdnet-v3.0-preview3.1-azores-labels-b1.txt"
-          },
-          "countries": {
-            "core": [
-              "Portugal"
-            ]
-          }
-        },
-        {
-          "id": "fp16",
-          "region": "azores",
-          "region_name": "Azores",
-          "group": "europe",
-          "group_name": "Europe",
-          "group_order": 0,
-          "classes": 224,
-          "model": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/azores/birdnet-v3.0-preview3.1-azores-fp16-b1.onnx",
-            "filename": "birdnet-v3.0-preview3.1-azores-fp16-b1.onnx",
-            "sha256": "362e66b655c6ec6ada44b8d35ee397aed2baf6f8a9613a591f53858591ff66c9",
-            "size_bytes": 63924992
-          },
-          "labels": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/azores/birdnet-v3.0-preview3.1-azores-labels-b1.txt",
-            "filename": "birdnet-v3.0-preview3.1-azores-labels-b1.txt"
-          },
-          "countries": {
-            "core": [
-              "Portugal"
-            ]
-          }
-        },
-        {
-          "id": "fp32",
-          "region": "baltics",
-          "region_name": "Baltics",
-          "group": "europe",
-          "group_name": "Europe",
-          "group_order": 0,
-          "classes": 438,
-          "model": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/baltics/birdnet-v3.0-preview3.1-baltics-fp32-b1.onnx",
-            "filename": "birdnet-v3.0-preview3.1-baltics-fp32-b1.onnx",
-            "sha256": "dd30c5fc35cd1d14dca1f399977225859cde888278e91eb8432edbe31f65d177",
-            "size_bytes": 135594187
-          },
-          "labels": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/baltics/birdnet-v3.0-preview3.1-baltics-labels-b1.txt",
-            "filename": "birdnet-v3.0-preview3.1-baltics-labels-b1.txt"
-          },
-          "countries": {
-            "core": [
-              "Belarus",
-              "Estonia",
-              "Latvia",
-              "Lithuania",
-              "Russia"
-            ]
-          }
-        },
-        {
-          "id": "fp16",
-          "region": "baltics",
-          "region_name": "Baltics",
-          "group": "europe",
-          "group_name": "Europe",
-          "group_order": 0,
-          "classes": 438,
-          "model": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/baltics/birdnet-v3.0-preview3.1-baltics-fp16-b1.onnx",
-            "filename": "birdnet-v3.0-preview3.1-baltics-fp16-b1.onnx",
-            "sha256": "dd83173755d8b78b7c46a9fee454cd52b33fa247e11051771859bede7990dd51",
-            "size_bytes": 67981148
-          },
-          "labels": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/baltics/birdnet-v3.0-preview3.1-baltics-labels-b1.txt",
-            "filename": "birdnet-v3.0-preview3.1-baltics-labels-b1.txt"
-          },
-          "countries": {
-            "core": [
-              "Belarus",
-              "Estonia",
-              "Latvia",
-              "Lithuania",
-              "Russia"
-            ]
-          }
-        },
-        {
-          "id": "fp32",
-          "region": "british-isles",
-          "region_name": "British Isles",
-          "group": "europe",
-          "group_name": "Europe",
-          "group_order": 0,
-          "classes": 559,
-          "model": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/british-isles/birdnet-v3.0-preview3.1-british-isles-fp32-b1.onnx",
-            "filename": "birdnet-v3.0-preview3.1-british-isles-fp32-b1.onnx",
-            "sha256": "6816af2076ea79ae4f2c4a22ec005e7e4c9011971c65533d68e3b7a9c3037adb",
-            "size_bytes": 140181055
-          },
-          "labels": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/british-isles/birdnet-v3.0-preview3.1-british-isles-labels-b1.txt",
-            "filename": "birdnet-v3.0-preview3.1-british-isles-labels-b1.txt"
-          },
-          "countries": {
-            "core": [
-              "Ireland",
-              "Isle of Man",
-              "United Kingdom"
-            ],
-            "partial": [
-              "Guernsey"
-            ]
-          }
-        },
-        {
-          "id": "fp16",
-          "region": "british-isles",
-          "region_name": "British Isles",
-          "group": "europe",
-          "group_name": "Europe",
-          "group_order": 0,
-          "classes": 559,
-          "model": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/british-isles/birdnet-v3.0-preview3.1-british-isles-fp16-b1.onnx",
-            "filename": "birdnet-v3.0-preview3.1-british-isles-fp16-b1.onnx",
-            "sha256": "45c9781f56286be1e05c509e1645f136a4db8ac230b7c978dae438e2f7e3ef94",
-            "size_bytes": 70274590
-          },
-          "labels": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/british-isles/birdnet-v3.0-preview3.1-british-isles-labels-b1.txt",
-            "filename": "birdnet-v3.0-preview3.1-british-isles-labels-b1.txt"
-          },
-          "countries": {
-            "core": [
-              "Ireland",
-              "Isle of Man",
-              "United Kingdom"
-            ],
-            "partial": [
-              "Guernsey"
-            ]
-          }
-        },
-        {
-          "id": "fp32",
-          "region": "canary-islands",
-          "region_name": "Canary Islands",
-          "group": "europe",
-          "group_name": "Europe",
-          "group_order": 0,
-          "classes": 388,
-          "model": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/canary-islands/birdnet-v3.0-preview3.1-canary-islands-fp32-b1.onnx",
-            "filename": "birdnet-v3.0-preview3.1-canary-islands-fp32-b1.onnx",
-            "sha256": "074503470eb21dc298a09ea711a2372295e9d8c402a012900face0326d811629",
-            "size_bytes": 133698785
-          },
-          "labels": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/canary-islands/birdnet-v3.0-preview3.1-canary-islands-labels-b1.txt",
-            "filename": "birdnet-v3.0-preview3.1-canary-islands-labels-b1.txt"
-          },
-          "countries": {
-            "core": [
-              "Morocco",
-              "Spain"
-            ]
-          }
-        },
-        {
-          "id": "fp16",
-          "region": "canary-islands",
-          "region_name": "Canary Islands",
-          "group": "europe",
-          "group_name": "Europe",
-          "group_order": 0,
-          "classes": 388,
-          "model": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/canary-islands/birdnet-v3.0-preview3.1-canary-islands-fp16-b1.onnx",
-            "filename": "birdnet-v3.0-preview3.1-canary-islands-fp16-b1.onnx",
-            "sha256": "3376f82981595545ed20b120291acd8219522b7446bff0b24071c396234a61e4",
-            "size_bytes": 67033448
-          },
-          "labels": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/canary-islands/birdnet-v3.0-preview3.1-canary-islands-labels-b1.txt",
-            "filename": "birdnet-v3.0-preview3.1-canary-islands-labels-b1.txt"
-          },
-          "countries": {
-            "core": [
-              "Morocco",
-              "Spain"
-            ]
-          }
-        },
-        {
-          "id": "fp32",
-          "region": "cape-verde",
-          "region_name": "Cape Verde",
-          "group": "africa",
-          "group_name": "Africa",
-          "group_order": 4,
-          "classes": 143,
-          "model": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/cape-verde/birdnet-v3.0-preview3.1-cape-verde-fp32-b1.onnx",
-            "filename": "birdnet-v3.0-preview3.1-cape-verde-fp32-b1.onnx",
-            "sha256": "81f79feaadb3023088ea41be045e127a70e5a88a8f6bdf4881e4b67b5317ebb7",
-            "size_bytes": 124411317
-          },
-          "labels": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/cape-verde/birdnet-v3.0-preview3.1-cape-verde-labels-b1.txt",
-            "filename": "birdnet-v3.0-preview3.1-cape-verde-labels-b1.txt"
-          },
-          "countries": {
-            "core": [
-              "Cabo Verde"
-            ]
-          }
-        },
-        {
-          "id": "fp16",
-          "region": "cape-verde",
-          "region_name": "Cape Verde",
-          "group": "africa",
-          "group_name": "Africa",
-          "group_order": 4,
-          "classes": 143,
-          "model": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/cape-verde/birdnet-v3.0-preview3.1-cape-verde-fp16-b1.onnx",
-            "filename": "birdnet-v3.0-preview3.1-cape-verde-fp16-b1.onnx",
-            "sha256": "5ff4d3be9a81d56a3ffce41fa7a85ccb5798d2b2b986188edabae14fc5c99750",
-            "size_bytes": 62389718
-          },
-          "labels": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/cape-verde/birdnet-v3.0-preview3.1-cape-verde-labels-b1.txt",
-            "filename": "birdnet-v3.0-preview3.1-cape-verde-labels-b1.txt"
-          },
-          "countries": {
-            "core": [
-              "Cabo Verde"
-            ]
-          }
-        },
-        {
-          "id": "fp32",
-          "region": "central-europe",
-          "region_name": "Central Europe",
-          "group": "europe",
-          "group_name": "Europe",
-          "group_order": 0,
-          "classes": 644,
-          "model": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/central-europe/birdnet-v3.0-preview3.1-central-europe-fp32-b1.onnx",
-            "filename": "birdnet-v3.0-preview3.1-central-europe-fp32-b1.onnx",
-            "sha256": "83d07745a4c7bb22643a87397cde3a5192e72bba8a33ceac4d9e6be4970114e4",
-            "size_bytes": 143403235
-          },
-          "labels": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/central-europe/birdnet-v3.0-preview3.1-central-europe-labels-b1.txt",
-            "filename": "birdnet-v3.0-preview3.1-central-europe-labels-b1.txt"
-          },
-          "countries": {
-            "core": [
-              "Austria",
-              "Belgium",
-              "Croatia",
-              "Czechia",
-              "France",
-              "Germany",
-              "Hungary",
-              "Liechtenstein",
-              "Luxembourg",
-              "Netherlands",
-              "Poland",
-              "Slovakia",
-              "Slovenia",
-              "Switzerland"
-            ],
-            "partial": [
-              "Bosnia and Herzegovina",
-              "Denmark",
-              "Italy",
-              "Lithuania",
-              "Republic of Serbia",
-              "Romania"
-            ]
-          }
-        },
-        {
-          "id": "fp16",
-          "region": "central-europe",
-          "region_name": "Central Europe",
-          "group": "europe",
-          "group_name": "Europe",
-          "group_order": 0,
-          "classes": 644,
-          "model": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/central-europe/birdnet-v3.0-preview3.1-central-europe-fp16-b1.onnx",
-            "filename": "birdnet-v3.0-preview3.1-central-europe-fp16-b1.onnx",
-            "sha256": "9d6843c59ef022e9ecb70fbc1ae2414b779432f1c7630fedbb0beab5c3f336a8",
-            "size_bytes": 71885680
-          },
-          "labels": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/central-europe/birdnet-v3.0-preview3.1-central-europe-labels-b1.txt",
-            "filename": "birdnet-v3.0-preview3.1-central-europe-labels-b1.txt"
-          },
-          "countries": {
-            "core": [
-              "Austria",
-              "Belgium",
-              "Croatia",
-              "Czechia",
-              "France",
-              "Germany",
-              "Hungary",
-              "Liechtenstein",
-              "Luxembourg",
-              "Netherlands",
-              "Poland",
-              "Slovakia",
-              "Slovenia",
-              "Switzerland"
-            ],
-            "partial": [
-              "Bosnia and Herzegovina",
-              "Denmark",
-              "Italy",
-              "Lithuania",
-              "Republic of Serbia",
-              "Romania"
-            ]
-          }
-        },
-        {
-          "id": "fp32",
-          "region": "china-north-central",
-          "region_name": "China (North-Central)",
-          "group": "asia",
-          "group_name": "Asia",
-          "group_order": 1,
-          "classes": 752,
-          "model": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/china-north-central/birdnet-v3.0-preview3.1-china-north-central-fp32-b1.onnx",
-            "filename": "birdnet-v3.0-preview3.1-china-north-central-fp32-b1.onnx",
-            "sha256": "aa9fe728c50dc2bcf0fffe27fe008c16d314c37da11ec188f62f8b8f5cd3495c",
-            "size_bytes": 147497299
-          },
-          "labels": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/china-north-central/birdnet-v3.0-preview3.1-china-north-central-labels-b1.txt",
-            "filename": "birdnet-v3.0-preview3.1-china-north-central-labels-b1.txt"
-          },
-          "countries": {
-            "core": [
-              "China"
-            ]
-          }
-        },
-        {
-          "id": "fp16",
-          "region": "china-north-central",
-          "region_name": "China (North-Central)",
-          "group": "asia",
-          "group_name": "Asia",
-          "group_order": 1,
-          "classes": 752,
-          "model": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/china-north-central/birdnet-v3.0-preview3.1-china-north-central-fp16-b1.onnx",
-            "filename": "birdnet-v3.0-preview3.1-china-north-central-fp16-b1.onnx",
-            "sha256": "1291c3df3c38b363f77eac6f0e9fba28253e4daf370322f3cde08276ac144a06",
-            "size_bytes": 73932712
-          },
-          "labels": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/china-north-central/birdnet-v3.0-preview3.1-china-north-central-labels-b1.txt",
-            "filename": "birdnet-v3.0-preview3.1-china-north-central-labels-b1.txt"
-          },
-          "countries": {
-            "core": [
-              "China"
-            ]
-          }
-        },
-        {
-          "id": "fp32",
-          "region": "china-northeast",
-          "region_name": "China (Northeast)",
-          "group": "asia",
-          "group_name": "Asia",
-          "group_order": 1,
-          "classes": 650,
-          "model": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/china-northeast/birdnet-v3.0-preview3.1-china-northeast-fp32-b1.onnx",
-            "filename": "birdnet-v3.0-preview3.1-china-northeast-fp32-b1.onnx",
-            "sha256": "8c2ee2399c9f463468671e68fbdd77356d3f8a61f5e9def96ce6317338b39c1b",
-            "size_bytes": 143630683
-          },
-          "labels": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/china-northeast/birdnet-v3.0-preview3.1-china-northeast-labels-b1.txt",
-            "filename": "birdnet-v3.0-preview3.1-china-northeast-labels-b1.txt"
-          },
-          "countries": {
-            "core": [
-              "China",
-              "North Korea",
-              "Russia"
-            ],
-            "partial": [
-              "Mongolia"
-            ]
-          }
-        },
-        {
-          "id": "fp16",
-          "region": "china-northeast",
-          "region_name": "China (Northeast)",
-          "group": "asia",
-          "group_name": "Asia",
-          "group_order": 1,
-          "classes": 650,
-          "model": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/china-northeast/birdnet-v3.0-preview3.1-china-northeast-fp16-b1.onnx",
-            "filename": "birdnet-v3.0-preview3.1-china-northeast-fp16-b1.onnx",
-            "sha256": "bb84013aaf4250d03a1d385e719484030f4a8ccf32febd874a81af79c3ef522c",
-            "size_bytes": 71999404
-          },
-          "labels": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/china-northeast/birdnet-v3.0-preview3.1-china-northeast-labels-b1.txt",
-            "filename": "birdnet-v3.0-preview3.1-china-northeast-labels-b1.txt"
-          },
-          "countries": {
-            "core": [
-              "China",
-              "North Korea",
-              "Russia"
-            ],
-            "partial": [
-              "Mongolia"
-            ]
-          }
-        },
-        {
-          "id": "fp32",
-          "region": "china-southeast",
-          "region_name": "China (Southeast)",
-          "group": "asia",
-          "group_name": "Asia",
-          "group_order": 1,
-          "classes": 808,
-          "model": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/china-southeast/birdnet-v3.0-preview3.1-china-southeast-fp32-b1.onnx",
-            "filename": "birdnet-v3.0-preview3.1-china-southeast-fp32-b1.onnx",
-            "sha256": "4fe240c7240978fb21d379f6d37c93aea38ba54a142bc3cf1b97a997746a8985",
-            "size_bytes": 149620147
-          },
-          "labels": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/china-southeast/birdnet-v3.0-preview3.1-china-southeast-labels-b1.txt",
-            "filename": "birdnet-v3.0-preview3.1-china-southeast-labels-b1.txt"
-          },
-          "countries": {
-            "core": [
-              "China",
-              "Hong Kong S.A.R.",
-              "Macao S.A.R",
-              "Taiwan"
-            ]
-          }
-        },
-        {
-          "id": "fp16",
-          "region": "china-southeast",
-          "region_name": "China (Southeast)",
-          "group": "asia",
-          "group_name": "Asia",
-          "group_order": 1,
-          "classes": 808,
-          "model": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/china-southeast/birdnet-v3.0-preview3.1-china-southeast-fp16-b1.onnx",
-            "filename": "birdnet-v3.0-preview3.1-china-southeast-fp16-b1.onnx",
-            "sha256": "ec17f53f3ce5ec4042d969ef55cf30e15553b6805b1a513b5537620a40e8c278",
-            "size_bytes": 74994136
-          },
-          "labels": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/china-southeast/birdnet-v3.0-preview3.1-china-southeast-labels-b1.txt",
-            "filename": "birdnet-v3.0-preview3.1-china-southeast-labels-b1.txt"
-          },
-          "countries": {
-            "core": [
-              "China",
-              "Hong Kong S.A.R.",
-              "Macao S.A.R",
-              "Taiwan"
-            ]
-          }
-        },
-        {
-          "id": "fp32",
-          "region": "china-southwest",
-          "region_name": "China (Southwest)",
-          "group": "asia",
-          "group_name": "Asia",
-          "group_order": 1,
-          "classes": 816,
-          "model": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/china-southwest/birdnet-v3.0-preview3.1-china-southwest-fp32-b1.onnx",
-            "filename": "birdnet-v3.0-preview3.1-china-southwest-fp32-b1.onnx",
-            "sha256": "b8d3adffe207d7fe158e96d0686cc8893826346e5ab6b20401b4f14884014ab0",
-            "size_bytes": 149923411
-          },
-          "labels": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/china-southwest/birdnet-v3.0-preview3.1-china-southwest-labels-b1.txt",
-            "filename": "birdnet-v3.0-preview3.1-china-southwest-labels-b1.txt"
-          },
-          "countries": {
-            "core": [
-              "China"
-            ],
-            "partial": [
-              "Myanmar",
-              "Vietnam"
-            ]
-          }
-        },
-        {
-          "id": "fp16",
-          "region": "china-southwest",
-          "region_name": "China (Southwest)",
-          "group": "asia",
-          "group_name": "Asia",
-          "group_order": 1,
-          "classes": 816,
-          "model": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/china-southwest/birdnet-v3.0-preview3.1-china-southwest-fp16-b1.onnx",
-            "filename": "birdnet-v3.0-preview3.1-china-southwest-fp16-b1.onnx",
-            "sha256": "4236ccdc5fc0455abbe36cbebf2c23cd37aff0b3921f7a9b262f60c7991d5a60",
-            "size_bytes": 75145768
-          },
-          "labels": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/china-southwest/birdnet-v3.0-preview3.1-china-southwest-labels-b1.txt",
-            "filename": "birdnet-v3.0-preview3.1-china-southwest-labels-b1.txt"
-          },
-          "countries": {
-            "core": [
-              "China"
-            ],
-            "partial": [
-              "Myanmar",
-              "Vietnam"
-            ]
-          }
-        },
-        {
-          "id": "fp32",
-          "region": "eastern-brazil",
-          "region_name": "Eastern Brazil",
-          "group": "south-america",
-          "group_name": "South America",
-          "group_order": 3,
-          "classes": 812,
-          "model": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/eastern-brazil/birdnet-v3.0-preview3.1-eastern-brazil-fp32-b1.onnx",
-            "filename": "birdnet-v3.0-preview3.1-eastern-brazil-fp32-b1.onnx",
-            "sha256": "23cb0971ec650c86126c6fcfd5eee330288f87a45c8e07af7dce8f52a4dad538",
-            "size_bytes": 149771779
-          },
-          "labels": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/eastern-brazil/birdnet-v3.0-preview3.1-eastern-brazil-labels-b1.txt",
-            "filename": "birdnet-v3.0-preview3.1-eastern-brazil-labels-b1.txt"
-          },
-          "countries": {
-            "core": [
-              "Brazil",
-              "Paraguay",
-              "Uruguay"
-            ],
-            "partial": [
-              "Argentina"
-            ]
-          }
-        },
-        {
-          "id": "fp16",
-          "region": "eastern-brazil",
-          "region_name": "Eastern Brazil",
-          "group": "south-america",
-          "group_name": "South America",
-          "group_order": 3,
-          "classes": 812,
-          "model": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/eastern-brazil/birdnet-v3.0-preview3.1-eastern-brazil-fp16-b1.onnx",
-            "filename": "birdnet-v3.0-preview3.1-eastern-brazil-fp16-b1.onnx",
-            "sha256": "676ae019d456bcd0a2ce5fa9f1197781a3e7c56354f5deb70ffde823a99af8c0",
-            "size_bytes": 75069952
-          },
-          "labels": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/eastern-brazil/birdnet-v3.0-preview3.1-eastern-brazil-labels-b1.txt",
-            "filename": "birdnet-v3.0-preview3.1-eastern-brazil-labels-b1.txt"
-          },
-          "countries": {
-            "core": [
-              "Brazil",
-              "Paraguay",
-              "Uruguay"
-            ],
-            "partial": [
-              "Argentina"
-            ]
-          }
-        },
-        {
-          "id": "fp32",
-          "region": "eastern-europe",
-          "region_name": "Eastern Europe",
-          "group": "europe",
-          "group_name": "Europe",
-          "group_order": 0,
-          "classes": 518,
-          "model": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/eastern-europe/birdnet-v3.0-preview3.1-eastern-europe-fp32-b1.onnx",
-            "filename": "birdnet-v3.0-preview3.1-eastern-europe-fp32-b1.onnx",
-            "sha256": "a7cb46814165832308eeca0363b4dc906d28f8f06ca02e25a1a7deb053deec15",
-            "size_bytes": 138626827
-          },
-          "labels": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/eastern-europe/birdnet-v3.0-preview3.1-eastern-europe-labels-b1.txt",
-            "filename": "birdnet-v3.0-preview3.1-eastern-europe-labels-b1.txt"
-          },
-          "countries": {
-            "core": [
-              "Moldova",
-              "Romania",
-              "Russia",
-              "Ukraine"
-            ],
-            "partial": [
-              "Belarus",
-              "Poland"
-            ]
-          }
-        },
-        {
-          "id": "fp16",
-          "region": "eastern-europe",
-          "region_name": "Eastern Europe",
-          "group": "europe",
-          "group_name": "Europe",
-          "group_order": 0,
-          "classes": 518,
-          "model": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/eastern-europe/birdnet-v3.0-preview3.1-eastern-europe-fp16-b1.onnx",
-            "filename": "birdnet-v3.0-preview3.1-eastern-europe-fp16-b1.onnx",
-            "sha256": "3e8dd58e59fb2d5b201a04df99ee5a311f6edb31e1c1c28b5a060dfb91cc3864",
-            "size_bytes": 69497476
-          },
-          "labels": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/eastern-europe/birdnet-v3.0-preview3.1-eastern-europe-labels-b1.txt",
-            "filename": "birdnet-v3.0-preview3.1-eastern-europe-labels-b1.txt"
-          },
-          "countries": {
-            "core": [
-              "Moldova",
-              "Romania",
-              "Russia",
-              "Ukraine"
-            ],
-            "partial": [
-              "Belarus",
-              "Poland"
-            ]
-          }
-        },
-        {
-          "id": "fp32",
-          "region": "galapagos",
-          "region_name": "Galapagos",
-          "group": "south-america",
-          "group_name": "South America",
-          "group_order": 3,
-          "classes": 136,
-          "model": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/galapagos/birdnet-v3.0-preview3.1-galapagos-fp32-b1.onnx",
-            "filename": "birdnet-v3.0-preview3.1-galapagos-fp32-b1.onnx",
-            "sha256": "bda04467c1114a1733ff3b2f27c80e86b4a7d881e182e55a08c8fb45aa389f34",
-            "size_bytes": 124145961
-          },
-          "labels": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/galapagos/birdnet-v3.0-preview3.1-galapagos-labels-b1.txt",
-            "filename": "birdnet-v3.0-preview3.1-galapagos-labels-b1.txt"
-          },
-          "countries": {
-            "core": [
-              "Ecuador"
-            ]
-          }
-        },
-        {
-          "id": "fp16",
-          "region": "galapagos",
-          "region_name": "Galapagos",
-          "group": "south-america",
-          "group_name": "South America",
-          "group_order": 3,
-          "classes": 136,
-          "model": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/galapagos/birdnet-v3.0-preview3.1-galapagos-fp16-b1.onnx",
-            "filename": "birdnet-v3.0-preview3.1-galapagos-fp16-b1.onnx",
-            "sha256": "777fcbe063fb108ee2a297c0cdf8768a1a6f8804a7adcd8eedd24543d9f182a0",
-            "size_bytes": 62257040
-          },
-          "labels": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/galapagos/birdnet-v3.0-preview3.1-galapagos-labels-b1.txt",
-            "filename": "birdnet-v3.0-preview3.1-galapagos-labels-b1.txt"
-          },
-          "countries": {
-            "core": [
-              "Ecuador"
-            ]
-          }
-        },
-        {
-          "id": "fp32",
-          "region": "hawaii",
-          "region_name": "Hawaii",
-          "group": "oceania",
-          "group_name": "Oceania",
-          "group_order": 5,
-          "classes": 272,
-          "model": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/hawaii/birdnet-v3.0-preview3.1-hawaii-fp32-b1.onnx",
-            "filename": "birdnet-v3.0-preview3.1-hawaii-fp32-b1.onnx",
-            "sha256": "3cdf5846bd3144ca19dcfef99bc95deacf0139ce3800f3bcfc62ed5c41351c6f",
-            "size_bytes": 129301457
-          },
-          "labels": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/hawaii/birdnet-v3.0-preview3.1-hawaii-labels-b1.txt",
-            "filename": "birdnet-v3.0-preview3.1-hawaii-labels-b1.txt"
-          },
-          "countries": {
-            "core": [
-              "United States of America"
-            ]
-          }
-        },
-        {
-          "id": "fp16",
-          "region": "hawaii",
-          "region_name": "Hawaii",
-          "group": "oceania",
-          "group_name": "Oceania",
-          "group_order": 5,
-          "classes": 272,
-          "model": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/hawaii/birdnet-v3.0-preview3.1-hawaii-fp16-b1.onnx",
-            "filename": "birdnet-v3.0-preview3.1-hawaii-fp16-b1.onnx",
-            "sha256": "61cfd0db88506999da9776abae57beed02f7b8653ddd295b90e203bd3a875dc0",
-            "size_bytes": 64834784
-          },
-          "labels": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/hawaii/birdnet-v3.0-preview3.1-hawaii-labels-b1.txt",
-            "filename": "birdnet-v3.0-preview3.1-hawaii-labels-b1.txt"
-          },
-          "countries": {
-            "core": [
-              "United States of America"
-            ]
-          }
-        },
-        {
-          "id": "fp32",
-          "region": "himalaya",
-          "region_name": "Himalaya",
-          "group": "asia",
-          "group_name": "Asia",
-          "group_order": 1,
-          "classes": 812,
-          "model": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/himalaya/birdnet-v3.0-preview3.1-himalaya-fp32-b1.onnx",
-            "filename": "birdnet-v3.0-preview3.1-himalaya-fp32-b1.onnx",
-            "sha256": "624e56af0422e5ec87416958d32281c4d399b96afa55c7392a8bea8ab4adeee0",
-            "size_bytes": 149771779
-          },
-          "labels": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/himalaya/birdnet-v3.0-preview3.1-himalaya-labels-b1.txt",
-            "filename": "birdnet-v3.0-preview3.1-himalaya-labels-b1.txt"
-          },
-          "countries": {
-            "core": [
-              "Bhutan",
-              "China",
-              "India",
-              "Nepal",
-              "Siachen Glacier"
-            ],
-            "partial": [
-              "Pakistan"
-            ]
-          }
-        },
-        {
-          "id": "fp16",
-          "region": "himalaya",
-          "region_name": "Himalaya",
-          "group": "asia",
-          "group_name": "Asia",
-          "group_order": 1,
-          "classes": 812,
-          "model": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/himalaya/birdnet-v3.0-preview3.1-himalaya-fp16-b1.onnx",
-            "filename": "birdnet-v3.0-preview3.1-himalaya-fp16-b1.onnx",
-            "sha256": "11b49e82857a849e07990de758c05555b8e3bfc5b86c9e626cf9a492a1a8e879",
-            "size_bytes": 75069952
-          },
-          "labels": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/himalaya/birdnet-v3.0-preview3.1-himalaya-labels-b1.txt",
-            "filename": "birdnet-v3.0-preview3.1-himalaya-labels-b1.txt"
-          },
-          "countries": {
-            "core": [
-              "Bhutan",
-              "China",
-              "India",
-              "Nepal",
-              "Siachen Glacier"
-            ],
-            "partial": [
-              "Pakistan"
-            ]
-          }
-        },
-        {
-          "id": "fp32",
-          "region": "iberia",
-          "region_name": "Iberia",
-          "group": "europe",
-          "group_name": "Europe",
-          "group_order": 0,
-          "classes": 627,
-          "model": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/iberia/birdnet-v3.0-preview3.1-iberia-fp32-b1.onnx",
-            "filename": "birdnet-v3.0-preview3.1-iberia-fp32-b1.onnx",
-            "sha256": "de133241c5b76a07832bdbe736880241ebcddf4e9823c9c05adee00a4f11a537",
-            "size_bytes": 142758799
-          },
-          "labels": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/iberia/birdnet-v3.0-preview3.1-iberia-labels-b1.txt",
-            "filename": "birdnet-v3.0-preview3.1-iberia-labels-b1.txt"
-          },
-          "countries": {
-            "core": [
-              "Andorra",
-              "Portugal",
-              "Spain"
-            ],
-            "partial": [
-              "France"
-            ]
-          }
-        },
-        {
-          "id": "fp16",
-          "region": "iberia",
-          "region_name": "Iberia",
-          "group": "europe",
-          "group_name": "Europe",
-          "group_order": 0,
-          "classes": 627,
-          "model": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/iberia/birdnet-v3.0-preview3.1-iberia-fp16-b1.onnx",
-            "filename": "birdnet-v3.0-preview3.1-iberia-fp16-b1.onnx",
-            "sha256": "07335badaf7d3f6b72b836b9589cfc23b5047d5f069fb51487e0bc8ce947b3ce",
-            "size_bytes": 71563462
-          },
-          "labels": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/iberia/birdnet-v3.0-preview3.1-iberia-labels-b1.txt",
-            "filename": "birdnet-v3.0-preview3.1-iberia-labels-b1.txt"
-          },
-          "countries": {
-            "core": [
-              "Andorra",
-              "Portugal",
-              "Spain"
-            ],
-            "partial": [
-              "France"
-            ]
-          }
-        },
-        {
-          "id": "fp32",
-          "region": "iceland",
-          "region_name": "Iceland",
-          "group": "europe",
-          "group_name": "Europe",
-          "group_order": 0,
-          "classes": 391,
-          "model": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/iceland/birdnet-v3.0-preview3.1-iceland-fp32-b1.onnx",
-            "filename": "birdnet-v3.0-preview3.1-iceland-fp32-b1.onnx",
-            "sha256": "ad6053572e27fc952275601b59b8ec15e96e25d44c650c0497fe7c711def39af",
-            "size_bytes": 133812509
-          },
-          "labels": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/iceland/birdnet-v3.0-preview3.1-iceland-labels-b1.txt",
-            "filename": "birdnet-v3.0-preview3.1-iceland-labels-b1.txt"
-          },
-          "countries": {
-            "core": [
-              "Iceland"
-            ]
-          }
-        },
-        {
-          "id": "fp16",
-          "region": "iceland",
-          "region_name": "Iceland",
-          "group": "europe",
-          "group_name": "Europe",
-          "group_order": 0,
-          "classes": 391,
-          "model": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/iceland/birdnet-v3.0-preview3.1-iceland-fp16-b1.onnx",
-            "filename": "birdnet-v3.0-preview3.1-iceland-fp16-b1.onnx",
-            "sha256": "83526dc4eae3771d552be1741f498281a8b8fece5c9757e0e5f2fb7baa6c762b",
-            "size_bytes": 67090310
-          },
-          "labels": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/iceland/birdnet-v3.0-preview3.1-iceland-labels-b1.txt",
-            "filename": "birdnet-v3.0-preview3.1-iceland-labels-b1.txt"
-          },
-          "countries": {
-            "core": [
-              "Iceland"
-            ]
-          }
-        },
-        {
-          "id": "fp32",
-          "region": "indo-gangetic",
-          "region_name": "Indo-Gangetic Plain",
-          "group": "asia",
-          "group_name": "Asia",
-          "group_order": 1,
-          "classes": 814,
-          "model": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/indo-gangetic/birdnet-v3.0-preview3.1-indo-gangetic-fp32-b1.onnx",
-            "filename": "birdnet-v3.0-preview3.1-indo-gangetic-fp32-b1.onnx",
-            "sha256": "a25185b65ce62b0af1a799308bf923ebb6dff5245eea4c50b1dd36052ed32810",
-            "size_bytes": 149847595
-          },
-          "labels": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/indo-gangetic/birdnet-v3.0-preview3.1-indo-gangetic-labels-b1.txt",
-            "filename": "birdnet-v3.0-preview3.1-indo-gangetic-labels-b1.txt"
-          },
-          "countries": {
-            "core": [
-              "Bangladesh",
-              "Bhutan",
-              "India",
-              "Nepal",
-              "Pakistan"
-            ],
-            "partial": [
-              "China"
-            ]
-          }
-        },
-        {
-          "id": "fp16",
-          "region": "indo-gangetic",
-          "region_name": "Indo-Gangetic Plain",
-          "group": "asia",
-          "group_name": "Asia",
-          "group_order": 1,
-          "classes": 814,
-          "model": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/indo-gangetic/birdnet-v3.0-preview3.1-indo-gangetic-fp16-b1.onnx",
-            "filename": "birdnet-v3.0-preview3.1-indo-gangetic-fp16-b1.onnx",
-            "sha256": "68baac0935ceb27cdb776253d85fdc9fd338b90d255b51053523a052bd28d0f1",
-            "size_bytes": 75107860
-          },
-          "labels": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/indo-gangetic/birdnet-v3.0-preview3.1-indo-gangetic-labels-b1.txt",
-            "filename": "birdnet-v3.0-preview3.1-indo-gangetic-labels-b1.txt"
-          },
-          "countries": {
-            "core": [
-              "Bangladesh",
-              "Bhutan",
-              "India",
-              "Nepal",
-              "Pakistan"
-            ],
-            "partial": [
-              "China"
-            ]
-          }
-        },
-        {
-          "id": "fp32",
-          "region": "japan",
-          "region_name": "Japan",
-          "group": "asia",
-          "group_name": "Asia",
-          "group_order": 1,
-          "classes": 577,
-          "model": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/japan/birdnet-v3.0-preview3.1-japan-fp32-b1.onnx",
-            "filename": "birdnet-v3.0-preview3.1-japan-fp32-b1.onnx",
-            "sha256": "535664f50a9f4f916b44c6feefc4d7006d5f3f1cad2b392369901af22a6c85f8",
-            "size_bytes": 140863399
-          },
-          "labels": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/japan/birdnet-v3.0-preview3.1-japan-labels-b1.txt",
-            "filename": "birdnet-v3.0-preview3.1-japan-labels-b1.txt"
-          },
-          "countries": {
-            "core": [
-              "Japan",
-              "South Korea"
-            ],
-            "partial": [
-              "China",
-              "North Korea",
-              "Russia"
-            ]
-          }
-        },
-        {
-          "id": "fp16",
-          "region": "japan",
-          "region_name": "Japan",
-          "group": "asia",
-          "group_name": "Asia",
-          "group_order": 1,
-          "classes": 577,
-          "model": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/japan/birdnet-v3.0-preview3.1-japan-fp16-b1.onnx",
-            "filename": "birdnet-v3.0-preview3.1-japan-fp16-b1.onnx",
-            "sha256": "d80c1d858a0f0244551ad219bc607d98102aecaa56d0b0e1cb29d81ed8bf1e8d",
-            "size_bytes": 70615762
-          },
-          "labels": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/japan/birdnet-v3.0-preview3.1-japan-labels-b1.txt",
-            "filename": "birdnet-v3.0-preview3.1-japan-labels-b1.txt"
-          },
-          "countries": {
-            "core": [
-              "Japan",
-              "South Korea"
-            ],
-            "partial": [
-              "China",
-              "North Korea",
-              "Russia"
-            ]
-          }
-        },
-        {
-          "id": "fp32",
-          "region": "madeira",
-          "region_name": "Madeira",
-          "group": "europe",
-          "group_name": "Europe",
-          "group_order": 0,
-          "classes": 255,
-          "model": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/madeira/birdnet-v3.0-preview3.1-madeira-fp32-b1.onnx",
-            "filename": "birdnet-v3.0-preview3.1-madeira-fp32-b1.onnx",
-            "sha256": "823cbad416dd2ba0948985117fd1f416304adc2e7e00d05c7b0c79bcd8f828ae",
-            "size_bytes": 128657013
-          },
-          "labels": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/madeira/birdnet-v3.0-preview3.1-madeira-labels-b1.txt",
-            "filename": "birdnet-v3.0-preview3.1-madeira-labels-b1.txt"
-          },
-          "countries": {
-            "core": [
-              "Portugal"
-            ]
-          }
-        },
-        {
-          "id": "fp16",
-          "region": "madeira",
-          "region_name": "Madeira",
-          "group": "europe",
-          "group_name": "Europe",
-          "group_order": 0,
-          "classes": 255,
-          "model": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/madeira/birdnet-v3.0-preview3.1-madeira-fp16-b1.onnx",
-            "filename": "birdnet-v3.0-preview3.1-madeira-fp16-b1.onnx",
-            "sha256": "c6768116a2a83e464890e941602458d07ab51cb7e0356a26cfd9c500d031a275",
-            "size_bytes": 64512566
-          },
-          "labels": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/madeira/birdnet-v3.0-preview3.1-madeira-labels-b1.txt",
-            "filename": "birdnet-v3.0-preview3.1-madeira-labels-b1.txt"
-          },
-          "countries": {
-            "core": [
-              "Portugal"
-            ]
-          }
-        },
-        {
-          "id": "fp32",
-          "region": "mauritius",
-          "region_name": "Mauritius",
-          "group": "africa",
-          "group_name": "Africa",
-          "group_order": 4,
-          "classes": 72,
-          "model": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/mauritius/birdnet-v3.0-preview3.1-mauritius-fp32-b1.onnx",
-            "filename": "birdnet-v3.0-preview3.1-mauritius-fp32-b1.onnx",
-            "sha256": "81c009f05d3222fc3a534fc82bf89d688cb4d71fa3d1a38b4bc984b058b26459",
-            "size_bytes": 121719838
-          },
-          "labels": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/mauritius/birdnet-v3.0-preview3.1-mauritius-labels-b1.txt",
-            "filename": "birdnet-v3.0-preview3.1-mauritius-labels-b1.txt"
-          },
-          "countries": {
-            "core": [
-              "Mauritius"
-            ]
-          }
-        },
-        {
-          "id": "fp16",
-          "region": "mauritius",
-          "region_name": "Mauritius",
-          "group": "africa",
-          "group_name": "Africa",
-          "group_order": 4,
-          "classes": 72,
-          "model": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/mauritius/birdnet-v3.0-preview3.1-mauritius-fp16-b1.onnx",
-            "filename": "birdnet-v3.0-preview3.1-mauritius-fp16-b1.onnx",
-            "sha256": "0888ad754a47beebe4177420522e29577cc4abaa8fd916545f493cd376075e78",
-            "size_bytes": 61043948
-          },
-          "labels": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/mauritius/birdnet-v3.0-preview3.1-mauritius-labels-b1.txt",
-            "filename": "birdnet-v3.0-preview3.1-mauritius-labels-b1.txt"
-          },
-          "countries": {
-            "core": [
-              "Mauritius"
-            ]
-          }
-        },
-        {
-          "id": "fp32",
-          "region": "new-caledonia",
-          "region_name": "New Caledonia",
-          "group": "oceania",
-          "group_name": "Oceania",
-          "group_order": 5,
-          "classes": 168,
-          "model": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/new-caledonia/birdnet-v3.0-preview3.1-new-caledonia-fp32-b1.onnx",
-            "filename": "birdnet-v3.0-preview3.1-new-caledonia-fp32-b1.onnx",
-            "sha256": "116a70891ac4ae49ff8b7ef4dfce15146ccb44a7a23b9832323e71b7bacb8ed4",
-            "size_bytes": 125359017
-          },
-          "labels": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/new-caledonia/birdnet-v3.0-preview3.1-new-caledonia-labels-b1.txt",
-            "filename": "birdnet-v3.0-preview3.1-new-caledonia-labels-b1.txt"
-          },
-          "countries": {
-            "core": [
-              "New Caledonia"
-            ]
-          }
-        },
-        {
-          "id": "fp16",
-          "region": "new-caledonia",
-          "region_name": "New Caledonia",
-          "group": "oceania",
-          "group_name": "Oceania",
-          "group_order": 5,
-          "classes": 168,
-          "model": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/new-caledonia/birdnet-v3.0-preview3.1-new-caledonia-fp16-b1.onnx",
-            "filename": "birdnet-v3.0-preview3.1-new-caledonia-fp16-b1.onnx",
-            "sha256": "07b4eb1ebc4699bae5e6b51a52c3a689e56e6590b5c495ad750d157882d1944e",
-            "size_bytes": 62863568
-          },
-          "labels": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/new-caledonia/birdnet-v3.0-preview3.1-new-caledonia-labels-b1.txt",
-            "filename": "birdnet-v3.0-preview3.1-new-caledonia-labels-b1.txt"
-          },
-          "countries": {
-            "core": [
-              "New Caledonia"
-            ]
-          }
-        },
-        {
-          "id": "fp32",
-          "region": "new-zealand",
-          "region_name": "New Zealand",
-          "group": "oceania",
-          "group_name": "Oceania",
-          "group_order": 5,
-          "classes": 266,
-          "model": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/new-zealand/birdnet-v3.0-preview3.1-new-zealand-fp32-b1.onnx",
-            "filename": "birdnet-v3.0-preview3.1-new-zealand-fp32-b1.onnx",
-            "sha256": "57e339971abd51b380dab3fcfc93184957f248f0cf78af15066667d90f9f067d",
-            "size_bytes": 129074009
-          },
-          "labels": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/new-zealand/birdnet-v3.0-preview3.1-new-zealand-labels-b1.txt",
-            "filename": "birdnet-v3.0-preview3.1-new-zealand-labels-b1.txt"
-          },
-          "countries": {
-            "core": [
-              "New Zealand"
-            ]
-          }
-        },
-        {
-          "id": "fp16",
-          "region": "new-zealand",
-          "region_name": "New Zealand",
-          "group": "oceania",
-          "group_name": "Oceania",
-          "group_order": 5,
-          "classes": 266,
-          "model": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/new-zealand/birdnet-v3.0-preview3.1-new-zealand-fp16-b1.onnx",
-            "filename": "birdnet-v3.0-preview3.1-new-zealand-fp16-b1.onnx",
-            "sha256": "0e373c0e427b058acd449d4e3693a71e560093c641f567ce217cd5bbf8755d54",
-            "size_bytes": 64721060
-          },
-          "labels": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/new-zealand/birdnet-v3.0-preview3.1-new-zealand-labels-b1.txt",
-            "filename": "birdnet-v3.0-preview3.1-new-zealand-labels-b1.txt"
-          },
-          "countries": {
-            "core": [
-              "New Zealand"
-            ]
-          }
-        },
-        {
-          "id": "fp32",
-          "region": "nordic",
-          "region_name": "Nordic",
-          "group": "europe",
-          "group_name": "Europe",
-          "group_order": 0,
-          "classes": 422,
-          "model": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/nordic/birdnet-v3.0-preview3.1-nordic-fp32-b1.onnx",
-            "filename": "birdnet-v3.0-preview3.1-nordic-fp32-b1.onnx",
-            "sha256": "da3ce0df6100bdca7c09eefe13d229d207a25ba39fa4d1c71c4007c563a748e3",
-            "size_bytes": 134987659
-          },
-          "labels": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/nordic/birdnet-v3.0-preview3.1-nordic-labels-b1.txt",
-            "filename": "birdnet-v3.0-preview3.1-nordic-labels-b1.txt"
-          },
-          "countries": {
-            "core": [
-              "Aland",
-              "Denmark",
-              "Finland",
-              "Norway",
-              "Sweden"
-            ]
-          }
-        },
-        {
-          "id": "fp16",
-          "region": "nordic",
-          "region_name": "Nordic",
-          "group": "europe",
-          "group_name": "Europe",
-          "group_order": 0,
-          "classes": 422,
-          "model": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/nordic/birdnet-v3.0-preview3.1-nordic-fp16-b1.onnx",
-            "filename": "birdnet-v3.0-preview3.1-nordic-fp16-b1.onnx",
-            "sha256": "1464b4bf169818f80ee0f60573f0daa6bba3b4c48c6194d5f844d5215532457d",
-            "size_bytes": 67677884
-          },
-          "labels": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/nordic/birdnet-v3.0-preview3.1-nordic-labels-b1.txt",
-            "filename": "birdnet-v3.0-preview3.1-nordic-labels-b1.txt"
-          },
-          "countries": {
-            "core": [
-              "Aland",
-              "Denmark",
-              "Finland",
-              "Norway",
-              "Sweden"
-            ]
-          }
-        },
-        {
-          "id": "fp32",
-          "region": "north-america-east",
-          "region_name": "North America (East)",
-          "group": "north-america",
-          "group_name": "North America",
-          "group_order": 2,
-          "classes": 800,
-          "model": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/north-america-east/birdnet-v3.0-preview3.1-north-america-east-fp32-b1.onnx",
-            "filename": "birdnet-v3.0-preview3.1-north-america-east-fp32-b1.onnx",
-            "sha256": "d578c1074ab6d1de07382019b9747d9e089f0e2a8a4da45b02e0a3944e9f877a",
-            "size_bytes": 149316883
-          },
-          "labels": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/north-america-east/birdnet-v3.0-preview3.1-north-america-east-labels-b1.txt",
-            "filename": "birdnet-v3.0-preview3.1-north-america-east-labels-b1.txt"
-          },
-          "countries": {
-            "core": [
-              "Bermuda",
-              "Canada",
-              "United States of America"
-            ]
-          }
-        },
-        {
-          "id": "fp16",
-          "region": "north-america-east",
-          "region_name": "North America (East)",
-          "group": "north-america",
-          "group_name": "North America",
-          "group_order": 2,
-          "classes": 800,
-          "model": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/north-america-east/birdnet-v3.0-preview3.1-north-america-east-fp16-b1.onnx",
-            "filename": "birdnet-v3.0-preview3.1-north-america-east-fp16-b1.onnx",
-            "sha256": "921acf64827665e4bc0402a902c1040bb98fdce1e8fa7ef696248b9a6ceb75ed",
-            "size_bytes": 74842504
-          },
-          "labels": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/north-america-east/birdnet-v3.0-preview3.1-north-america-east-labels-b1.txt",
-            "filename": "birdnet-v3.0-preview3.1-north-america-east-labels-b1.txt"
-          },
-          "countries": {
-            "core": [
-              "Bermuda",
-              "Canada",
-              "United States of America"
-            ]
-          }
-        },
-        {
-          "id": "fp32",
-          "region": "north-america-west",
-          "region_name": "North America (West)",
-          "group": "north-america",
-          "group_name": "North America",
-          "group_order": 2,
-          "classes": 802,
-          "model": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/north-america-west/birdnet-v3.0-preview3.1-north-america-west-fp32-b1.onnx",
-            "filename": "birdnet-v3.0-preview3.1-north-america-west-fp32-b1.onnx",
-            "sha256": "c33fac902dbcbeae3498039ef4710b56d4db6e9070cf29efce8469c9a91c7c00",
-            "size_bytes": 149392699
-          },
-          "labels": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/north-america-west/birdnet-v3.0-preview3.1-north-america-west-labels-b1.txt",
-            "filename": "birdnet-v3.0-preview3.1-north-america-west-labels-b1.txt"
-          },
-          "countries": {
-            "core": [
-              "Canada",
-              "United States of America"
-            ]
-          }
-        },
-        {
-          "id": "fp16",
-          "region": "north-america-west",
-          "region_name": "North America (West)",
-          "group": "north-america",
-          "group_name": "North America",
-          "group_order": 2,
-          "classes": 802,
-          "model": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/north-america-west/birdnet-v3.0-preview3.1-north-america-west-fp16-b1.onnx",
-            "filename": "birdnet-v3.0-preview3.1-north-america-west-fp16-b1.onnx",
-            "sha256": "dbb71cb2e637fc31e47440efea92a8190ab2f1e8fdf815b4fb241aea3aab03bb",
-            "size_bytes": 74880412
-          },
-          "labels": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/north-america-west/birdnet-v3.0-preview3.1-north-america-west-labels-b1.txt",
-            "filename": "birdnet-v3.0-preview3.1-north-america-west-labels-b1.txt"
-          },
-          "countries": {
-            "core": [
-              "Canada",
-              "United States of America"
-            ]
-          }
-        },
-        {
-          "id": "fp32",
-          "region": "reunion",
-          "region_name": "Reunion",
-          "group": "africa",
-          "group_name": "Africa",
-          "group_order": 4,
-          "classes": 73,
-          "model": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/reunion/birdnet-v3.0-preview3.1-reunion-fp32-b1.onnx",
-            "filename": "birdnet-v3.0-preview3.1-reunion-fp32-b1.onnx",
-            "sha256": "9f72cc08ec893dc069e5dad115cd68cd880ea52f62ede2008c3fa6d2bf53fde4",
-            "size_bytes": 121757746
-          },
-          "labels": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/reunion/birdnet-v3.0-preview3.1-reunion-labels-b1.txt",
-            "filename": "birdnet-v3.0-preview3.1-reunion-labels-b1.txt"
-          },
-          "countries": {
-            "core": [
-              "France"
-            ]
-          }
-        },
-        {
-          "id": "fp16",
-          "region": "reunion",
-          "region_name": "Reunion",
-          "group": "africa",
-          "group_name": "Africa",
-          "group_order": 4,
-          "classes": 73,
-          "model": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/reunion/birdnet-v3.0-preview3.1-reunion-fp16-b1.onnx",
-            "filename": "birdnet-v3.0-preview3.1-reunion-fp16-b1.onnx",
-            "sha256": "f7d0fc7de5bdb08bf5195fde825bec2678e5190198051ac662d8e480013e015e",
-            "size_bytes": 61062902
-          },
-          "labels": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/reunion/birdnet-v3.0-preview3.1-reunion-labels-b1.txt",
-            "filename": "birdnet-v3.0-preview3.1-reunion-labels-b1.txt"
-          },
-          "countries": {
-            "core": [
-              "France"
-            ]
-          }
-        },
-        {
-          "id": "fp32",
-          "region": "sao-tome-principe",
-          "region_name": "Sao Tome & Principe",
-          "group": "africa",
-          "group_name": "Africa",
-          "group_order": 4,
-          "classes": 110,
-          "model": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/sao-tome-principe/birdnet-v3.0-preview3.1-sao-tome-principe-fp32-b1.onnx",
-            "filename": "birdnet-v3.0-preview3.1-sao-tome-principe-fp32-b1.onnx",
-            "sha256": "8bec465df7d8fcb04141d1adbed267430d1cd216a0d1895c920ae93256724a1f",
-            "size_bytes": 123160342
-          },
-          "labels": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/sao-tome-principe/birdnet-v3.0-preview3.1-sao-tome-principe-labels-b1.txt",
-            "filename": "birdnet-v3.0-preview3.1-sao-tome-principe-labels-b1.txt"
-          },
-          "countries": {
-            "core": [
-              "São Tomé and Principe"
-            ]
-          }
-        },
-        {
-          "id": "fp16",
-          "region": "sao-tome-principe",
-          "region_name": "Sao Tome & Principe",
-          "group": "africa",
-          "group_name": "Africa",
-          "group_order": 4,
-          "classes": 110,
-          "model": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/sao-tome-principe/birdnet-v3.0-preview3.1-sao-tome-principe-fp16-b1.onnx",
-            "filename": "birdnet-v3.0-preview3.1-sao-tome-principe-fp16-b1.onnx",
-            "sha256": "c9888f67376ce91b5b744175df33be99606e0d3dbb8088e019944d9a24ba473a",
-            "size_bytes": 61764200
-          },
-          "labels": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/sao-tome-principe/birdnet-v3.0-preview3.1-sao-tome-principe-labels-b1.txt",
-            "filename": "birdnet-v3.0-preview3.1-sao-tome-principe-labels-b1.txt"
-          },
-          "countries": {
-            "core": [
-              "São Tomé and Principe"
-            ]
-          }
-        },
-        {
-          "id": "fp32",
-          "region": "seychelles",
-          "region_name": "Seychelles",
-          "group": "africa",
-          "group_name": "Africa",
-          "group_order": 4,
-          "classes": 115,
-          "model": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/seychelles/birdnet-v3.0-preview3.1-seychelles-fp32-b1.onnx",
-            "filename": "birdnet-v3.0-preview3.1-seychelles-fp32-b1.onnx",
-            "sha256": "a2fc5de5f458d1db812ec06b7543ba39b7d084481087f480a49512604d455182",
-            "size_bytes": 123349882
-          },
-          "labels": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/seychelles/birdnet-v3.0-preview3.1-seychelles-labels-b1.txt",
-            "filename": "birdnet-v3.0-preview3.1-seychelles-labels-b1.txt"
-          },
-          "countries": {
-            "core": [
-              "Seychelles"
-            ]
-          }
-        },
-        {
-          "id": "fp16",
-          "region": "seychelles",
-          "region_name": "Seychelles",
-          "group": "africa",
-          "group_name": "Africa",
-          "group_order": 4,
-          "classes": 115,
-          "model": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/seychelles/birdnet-v3.0-preview3.1-seychelles-fp16-b1.onnx",
-            "filename": "birdnet-v3.0-preview3.1-seychelles-fp16-b1.onnx",
-            "sha256": "f071e2156f868578bc7c0bba23cbaf35999d25d229ab4479499bb11f2ab7fa6c",
-            "size_bytes": 61858970
-          },
-          "labels": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/seychelles/birdnet-v3.0-preview3.1-seychelles-labels-b1.txt",
-            "filename": "birdnet-v3.0-preview3.1-seychelles-labels-b1.txt"
-          },
-          "countries": {
-            "core": [
-              "Seychelles"
-            ]
-          }
-        },
-        {
-          "id": "fp32",
-          "region": "south-asia-peninsular",
-          "region_name": "South India & Sri Lanka",
-          "group": "asia",
-          "group_name": "Asia",
-          "group_order": 1,
-          "classes": 644,
-          "model": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/south-asia-peninsular/birdnet-v3.0-preview3.1-south-asia-peninsular-fp32-b1.onnx",
-            "filename": "birdnet-v3.0-preview3.1-south-asia-peninsular-fp32-b1.onnx",
-            "sha256": "1363e862a9aab8733a2ef4c1edf482a2fde10f3ac4a0aad46ffc21662d0d503f",
-            "size_bytes": 143403235
-          },
-          "labels": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/south-asia-peninsular/birdnet-v3.0-preview3.1-south-asia-peninsular-labels-b1.txt",
-            "filename": "birdnet-v3.0-preview3.1-south-asia-peninsular-labels-b1.txt"
-          },
-          "countries": {
-            "core": [
-              "India",
-              "Sri Lanka"
-            ]
-          }
-        },
-        {
-          "id": "fp16",
-          "region": "south-asia-peninsular",
-          "region_name": "South India & Sri Lanka",
-          "group": "asia",
-          "group_name": "Asia",
-          "group_order": 1,
-          "classes": 644,
-          "model": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/south-asia-peninsular/birdnet-v3.0-preview3.1-south-asia-peninsular-fp16-b1.onnx",
-            "filename": "birdnet-v3.0-preview3.1-south-asia-peninsular-fp16-b1.onnx",
-            "sha256": "8daa7735329de10254051e6b2222f7476a7a61c99ac85d9659b969e293ed1d93",
-            "size_bytes": 71885680
-          },
-          "labels": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/south-asia-peninsular/birdnet-v3.0-preview3.1-south-asia-peninsular-labels-b1.txt",
-            "filename": "birdnet-v3.0-preview3.1-south-asia-peninsular-labels-b1.txt"
-          },
-          "countries": {
-            "core": [
-              "India",
-              "Sri Lanka"
-            ]
-          }
-        },
-        {
-          "id": "fp32",
-          "region": "southern-africa",
-          "region_name": "Southern Africa",
-          "group": "africa",
-          "group_name": "Africa",
-          "group_order": 4,
-          "classes": 802,
-          "model": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/southern-africa/birdnet-v3.0-preview3.1-southern-africa-fp32-b1.onnx",
-            "filename": "birdnet-v3.0-preview3.1-southern-africa-fp32-b1.onnx",
-            "sha256": "dff4ede3d8e8d4e5c4950c006758dadead668987ff9c54d108b708ab8c5c429d",
-            "size_bytes": 149392699
-          },
-          "labels": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/southern-africa/birdnet-v3.0-preview3.1-southern-africa-labels-b1.txt",
-            "filename": "birdnet-v3.0-preview3.1-southern-africa-labels-b1.txt"
-          },
-          "countries": {
-            "core": [
-              "Botswana",
-              "Lesotho",
-              "Namibia",
-              "South Africa",
-              "Zimbabwe",
-              "eSwatini"
-            ]
-          }
-        },
-        {
-          "id": "fp16",
-          "region": "southern-africa",
-          "region_name": "Southern Africa",
-          "group": "africa",
-          "group_name": "Africa",
-          "group_order": 4,
-          "classes": 802,
-          "model": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/southern-africa/birdnet-v3.0-preview3.1-southern-africa-fp16-b1.onnx",
-            "filename": "birdnet-v3.0-preview3.1-southern-africa-fp16-b1.onnx",
-            "sha256": "58743f33f2cfdde65b7a461b34417e181057429fa6a2a1ef9af94a3fd59ebf4b",
-            "size_bytes": 74880412
-          },
-          "labels": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/southern-africa/birdnet-v3.0-preview3.1-southern-africa-labels-b1.txt",
-            "filename": "birdnet-v3.0-preview3.1-southern-africa-labels-b1.txt"
-          },
-          "countries": {
-            "core": [
-              "Botswana",
-              "Lesotho",
-              "Namibia",
-              "South Africa",
-              "Zimbabwe",
-              "eSwatini"
-            ]
-          }
-        },
-        {
-          "id": "fp32",
-          "region": "southern-cone",
-          "region_name": "Southern Cone",
-          "group": "south-america",
-          "group_name": "South America",
-          "group_order": 3,
-          "classes": 807,
-          "model": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/southern-cone/birdnet-v3.0-preview3.1-southern-cone-fp32-b1.onnx",
-            "filename": "birdnet-v3.0-preview3.1-southern-cone-fp32-b1.onnx",
-            "sha256": "8feb63df589804d925f2845e993882dae9e8b79592f349bfde8789b32a9dd60b",
-            "size_bytes": 149582239
-          },
-          "labels": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/southern-cone/birdnet-v3.0-preview3.1-southern-cone-labels-b1.txt",
-            "filename": "birdnet-v3.0-preview3.1-southern-cone-labels-b1.txt"
-          },
-          "countries": {
-            "core": [
-              "Argentina",
-              "Chile",
-              "Falkland Islands",
-              "Paraguay",
-              "Uruguay"
-            ],
-            "partial": [
-              "Bolivia",
-              "Brazil"
-            ]
-          }
-        },
-        {
-          "id": "fp16",
-          "region": "southern-cone",
-          "region_name": "Southern Cone",
-          "group": "south-america",
-          "group_name": "South America",
-          "group_order": 3,
-          "classes": 807,
-          "model": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/southern-cone/birdnet-v3.0-preview3.1-southern-cone-fp16-b1.onnx",
-            "filename": "birdnet-v3.0-preview3.1-southern-cone-fp16-b1.onnx",
-            "sha256": "809df610fdb9a76a2e7157d9c544db11e0e4004a7fba30d14dabe0209a255531",
-            "size_bytes": 74975182
-          },
-          "labels": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/southern-cone/birdnet-v3.0-preview3.1-southern-cone-labels-b1.txt",
-            "filename": "birdnet-v3.0-preview3.1-southern-cone-labels-b1.txt"
-          },
-          "countries": {
-            "core": [
-              "Argentina",
-              "Chile",
-              "Falkland Islands",
-              "Paraguay",
-              "Uruguay"
-            ],
-            "partial": [
-              "Bolivia",
-              "Brazil"
-            ]
-          }
-        },
-        {
-          "id": "fp32",
-          "region": "southern-europe",
-          "region_name": "Southern Europe",
-          "group": "europe",
-          "group_name": "Europe",
-          "group_order": 0,
-          "classes": 616,
-          "model": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/southern-europe/birdnet-v3.0-preview3.1-southern-europe-fp32-b1.onnx",
-            "filename": "birdnet-v3.0-preview3.1-southern-europe-fp32-b1.onnx",
-            "sha256": "636d39e606b1aacb77349a170abfccd559274d941257c19de6584e1755d2a2d8",
-            "size_bytes": 142341811
-          },
-          "labels": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/southern-europe/birdnet-v3.0-preview3.1-southern-europe-labels-b1.txt",
-            "filename": "birdnet-v3.0-preview3.1-southern-europe-labels-b1.txt"
-          },
-          "countries": {
-            "core": [
-              "Albania",
-              "Bosnia and Herzegovina",
-              "Bulgaria",
-              "Croatia",
-              "Greece",
-              "Italy",
-              "Kosovo",
-              "Malta",
-              "Monaco",
-              "Montenegro",
-              "North Macedonia",
-              "Republic of Serbia",
-              "Romania",
-              "San Marino",
-              "Slovenia",
-              "Vatican"
-            ],
-            "partial": [
-              "Hungary",
-              "Switzerland",
-              "Tunisia",
-              "Turkey"
-            ]
-          }
-        },
-        {
-          "id": "fp16",
-          "region": "southern-europe",
-          "region_name": "Southern Europe",
-          "group": "europe",
-          "group_name": "Europe",
-          "group_order": 0,
-          "classes": 616,
-          "model": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/southern-europe/birdnet-v3.0-preview3.1-southern-europe-fp16-b1.onnx",
-            "filename": "birdnet-v3.0-preview3.1-southern-europe-fp16-b1.onnx",
-            "sha256": "4e2bc9a5171b59bbe2084f45e834edd0c5ef2d0537cda06e46a505678b1b56b5",
-            "size_bytes": 71354968
-          },
-          "labels": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/southern-europe/birdnet-v3.0-preview3.1-southern-europe-labels-b1.txt",
-            "filename": "birdnet-v3.0-preview3.1-southern-europe-labels-b1.txt"
-          },
-          "countries": {
-            "core": [
-              "Albania",
-              "Bosnia and Herzegovina",
-              "Bulgaria",
-              "Croatia",
-              "Greece",
-              "Italy",
-              "Kosovo",
-              "Malta",
-              "Monaco",
-              "Montenegro",
-              "North Macedonia",
-              "Republic of Serbia",
-              "Romania",
-              "San Marino",
-              "Slovenia",
-              "Vatican"
-            ],
-            "partial": [
-              "Hungary",
-              "Switzerland",
-              "Tunisia",
-              "Turkey"
-            ]
-          }
-        },
-        {
-          "id": "fp32",
-          "region": "svalbard",
-          "region_name": "Svalbard",
-          "group": "europe",
-          "group_name": "Europe",
-          "group_order": 0,
-          "classes": 280,
-          "model": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/svalbard/birdnet-v3.0-preview3.1-svalbard-fp32-b1.onnx",
-            "filename": "birdnet-v3.0-preview3.1-svalbard-fp32-b1.onnx",
-            "sha256": "476f4ddc9d75f7d00a15835162408d7711141caf49a078d05db7d663432556b2",
-            "size_bytes": 129604721
-          },
-          "labels": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/svalbard/birdnet-v3.0-preview3.1-svalbard-labels-b1.txt",
-            "filename": "birdnet-v3.0-preview3.1-svalbard-labels-b1.txt"
-          },
-          "countries": {
-            "core": [
-              "Norway"
-            ]
-          }
-        },
-        {
-          "id": "fp16",
-          "region": "svalbard",
-          "region_name": "Svalbard",
-          "group": "europe",
-          "group_name": "Europe",
-          "group_order": 0,
-          "classes": 280,
-          "model": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/svalbard/birdnet-v3.0-preview3.1-svalbard-fp16-b1.onnx",
-            "filename": "birdnet-v3.0-preview3.1-svalbard-fp16-b1.onnx",
-            "sha256": "d8f0f71f9e407ee54e063d2e6450e7f8c60913628558d6bbadc1d530a0e8312e",
-            "size_bytes": 64986416
-          },
-          "labels": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/svalbard/birdnet-v3.0-preview3.1-svalbard-labels-b1.txt",
-            "filename": "birdnet-v3.0-preview3.1-svalbard-labels-b1.txt"
-          },
-          "countries": {
-            "core": [
-              "Norway"
-            ]
-          }
-        },
-        {
-          "id": "fp32",
-          "region": "tibet",
-          "region_name": "Tibetan Plateau",
-          "group": "asia",
-          "group_name": "Asia",
-          "group_order": 1,
-          "classes": 811,
-          "model": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/tibet/birdnet-v3.0-preview3.1-tibet-fp32-b1.onnx",
-            "filename": "birdnet-v3.0-preview3.1-tibet-fp32-b1.onnx",
-            "sha256": "a35a9bfe8947be244b3839655a55203f4712cfa770c359c17838bb07e50eaaa7",
-            "size_bytes": 149733871
-          },
-          "labels": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/tibet/birdnet-v3.0-preview3.1-tibet-labels-b1.txt",
-            "filename": "birdnet-v3.0-preview3.1-tibet-labels-b1.txt"
-          },
-          "countries": {
-            "core": [
-              "China"
-            ],
-            "partial": [
-              "Nepal"
-            ]
-          }
-        },
-        {
-          "id": "fp16",
-          "region": "tibet",
-          "region_name": "Tibetan Plateau",
-          "group": "asia",
-          "group_name": "Asia",
-          "group_order": 1,
-          "classes": 811,
-          "model": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/tibet/birdnet-v3.0-preview3.1-tibet-fp16-b1.onnx",
-            "filename": "birdnet-v3.0-preview3.1-tibet-fp16-b1.onnx",
-            "sha256": "1ab75674bf1457f3a883303f109d645d9e168a49c0714d0223525852b782130d",
-            "size_bytes": 75050998
-          },
-          "labels": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/tibet/birdnet-v3.0-preview3.1-tibet-labels-b1.txt",
-            "filename": "birdnet-v3.0-preview3.1-tibet-labels-b1.txt"
-          },
-          "countries": {
-            "core": [
-              "China"
-            ],
-            "partial": [
-              "Nepal"
-            ]
-          }
-        },
-        {
-          "id": "fp32",
-          "region": "western-palearctic",
-          "region_name": "Western Palearctic",
-          "group": "europe",
-          "group_name": "Europe",
-          "group_order": 0,
-          "classes": 801,
-          "model": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/western-palearctic/birdnet-v3.0-preview3.1-western-palearctic-fp32-b1.onnx",
-            "filename": "birdnet-v3.0-preview3.1-western-palearctic-fp32-b1.onnx",
-            "sha256": "b77eda5827064e1ca244ff16b4c4fc98040da1dc848ad0608683e6bda9f0e48c",
-            "size_bytes": 149354791
-          },
-          "labels": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/western-palearctic/birdnet-v3.0-preview3.1-western-palearctic-labels-b1.txt",
-            "filename": "birdnet-v3.0-preview3.1-western-palearctic-labels-b1.txt"
-          },
-          "countries": {
-            "core": [
-              "Aland",
-              "Albania",
-              "Algeria",
-              "Andorra",
-              "Armenia",
-              "Austria",
-              "Azerbaijan",
-              "Bahrain",
-              "Belarus",
-              "Belgium",
-              "Bosnia and Herzegovina",
-              "Bulgaria",
-              "Chad",
-              "Croatia",
-              "Cyprus",
-              "Czechia",
-              "Denmark",
-              "Egypt",
-              "Eritrea",
-              "Estonia",
-              "Faroe Islands",
-              "Finland",
-              "France",
-              "Georgia",
-              "Germany",
-              "Greece",
-              "Guernsey",
-              "Hungary",
-              "Iran",
-              "Iraq",
-              "Ireland",
-              "Isle of Man",
-              "Israel",
-              "Italy",
-              "Jersey",
-              "Jordan",
-              "Kosovo",
-              "Kuwait",
-              "Latvia",
-              "Lebanon",
-              "Libya",
-              "Liechtenstein",
-              "Lithuania",
-              "Luxembourg",
-              "Malta",
-              "Mauritania",
-              "Moldova",
-              "Monaco",
-              "Montenegro",
-              "Morocco",
-              "Netherlands",
-              "Niger",
-              "North Macedonia",
-              "Northern Cyprus",
-              "Norway",
-              "Oman",
-              "Palestine",
-              "Poland",
-              "Portugal",
-              "Qatar",
-              "Republic of Serbia",
-              "Romania",
-              "San Marino",
-              "Saudi Arabia",
-              "Slovakia",
-              "Slovenia",
-              "Spain",
-              "Sudan",
-              "Sweden",
-              "Switzerland",
-              "Syria",
-              "Tunisia",
-              "Turkey",
-              "Ukraine",
-              "United Arab Emirates",
-              "United Kingdom",
-              "Vatican",
-              "Western Sahara",
-              "Yemen"
-            ],
-            "partial": [
-              "Djibouti",
-              "Ethiopia",
-              "Mali",
-              "Russia",
-              "Turkmenistan"
-            ]
-          }
-        },
-        {
-          "id": "fp16",
-          "region": "western-palearctic",
-          "region_name": "Western Palearctic",
-          "group": "europe",
-          "group_name": "Europe",
-          "group_order": 0,
-          "classes": 801,
-          "model": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/western-palearctic/birdnet-v3.0-preview3.1-western-palearctic-fp16-b1.onnx",
-            "filename": "birdnet-v3.0-preview3.1-western-palearctic-fp16-b1.onnx",
-            "sha256": "ad7d514e5d9ce60e61a11264e549e1d29dbe38d7e7176a15429a24535c819611",
-            "size_bytes": 74861458
-          },
-          "labels": {
-            "url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/western-palearctic/birdnet-v3.0-preview3.1-western-palearctic-labels-b1.txt",
-            "filename": "birdnet-v3.0-preview3.1-western-palearctic-labels-b1.txt"
-          },
-          "countries": {
-            "core": [
-              "Aland",
-              "Albania",
-              "Algeria",
-              "Andorra",
-              "Armenia",
-              "Austria",
-              "Azerbaijan",
-              "Bahrain",
-              "Belarus",
-              "Belgium",
-              "Bosnia and Herzegovina",
-              "Bulgaria",
-              "Chad",
-              "Croatia",
-              "Cyprus",
-              "Czechia",
-              "Denmark",
-              "Egypt",
-              "Eritrea",
-              "Estonia",
-              "Faroe Islands",
-              "Finland",
-              "France",
-              "Georgia",
-              "Germany",
-              "Greece",
-              "Guernsey",
-              "Hungary",
-              "Iran",
-              "Iraq",
-              "Ireland",
-              "Isle of Man",
-              "Israel",
-              "Italy",
-              "Jersey",
-              "Jordan",
-              "Kosovo",
-              "Kuwait",
-              "Latvia",
-              "Lebanon",
-              "Libya",
-              "Liechtenstein",
-              "Lithuania",
-              "Luxembourg",
-              "Malta",
-              "Mauritania",
-              "Moldova",
-              "Monaco",
-              "Montenegro",
-              "Morocco",
-              "Netherlands",
-              "Niger",
-              "North Macedonia",
-              "Northern Cyprus",
-              "Norway",
-              "Oman",
-              "Palestine",
-              "Poland",
-              "Portugal",
-              "Qatar",
-              "Republic of Serbia",
-              "Romania",
-              "San Marino",
-              "Saudi Arabia",
-              "Slovakia",
-              "Slovenia",
-              "Spain",
-              "Sudan",
-              "Sweden",
-              "Switzerland",
-              "Syria",
-              "Tunisia",
-              "Turkey",
-              "Ukraine",
-              "United Arab Emirates",
-              "United Kingdom",
-              "Vatican",
-              "Western Sahara",
-              "Yemen"
-            ],
-            "partial": [
-              "Djibouti",
-              "Ethiopia",
-              "Mali",
-              "Russia",
-              "Turkmenistan"
-            ]
-          }
-        }
-      ],
-      "recommended": false
     },
     {
       "id": "bsg-fi-v44",

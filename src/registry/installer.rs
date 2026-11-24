@@ -65,9 +65,9 @@ pub struct InstalledModel {
 ///
 /// Two jobs: telling the user an update is available, and knowing exactly which
 /// files an install owns so an upgrade can delete the ones it replaces. Model
-/// filenames are immutable by the publishing policy, so without this a
-/// preview-to-GA upgrade would leave the old files on disk forever, at roughly
-/// 150 MB per regional slice and 557 MB for a global fp32.
+/// filenames are immutable by the publishing policy, so without this an upgrade
+/// to a new build under the same registry id would leave the old files on disk
+/// forever.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InstallProvenance {
     /// Registry id the files came from.

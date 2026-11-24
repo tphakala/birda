@@ -395,6 +395,17 @@ pub enum Error {
         id: String,
     },
 
+    /// A registry id that was withdrawn in favour of another model.
+    #[error(
+        "model '{id}' was replaced by '{replacement}'; run 'birda models install {replacement}'"
+    )]
+    ModelReplaced {
+        /// The withdrawn id.
+        id: String,
+        /// The id that replaced it.
+        replacement: String,
+    },
+
     /// A model needs agreement to documents and no prompt can be shown.
     #[error(
         "installing {model} requires agreement to {documents}; no prompt can be shown \

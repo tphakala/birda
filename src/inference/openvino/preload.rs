@@ -112,23 +112,38 @@ impl Layout {
 ///
 /// Each file comes from the first of these directories that lists it: the
 /// library's own directory, then, when that is an install's library directory,
-/// the install's oneTBB directory. A file found nowhere is left out. The names
-/// are exact, so the allocator replacement, the NUMA helper and the debug
-/// variants that sit beside oneTBB are never opened.
-#[must_use]
-pub fn dependency_files(library: &Path, layout: &Layout, list_dir: ListNames<'_>) -> Vec<PathBuf> {
+/// the install's oneTBB directory. The names are exact, so the allocator
+/// replacement, the NUMA helper and the debug variants that sit beside oneTBB
+/// are never opened.
+///
+/// # Errors
+///
+/// All or nothing: when either file is not found, or the core library's name
+/// cannot be derived from the located file, nothing is selected and the text
+/// says what is missing. Preloading one of the two would mix it with whatever
+/// the loader finds for the other.
+pub fn dependency_files(
+    library: &Path,
+    layout: &Layout,
+    list_dir: ListNames<'_>,
+) -> Result<Vec<PathBuf>, String> {
     let (Some(dir), Some(file_name)) = (
         library.parent(),
         library.file_name().map(|name| name.to_string_lossy()),
     ) else {
-        return Vec::new();
+        return Err(format!(
+            "{} has no directory or file name",
+            library.display()
+        ));
     };
+    let mut tried: Vec<PathBuf> = vec![dir.to_path_buf()];
     let mut dirs: Vec<(PathBuf, Vec<String>)> = Vec::new();
     if let Some(names) = list_dir(dir) {
         dirs.push((dir.to_path_buf(), names));
     }
     if let Some(root) = layout.install_root(dir) {
         let tbb_dir = root.join(layout.tbb_dir);
+        tried.push(tbb_dir.clone());
         if let Some(names) = list_dir(&tbb_dir) {
             dirs.push((tbb_dir, names));
         }
@@ -136,12 +151,16 @@ pub fn dependency_files(library: &Path, layout: &Layout, list_dir: ListNames<'_>
     let from_first_dir = |wanted: &str| {
         dirs.iter()
             .find_map(|(dir, names)| layout.find(names, wanted).map(|listed| dir.join(listed)))
+            .ok_or_else(|| {
+                let places: Vec<String> =
+                    tried.iter().map(|dir| dir.display().to_string()).collect();
+                format!("{wanted} not found in {}", places.join(", "))
+            })
     };
-    let core = layout.core_name(&file_name);
-    std::iter::once(layout.tbb.to_string())
-        .chain(core)
-        .filter_map(|wanted| from_first_dir(&wanted))
-        .collect()
+    let core = layout
+        .core_name(&file_name)
+        .ok_or_else(|| format!("{file_name} is not named like {}", layout.c_api))?;
+    Ok(vec![from_first_dir(layout.tbb)?, from_first_dir(&core)?])
 }
 
 /// Open each file with `open`, continuing past a failure. Returns what opened.
@@ -185,6 +204,9 @@ fn open_dependency(path: &Path) -> Result<libloading::Library, libloading::Error
 
 /// Open `files` and keep them loaded for the life of the process. Returns
 /// whether any of them opened.
+///
+/// Each file opens on its own: one that fails is logged and the others still
+/// open, and a handle that did open cannot be taken back.
 pub fn preload(files: &[PathBuf]) -> bool {
     let opened = open_each(files, open_dependency);
     if opened.is_empty() {
@@ -202,7 +224,11 @@ mod tests {
     use super::*;
     use std::collections::HashMap;
 
-    fn files(layout: &Layout, library: &str, fs: &[(&str, &[&str])]) -> Vec<String> {
+    fn files(
+        layout: &Layout,
+        library: &str,
+        fs: &[(&str, &[&str])],
+    ) -> Result<Vec<String>, String> {
         let fs: HashMap<PathBuf, Vec<String>> = fs
             .iter()
             .map(|(dir, names)| {
@@ -212,16 +238,18 @@ mod tests {
                 )
             })
             .collect();
-        dependency_files(Path::new(library), layout, &|dir| fs.get(dir).cloned())
-            .iter()
-            .map(|path| path.display().to_string())
-            .collect()
+        dependency_files(Path::new(library), layout, &|dir| fs.get(dir).cloned()).map(|files| {
+            files
+                .iter()
+                .map(|path| path.display().to_string())
+                .collect()
+        })
     }
 
     const OV: &str = "/ov/openvino_2026.3";
 
     #[test]
-    fn dependencies_are_tbb_then_core_from_the_library_dir_or_the_tbb_sibling() {
+    fn dependencies_are_tbb_then_core_or_nothing() {
         let lib = format!("{OV}/runtime/lib/intel64");
         let tbb = format!("{OV}/runtime/3rdparty/tbb/lib");
         let archive: [(&str, &[&str]); 2] = [
@@ -232,6 +260,7 @@ mod tests {
                     "libopenvino.so",
                     "libopenvino.so.2630",
                     "libopenvino_c.so.2630",
+                    "LIBTBB.SO.12",
                 ],
             ),
             (
@@ -245,13 +274,14 @@ mod tests {
             ),
         ];
 
-        // a. The unversioned C API link gives the unversioned core link.
+        // a. The unversioned C API link gives the unversioned core link. The
+        // upper-case TBB name in the library directory is not taken on Linux.
         assert_eq!(
             files(&Layout::LINUX, &format!("{lib}/libopenvino_c.so"), &archive),
-            [
+            Ok(vec![
                 format!("{tbb}/libtbb.so.12"),
                 format!("{lib}/libopenvino.so")
-            ]
+            ])
         );
         // b. A versioned C API file keeps its version on the core.
         assert_eq!(
@@ -260,10 +290,10 @@ mod tests {
                 &format!("{lib}/libopenvino_c.so.2630"),
                 &archive
             ),
-            [
+            Ok(vec![
                 format!("{tbb}/libtbb.so.12"),
                 format!("{lib}/libopenvino.so.2630")
-            ]
+            ])
         );
         // c. A flat directory holding all three: the sibling is not needed.
         assert_eq!(
@@ -275,31 +305,54 @@ mod tests {
                     &["libopenvino_c.so", "libopenvino.so", "libtbb.so.12"]
                 )]
             ),
-            [
+            Ok(vec![
                 "/opt/birda/libtbb.so.12".to_string(),
                 "/opt/birda/libopenvino.so".to_string()
-            ]
+            ])
         );
-        // e. No readable TBB directory and no TBB beside the library: the core
-        // alone.
+        // e. No TBB beside the library and no readable TBB directory: nothing is
+        // preloaded, and the error names the file and the places looked at.
         assert_eq!(
             files(
                 &Layout::LINUX,
                 &format!("{lib}/libopenvino_c.so"),
                 &[(&lib, &["libopenvino_c.so", "libopenvino.so"])]
             ),
-            [format!("{lib}/libopenvino.so")]
+            Err(format!("libtbb.so.12 not found in {lib}, {tbb}"))
+        );
+        // The core missing while TBB is present also preloads nothing.
+        assert_eq!(
+            files(
+                &Layout::LINUX,
+                &format!("{lib}/libopenvino_c.so"),
+                &[(&lib, &["libopenvino_c.so"]), (&tbb, &["libtbb.so.12"])]
+            ),
+            Err(format!("libopenvino.so not found in {lib}, {tbb}"))
+        );
+        // f. A file not named like the C API library has no core to derive.
+        assert_eq!(
+            files(
+                &Layout::LINUX,
+                "/opt/ov/lib/custom.so",
+                &[(
+                    "/opt/ov/lib",
+                    &["custom.so", "libopenvino.so", "libtbb.so.12"]
+                )]
+            ),
+            Err("custom.so is not named like libopenvino_c.so".to_string())
         );
     }
 
     #[test]
     fn windows_dependencies_match_names_without_regard_to_case() {
-        let lib = "/ov/OpenVINO_2026.3/RUNTIME/bin/intel64/release";
-        let tbb = "/ov/OpenVINO_2026.3/runtime/3rdparty/tbb/bin";
+        let root = Path::new("/ov/OpenVINO_2026.3");
+        let lib = root.join("Runtime/Bin/Intel64/release");
+        let tbb = root.join("runtime/3rdparty/tbb/bin");
+        let (lib, tbb) = (lib.display().to_string(), tbb.display().to_string());
         let fs: [(&str, &[&str]); 2] = [
-            (lib, &["OpenVINO_C.dll", "OPENVINO.DLL"]),
+            (&lib, &["OpenVINO_C.dll", "OPENVINO.DLL"]),
             (
-                tbb,
+                &tbb,
                 &[
                     "tbb12_debug.dll",
                     "TBB12.dll",
@@ -310,9 +363,13 @@ mod tests {
         ];
         assert_eq!(
             files(&Layout::WINDOWS, &format!("{lib}/OpenVINO_C.dll"), &fs),
-            [format!("{tbb}/TBB12.dll"), format!("{lib}/OPENVINO.DLL")]
+            Ok(vec![
+                format!("{tbb}/TBB12.dll"),
+                format!("{lib}/OPENVINO.DLL")
+            ])
         );
-        // The same layout on Linux matches exact names only.
+        // The same names are not found by the Linux layout, which matches
+        // exactly.
         assert_eq!(
             files(
                 &Layout::LINUX,
@@ -322,19 +379,7 @@ mod tests {
                     &["libopenvino_c.so", "LIBOPENVINO.SO", "LIBTBB.SO.12"]
                 )]
             ),
-            Vec::<String>::new()
-        );
-    }
-
-    #[test]
-    fn a_library_not_named_like_the_c_api_library_gets_no_core() {
-        assert_eq!(
-            files(
-                &Layout::LINUX,
-                "/opt/x/libother.so",
-                &[("/opt/x", &["libother.so", "libopenvino.so", "libtbb.so.12"])]
-            ),
-            ["/opt/x/libtbb.so.12".to_string()]
+            Err("libtbb.so.12 not found in /opt/birda".to_string())
         );
     }
 

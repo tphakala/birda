@@ -863,11 +863,8 @@ fn open_library(target: &Path, origin: Origin, os: Os) -> std::result::Result<()
     }
     let preloaded = loaded.is_none()
         && origin == Origin::Located
-        && preload::preload(&preload::dependency_files(
-            target,
-            &os.layout(),
-            &list_dir_fs,
-        ));
+        && preload::dependency_files(target, &os.layout(), &list_dir_fs)
+            .is_ok_and(|files| preload::preload(&files));
     let outcome = std::panic::catch_unwind(|| openvino_sys::library::load_from(target));
     let failure = match outcome {
         Ok(Ok(())) => None,

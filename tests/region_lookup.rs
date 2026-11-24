@@ -3,9 +3,9 @@
 //!
 //! Most tests drive the binary against a seeded registry whose `geo-test` entry
 //! has frozen region geometry, so the expected output does not move when the
-//! published data does. One test reads the bundled `birdnet-plus-v30` geometry,
-//! so a published-data change that moves a well-known city is noticed. The
-//! installs stop at the agreement gate before any download, except the one that
+//! published data does. One test reads the bundled `birdnet-plus-v30` and
+//! `perch-v2` geometry, so a published-data change that moves a well-known city
+//! is noticed. The installs stop at the agreement gate before any download, except the one that
 //! serves its files from a loopback listener.
 // Integration test crate: see `tests/model_manifest.rs` for why these are allowed.
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
@@ -392,6 +392,33 @@ fn test_models_regions_picks_the_published_region_for_well_known_places() {
         assert_eq!(result["region"].as_str(), expected, "{place}: {result}");
         let first = result["matches"][0]["region"].as_str();
         assert_eq!(first, expected, "{place}: the pick is the first match");
+    }
+
+    // Perch v2 publishes the same region boundaries.
+    for (place, lat, lon, expected) in [
+        ("Helsinki", "60.17", "24.94", Some("nordic")),
+        ("mid Atlantic", "30", "-40", None),
+    ] {
+        let ran = run(
+            home.path(),
+            &[
+                "--output-mode",
+                "json",
+                "models",
+                "regions",
+                "perch-v2",
+                "--lat",
+                lat,
+                "--lon",
+                lon,
+            ],
+        );
+        let result = result_of(&ran);
+        assert_eq!(
+            result["region"].as_str(),
+            expected,
+            "perch-v2 {place}: {result}"
+        );
     }
 
     // Helsinki lists the broad region too, after the specific one.

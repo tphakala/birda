@@ -926,6 +926,81 @@ mod tests {
     }
 
     #[test]
+    fn test_every_coordinate_flag_rejects_a_value_outside_its_bounds() {
+        // Each row gives the flag under test an out-of-range or NaN value and
+        // every partner flag its command needs a valid one, so the only thing
+        // that can reject the row is the flag's own value parser.
+        let rows: &[(&[&str], &str)] = &[
+            (
+                &["birda", "--lat", "95", "--lon", "10", "x.wav"],
+                "latitude",
+            ),
+            (
+                &["birda", "--lat", "10", "--lon", "181", "x.wav"],
+                "longitude",
+            ),
+            (
+                &[
+                    "birda", "species", "--lat", "95", "--lon", "10", "--week", "1",
+                ],
+                "latitude",
+            ),
+            (
+                &[
+                    "birda", "species", "--lat", "10", "--lon", "-181", "--week", "1",
+                ],
+                "longitude",
+            ),
+            (
+                &[
+                    "birda", "models", "install", "x", "--region", "auto", "--lat", "95", "--lon",
+                    "10",
+                ],
+                "latitude",
+            ),
+            (
+                &[
+                    "birda", "models", "install", "x", "--region", "auto", "--lat", "10", "--lon",
+                    "181",
+                ],
+                "longitude",
+            ),
+            (
+                &[
+                    "birda", "models", "install", "x", "--region", "auto", "--lat", "nan", "--lon",
+                    "10",
+                ],
+                "latitude",
+            ),
+            (
+                &[
+                    "birda", "models", "regions", "x", "--lat", "-95", "--lon", "10",
+                ],
+                "latitude",
+            ),
+            (
+                &[
+                    "birda", "models", "regions", "x", "--lat", "10", "--lon", "181",
+                ],
+                "longitude",
+            ),
+        ];
+        for (argv, name) in rows {
+            let err = Cli::try_parse_from(*argv).unwrap_err();
+            assert_eq!(
+                err.kind(),
+                clap::error::ErrorKind::ValueValidation,
+                "{argv:?}: {err}"
+            );
+            let text = err.to_string();
+            assert!(
+                text.contains(&format!("{name} must be between")),
+                "{argv:?} should fail the {name} rule: {text}"
+            );
+        }
+    }
+
+    #[test]
     fn test_location_flags_pair_up_take_negatives_and_install_needs_a_region() {
         // Negative values need `allow_hyphen_values` on each of the four fields.
         let ModelsAction::Install { lat, lon, .. } = parse_models(&[

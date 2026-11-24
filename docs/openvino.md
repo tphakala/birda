@@ -1,114 +1,134 @@
 # OpenVINO on Intel GPUs
 
-birda can run BirdNET and Perch models on an Intel GPU (integrated Iris Xe or UHD graphics, or an Arc discrete card) through Intel's OpenVINO runtime. OpenVINO in birda is for Intel GPUs only. CPU inference stays on ONNX Runtime (`--cpu`, or the default when no GPU provider is available).
+birda can run BirdNET and Perch models on an Intel GPU (integrated UHD or Iris Xe graphics, or an Arc discrete card) through Intel's OpenVINO runtime. OpenVINO in birda is for Intel GPUs only. CPU inference stays on ONNX Runtime (`--cpu`, or the default when no GPU provider is available).
 
 ```bash
+birda openvino devices
 birda --openvino recording.wav
 birda --openvino --openvino-device dgpu recording.wav
-birda openvino devices
+birda --openvino --openvino-device igpu recording.wav
 ```
 
-`--openvino` never falls back. If the runtime, the GPU or the model cannot be used, birda stops with an error before it processes any file. It does not switch to ONNX Runtime or to another device. `--gpu` and the default auto mode do not use OpenVINO.
+`--openvino` never falls back. If the runtime, the GPU, or the model cannot be used, birda stops with an error before processing any file. It does not switch to ONNX Runtime or to another device. `--gpu` and the default auto mode do not use OpenVINO.
 
-## What you need
+## What You Need
 
-birda does not ship OpenVINO. Install it yourself:
+birda does not bundle OpenVINO. Install these yourself:
 
-- **OpenVINO runtime 2025.1 or newer.** birda loads the `openvino_c` library at run time, so a birda binary works with whichever release you install.
-- **The Intel GPU driver and compute runtime.** On Linux that is the `intel-opencl-icd` package. GPUs older than Tiger Lake (Skylake to Ice Lake, which includes Kaby Lake Iris Plus) need `intel-opencl-icd-legacy1` instead, because the current packages dropped them.
-- **Access to the GPU.** On Linux your user needs access to the render node, which normally means membership of the `render` group: `sudo usermod -aG render $USER`, then log in again. Arc cards want Linux kernel 6.2 or newer.
-- **An ONNX Runtime**, as for every birda run. birda still loads it, because the startup check compares the GPU's output with ONNX Runtime on the CPU.
-- **An fp32 file.** The `fp16` file of the BirdNET v3.0 preview failed the startup check on both Intel GPUs tested, even though birda compiles it at 32-bit precision. BirdNET+ V3.0, which replaces the preview, publishes `fp32` only, so `birda models install` always installs that. `--openvino` runs whichever file is installed, and birda warns when it finds a preview `fp16` one. To switch, install BirdNET+ with `birda models install birdnet-plus-v30 --variant fp32`, with `--region <region>` for a regional model, and select it with `-m`.
+- **Supported OS**: Linux or Windows (macOS is not supported; `--openvino` reports an error there).
+- **OpenVINO runtime 2025.1 or newer**: birda loads `openvino_c` at run time, so one birda binary works with whichever OpenVINO release you install.
+- **Intel GPU driver and compute runtime**:
+  - **Linux**: Install `intel-opencl-icd` (GPUs older than Tiger Lake, such as Skylake through Ice Lake, need `intel-opencl-icd-legacy1`). Add your user to the `render` group (`sudo usermod -aG render $USER`, then log out and back in). Intel Arc cards require Linux kernel 6.2 or newer.
+  - **Windows**: Install the latest Intel Graphics Driver for your integrated or Arc GPU.
+- **ONNX Runtime**: Required for every birda run, including `--openvino`, because birda compares the GPU output against ONNX Runtime on CPU at startup.
+- **An `fp32` model file**: `birda models install` downloads `fp32` files (`birdnet-v24`, `birdnet-plus-v30`, and `perch-v2` `no-dft-fp32`). If you still have an older BirdNET v3.0 preview `fp16` model installed, switch to `birda models install birdnet-plus-v30` (with `--region <region>` if desired).
 
-Platforms: Linux (tested) and Windows (**untested**, see below). macOS is not supported: `--openvino` reports an error there.
+## Setup
 
 ### Linux
 
-With the Debian or Ubuntu packages, or Intel's APT repository, the libraries are installed on the system library path and birda finds them. With Intel's archive, either run its `setupvars.sh` before birda, or add the runtime and TBB directories to the loader path for good, for example in `/etc/ld.so.conf.d/openvino.conf`:
+If you installed OpenVINO from Debian/Ubuntu packages or Intel's APT repository, the libraries are already on the system loader path and birda finds them automatically.
+
+If you extracted an Intel OpenVINO archive (for example under `/opt/intel/openvino_2026`), either source its `setupvars.sh` in your shell before running birda, or register the runtime and TBB directories permanently in `/etc/ld.so.conf.d/openvino.conf`:
 
 ```text
 /opt/intel/openvino_2026/runtime/lib/intel64
 /opt/intel/openvino_2026/runtime/3rdparty/tbb/lib
 ```
 
-followed by `sudo ldconfig`.
+Then run `sudo ldconfig`.
 
-birda looks for `libopenvino_c.so` in this order and uses the first one it finds:
+birda searches for `libopenvino_c.so` in this order and uses the first match:
 
-1. `inference.openvino_path` in the config file (a library file, the directory holding it, or an install root). If this is set and wrong, birda stops with an error and does not look further.
-2. `INTEL_OPENVINO_DIR` (an install root).
-3. The directories in `LD_LIBRARY_PATH`.
-4. The system library directories.
+1. `inference.openvino_path` in `config.toml` (a library file, directory holding it, or install root). If set and invalid, birda stops with an error instead of searching further.
+2. `INTEL_OPENVINO_DIR` (install root).
+3. `LD_LIBRARY_PATH`.
+4. Standard system library directories.
 5. The newest `/opt/intel/openvino*` directory.
-6. The system loader's own search (this is how an `ld.so.conf.d` entry is found).
+6. The system dynamic loader search (including `ld.so.conf.d`).
 
-The error message lists every place that was searched.
+### Windows
 
-### Windows (untested)
+Windows requires both the OpenVINO runtime DLL directory (`runtime\bin\intel64\Release`) and its TBB dependency directory (`runtime\3rdparty\tbb\bin`) to be on `PATH`. Setting `INTEL_OPENVINO_DIR` or `inference.openvino_path` alone is not enough on Windows, because Windows will fail to resolve `tbb12.dll` and plugin DLLs unless both directories are on `PATH`.
 
-Install the Intel graphics driver and an OpenVINO runtime archive, then run `setupvars.bat` first, or put the runtime and TBB directories (`runtime\bin\intel64\Release` and `runtime\3rdparty\tbb\bin`) on `PATH`. birda searches `PATH`, `INTEL_OPENVINO_DIR`, `inference.openvino_path` and `C:\Program Files\Intel\openvino*`. This path has not been run on Windows hardware yet. Please report what you see.
+**Option 1: Intel OpenVINO archive**
+
+1. Extract the OpenVINO archive (for example to `C:\Program Files\Intel\openvino_2026`).
+2. Either run `setupvars.bat` in your terminal before running birda, or add both directories to your user `PATH`:
+   - `C:\Program Files\Intel\openvino_2026\runtime\bin\intel64\Release`
+   - `C:\Program Files\Intel\openvino_2026\runtime\3rdparty\tbb\bin`
+
+**Option 2: Microsoft Store / winget (WindowsApps MSIX package)**
+
+OpenVINO installed through the Microsoft Store or `winget` is placed under `C:\Program Files\WindowsApps\Intel.OpenVINOToolkit.*`, which birda does not auto-discover yet. Add its runtime and TBB folders to `PATH` in PowerShell before running birda:
+
+```powershell
+$ov = (Get-ChildItem "C:\Program Files\WindowsApps" -Directory -Filter "Intel.OpenVINOToolkit.*" | Sort-Object Name -Descending | Select-Object -First 1).FullName
+$env:PATH = "$ov\runtime\bin\intel64\Release;$ov\runtime\3rdparty\tbb\bin;$env:PATH"
+birda openvino devices
+```
+
+### Verifying Setup
+
+Run `birda openvino devices` to confirm that birda found the runtime and your Intel GPU(s):
+
+```bash
+birda openvino devices
+```
+
+This prints the OpenVINO version, what your configured device resolves to, and every usable GPU with its class (`integrated` or `discrete`), PCI address, UUID, memory, and the exact `--openvino-device` values that select it. Add `--output-mode json` for scripts.
 
 ## Choosing the GPU
 
-`--openvino-device <DEVICE>` (or `inference.openvino_device` in the config file):
+Set the target GPU with `--openvino-device <DEVICE>` or `inference.openvino_device` in `config.toml`:
 
 | Value | Meaning |
 |-------|---------|
-| `auto` (default) | The first Intel discrete GPU, else the first Intel integrated GPU |
-| `gpu` | The same as `auto` |
-| `igpu`, `dgpu` | The first integrated, or the first discrete, Intel GPU |
-| `igpu.N`, `dgpu.N` | The Nth (counting from 0) of that class |
-| `gpu.N` | The device OpenVINO itself calls `GPU.N` |
-| `pci:0000:03:00.0` | The GPU at that PCI address, as `lspci -D` prints it |
-| `uuid:<32 hex digits>` | The GPU with that device UUID |
+| `auto` (default) | First Intel discrete GPU, otherwise the first Intel integrated GPU |
+| `gpu` | Same as `auto` |
+| `igpu`, `dgpu` | First integrated or first discrete Intel GPU |
+| `igpu.N`, `dgpu.N` | The Nth (0-indexed) GPU of that class |
+| `gpu.N` | The device OpenVINO labels `GPU.N` |
+| `pci:0000:03:00.0` | GPU at that PCI address |
+| `uuid:<32 hex digits>` | GPU with that device UUID |
 
-There is no value for the CPU, and the NPU is not supported yet (`npu` is reserved and is refused). GPUs from other vendors are never used, even if OpenVINO lists them.
+There is no CPU value, and Intel NPUs are not supported (`npu` is rejected). Non-Intel GPUs are ignored even if OpenVINO lists them.
 
-On a computer with more than one GPU, pin the one you want with `pci:` or `uuid:`. The numbered forms depend on the order in which OpenVINO lists devices, which changes when a GPU is added or removed, or when an integrated GPU is disabled in firmware. `pci:` and `uuid:` do not.
+On a system with both an integrated and a discrete Intel GPU, `auto` selects the discrete GPU. To pin a specific card reliably across driver or firmware changes, use its `pci:` or `uuid:` value from `birda openvino devices`.
 
-`birda openvino devices` shows the runtime birda found, what your configured device resolves to, and every device OpenVINO lists. Each GPU comes with its class, PCI address, UUID and memory, each device birda will not use with the reason, and each usable GPU with the exact values that select it. `birda openvino devices --openvino-device dgpu` shows what a particular value resolves to. Add `--output-mode json` for a machine-readable form.
+To persist OpenVINO as your default backend in `config.toml`:
 
-## What birda guarantees
+```toml
+[inference]
+device = "openvino"
+openvino_device = "dgpu"  # optional: auto, igpu, dgpu, pci:..., uuid:...
+# openvino_path = "/opt/intel/openvino_2026"  # optional override
+```
 
-- **Float32.** The compiled model runs at 32-bit float precision, which is not the GPU default (16-bit). At 16 bits the detections of BirdNET v2.4 and the BirdNET v3.0 preview change. birda reads the precision back from the compiled model and stops if the device did not honour it.
-- **Checked against ONNX Runtime.** The first time each batch shape is compiled in a run, birda feeds the same deterministic test signal (a different one in every batch row) through ONNX Runtime on the CPU and through the GPU and compares the raw scores and embeddings. If they differ by more than 0.01 anywhere, the run stops with an `OpenVINO ... gives different results from ONNX Runtime` error. This also covers GPUs, drivers and runtime versions nobody has tested.
-- **Two compiled shapes.** One for a single segment and one for the run's batch size (default 8, `-b` to change it). A file whose length is known up front and that has at most half a batch of segments is run as single segments; any other partial batch is padded to the batch size.
+## Precision, Verification, and Cache
 
-## The compiled-model cache
+- **Float32 precision**: birda forces 32-bit float precision on the GPU (overriding OpenVINO's 16-bit GPU default) and stops if the device does not honor it.
+- **Startup check**: The first time each batch shape is prepared in a run, birda runs deterministic probe segments through both ONNX Runtime (CPU) and OpenVINO (GPU) and stops with an error if any output differs by more than `0.01`.
+- **Batch shapes**: birda compiles two static shapes per run: batch 1 and the run's batch size (default `8`, override with `-b`). Keep `-b 8` for most runs; larger batch sizes increase startup verification time on short files.
+- **Compiled-model cache**: Compiled blobs are cached per OpenVINO runtime version under `~/.cache/birda/openvino_cache/` (Linux) or `%LOCALAPPDATA%\birda\cache\openvino_cache\` (Windows), capped at 8 GiB with LRU eviction. Delete the directory to clear the cache.
 
-Compiling a model for a GPU takes a few seconds, and more for large models. birda keeps the compiled result in its cache directory (`~/.cache/birda/openvino_cache/<runtime version>/` on Linux, `~/Library/Caches` on macOS, `%LOCALAPPDATA%\birda\cache\openvino_cache\` on Windows), so later runs start in a fraction of a second. Each compiled shape of a model takes roughly one to two and a half times the model's size on disk. When the cache grows past 8 GiB, birda deletes the files used longest ago (by access or modification time) at the next start. To clear it, delete the directory.
+## Common Errors
 
-## Errors
+| Message starts with | What to do |
+|---------------------|------------|
+| `OpenVINO runtime not found` | Install OpenVINO 2025.1+, add its runtime/TBB folders to `PATH`/`LD_LIBRARY_PATH`, or set `inference.openvino_path`. |
+| `inference.openvino_path is set to ...` | Check that the configured path exists and points to `openvino_c`, its directory, or an OpenVINO install root. |
+| `could not load the OpenVINO runtime` | Add both the OpenVINO runtime library directory and its `3rdparty/tbb` directory to `PATH` (Windows) or `LD_LIBRARY_PATH` / `ld.so.conf.d` (Linux). |
+| `OpenVINO could not list its devices` | Check that the Intel GPU driver and compute runtime (`intel-opencl-icd` on Linux) are installed. |
+| `OpenVINO runtime ... is too old` | Upgrade OpenVINO to 2025.1 or newer. |
+| `no permission to use the Intel GPU render node` | On Linux, add your user to the `render` group and log in again. |
+| `OpenVINO device '...' is not available` | Run `birda openvino devices` to see available GPUs and valid selectors. |
+| `OpenVINO backend: ...` | Requested target is unsupported (NPU, non-Intel GPU, or macOS). |
+| `OpenVINO could not load the model` | Ensure you are using an `fp32` model (`birdnet-v24`, `birdnet-plus-v30`, or `perch-v2` `no-dft-fp32`). |
+| `OpenVINO on ... gives different results from ONNX Runtime` | Update the Intel GPU driver and OpenVINO runtime, or use `--cpu` / another device. |
 
-| Message starts with | What it means |
-|---------------------|---------------|
-| `OpenVINO runtime not found` | No `libopenvino_c` in the searched places. Install OpenVINO, or set `inference.openvino_path`. |
-| `inference.openvino_path is set to ...` | The configured path does not exist, or has no runtime in it. |
-| `could not load the OpenVINO runtime` | The library was found but the loader refused it, usually because the runtime's own library directory or TBB is not on the loader path. |
-| `OpenVINO could not list its devices` | The runtime loaded but listing its devices failed; check the GPU driver and the compute runtime. |
-| `OpenVINO runtime ... is too old` | Install 2025.1 or newer. |
-| `no permission to use the Intel GPU render node` | Add your user to the `render` group. |
-| `OpenVINO device '...' is not available` | The requested device is not in OpenVINO's list. The message lists what OpenVINO found and, on Linux, whether a render node or the compute runtime is missing. |
-| `OpenVINO backend: ...` | The request names something unsupported: the NPU, a non-Intel GPU, or this platform. |
-| `OpenVINO could not load the model` | OpenVINO could not read, reshape or compile the model; the message carries OpenVINO's reason. |
-| `OpenVINO on ... gives different results from ONNX Runtime` | The check described above failed. Use `--cpu`, another device, or update the GPU driver and the OpenVINO runtime. |
+## Verified Hardware
 
-## Performance
-
-Throughput depends on the model and on the GPU, and an integrated GPU does not always beat a fast CPU. Measured on 10 minutes of real recordings at batch size 8, against ONNX Runtime on the same computer's CPU:
-
-| Model | Iris Plus 640 (Gen9, 4-core i5, idle host) | Iris Xe (Gen12, 12-thread i7, shared host) |
-|-------|--------------------------------------------|---------------------------------------------|
-| BirdNET v2.4 | 1.4 to 1.6 times the CPU | about 1.3 times the CPU |
-| BirdNET v3.0 preview | about the same | slower than the CPU |
-| Perch v2 | about 1.2 times the CPU | about the same as the CPU |
-
-The Iris Xe host was shared with other workloads, so its CPU figures varied by a factor of up to three between runs. Treat the table as indicative and measure on your own hardware. The batch size changes little on these GPUs: the default of 8 is within a few percent of 1, 4, 16 and 32. A discrete GPU may want a larger batch; that has not been measured.
-
-OpenVINO is therefore mostly worth using when the GPU is idle and the CPU is not: BirdNET v2.4 on a busy computer, or a CPU that is needed for other work. birda never selects it automatically.
-
-Memory: the process holds two compiled shapes of the model, and ONNX Runtime loads its own copy while the startup check runs. Peak resident memory measured at batch size 8: BirdNET v2.4 (67 MB model) 0.5 GB, the BirdNET v3.0 preview Nordic model (135 MB) 0.9 GB, Perch v2 Nordic (65 MB) 0.8 GB, and the full BirdNET v3.0 preview model (557 MB) 1.7 GB, which is the figure to compare with your free memory on a small computer.
-
-## Measured platforms
-
-Verified on an Intel Core i7-1260P (Iris Xe, Gen12) with OpenVINO 2025.4.1 and on an Intel Core i5-7260U (Iris Plus 640, Gen9) with OpenVINO 2026.2. Discrete Arc GPUs, multi-GPU computers, the NPU and Windows are not verified.
+Tested on:
+- **Linux**: Intel Iris Xe (Gen12, OpenVINO 2025.4.1) and Intel Iris Plus 640 (Gen9, OpenVINO 2026.2)
+- **Windows 11**: Dual-GPU system with Intel UHD Graphics 730 (iGPU) and Intel Arc A750 (dGPU), OpenVINO 2026.3.0

@@ -7,6 +7,7 @@ This guide covers installing and using Birda on Windows, including GPU accelerat
 - [Installation](#installation)
 - [GPU Support](#gpu-support)
 - [TensorRT Setup (Optional)](#tensorrt-setup-optional)
+- [Intel GPU Support (OpenVINO)](#intel-gpu-support-openvino)
 - [Quick Start](#quick-start)
 - [Troubleshooting](#troubleshooting)
 
@@ -94,6 +95,18 @@ birda --tensorrt -b 32 your_recording.wav
 ```
 
 > **Note**: TensorRT engines are cached after first run. Initial inference may take longer while the engine is built.
+
+## Intel GPU Support (OpenVINO)
+
+Birda can also run models on Intel integrated (UHD, Iris Xe) and discrete (Arc) GPUs using Intel's OpenVINO runtime (2025.1 or newer). OpenVINO is not bundled: install the Intel Graphics Driver and OpenVINO separately, put both `runtime\bin\intel64\Release` and `runtime\3rdparty\tbb\bin` on your `PATH` (or run `setupvars.bat`), then verify and run:
+
+```powershell
+birda openvino devices
+birda --openvino recording.wav
+birda --openvino --openvino-device dgpu recording.wav
+```
+
+See the [OpenVINO Guide](openvino.md) for archive and Microsoft Store (`WindowsApps`) setup instructions, device selection, and troubleshooting.
 
 ## Quick Start
 
@@ -261,7 +274,7 @@ birda --version
 # Check available GPU providers
 birda providers
 
-# List Intel GPUs usable through OpenVINO (untested on Windows)
+# List Intel GPUs usable through OpenVINO
 birda openvino devices
 
 # Configuration commands

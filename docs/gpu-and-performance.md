@@ -80,7 +80,7 @@ TensorRT requires an NVIDIA GPU with compute capability 5.0+ (GTX 10-series and 
 
 ## Intel GPUs (OpenVINO)
 
-Birda includes a native OpenVINO backend for Intel integrated (UHD, Iris Xe) and discrete (Arc) GPUs on Linux (Windows is untested). OpenVINO is not bundled. See the [OpenVINO Guide](openvino.md) for setup, device selection, and benchmarks.
+Birda includes a native OpenVINO backend for Intel integrated (UHD, Iris Xe) and discrete (Arc) GPUs on Linux and Windows. OpenVINO is not bundled. See the [OpenVINO Guide](openvino.md) for installation, `PATH`/`ldconfig` setup, and device selection.
 
 ## Batch Size Defaults and Tuning
 

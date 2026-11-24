@@ -191,7 +191,7 @@ Audio is automatically resampled to the model's required sample rate (48 kHz for
 | [Output Formats Guide](docs/output-formats.md) | CSV, Parquet schema and query examples, Raven, Audacity, Kaleidoscope, JSON |
 | [JSON Output Guide](docs/json-output.md) | `--output-mode json`/`ndjson`, `--stdout`, envelope schemas, output naming and skipping |
 | [GPU and Performance Guide](docs/gpu-and-performance.md) | Execution providers, CUDA, TensorRT 10.x, batch size defaults, benchmarks |
-| [OpenVINO Guide](docs/openvino.md) | Intel GPU setup, device selection, startup verification, cache, benchmarks |
+| [OpenVINO Guide](docs/openvino.md) | Intel GPU setup (Linux and Windows), device selection, startup verification, cache |
 | [Species List Usage Guide](docs/species-list-usage.md) | Dynamic range filtering, static species lists, `birda species` |
 | [Clip Extraction Guide](docs/clip-extraction.md) | Extracting and merging audio clips with `birda clip` |
 | [Windows User Guide](docs/windows-guide.md) | Windows installers, CUDA/TensorRT setup, troubleshooting |

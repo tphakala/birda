@@ -124,6 +124,7 @@ fn run_in(home: &Path, args: &[&str]) -> std::process::Output {
         .env(CONFIG_DIR_ENV, home)
         .env_remove("BIRDA_OUTPUT_MODE")
         .env_remove("HF_ENDPOINT")
+        .env_remove("RUST_LOG")
         .timeout(COMMAND_TIMEOUT);
     cmd.args(args);
     cmd.output().expect("birda should run")
@@ -169,6 +170,59 @@ fn test_install_stores_the_tile_rest_logit_and_leaves_the_global_model_without_o
         text.matches("softmax_rest_logit").count(),
         1,
         "only the tile carries the key, got:\n{text}"
+    );
+}
+
+/// The warning a regional Perch entry with no stored value gets, as the run prints it.
+const UNCALIBRATED_WARNING: &str = "model 'perch-v2-nordic' has no stored score calibration, \
+     so its scores are uncalibrated and run higher than the global Perch model's. Reinstall \
+     it to fix this: birda models install perch-v2 --region nordic";
+
+/// Stderr of `birda -m perch-v2-nordic` on an input that does not exist, with a
+/// `perch-v2-nordic` entry written by `models install` that has `extra_keys` appended.
+///
+/// The model files are placeholders. The warning is emitted before the run
+/// initializes ONNX Runtime, and the run then fails (missing runtime or missing
+/// input), so only stderr is read and no model is ever loaded.
+fn analyze_stderr(extra_keys: &str) -> String {
+    let home = tempfile::tempdir().unwrap();
+    let model = home.path().join("perch-v2-nordic.onnx");
+    let labels = home.path().join("perch-v2-nordic-labels.txt");
+    std::fs::write(&model, b"placeholder").unwrap();
+    std::fs::write(&labels, b"placeholder").unwrap();
+    std::fs::write(
+        home.path().join("config.toml"),
+        format!(
+            "[models.perch-v2-nordic]\npath = '{}'\nlabels = '{}'\ntype = \"perch-v2\"\n\
+             registry_id = \"perch-v2\"\ninstalled_version = \"2\"\ninstalled_build = 1\n\
+             region = \"nordic\"\nvariant = \"no-dft-fp32\"\n{extra_keys}",
+            model.display(),
+            labels.display()
+        ),
+    )
+    .unwrap();
+    let output = run_in(
+        home.path(),
+        &["-m", "perch-v2-nordic", "--cpu", "no-such-input.wav"],
+    );
+    assert_eq!(output.status.code(), Some(1));
+    String::from_utf8_lossy(&output.stderr).into_owned()
+}
+
+#[test]
+fn test_analyze_warns_once_for_a_regional_perch_entry_without_a_stored_value() {
+    let stderr = analyze_stderr("");
+    assert_eq!(
+        stderr.matches(UNCALIBRATED_WARNING).count(),
+        1,
+        "one warning per run, got:\n{stderr}"
+    );
+
+    let stderr = analyze_stderr("softmax_rest_logit = 9.75\n");
+    assert_eq!(
+        stderr.matches("no stored score calibration").count(),
+        0,
+        "a calibrated entry is silent, got:\n{stderr}"
     );
 }
 

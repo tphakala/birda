@@ -2787,10 +2787,14 @@ fn handle_models_install(
         )?;
 
         if offer_regions && !output_mode.is_structured() {
-            println!(
-                "This model also publishes regional models: birda models regions {id}, or \
-                 --region auto."
-            );
+            // `--region auto` needs region boundaries, so only a model that
+            // publishes them is pointed at it.
+            let auto = if registry::region::has_geometry(model) {
+                ", or --region auto"
+            } else {
+                ""
+            };
+            println!("This model also publishes regional models: birda models regions {id}{auto}.");
         }
 
         if !output_mode.is_structured() {

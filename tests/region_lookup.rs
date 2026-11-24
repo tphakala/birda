@@ -473,6 +473,18 @@ fn test_install_resolves_the_region_before_any_download() {
     );
     assert_eq!(d.stderr, GATE_REFUSAL);
 
+    // A model that publishes regions without boundaries cannot use `--region
+    // auto`, so its hint points at the listing only.
+    let flat = run(home, &["models", "install", "flat-test"]);
+    assert_eq!(flat.status, 1);
+    assert_eq!(
+        flat.stdout,
+        "This model also publishes regional models: birda models regions flat-test.\n\
+         Selected variant fp32 (default, supported on every backend).\n\
+         \x20 11725 species, 328.6 MB\n\
+         \n"
+    );
+
     // `--region global` pins the global model without the hint.
     let global = run(
         home,

@@ -236,9 +236,24 @@ pub enum ModelsAction {
         /// Language code for labels (default: en).
         #[arg(short, long)]
         language: Option<String>,
-        /// Region slug for a regional model. See `birda models regions <id>`.
+        /// Region to install: a region slug (see 'birda models regions <id>'), 'auto' for the
+        /// region that covers --lat/--lon or the configured location, or 'global'. Without it
+        /// birda asks at a terminal, and installs the global model otherwise.
         #[arg(long)]
         region: Option<String>,
+        // No `env`: the root `--lat`/`--lon` are analyze's and read BIRDA_LATITUDE and
+        // BIRDA_LONGITUDE, so an env var here would make an exported analyze site pick an
+        // install. `lat` requires `region` and `lon` requires `lat`, so `lon` reaches the
+        // region check through `lat`. That these are valid only with `--region auto` is
+        // enforced in `registry::region::resolve_region`, which clap cannot express.
+        /// Latitude of the recording site for --region auto (-90.0 to 90.0).
+        #[arg(long, allow_hyphen_values = true, value_parser = parse_latitude,
+              requires = "lon", requires = "region")]
+        lat: Option<f64>,
+        /// Longitude of the recording site for --region auto (-180.0 to 180.0).
+        #[arg(long, allow_hyphen_values = true, value_parser = parse_longitude,
+              requires = "lat")]
+        lon: Option<f64>,
         /// Variant to install (see `birda models manifest <id>`). Auto-detected by default.
         #[arg(long)]
         variant: Option<String>,
@@ -250,6 +265,12 @@ pub enum ModelsAction {
     Regions {
         /// Model ID from the registry.
         id: String,
+        /// Show the region that covers this latitude (-90.0 to 90.0); needs --lon.
+        #[arg(long, allow_hyphen_values = true, value_parser = parse_latitude, requires = "lon")]
+        lat: Option<f64>,
+        /// Show the region that covers this longitude (-180.0 to 180.0); needs --lat.
+        #[arg(long, allow_hyphen_values = true, value_parser = parse_longitude, requires = "lat")]
+        lon: Option<f64>,
     },
     /// Show a model's full manifest as JSON (region-aware model catalogue).
     ///
@@ -801,6 +822,41 @@ mod tests {
                 assert_flag_states(&species, "`birda species --help`", flag, &bound);
             }
         }
+
+        // The two `models` subcommands that take a location state the same
+        // coordinate bounds, each on its own page for the reason given above.
+        let models = command
+            .find_subcommand_mut("models")
+            .expect("the models subcommand exists");
+        for name in ["install", "regions"] {
+            let help = models
+                .find_subcommand_mut(name)
+                .unwrap_or_else(|| panic!("models {name} exists"))
+                .render_long_help()
+                .to_string()
+                .replace('\n', " ");
+            let surface = format!("`birda models {name} --help`");
+            assert_flag_states(
+                &help,
+                &surface,
+                "--lat <",
+                &format!(
+                    "({:.1} to {:.1})",
+                    coordinates::LATITUDE_MIN,
+                    coordinates::LATITUDE_MAX
+                ),
+            );
+            assert_flag_states(
+                &help,
+                &surface,
+                "--lon <",
+                &format!(
+                    "({:.1} to {:.1})",
+                    coordinates::LONGITUDE_MIN,
+                    coordinates::LONGITUDE_MAX
+                ),
+            );
+        }
     }
 
     #[test]
@@ -856,6 +912,141 @@ mod tests {
         assert!(parse_longitude("181.0").is_err());
         assert!(parse_longitude("-181.0").is_err());
         assert!(parse_longitude("abc").is_err());
+    }
+
+    /// The location flags on `models install` and `models regions`, parsed as
+    /// the binary would.
+    fn parse_models(args: &[&str]) -> Result<ModelsAction, clap::Error> {
+        let mut argv = vec!["birda", "models"];
+        argv.extend_from_slice(args);
+        Cli::try_parse_from(argv).map(|cli| match cli.command {
+            Some(Command::Models { action }) => action,
+            other => panic!("expected a models command, got {other:?}"),
+        })
+    }
+
+    #[test]
+    fn test_every_coordinate_flag_rejects_a_value_outside_its_bounds() {
+        // Each row gives the flag under test an out-of-range or NaN value and
+        // every partner flag its command needs a valid one, so the only thing
+        // that can reject the row is the flag's own value parser.
+        let rows: &[(&[&str], &str)] = &[
+            (
+                &["birda", "--lat", "95", "--lon", "10", "x.wav"],
+                "latitude",
+            ),
+            (
+                &["birda", "--lat", "10", "--lon", "181", "x.wav"],
+                "longitude",
+            ),
+            (
+                &[
+                    "birda", "species", "--lat", "95", "--lon", "10", "--week", "1",
+                ],
+                "latitude",
+            ),
+            (
+                &[
+                    "birda", "species", "--lat", "10", "--lon", "-181", "--week", "1",
+                ],
+                "longitude",
+            ),
+            (
+                &[
+                    "birda", "models", "install", "x", "--region", "auto", "--lat", "95", "--lon",
+                    "10",
+                ],
+                "latitude",
+            ),
+            (
+                &[
+                    "birda", "models", "install", "x", "--region", "auto", "--lat", "10", "--lon",
+                    "181",
+                ],
+                "longitude",
+            ),
+            (
+                &[
+                    "birda", "models", "install", "x", "--region", "auto", "--lat", "nan", "--lon",
+                    "10",
+                ],
+                "latitude",
+            ),
+            (
+                &[
+                    "birda", "models", "regions", "x", "--lat", "-95", "--lon", "10",
+                ],
+                "latitude",
+            ),
+            (
+                &[
+                    "birda", "models", "regions", "x", "--lat", "10", "--lon", "181",
+                ],
+                "longitude",
+            ),
+        ];
+        for (argv, name) in rows {
+            let err = Cli::try_parse_from(*argv).unwrap_err();
+            assert_eq!(
+                err.kind(),
+                clap::error::ErrorKind::ValueValidation,
+                "{argv:?}: {err}"
+            );
+            let text = err.to_string();
+            assert!(
+                text.contains(&format!("{name} must be between")),
+                "{argv:?} should fail the {name} rule: {text}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_location_flags_pair_up_take_negatives_and_install_needs_a_region() {
+        // Negative values need `allow_hyphen_values` on each of the four fields.
+        let ModelsAction::Install { lat, lon, .. } = parse_models(&[
+            "install", "x", "--region", "auto", "--lat", "-33.87", "--lon", "-151.21",
+        ])
+        .unwrap() else {
+            panic!("expected install");
+        };
+        assert_eq!((lat, lon), (Some(-33.87), Some(-151.21)));
+        let ModelsAction::Regions { lat, lon, .. } =
+            parse_models(&["regions", "x", "--lat", "-33.87", "--lon", "-151.21"]).unwrap()
+        else {
+            panic!("expected regions");
+        };
+        assert_eq!((lat, lon), (Some(-33.87), Some(-151.21)));
+
+        // Each flag needs its partner, and the install pair needs `--region`.
+        // The missing flag is named in the error.
+        for (args, missing) in [
+            (
+                &["install", "x", "--region", "auto", "--lat", "60"][..],
+                "--lon",
+            ),
+            (
+                &["install", "x", "--region", "auto", "--lon", "24"][..],
+                "--lat",
+            ),
+            (&["regions", "x", "--lat", "60"][..], "--lon"),
+            (&["regions", "x", "--lon", "24"][..], "--lat"),
+            (
+                &["install", "x", "--lat", "60", "--lon", "24"][..],
+                "--region",
+            ),
+        ] {
+            let err = parse_models(args).unwrap_err();
+            assert_eq!(
+                err.kind(),
+                clap::error::ErrorKind::MissingRequiredArgument,
+                "{args:?}"
+            );
+            let text = err.to_string();
+            assert!(
+                text.contains(&format!("{missing} <")),
+                "{args:?} should name {missing}: {text}"
+            );
+        }
     }
 
     #[test]

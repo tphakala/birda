@@ -94,6 +94,8 @@ pub enum ResultType {
     ModelInstalled,
     /// Documented projection of a registry model's manifest.
     ModelManifest,
+    /// Region that covers a location, from `models regions --lat --lon`.
+    RegionLookup,
     /// Intel GPUs the `OpenVINO` runtime lists.
     OpenvinoDevices,
 }
@@ -951,6 +953,47 @@ pub struct ModelManifestPayload {
     pub result_type: ResultType,
     /// The projected manifest.
     pub manifest: ModelManifest,
+}
+
+/// Payload for `birda models regions <id> --lat <lat> --lon <lon>`.
+///
+/// The rule behind `region` and the order of `matches` is documented on
+/// `registry::region`; a client reads the pick from here instead of restating it.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RegionLookupPayload {
+    /// Result type discriminator.
+    pub result_type: ResultType,
+    /// Registry id of the model.
+    pub model_id: String,
+    /// Latitude looked up, in degrees.
+    pub lat: f64,
+    /// Longitude looked up, in degrees.
+    pub lon: f64,
+    /// The region the lookup picks. Absent when no region covers the point, which
+    /// means the global model.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub region: Option<String>,
+    /// Every region that covers the point, best first; empty when none does.
+    pub matches: Vec<RegionLookupMatch>,
+}
+
+/// One region that covers a looked-up point.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RegionLookupMatch {
+    /// Region slug, the value `--region` takes.
+    pub region: String,
+    /// Human-readable region name.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub region_name: Option<String>,
+    /// How specific the region is; higher is more specific.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tier: Option<u32>,
+    /// Species the region's model scores, when the publisher states it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub classes: Option<usize>,
+    /// Download size of the region's default model file in bytes.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub size_bytes: Option<u64>,
 }
 
 /// Projected manifest for one model family.

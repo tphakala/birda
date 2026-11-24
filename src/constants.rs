@@ -134,6 +134,57 @@ pub mod coordinates {
     pub const LONGITUDE_MAX: f64 = 180.0;
 }
 
+/// Regional model selection (`models install --region`, `models regions --lat`).
+pub mod regions {
+    /// `--region` value that picks the region covering a location.
+    pub const AUTO: &str = "auto";
+
+    /// How install output refers to the location it resolved, in place of the
+    /// coordinates ("Region for this location: ...").
+    pub const INSTALL_LOCATION_SUBJECT: &str = "this location";
+
+    /// Config key of the configured latitude, as `birda config set` names it.
+    pub const CONFIG_LATITUDE_KEY: &str = "defaults.latitude";
+
+    /// Config key of the configured longitude, as `birda config set` names it.
+    pub const CONFIG_LONGITUDE_KEY: &str = "defaults.longitude";
+
+    /// Unicode combining diacritical marks, dropped before the country-name fold
+    /// so a decomposed spelling ("u" followed by U+0308) folds like "\u{fc}".
+    pub const COMBINING_MARKS: std::ops::RangeInclusive<char> = '\u{0300}'..='\u{036F}';
+
+    /// `--region` value that pins the global model.
+    pub const GLOBAL: &str = "global";
+
+    /// Mean Earth radius for great-circle distances, in kilometres.
+    pub const EARTH_MEAN_RADIUS_KM: f64 = 6_371.0;
+
+    /// How many unusable answers one install question accepts before the
+    /// install is cancelled.
+    pub const PROMPT_ATTEMPTS: usize = 3;
+
+    /// Separator between latitude and longitude in a typed location.
+    pub const COORDINATE_SEPARATOR: char = ',';
+
+    /// Length of an ISO 3166-1 alpha-2 country code.
+    pub const ISO_CODE_LEN: usize = 2;
+
+    /// Characters the country-name fold maps to ASCII, after lowercasing.
+    ///
+    /// Covers every non-ASCII character in `manifests/iso3166-1-alpha2.json`;
+    /// a test fails when a table update adds one.
+    pub const FOLDS: &[(char, char)] = &[
+        ('å', 'a'),
+        ('ã', 'a'),
+        ('ç', 'c'),
+        ('é', 'e'),
+        ('í', 'i'),
+        ('ô', 'o'),
+        ('ü', 'u'),
+        ('\u{2019}', '\''),
+    ];
+}
+
 /// Apache Parquet output constants.
 pub mod parquet {
     /// Columns every Parquet file carries before the optional metadata ones.

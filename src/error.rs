@@ -478,6 +478,41 @@ pub enum Error {
         model_id: String,
     },
 
+    /// `--region auto` was given and no location is known.
+    #[error(
+        "--region auto needs a location for '{model_id}': pass --lat and --lon after \
+         'models install', or set defaults.latitude and defaults.longitude with 'birda config set'"
+    )]
+    RegionLocationMissing {
+        /// Registry id of the model.
+        model_id: String,
+    },
+
+    /// The model publishes regions without the boundaries a location lookup needs.
+    #[error(
+        "model '{model_id}' publishes no region boundaries, so a region cannot be picked from a \
+         location; choose one with --region <slug> (see 'birda models regions {model_id}')"
+    )]
+    RegionGeometryMissing {
+        /// Registry id of the model.
+        model_id: String,
+    },
+
+    /// `--lat`/`--lon` were given with a `--region` other than `auto`.
+    #[error("--lat and --lon pick a region only with --region auto")]
+    LocationNeedsRegionAuto,
+
+    /// `--region auto` found a location only among the analyze options.
+    ///
+    /// `--lat`/`--lon` before `models` (and `BIRDA_LATITUDE`/`BIRDA_LONGITUDE`)
+    /// belong to the analyze command. Using them here would pick an install
+    /// from a location chosen for something else, so the install refuses.
+    #[error(
+        "--lat and --lon before 'models' (or BIRDA_LATITUDE/BIRDA_LONGITUDE) are analyze \
+         options; pass --lat and --lon after 'models install' to pick a region"
+    )]
+    RegionLocationBeforeModels,
+
     /// Language not available for model.
     #[error("language '{code}' not available for model '{model_id}'")]
     LanguageNotFound {
@@ -628,6 +663,23 @@ pub enum Error {
     InvalidLatitude {
         /// Invalid latitude value.
         value: f64,
+    },
+
+    /// A configured coordinate is out of range.
+    ///
+    /// Names the config key but not the value. An out-of-range value is often
+    /// a mistyped location that is still close to the real one (6017 for
+    /// 60.17), and install output often ends up in logs.
+    #[error(
+        "{key} in config.toml is out of range (must be {min:.1} to {max:.1}); fix it with birda config set {key} <value>"
+    )]
+    ConfiguredCoordinateOutOfRange {
+        /// The config key, `defaults.latitude` or `defaults.longitude`.
+        key: &'static str,
+        /// Lowest allowed value.
+        min: f64,
+        /// Highest allowed value.
+        max: f64,
     },
 
     /// Invalid longitude value.

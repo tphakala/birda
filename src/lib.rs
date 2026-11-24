@@ -2720,7 +2720,8 @@ fn handle_models_install(
 
     // Decide the region before anything else: variant selection, then the
     // licence prompt, follow from it. Only `Auto` and a question read the
-    // configured location, so a plain non-interactive install stays what it was.
+    // configured location, and only for a model with region boundaries, so a
+    // plain non-interactive install stays what it was.
     let mut offer_regions = false;
     let region: Option<String> = match registry::resolve_region(
         model,

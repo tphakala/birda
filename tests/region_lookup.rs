@@ -569,6 +569,27 @@ fn test_install_refuses_a_location_it_would_not_use() {
     assert_eq!(env.stdout, "");
     assert_eq!(env.stderr, before_models);
 
+    // A model without region boundaries cannot use a location, so its error is
+    // the missing boundaries, not a broken configured location it never reads.
+    std::fs::write(
+        home.join("config.toml"),
+        "[defaults]\nlatitude = 200\nlongitude = 24.94\n",
+    )
+    .unwrap();
+    let flat = run(
+        home,
+        &["models", "install", "flat-test", "--region", "auto"],
+    );
+    assert_eq!(flat.status, 1);
+    assert_eq!(flat.stdout, "");
+    assert_eq!(
+        flat.stderr,
+        "error: model 'flat-test' publishes no region boundaries, so a region cannot be picked \
+         from a location; choose one with --region <slug> (see 'birda models regions \
+         flat-test')\n"
+    );
+    write_location(home, 52.52, 13.4);
+
     // The same environment does not stop a point given where it belongs.
     let after = run_with(
         home,

@@ -349,7 +349,7 @@ fn configured_point(lat: Option<f64>, lon: Option<f64>) -> Result<Option<GeoPoin
 /// Checks run in this order: (1) a point with any request but `Auto` is
 /// refused; (2) `Global` is `Global` on any entry; (3) an entry without regions
 /// refuses `Named` and `Auto` and installs its only model for `Unspecified`;
-/// (4) `Named` passes through; (5) `Auto` needs a location and boundaries;
+/// (4) `Named` passes through; (5) `Auto` needs boundaries, then a location;
 /// (6) `Unspecified` asks only when `interactive` and not `assume_yes`.
 ///
 /// # Errors
@@ -359,8 +359,9 @@ fn configured_point(lat: Option<f64>, lon: Option<f64>) -> Result<Option<GeoPoin
 /// [`Error::RegionGeometryMissing`], [`Error::VariantNotFound`] for a `variant`
 /// no variant of the entry has, and [`Error::InvalidLatitude`]/
 /// [`Error::InvalidLongitude`] for an out-of-range configured location (read
-/// only for `Auto` and for a question, so a broken config never changes a
-/// plain install).
+/// only for `Auto` and for a question, and only for an entry with boundaries,
+/// so a broken config never changes a plain install or a model that cannot use
+/// a location).
 pub fn resolve_region<'a>(
     entry: &'a ModelEntry,
     inputs: RegionInputs<'_>,
@@ -385,6 +386,11 @@ pub fn resolve_region<'a>(
     match inputs.request {
         RegionRequest::Named(slug) => Ok(RegionResolution::Named(slug.to_string())),
         RegionRequest::Auto => {
+            if !has_geometry(entry) {
+                return Err(Error::RegionGeometryMissing {
+                    model_id: entry.id.clone(),
+                });
+            }
             let point = match inputs.point {
                 Some(point) => point,
                 None if inputs.analyze_location_set => {
@@ -395,11 +401,7 @@ pub fn resolve_region<'a>(
                         model_id: entry.id.clone(),
                     })?,
             };
-            if !has_geometry(entry) {
-                return Err(Error::RegionGeometryMissing {
-                    model_id: entry.id.clone(),
-                });
-            }
+
             Ok(RegionResolution::Located {
                 point,
                 matches: regions_at(entry, point),
@@ -424,8 +426,11 @@ pub fn resolve_region<'a>(
                     available: ids.join(", "),
                 });
             }
-            let configured = configured_point(inputs.configured_lat, inputs.configured_lon)?
-                .filter(|_| has_geometry(entry));
+            let configured = if has_geometry(entry) {
+                configured_point(inputs.configured_lat, inputs.configured_lon)?
+            } else {
+                None
+            };
             Ok(RegionResolution::Ask { configured })
         }
     }
@@ -1158,6 +1163,14 @@ mod tests {
             "Ask(none)"
         );
         assert_eq!(shown(resolve_region(&flat, ask(at_home))), "Ask(none)");
+        // A model that cannot use a location never rejects one.
+        assert_eq!(
+            shown(resolve_region(
+                &flat,
+                ask(configured(Some(200.0), Some(10.0)))
+            )),
+            "Ask(none)"
+        );
         assert_eq!(
             shown(resolve_region(
                 &entry,
@@ -1248,6 +1261,15 @@ mod tests {
              picked from a location; choose one with --region <slug> (see 'birda models \
              regions geo-test')"
         );
+        // The boundaries come first: no location, or a broken one, cannot
+        // matter to a model that cannot use it.
+        for bare in [configured(None, None), configured(Some(200.0), Some(24.0))] {
+            let refused = shown(resolve_region(&flat, auto(bare)));
+            assert!(
+                refused.starts_with("error: model 'geo-test' publishes no region boundaries"),
+                "{refused}"
+            );
+        }
 
         // Analyze options before `models` never pick the tile, but a point given
         // after `models install` does, whatever the analyze options say.

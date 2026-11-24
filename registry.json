@@ -1,6 +1,6 @@
 {
   "schema_version": "2.0",
-  "registry_version": 9,
+  "registry_version": 10,
   "models": [
     {
       "id": "birdnet-plus-v30",

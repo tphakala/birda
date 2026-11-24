@@ -179,7 +179,8 @@ const UNCALIBRATED_WARNING: &str = "model 'perch-v2-nordic' has no stored score 
      it to fix this: birda models install perch-v2 --region nordic";
 
 /// Stderr of `birda -m perch-v2-nordic` on an input that does not exist, with a
-/// `perch-v2-nordic` entry written by `models install` that has `extra_keys` appended.
+/// hand-written `perch-v2-nordic` entry shaped like a `models install` one, with
+/// `extra_keys` appended.
 ///
 /// The model files are placeholders. The warning is emitted before the run
 /// initializes ONNX Runtime, and the run then fails (missing runtime or missing

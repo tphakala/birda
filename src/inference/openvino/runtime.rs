@@ -24,6 +24,7 @@ use crate::utils::text::strip_prefix_ignore_ascii_case;
 use openvino::{Core, DeviceType, PropertyKey};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
+use tracing::debug;
 
 /// Operating systems the runtime search knows the layout of.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -846,12 +847,82 @@ static LOADED_LIBRARY: Mutex<Option<PathBuf>> = Mutex::new(None);
 /// For a [`Origin::Located`] target, the oneTBB and core libraries beside it
 /// are opened first (see [`preload`]), but only while no runtime is held by
 /// this process: no file of a second install is loaded once any file of a first
-/// one is.
+/// one is. The rules are in [`guarded_load`].
 fn open_library(target: &Path, origin: Origin, os: Os) -> std::result::Result<(), LoadFailure> {
     let mut loaded = LOADED_LIBRARY
         .lock()
         .map_err(|_| LoadFailure::Other("an earlier OpenVINO runtime load failed".to_string()))?;
-    if let Some(previous) = loaded.as_deref()
+    guarded_load(
+        &mut loaded,
+        target,
+        origin,
+        &mut |path| {
+            preload::dependency_files(path, &os.layout(), &list_dir_fs)
+                .map(|files| preload::preload(&files))
+        },
+        &mut |path| {
+            let outcome = std::panic::catch_unwind(|| openvino_sys::library::load_from(path));
+            match outcome {
+                Ok(Ok(())) => None,
+                Ok(Err(message)) => Some(classify_load_error(&message)),
+                Err(_) => Some(LoadFailure::Other(format!(
+                    "{} is not the OpenVINO C API library: it lacks the functions birda calls",
+                    path.display()
+                ))),
+            }
+        },
+    )
+}
+
+/// Load `target` under the one-runtime rule, through two injected steps.
+///
+/// `preload` opens the dependencies of a path and returns whether any opened,
+/// or why none were selected. `load` runs the real load and returns how it
+/// failed. A located target is made absolute first, so a relative
+/// `INTEL_OPENVINO_DIR` or `PATH` entry never reaches the loader as a relative
+/// path, and that one path is used for the preload, the load and the record.
+fn guarded_load(
+    loaded: &mut Option<PathBuf>,
+    target: &Path,
+    origin: Origin,
+    preload: &mut dyn FnMut(&Path) -> std::result::Result<bool, String>,
+    load: &mut dyn FnMut(&Path) -> Option<LoadFailure>,
+) -> std::result::Result<(), LoadFailure> {
+    let target = match origin {
+        Origin::Located => std::path::absolute(target).unwrap_or_else(|_| target.to_path_buf()),
+        Origin::LoaderSearch => target.to_path_buf(),
+    };
+    let target = target.as_path();
+    let wanted = admit(loaded.as_deref(), target, origin)?;
+    let (preloaded, skipped) = if wanted {
+        match preload(target) {
+            Ok(opened) => (opened, None),
+            Err(reason) => {
+                debug!(
+                    "not preloading the dependencies of {}: {reason}",
+                    target.display()
+                );
+                (false, Some(reason))
+            }
+        }
+    } else {
+        (false, None)
+    };
+    let failure = load(target);
+    record(loaded, target, preloaded, failure.as_ref());
+    with_skipped_preload(failure, skipped.as_deref()).map_or(Ok(()), Err)
+}
+
+/// Whether to preload for `target`, or why it may not be loaded at all.
+///
+/// A runtime other than the one already held is refused. The dependencies are
+/// preloaded only for a located file, and only while no runtime is held.
+fn admit(
+    previous: Option<&Path>,
+    target: &Path,
+    origin: Origin,
+) -> std::result::Result<bool, LoadFailure> {
+    if let Some(previous) = previous
         && previous != target
     {
         return Err(LoadFailure::Other(format!(
@@ -861,33 +932,39 @@ fn open_library(target: &Path, origin: Origin, os: Os) -> std::result::Result<()
             target.display()
         )));
     }
-    let preloaded = loaded.is_none()
-        && origin == Origin::Located
-        && preload::dependency_files(target, &os.layout(), &list_dir_fs)
-            .is_ok_and(|files| preload::preload(&files));
-    let outcome = std::panic::catch_unwind(|| openvino_sys::library::load_from(target));
-    let failure = match outcome {
-        Ok(Ok(())) => None,
-        Ok(Err(message)) => Some(classify_load_error(&message)),
-        Err(_) => Some(LoadFailure::Other(format!(
-            "{} is not the OpenVINO C API library: it lacks the functions birda calls",
-            target.display()
-        ))),
-    };
-    if holds_runtime(preloaded, failure.as_ref()) {
-        *loaded = Some(target.to_path_buf());
-    }
-    drop(loaded);
-    failure.map_or(Ok(()), Err)
+    Ok(previous.is_none() && origin == Origin::Located)
 }
 
-/// Whether this process now holds files of the runtime at the load target.
+/// Note that this process now holds files of the runtime at `target`.
 ///
-/// A library the loader refused is not held by the binding, but the
-/// dependencies preloaded for it stay resident and are never unloaded, so the
-/// target is recorded and no other runtime is loaded afterwards.
-fn holds_runtime(preloaded: bool, failure: Option<&LoadFailure>) -> bool {
-    preloaded || !matches!(failure, Some(LoadFailure::CouldNotOpen(_)))
+/// A library the loader refused is not held by the binding, but dependencies
+/// preloaded for it stay resident and are never unloaded, so the target is
+/// recorded and no other runtime is loaded afterwards.
+fn record(
+    loaded: &mut Option<PathBuf>,
+    target: &Path,
+    preloaded: bool,
+    failure: Option<&LoadFailure>,
+) {
+    if preloaded || !matches!(failure, Some(LoadFailure::CouldNotOpen(_))) {
+        *loaded = Some(target.to_path_buf());
+    }
+}
+
+/// Add why nothing was preloaded to a refused load, so the error names the
+/// dependency that is missing instead of only the file the loader reported.
+fn with_skipped_preload(
+    failure: Option<LoadFailure>,
+    skipped: Option<&str>,
+) -> Option<LoadFailure> {
+    match (failure, skipped) {
+        (Some(LoadFailure::CouldNotOpen(message)), Some(reason)) => {
+            Some(LoadFailure::CouldNotOpen(format!(
+                "{message} (birda did not preload the runtime's dependencies: {reason})"
+            )))
+        }
+        (failure, _) => failure,
+    }
 }
 
 fn create_runtime(library: Option<PathBuf>) -> Result<Runtime> {
@@ -1682,17 +1759,178 @@ mod tests {
         );
     }
 
+    fn other_install_refusal(previous: &str, target: &str) -> LoadFailure {
+        LoadFailure::Other(format!(
+            "this process already loaded the OpenVINO runtime {previous}, and a process can load \
+             only one; {target} was not loaded"
+        ))
+    }
+
     #[test]
-    fn the_runtime_is_held_unless_the_loader_refused_everything() {
+    fn the_load_guard_preloads_only_a_first_located_load_and_records_a_preloaded_failure() {
+        let t = Path::new("/opt/ov/libopenvino_c.so");
+        let other = Path::new("/opt/other/libopenvino_c.so");
+        // admit: preload only a located file while no runtime is held, and
+        // refuse a different runtime once one is.
+        assert_eq!(admit(None, t, Origin::LoaderSearch), Ok(false));
+        assert_eq!(admit(None, t, Origin::Located), Ok(true));
+        assert_eq!(admit(Some(t), t, Origin::Located), Ok(false));
+        assert_eq!(
+            admit(Some(other), t, Origin::LoaderSearch),
+            Err(other_install_refusal(
+                "/opt/other/libopenvino_c.so",
+                "/opt/ov/libopenvino_c.so"
+            ))
+        );
+        // record: a preloaded dependency stays resident after a refused open.
         let refused = LoadFailure::CouldNotOpen("x".to_string());
-        let other = LoadFailure::Other("x".to_string());
-        // Nothing preloaded and the loader refused the file: nothing is held.
-        assert!(!holds_runtime(false, Some(&refused)));
-        // Preloaded dependencies stay resident after a refusal.
-        assert!(holds_runtime(true, Some(&refused)));
-        // A file that opened is held, whether or not it then failed a check.
-        assert!(holds_runtime(false, None));
-        assert!(holds_runtime(false, Some(&other)));
+        let mut loaded = None;
+        record(&mut loaded, t, true, Some(&refused));
+        assert_eq!(loaded.as_deref(), Some(t));
+        let mut loaded = None;
+        record(&mut loaded, t, false, Some(&refused));
+        assert_eq!(loaded, None);
+        let mut loaded = None;
+        record(&mut loaded, t, false, None);
+        assert_eq!(loaded.as_deref(), Some(t));
+        let mut loaded = None;
+        record(
+            &mut loaded,
+            t,
+            false,
+            Some(&LoadFailure::Other("x".to_string())),
+        );
+        assert_eq!(loaded.as_deref(), Some(t));
+    }
+
+    /// Runs `guarded_load` over fakes. Returns the result, what the preload and
+    /// the load were handed, and the recorded target.
+    #[allow(clippy::type_complexity)]
+    fn guarded(
+        previous: Option<&str>,
+        target: &str,
+        origin: Origin,
+        preload: std::result::Result<bool, &str>,
+        load: Option<&LoadFailure>,
+    ) -> (
+        std::result::Result<(), LoadFailure>,
+        Vec<PathBuf>,
+        Vec<PathBuf>,
+        Option<PathBuf>,
+    ) {
+        let mut loaded = previous.map(PathBuf::from);
+        let (mut preloads, mut loads) = (Vec::new(), Vec::new());
+        let result = guarded_load(
+            &mut loaded,
+            Path::new(target),
+            origin,
+            &mut |path| {
+                preloads.push(path.to_path_buf());
+                preload.map_err(str::to_string)
+            },
+            &mut |path| {
+                loads.push(path.to_path_buf());
+                load.cloned()
+            },
+        );
+        (result, preloads, loads, loaded)
+    }
+
+    #[test]
+    fn a_located_load_uses_one_absolute_path_for_the_preload_the_load_and_the_record() {
+        let absolute = std::env::current_dir()
+            .unwrap()
+            .join("rel")
+            .join("libopenvino_c.so");
+        let refused = LoadFailure::CouldNotOpen("could not be opened: x".to_string());
+        let (result, preloads, loads, loaded) = guarded(
+            None,
+            "rel/libopenvino_c.so",
+            Origin::Located,
+            Ok(true),
+            Some(&refused),
+        );
+        assert_eq!(result, Err(refused));
+        assert_eq!(preloads, std::slice::from_ref(&absolute));
+        assert_eq!(loads, std::slice::from_ref(&absolute));
+        assert_eq!(loaded, Some(absolute));
+
+        // A bare name for the system loader stays as it is and preloads nothing.
+        let (result, preloads, loads, loaded) = guarded(
+            None,
+            "libopenvino_c.so",
+            Origin::LoaderSearch,
+            Err("the preload must not run"),
+            None,
+        );
+        assert_eq!(result, Ok(()));
+        assert_eq!(preloads, Vec::<PathBuf>::new());
+        assert_eq!(loads, [PathBuf::from("libopenvino_c.so")]);
+        assert_eq!(loaded, Some(PathBuf::from("libopenvino_c.so")));
+    }
+
+    #[test]
+    fn a_second_runtime_is_refused_before_anything_is_preloaded_or_loaded() {
+        // Absolute on every OS, because a located target is made absolute.
+        let cwd = std::env::current_dir().unwrap();
+        let held = cwd.join("other").join("libopenvino_c.so");
+        let wanted = cwd.join("ov").join("libopenvino_c.so");
+        let (result, preloads, loads, loaded) = guarded(
+            Some(held.to_str().unwrap()),
+            wanted.to_str().unwrap(),
+            Origin::Located,
+            Ok(true),
+            None,
+        );
+        assert_eq!(
+            result,
+            Err(other_install_refusal(
+                &held.display().to_string(),
+                &wanted.display().to_string()
+            ))
+        );
+        assert_eq!(preloads, Vec::<PathBuf>::new());
+        assert_eq!(loads, Vec::<PathBuf>::new());
+        assert_eq!(loaded, Some(held));
+    }
+
+    #[test]
+    fn a_skipped_preload_is_named_in_the_error_of_a_refused_load() {
+        let cwd = std::env::current_dir().unwrap();
+        let library = cwd.join("ov").join("libopenvino_c.so");
+        let shown = library.display();
+        let refused = LoadFailure::CouldNotOpen(format!(
+            "the shared library at {shown} could not be opened: libopenvino.so.2630: \
+             cannot open shared object file"
+        ));
+        let (result, _, loads, loaded) = guarded(
+            None,
+            library.to_str().unwrap(),
+            Origin::Located,
+            Err("libtbb.so.12 not found in ov"),
+            Some(&refused),
+        );
+        assert_eq!(
+            result,
+            Err(LoadFailure::CouldNotOpen(format!(
+                "the shared library at {shown} could not be opened: \
+                 libopenvino.so.2630: cannot open shared object file (birda did not preload the \
+                 runtime's dependencies: libtbb.so.12 not found in ov)"
+            )))
+        );
+        // Nothing was preloaded and the loader refused the file: nothing is held.
+        assert_eq!(loads, std::slice::from_ref(&library));
+        assert_eq!(loaded, None);
+
+        // A load that succeeds despite the skip says nothing about it.
+        let (result, ..) = guarded(
+            None,
+            library.to_str().unwrap(),
+            Origin::Located,
+            Err("libtbb.so.12 not found in ov"),
+            None,
+        );
+        assert_eq!(result, Ok(()));
     }
 
     #[test]

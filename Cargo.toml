@@ -30,7 +30,7 @@ required-features = ["gen-registry"]
 # ONNX Runtime is always loaded at run time (src/inference/runtime.rs calls
 # ort::init_from, which exists only with load-dynamic), so the feature is
 # requested here unconditionally rather than exposed as a crate feature.
-birdnet-onnx = { version = "2.0.0-rc.18", features = ["load-dynamic"] }
+birdnet-onnx = { version = "2.0.0-rc.19", features = ["load-dynamic"] }
 # Native OpenVINO backend for Intel GPUs. `runtime-linking` loads the user's
 # OpenVINO runtime at run time, so nothing is linked at build time and no
 # OpenVINO install is needed to build or test. Keep the two crates on the same

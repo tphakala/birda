@@ -263,6 +263,7 @@ mod tests {
             installed_build: None,
             region: Some("nordic".to_string()),
             variant: Some("fp16".to_string()),
+            softmax_rest_logit: None,
             accepted_documents: Vec::new(),
         };
         // The retired preview is no longer installable, so the hint names its

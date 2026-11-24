@@ -175,6 +175,7 @@ mod tests {
             bsg_calibration: None,
             bsg_migration: None,
             bsg_distribution_maps: None,
+            softmax_rest_logit: None,
             accepted_documents: Vec::new(),
         }
     }

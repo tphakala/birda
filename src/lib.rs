@@ -126,6 +126,7 @@ fn resolve_model_config(args: &AnalyzeArgs, config: &Config) -> Result<(ModelCon
             bsg_calibration: None,
             bsg_migration: None,
             bsg_distribution_maps: None,
+            softmax_rest_logit: None,
             accepted_documents: Vec::new(),
         };
 
@@ -230,6 +231,7 @@ fn resolve_bat_backbone_config(args: &AnalyzeArgs) -> Result<(ModelConfig, Strin
                 bsg_calibration: None,
                 bsg_migration: None,
                 bsg_distribution_maps: None,
+                softmax_rest_logit: None,
                 accepted_documents: Vec::new(),
             };
             return Ok((model_config, ADHOC_MODEL_NAME.to_string()));
@@ -262,6 +264,7 @@ fn resolve_bat_backbone_config(args: &AnalyzeArgs) -> Result<(ModelConfig, Strin
         bsg_calibration: None,
         bsg_migration: None,
         bsg_distribution_maps: None,
+        softmax_rest_logit: None,
         accepted_documents: Vec::new(),
     };
     Ok((model_config, backbone.id.clone()))
@@ -370,6 +373,20 @@ fn resolve_range_filter_geomodel(
 fn apply_model_overrides(model_config: &mut ModelConfig, args: &AnalyzeArgs) {
     if let Some(ref path) = args.model_path {
         model_config.path.clone_from(path);
+        // The entry's install record and score calibration describe the file
+        // it was installed with, not this one.
+        if model_config.softmax_rest_logit.is_some() {
+            warn!(
+                "--model-path replaces the installed file, so the stored score calibration \
+                 (softmax_rest_logit) of this model is not applied"
+            );
+        }
+        model_config.registry_id = None;
+        model_config.installed_version = None;
+        model_config.installed_build = None;
+        model_config.region = None;
+        model_config.variant = None;
+        model_config.softmax_rest_logit = None;
     }
     if let Some(ref labels) = args.labels_path {
         model_config.labels.clone_from(labels);
@@ -1151,6 +1168,11 @@ fn analyze_files(
     if device == InferenceDevice::OpenVino
         && let Some(warning) =
             config::openvino::unverified_variant_warning(&model_config, &model_name)
+    {
+        warn!("{warning}");
+    }
+    if let Some(warning) =
+        config::calibration::uncalibrated_region_warning(&model_config, &model_name)
     {
         warn!("{warning}");
     }
@@ -2406,6 +2428,7 @@ fn handle_models_add(
                 bsg_calibration: None,
                 bsg_migration: None,
                 bsg_distribution_maps: None,
+                softmax_rest_logit: None,
                 accepted_documents: Vec::new(),
             },
         );
@@ -2866,6 +2889,7 @@ fn handle_models_install(
                 bsg_calibration: installed.bsg_calibration,
                 bsg_migration: installed.bsg_migration,
                 bsg_distribution_maps: installed.bsg_distribution_maps,
+                softmax_rest_logit: installed.softmax_rest_logit,
                 accepted_documents: registry::accepted_documents(&model.documents),
             },
         );
@@ -4013,6 +4037,7 @@ mod tests {
                 bsg_calibration: None,
                 bsg_migration: None,
                 bsg_distribution_maps: None,
+                softmax_rest_logit: None,
                 accepted_documents: Vec::new(),
             },
         );
@@ -4110,6 +4135,50 @@ mod tests {
         assert_eq!(model_config.path, PathBuf::from("/custom/path.onnx"));
         // Type should still be from config
         assert_eq!(model_config.model_type, ModelType::BirdnetV24);
+    }
+
+    #[test]
+    fn test_model_path_override_drops_the_install_record_and_its_calibration() {
+        let mut config = config_with_model("perch-v2-nordic");
+        let entry = config.models.get_mut("perch-v2-nordic").unwrap();
+        entry.model_type = ModelType::PerchV2;
+        entry.registry_id = Some("perch-v2".to_string());
+        entry.installed_version = Some("2".to_string());
+        entry.installed_build = Some(2);
+        entry.region = Some("nordic".to_string());
+        entry.variant = Some("no-dft-fp32".to_string());
+        entry.softmax_rest_logit = Some(9.75);
+
+        let mut by_name = default_args();
+        by_name.model = Some("perch-v2-nordic".to_string());
+        by_name.model_path = Some(PathBuf::from("/custom/other.onnx"));
+
+        config.defaults.model = Some("perch-v2-nordic".to_string());
+        let mut by_default = default_args();
+        by_default.model_path = Some(PathBuf::from("/custom/other.onnx"));
+
+        for args in [by_name, by_default] {
+            let (model_config, _) = resolve_model_config(&args, &config).unwrap();
+            assert_eq!(model_config.path, PathBuf::from("/custom/other.onnx"));
+            assert_eq!(model_config.model_type, ModelType::PerchV2);
+            assert_eq!(model_config.registry_id, None);
+            assert_eq!(model_config.installed_version, None);
+            assert_eq!(model_config.installed_build, None);
+            assert_eq!(model_config.region, None);
+            assert_eq!(model_config.variant, None);
+            assert_eq!(model_config.softmax_rest_logit, None);
+            assert_eq!(
+                config::calibration::uncalibrated_region_warning(&model_config, "perch-v2-nordic"),
+                None
+            );
+        }
+
+        // Without the override the entry is untouched.
+        let mut plain = default_args();
+        plain.model = Some("perch-v2-nordic".to_string());
+        let (model_config, _) = resolve_model_config(&plain, &config).unwrap();
+        assert_eq!(model_config.softmax_rest_logit, Some(9.75));
+        assert_eq!(model_config.region.as_deref(), Some("nordic"));
     }
 
     #[test]
@@ -4309,6 +4378,7 @@ mod tests {
             bsg_calibration: None,
             bsg_migration: None,
             bsg_distribution_maps: None,
+            softmax_rest_logit: None,
             accepted_documents: Vec::new(),
         };
 
@@ -4335,6 +4405,7 @@ mod tests {
             bsg_calibration: None,
             bsg_migration: None,
             bsg_distribution_maps: None,
+            softmax_rest_logit: None,
             accepted_documents: Vec::new(),
         };
 
@@ -4362,6 +4433,7 @@ mod tests {
             bsg_calibration: None,
             bsg_migration: None,
             bsg_distribution_maps: None,
+            softmax_rest_logit: None,
             accepted_documents: Vec::new(),
         };
 
@@ -4392,6 +4464,7 @@ mod tests {
             bsg_calibration: None,
             bsg_migration: None,
             bsg_distribution_maps: None,
+            softmax_rest_logit: None,
             accepted_documents: Vec::new(),
         };
 

@@ -16,6 +16,7 @@ use super::runtime::{Diagnosis, Os, RenderNode, Runtime, gather_render_nodes, re
 use crate::config::{ModelConfig as BirdaModelConfig, OpenVinoSettings, openvino_cache_dir};
 use crate::constants::openvino as ov;
 use crate::error::{Error, Result};
+use crate::inference::calibration;
 use birdnet_onnx::{
     ClassifierBuilder, InferenceOptions, ModelConfig, PredictionDecoder, PredictionResult,
     detect_model_type, load_labels_from_file,
@@ -201,15 +202,20 @@ impl OpenVinoEngine {
     /// Nothing is compiled yet: [`Self::prepare`] compiles and verifies the
     /// shapes the run needs.
     ///
+    /// `rest_logit` is the softmax rest logit stored for the model, applied to
+    /// the decoder as the ONNX Runtime engine applies it to its own.
+    ///
     /// # Errors
     ///
     /// The `OpenVino*` errors for a missing runtime or device, and
-    /// `OpenVinoModelLoad` when the model cannot be read.
+    /// `OpenVinoModelLoad` when the model cannot be read. `ScoreCalibration`
+    /// when `rest_logit` is refused for this model.
     pub fn new(
         model_config: &BirdaModelConfig,
         settings: &OpenVinoSettings,
         top_k: usize,
         min_confidence: f32,
+        rest_logit: Option<f32>,
     ) -> Result<Self> {
         let mut runtime = Runtime::load(settings.runtime_path.as_deref())?;
         let device = resolve(&settings.device, &runtime.devices)
@@ -242,12 +248,9 @@ impl OpenVinoEngine {
                     reason: format!("reading the labels: {e}"),
                 }
             })?;
-        let decoder =
-            PredictionDecoder::new(config, labels, top_k, Some(min_confidence)).map_err(|e| {
-                Error::ClassifierBuild {
-                    reason: e.to_string(),
-                }
-            })?;
+        let decoder = PredictionDecoder::new(config, labels, top_k, Some(min_confidence))
+            .map_err(|e| calibration::build_error(&model_config.path, e))?;
+        let decoder = calibration::calibrated_decoder(decoder, rest_logit, &model_config.path)?;
 
         let report = DeviceReport {
             requested: settings.device.to_string(),

@@ -1,6 +1,6 @@
 {
   "schema_version": "2.0",
-  "registry_version": 9,
+  "registry_version": 10,
   "models": [
     {
       "id": "birdnet-plus-v30",
@@ -2943,7 +2943,7 @@
       "default_variant": "no-dft-fp32",
       "selection": {
         "aarch64-a76/openvino": "no-dft-fp32",
-        "aarch64/onnxruntime": "int8-arm",
+        "aarch64/onnxruntime": "no-dft-fp32",
         "cuda": "no-dft-fp32",
         "x86-64/onnxruntime": "no-dft-fp32",
         "x86-64/openvino-cpu": "no-dft-fp32"
@@ -2960,21 +2960,9 @@
           },
           "labels": {
             "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/full/perch_v2_labels.txt",
-            "filename": "perch_v2_labels.txt"
-          }
-        },
-        {
-          "id": "int8-arm",
-          "group_order": 0,
-          "model": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/full/perch_v2_int8_arm.onnx",
-            "filename": "perch_v2_int8_arm.onnx",
-            "sha256": "ff32ca8c57954a86e6023a915d018dc7573cfc5567dd7314899d1c947cc6d5c5",
-            "size_bytes": 130856164
-          },
-          "labels": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/full/perch_v2_labels.txt",
-            "filename": "perch_v2_labels.txt"
+            "filename": "perch_v2_labels.txt",
+            "sha256": "e4d5c0397d8fb08bf90c6b13a34810af53504faad927e472fcc567793c9de057",
+            "size_bytes": 312716
           }
         },
         {
@@ -2988,42 +2976,57 @@
           },
           "labels": {
             "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/full/perch_v2_labels.txt",
-            "filename": "perch_v2_labels.txt"
+            "filename": "perch_v2_labels.txt",
+            "sha256": "e4d5c0397d8fb08bf90c6b13a34810af53504faad927e472fcc567793c9de057",
+            "size_bytes": 312716
           }
         },
         {
-          "id": "int8-arm",
-          "region": "amazonia",
-          "region_name": "Amazonia",
-          "group": "south-america",
-          "group_name": "South America",
-          "group_order": 3,
-          "classes": 3388,
+          "id": "no-dft-fp32",
+          "region": "central-india",
+          "region_name": "Central India",
+          "group": "asia",
+          "group_name": "Asia",
+          "group_order": 1,
+          "classes": 913,
           "model": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/amazonia/perch_v2_amazonia_int8_arm.onnx",
-            "filename": "perch_v2_amazonia_int8_arm.onnx",
-            "sha256": "b437370c33478d18cddb2bd0e5ca448b92c8daaa7248b62cca18dd48dc76416b",
-            "size_bytes": 61492034
+            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/central-india/perch_v2_central-india_no_dft_fp32.onnx",
+            "filename": "perch_v2_central-india_no_dft_fp32.onnx",
+            "sha256": "080180ca0e1e35c747d5be0c2f9507e47eb2461d7f77a52855963adce6fe308a",
+            "size_bytes": 71785756
           },
           "labels": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/amazonia/perch_v2_amazonia_labels.txt",
-            "filename": "perch_v2_amazonia_labels.txt"
+            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/central-india/perch_v2_central-india_labels.txt",
+            "filename": "perch_v2_central-india_labels.txt",
+            "sha256": "a3c71348ad0bbcd1bab1bf43e8b79521a78e054841aa2ed11806db2d3c654796",
+            "size_bytes": 16101
           },
           "countries": {
             "core": [
-              "Brazil",
-              "Colombia",
-              "Ecuador",
-              "Guyana",
-              "Peru",
-              "Suriname",
-              "Trinidad and Tobago",
-              "Venezuela"
-            ],
-            "partial": [
-              "Bolivia",
-              "Panama"
+              "India"
             ]
+          },
+          "country_codes": {
+            "core": [
+              "IN"
+            ]
+          },
+          "tier": 90,
+          "bboxes": [
+            {
+              "lat_min": 16.0,
+              "lat_max": 26.0,
+              "lon_min": 73.0,
+              "lon_max": 86.5
+            }
+          ],
+          "centroid": {
+            "lat": 21.0,
+            "lon": 79.75
+          },
+          "score_calibration": {
+            "method": "softmax-rest-logit",
+            "rest_logit": 10.1
           }
         },
         {
@@ -3033,16 +3036,18 @@
           "group": "south-america",
           "group_name": "South America",
           "group_order": 3,
-          "classes": 3388,
+          "classes": 3414,
           "model": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/amazonia/perch_v2_amazonia_no_dft_fp32.onnx",
-            "filename": "perch_v2_amazonia_no_dft_fp32.onnx",
-            "sha256": "c09d8e946dc8393a78af9d4c81bc42f79bb6a6f0eff2c973385fff675005571e",
-            "size_bytes": 132660858
+            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/amazonia/perch-v2-amazonia-no-dft-fp32-b2.onnx",
+            "filename": "perch-v2-amazonia-no-dft-fp32-b2.onnx",
+            "sha256": "b566268f19f575ace387a9f34b76059861e89e7e78e13b7e604b3fa0d1194543",
+            "size_bytes": 133300354
           },
           "labels": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/amazonia/perch_v2_amazonia_labels.txt",
-            "filename": "perch_v2_amazonia_labels.txt"
+            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/amazonia/perch-v2-amazonia-labels-b2.txt",
+            "filename": "perch-v2-amazonia-labels-b2.txt",
+            "sha256": "4563c55f1879870ac18fb2b24c87a68109d7e07928f1bab082ee8cfa9fdaa3a1",
+            "size_bytes": 68717
           },
           "countries": {
             "core": [
@@ -3052,32 +3057,68 @@
               "Guyana",
               "Peru",
               "Suriname",
-              "Trinidad and Tobago",
+              "Trinidad & Tobago",
               "Venezuela"
             ],
             "partial": [
               "Bolivia",
               "Panama"
             ]
+          },
+          "build": 2,
+          "country_codes": {
+            "core": [
+              "BR",
+              "CO",
+              "EC",
+              "GY",
+              "PE",
+              "SR",
+              "TT",
+              "VE"
+            ],
+            "partial": [
+              "BO",
+              "PA"
+            ]
+          },
+          "tier": 50,
+          "bboxes": [
+            {
+              "lat_min": -13.0,
+              "lat_max": 10.0,
+              "lon_min": -79.0,
+              "lon_max": -44.0
+            }
+          ],
+          "centroid": {
+            "lat": -1.5,
+            "lon": -61.5
+          },
+          "score_calibration": {
+            "method": "softmax-rest-logit",
+            "rest_logit": 9.91
           }
         },
         {
-          "id": "int8-arm",
+          "id": "no-dft-fp32",
           "region": "andes",
           "region_name": "Andes",
           "group": "south-america",
           "group_name": "South America",
           "group_order": 3,
-          "classes": 3535,
+          "classes": 3562,
           "model": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/andes/perch_v2_andes_int8_arm.onnx",
-            "filename": "perch_v2_andes_int8_arm.onnx",
-            "sha256": "b991348630b1513f704be6742fa0d83858b3bebaad4a35c1b293417f3fd0316b",
-            "size_bytes": 62398142
+            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/andes/perch-v2-andes-no-dft-fp32-b2.onnx",
+            "filename": "perch-v2-andes-no-dft-fp32-b2.onnx",
+            "sha256": "77fce690a20ae599b1a0d8a225f6ff4cfd0021476143091b7b4b45386399129f",
+            "size_bytes": 136940562
           },
           "labels": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/andes/perch_v2_andes_labels.txt",
-            "filename": "perch_v2_andes_labels.txt"
+            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/andes/perch-v2-andes-labels-b2.txt",
+            "filename": "perch-v2-andes-labels-b2.txt",
+            "sha256": "c7b4516b698976187ca8e141ea54d5928df9457b1683cc81acb047481e03742e",
+            "size_bytes": 71678
           },
           "countries": {
             "core": [
@@ -3094,65 +3135,40 @@
               "Peru",
               "Venezuela"
             ]
-          }
-        },
-        {
-          "id": "no-dft-fp32",
-          "region": "andes",
-          "region_name": "Andes",
-          "group": "south-america",
-          "group_name": "South America",
-          "group_order": 3,
-          "classes": 3535,
-          "model": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/andes/perch_v2_andes_no_dft_fp32.onnx",
-            "filename": "perch_v2_andes_no_dft_fp32.onnx",
-            "sha256": "b187ce10356600dedbdb46d1803b9d1999fef59b603cbf3335bb106c55e824c8",
-            "size_bytes": 136276470
           },
-          "labels": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/andes/perch_v2_andes_labels.txt",
-            "filename": "perch_v2_andes_labels.txt"
-          },
-          "countries": {
+          "build": 2,
+          "country_codes": {
             "core": [
-              "Argentina",
-              "Aruba",
-              "Bolivia",
-              "Brazil",
-              "Chile",
-              "Colombia",
-              "Curaçao",
-              "Ecuador",
-              "Grenada",
-              "Panama",
-              "Peru",
-              "Venezuela"
+              "AR",
+              "AW",
+              "BO",
+              "BR",
+              "CL",
+              "CO",
+              "CW",
+              "EC",
+              "GD",
+              "PA",
+              "PE",
+              "VE"
             ]
-          }
-        },
-        {
-          "id": "int8-arm",
-          "region": "australia-east",
-          "region_name": "Australia (Southeast)",
-          "group": "oceania",
-          "group_name": "Oceania",
-          "group_order": 5,
-          "classes": 946,
-          "model": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/australia-east/perch_v2_australia-east_int8_arm.onnx",
-            "filename": "perch_v2_australia-east_int8_arm.onnx",
-            "sha256": "5ea3d89a79ec077ab45bdc0f5995998f1a866b6c034fccab1d8ba35382bc7a7e",
-            "size_bytes": 46439545
           },
-          "labels": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/australia-east/perch_v2_australia-east_labels.txt",
-            "filename": "perch_v2_australia-east_labels.txt"
+          "tier": 50,
+          "bboxes": [
+            {
+              "lat_min": -40.0,
+              "lat_max": 12.0,
+              "lon_min": -81.0,
+              "lon_max": -62.0
+            }
+          ],
+          "centroid": {
+            "lat": -14.0,
+            "lon": -71.5
           },
-          "countries": {
-            "core": [
-              "Australia"
-            ]
+          "score_calibration": {
+            "method": "softmax-rest-logit",
+            "rest_logit": 9.9
           }
         },
         {
@@ -3162,45 +3178,46 @@
           "group": "oceania",
           "group_name": "Oceania",
           "group_order": 5,
-          "classes": 946,
+          "classes": 984,
           "model": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/australia-east/perch_v2_australia-east_no_dft_fp32.onnx",
-            "filename": "perch_v2_australia-east_no_dft_fp32.onnx",
-            "sha256": "c6133316df9f1509705468524d9857629e6abf452b7d573319d93c3dba623ef5",
-            "size_bytes": 72597424
+            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/australia-east/perch-v2-australia-east-no-dft-fp32-b2.onnx",
+            "filename": "perch-v2-australia-east-no-dft-fp32-b2.onnx",
+            "sha256": "86c8b59525e3224ce01402b57e135405439b69bdab2f9302011d840a8f27d36e",
+            "size_bytes": 73532072
           },
           "labels": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/australia-east/perch_v2_australia-east_labels.txt",
-            "filename": "perch_v2_australia-east_labels.txt"
+            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/australia-east/perch-v2-australia-east-labels-b2.txt",
+            "filename": "perch-v2-australia-east-labels-b2.txt",
+            "sha256": "8af0322501a62384c773e49f1c4a7ff00b60721c07aed0eecab7f08214b00635",
+            "size_bytes": 17965
           },
           "countries": {
             "core": [
               "Australia"
             ]
-          }
-        },
-        {
-          "id": "int8-arm",
-          "region": "azores",
-          "region_name": "Azores",
-          "group": "europe",
-          "group_name": "Europe",
-          "group_order": 0,
-          "classes": 426,
-          "model": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/azores/perch_v2_azores_int8_arm.onnx",
-            "filename": "perch_v2_azores_int8_arm.onnx",
-            "sha256": "952c8408ab8eae9069c8e35fc714a30d07dc504e70c49e8e580a3cb89f6ebb10",
-            "size_bytes": 43234264
           },
-          "labels": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/azores/perch_v2_azores_labels.txt",
-            "filename": "perch_v2_azores_labels.txt"
-          },
-          "countries": {
+          "build": 2,
+          "country_codes": {
             "core": [
-              "Portugal"
+              "AU"
             ]
+          },
+          "tier": 50,
+          "bboxes": [
+            {
+              "lat_min": -44.0,
+              "lat_max": -24.0,
+              "lon_min": 138.0,
+              "lon_max": 154.0
+            }
+          ],
+          "centroid": {
+            "lat": -34.0,
+            "lon": 146.0
+          },
+          "score_calibration": {
+            "method": "softmax-rest-logit",
+            "rest_logit": 10.33
           }
         },
         {
@@ -3210,49 +3227,46 @@
           "group": "europe",
           "group_name": "Europe",
           "group_order": 0,
-          "classes": 426,
+          "classes": 455,
           "model": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/azores/perch_v2_azores_no_dft_fp32.onnx",
-            "filename": "perch_v2_azores_no_dft_fp32.onnx",
-            "sha256": "de0651c03fc0874741b5bdd02595056684da2a14612357852e85715232531018",
-            "size_bytes": 59807504
+            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/azores/perch-v2-azores-no-dft-fp32-b2.onnx",
+            "filename": "perch-v2-azores-no-dft-fp32-b2.onnx",
+            "sha256": "a4c5b3b8a079266c0ec51face87313bd50810117e6ed7d4237a9ca425f923dac",
+            "size_bytes": 60520788
           },
           "labels": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/azores/perch_v2_azores_labels.txt",
-            "filename": "perch_v2_azores_labels.txt"
+            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/azores/perch-v2-azores-labels-b2.txt",
+            "filename": "perch-v2-azores-labels-b2.txt",
+            "sha256": "3e376d88750207bfc904dc067041547546e6cab05193f09fe4a432f44ca444a3",
+            "size_bytes": 7029
           },
           "countries": {
             "core": [
               "Portugal"
             ]
-          }
-        },
-        {
-          "id": "int8-arm",
-          "region": "baltics",
-          "region_name": "Baltics",
-          "group": "europe",
-          "group_name": "Europe",
-          "group_order": 0,
-          "classes": 655,
-          "model": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/baltics/perch_v2_baltics_int8_arm.onnx",
-            "filename": "perch_v2_baltics_int8_arm.onnx",
-            "sha256": "dbeee9d02760f04efc50d6cb1198fc91c5c183149249dc3b17e451f9d7ec0b0a",
-            "size_bytes": 44645820
           },
-          "labels": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/baltics/perch_v2_baltics_labels.txt",
-            "filename": "perch_v2_baltics_labels.txt"
-          },
-          "countries": {
+          "build": 2,
+          "country_codes": {
             "core": [
-              "Belarus",
-              "Estonia",
-              "Latvia",
-              "Lithuania",
-              "Russia"
+              "PT"
             ]
+          },
+          "tier": 90,
+          "bboxes": [
+            {
+              "lat_min": 36.5,
+              "lat_max": 40.0,
+              "lon_min": -31.5,
+              "lon_max": -24.8
+            }
+          ],
+          "centroid": {
+            "lat": 38.25,
+            "lon": -28.15
+          },
+          "score_calibration": {
+            "method": "softmax-rest-logit",
+            "rest_logit": 10.27
           }
         },
         {
@@ -3262,54 +3276,54 @@
           "group": "europe",
           "group_name": "Europe",
           "group_order": 0,
-          "classes": 655,
+          "classes": 684,
           "model": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/baltics/perch_v2_baltics_no_dft_fp32.onnx",
-            "filename": "perch_v2_baltics_no_dft_fp32.onnx",
-            "sha256": "959841211a94971025ddd3c6ecdd6b0d23a87a60645befc80127d51ba560c855",
-            "size_bytes": 65439988
+            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/baltics/perch-v2-baltics-no-dft-fp32-b2.onnx",
+            "filename": "perch-v2-baltics-no-dft-fp32-b2.onnx",
+            "sha256": "c8d2b920ce67bc48b0636e41c18ff8f6280a4c8d59059429211a7f152da4fd41",
+            "size_bytes": 66153272
           },
           "labels": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/baltics/perch_v2_baltics_labels.txt",
-            "filename": "perch_v2_baltics_labels.txt"
+            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/baltics/perch-v2-baltics-labels-b2.txt",
+            "filename": "perch-v2-baltics-labels-b2.txt",
+            "sha256": "f3191b2bfb82e289252ad97a2108d0b5e35ad21c17ec64591878b6969232c1a4",
+            "size_bytes": 11102
           },
           "countries": {
             "core": [
               "Belarus",
               "Estonia",
-              "Latvia",
               "Lithuania",
+              "Latvia",
               "Russia"
             ]
-          }
-        },
-        {
-          "id": "int8-arm",
-          "region": "british-isles",
-          "region_name": "British Isles",
-          "group": "europe",
-          "group_name": "Europe",
-          "group_order": 0,
-          "classes": 776,
-          "model": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/british-isles/perch_v2_british-isles_int8_arm.onnx",
-            "filename": "perch_v2_british-isles_int8_arm.onnx",
-            "sha256": "03d4f63413299473397f57f829e14504e54978a9a95de83bf9d9cbc96cc063b1",
-            "size_bytes": 45391664
           },
-          "labels": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/british-isles/perch_v2_british-isles_labels.txt",
-            "filename": "perch_v2_british-isles_labels.txt"
-          },
-          "countries": {
+          "build": 2,
+          "country_codes": {
             "core": [
-              "Ireland",
-              "Isle of Man",
-              "United Kingdom"
-            ],
-            "partial": [
-              "Guernsey"
+              "BY",
+              "EE",
+              "LT",
+              "LV",
+              "RU"
             ]
+          },
+          "tier": 50,
+          "bboxes": [
+            {
+              "lat_min": 53.5,
+              "lat_max": 59.8,
+              "lon_min": 20.0,
+              "lon_max": 30.0
+            }
+          ],
+          "centroid": {
+            "lat": 56.65,
+            "lon": 25.0
+          },
+          "score_calibration": {
+            "method": "softmax-rest-logit",
+            "rest_logit": 9.74
           }
         },
         {
@@ -3319,100 +3333,158 @@
           "group": "europe",
           "group_name": "Europe",
           "group_order": 0,
-          "classes": 776,
+          "classes": 795,
           "model": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/british-isles/perch_v2_british-isles_no_dft_fp32.onnx",
-            "filename": "perch_v2_british-isles_no_dft_fp32.onnx",
-            "sha256": "1281cece7d01319c6b010eb13b7ea5cbe8c1fcf4f15d6ad3e2ccd1bd1b2c53c1",
-            "size_bytes": 68416104
+            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/british-isles/perch-v2-british-isles-no-dft-fp32-b2.onnx",
+            "filename": "perch-v2-british-isles-no-dft-fp32-b2.onnx",
+            "sha256": "3cc13f4339ca0e0a1988d08629208902c1e56a970c410676e28cee08dfbbbbff",
+            "size_bytes": 68883428
           },
           "labels": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/british-isles/perch_v2_british-isles_labels.txt",
-            "filename": "perch_v2_british-isles_labels.txt"
+            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/british-isles/perch-v2-british-isles-labels-b2.txt",
+            "filename": "perch-v2-british-isles-labels-b2.txt",
+            "sha256": "b5ecbbd9fcd9375ca3c7ffb9253c130f03535453f0ae08aebef0190d31838e19",
+            "size_bytes": 13280
           },
           "countries": {
             "core": [
+              "United Kingdom",
               "Ireland",
-              "Isle of Man",
-              "United Kingdom"
+              "Isle of Man"
             ],
             "partial": [
               "Guernsey"
             ]
+          },
+          "build": 2,
+          "country_codes": {
+            "core": [
+              "GB",
+              "IE",
+              "IM"
+            ],
+            "partial": [
+              "GG"
+            ]
+          },
+          "tier": 50,
+          "bboxes": [
+            {
+              "lat_min": 49.5,
+              "lat_max": 61.0,
+              "lon_min": -11.0,
+              "lon_max": 2.5
+            }
+          ],
+          "centroid": {
+            "lat": 55.25,
+            "lon": -4.25
+          },
+          "score_calibration": {
+            "method": "softmax-rest-logit",
+            "rest_logit": 9.7
           }
         },
         {
-          "id": "int8-arm",
+          "id": "no-dft-fp32",
+          "region": "canada-alaska",
+          "region_name": "Canada Alaska",
+          "group": "north-america",
+          "group_name": "North America",
+          "group_order": 2,
+          "classes": 989,
+          "model": {
+            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/canada-alaska/perch-v2-canada-alaska-no-dft-fp32-b2.onnx",
+            "filename": "perch-v2-canada-alaska-no-dft-fp32-b2.onnx",
+            "sha256": "33fe659629c51fc5a2df751dbe89d00be4b825b77036d16b9119ff37d67a6872",
+            "size_bytes": 73655052
+          },
+          "labels": {
+            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/canada-alaska/perch-v2-canada-alaska-labels-b2.txt",
+            "filename": "perch-v2-canada-alaska-labels-b2.txt",
+            "sha256": "3e2b129d6f97b3be83cc94c49c420bddce3161b274af6fa1219a485711335382",
+            "size_bytes": 17330
+          },
+          "countries": {
+            "core": [
+              "Canada",
+              "United States"
+            ]
+          },
+          "build": 2,
+          "country_codes": {
+            "core": [
+              "CA",
+              "US"
+            ]
+          },
+          "tier": 10,
+          "bboxes": [
+            {
+              "lat_min": 49.0,
+              "lat_max": 71.0,
+              "lon_min": -168.0,
+              "lon_max": -52.0
+            }
+          ],
+          "centroid": {
+            "lat": 60.0,
+            "lon": -110.0
+          },
+          "score_calibration": {
+            "method": "softmax-rest-logit",
+            "rest_logit": 9.87
+          }
+        },
+        {
+          "id": "no-dft-fp32",
           "region": "canary-islands",
           "region_name": "Canary Islands",
           "group": "europe",
           "group_name": "Europe",
           "group_order": 0,
-          "classes": 598,
+          "classes": 621,
           "model": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/canary-islands/perch_v2_canary-islands_int8_arm.onnx",
-            "filename": "perch_v2_canary-islands_int8_arm.onnx",
-            "sha256": "4db63a7b969324604280a1f915a4f9339791f1dd051d2dd78b04187dbfb73fd4",
-            "size_bytes": 44294472
+            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/canary-islands/perch-v2-canary-islands-no-dft-fp32-b2.onnx",
+            "filename": "perch-v2-canary-islands-no-dft-fp32-b2.onnx",
+            "sha256": "8b27785d328046535cfd4336a44d0e06d6ce78ac3e2309869eae293c1e22180f",
+            "size_bytes": 64603724
           },
           "labels": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/canary-islands/perch_v2_canary-islands_labels.txt",
-            "filename": "perch_v2_canary-islands_labels.txt"
+            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/canary-islands/perch-v2-canary-islands-labels-b2.txt",
+            "filename": "perch-v2-canary-islands-labels-b2.txt",
+            "sha256": "5a82469e5068477ea27fdc197fd704f5a82f3eff166378816ff1757ffea2f40f",
+            "size_bytes": 10133
           },
           "countries": {
             "core": [
-              "Morocco",
-              "Spain"
+              "Spain",
+              "Morocco"
             ]
-          }
-        },
-        {
-          "id": "no-dft-fp32",
-          "region": "canary-islands",
-          "region_name": "Canary Islands",
-          "group": "europe",
-          "group_name": "Europe",
-          "group_order": 0,
-          "classes": 598,
-          "model": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/canary-islands/perch_v2_canary-islands_no_dft_fp32.onnx",
-            "filename": "perch_v2_canary-islands_no_dft_fp32.onnx",
-            "sha256": "08938826166b4277fc8f948da1f273ace306b2369f65bb184cb2e1c54315f298",
-            "size_bytes": 64038016
           },
-          "labels": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/canary-islands/perch_v2_canary-islands_labels.txt",
-            "filename": "perch_v2_canary-islands_labels.txt"
-          },
-          "countries": {
+          "build": 2,
+          "country_codes": {
             "core": [
-              "Morocco",
-              "Spain"
+              "ES",
+              "MA"
             ]
-          }
-        },
-        {
-          "id": "int8-arm",
-          "region": "cape-verde",
-          "region_name": "Cape Verde",
-          "group": "africa",
-          "group_name": "Africa",
-          "group_order": 4,
-          "classes": 346,
-          "model": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/cape-verde/perch_v2_cape-verde_int8_arm.onnx",
-            "filename": "perch_v2_cape-verde_int8_arm.onnx",
-            "sha256": "03e10868fcdc90eb0b5215f202f0d3184a7e9c60814866a9385b92ca3317541a",
-            "size_bytes": 42741144
           },
-          "labels": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/cape-verde/perch_v2_cape-verde_labels.txt",
-            "filename": "perch_v2_cape-verde_labels.txt"
+          "tier": 90,
+          "bboxes": [
+            {
+              "lat_min": 27.0,
+              "lat_max": 29.8,
+              "lon_min": -18.5,
+              "lon_max": -13.0
+            }
+          ],
+          "centroid": {
+            "lat": 28.4,
+            "lon": -15.75
           },
-          "countries": {
-            "core": [
-              "Cabo Verde"
-            ]
+          "score_calibration": {
+            "method": "softmax-rest-logit",
+            "rest_logit": 10.18
           }
         },
         {
@@ -3422,66 +3494,123 @@
           "group": "africa",
           "group_name": "Africa",
           "group_order": 4,
-          "classes": 346,
+          "classes": 379,
           "model": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/cape-verde/perch_v2_cape-verde_no_dft_fp32.onnx",
-            "filename": "perch_v2_cape-verde_no_dft_fp32.onnx",
-            "sha256": "bbddef61153b0e9a05639d221cb022878055622b892cc52b38af97592a765425",
-            "size_bytes": 57839824
+            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/cape-verde/perch-v2-cape-verde-no-dft-fp32-b2.onnx",
+            "filename": "perch-v2-cape-verde-no-dft-fp32-b2.onnx",
+            "sha256": "0dd71763563b6be7afb46876cee8ed6aff0d4c1f419b2b8b850395c89e664315",
+            "size_bytes": 58651492
           },
           "labels": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/cape-verde/perch_v2_cape-verde_labels.txt",
-            "filename": "perch_v2_cape-verde_labels.txt"
+            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/cape-verde/perch-v2-cape-verde-labels-b2.txt",
+            "filename": "perch-v2-cape-verde-labels-b2.txt",
+            "sha256": "68f7d32d3237eb3fd016bcbf9cc03815d4ec8300538a2e9f860d312cb83efb4e",
+            "size_bytes": 5798
           },
           "countries": {
             "core": [
-              "Cabo Verde"
+              "Cape Verde"
             ]
+          },
+          "build": 2,
+          "country_codes": {
+            "core": [
+              "CV"
+            ]
+          },
+          "tier": 90,
+          "bboxes": [
+            {
+              "lat_min": 14.7,
+              "lat_max": 17.3,
+              "lon_min": -25.5,
+              "lon_max": -22.6
+            }
+          ],
+          "centroid": {
+            "lat": 16.0,
+            "lon": -24.05
+          },
+          "score_calibration": {
+            "method": "softmax-rest-logit",
+            "rest_logit": 10.19
           }
         },
         {
-          "id": "int8-arm",
-          "region": "central-europe",
-          "region_name": "Central Europe",
-          "group": "europe",
-          "group_name": "Europe",
-          "group_order": 0,
-          "classes": 873,
+          "id": "no-dft-fp32",
+          "region": "central-africa",
+          "region_name": "Central Africa",
+          "group": "africa",
+          "group_name": "Africa",
+          "group_order": 4,
+          "classes": 1912,
           "model": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/central-europe/perch_v2_central-europe_int8_arm.onnx",
-            "filename": "perch_v2_central-europe_int8_arm.onnx",
-            "sha256": "a5b7da4d147679b3ef0f2cde39bc4cacabfa7a9c462fed7adac4935c8781813e",
-            "size_bytes": 45989572
+            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/central-africa/perch-v2-central-africa-no-dft-fp32-b2.onnx",
+            "filename": "perch-v2-central-africa-no-dft-fp32-b2.onnx",
+            "sha256": "1a7efc494030dacc4eb5524d182eb9b4edded85c3420719efe18bbf84e7a558f",
+            "size_bytes": 96357162
           },
           "labels": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/central-europe/perch_v2_central-europe_labels.txt",
-            "filename": "perch_v2_central-europe_labels.txt"
+            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/central-africa/perch-v2-central-africa-labels-b2.txt",
+            "filename": "perch-v2-central-africa-labels-b2.txt",
+            "sha256": "23edb29d96309890174fb31b0c30b2d744cb5a87275da1a3c48a51a1551488ab",
+            "size_bytes": 36278
           },
           "countries": {
             "core": [
-              "Austria",
-              "Belgium",
-              "Croatia",
-              "Czechia",
-              "France",
-              "Germany",
-              "Hungary",
-              "Liechtenstein",
-              "Luxembourg",
-              "Netherlands",
-              "Poland",
-              "Slovakia",
-              "Slovenia",
-              "Switzerland"
+              "Angola",
+              "Burundi",
+              "Congo - Kinshasa",
+              "Central African Republic",
+              "Congo - Brazzaville",
+              "Cameroon",
+              "Gabon",
+              "Equatorial Guinea",
+              "Rwanda",
+              "Zambia"
             ],
             "partial": [
-              "Bosnia and Herzegovina",
-              "Denmark",
-              "Italy",
-              "Lithuania",
-              "Republic of Serbia",
-              "Romania"
+              "Nigeria",
+              "South Sudan",
+              "Chad"
             ]
+          },
+          "build": 2,
+          "country_codes": {
+            "core": [
+              "AO",
+              "BI",
+              "CD",
+              "CF",
+              "CG",
+              "CM",
+              "GA",
+              "GQ",
+              "RW",
+              "ZM"
+            ],
+            "partial": [
+              "NG",
+              "SS",
+              "TD"
+            ]
+          },
+          "tier": 50,
+          "bboxes": [
+            {
+              "lat_min": -17.0,
+              "lat_max": 11.0,
+              "lon_min": 8.0,
+              "lon_max": 31.0
+            }
+          ],
+          "centroid": {
+            "lat": -3.0,
+            "lon": 19.5
+          },
+          "score_calibration": {
+            "method": "softmax-rest-logit",
+            "rest_logit": 10.1
           }
         },
         {
@@ -3491,66 +3620,88 @@
           "group": "europe",
           "group_name": "Europe",
           "group_order": 0,
-          "classes": 873,
+          "classes": 888,
           "model": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/central-europe/perch_v2_central-europe_no_dft_fp32.onnx",
-            "filename": "perch_v2_central-europe_no_dft_fp32.onnx",
-            "sha256": "8f2e40a11c89812fa61ea8d6faa1d6710ee3b6ae9a8292bc3f9429df1af6f4c3",
-            "size_bytes": 70801916
+            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/central-europe/perch-v2-central-europe-no-dft-fp32-b2.onnx",
+            "filename": "perch-v2-central-europe-no-dft-fp32-b2.onnx",
+            "sha256": "716be1e2762b40f2b24bd51c14715b5d888c7d5394679e1c22b12affbd0c0cd4",
+            "size_bytes": 71170856
           },
           "labels": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/central-europe/perch_v2_central-europe_labels.txt",
-            "filename": "perch_v2_central-europe_labels.txt"
+            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/central-europe/perch-v2-central-europe-labels-b2.txt",
+            "filename": "perch-v2-central-europe-labels-b2.txt",
+            "sha256": "f30fd8b4bd6ac3308f577e3435aacd0f62df8cd65390a6d79a2dd845726d7968",
+            "size_bytes": 15044
           },
           "countries": {
             "core": [
               "Austria",
               "Belgium",
-              "Croatia",
+              "Switzerland",
               "Czechia",
-              "France",
               "Germany",
+              "France",
+              "Croatia",
               "Hungary",
               "Liechtenstein",
               "Luxembourg",
               "Netherlands",
               "Poland",
-              "Slovakia",
               "Slovenia",
-              "Switzerland"
+              "Slovakia"
             ],
             "partial": [
-              "Bosnia and Herzegovina",
+              "Bosnia & Herzegovina",
               "Denmark",
               "Italy",
               "Lithuania",
-              "Republic of Serbia",
-              "Romania"
+              "Romania",
+              "Serbia"
             ]
-          }
-        },
-        {
-          "id": "int8-arm",
-          "region": "china-north-central",
-          "region_name": "China (North-Central)",
-          "group": "asia",
-          "group_name": "Asia",
-          "group_order": 1,
-          "classes": 976,
-          "model": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/china-north-central/perch_v2_china-north-central_int8_arm.onnx",
-            "filename": "perch_v2_china-north-central_int8_arm.onnx",
-            "sha256": "dae3b0d45eb698662a2d544f53de20d53e5db71e11e4296547dd12526a8cb3b8",
-            "size_bytes": 46624464
           },
-          "labels": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/china-north-central/perch_v2_china-north-central_labels.txt",
-            "filename": "perch_v2_china-north-central_labels.txt"
-          },
-          "countries": {
+          "build": 2,
+          "country_codes": {
             "core": [
-              "China"
+              "AT",
+              "BE",
+              "CH",
+              "CZ",
+              "DE",
+              "FR",
+              "HR",
+              "HU",
+              "LI",
+              "LU",
+              "NL",
+              "PL",
+              "SI",
+              "SK"
+            ],
+            "partial": [
+              "BA",
+              "DK",
+              "IT",
+              "LT",
+              "RO",
+              "RS"
             ]
+          },
+          "tier": 50,
+          "bboxes": [
+            {
+              "lat_min": 45.0,
+              "lat_max": 55.5,
+              "lon_min": 2.0,
+              "lon_max": 24.0
+            }
+          ],
+          "centroid": {
+            "lat": 50.25,
+            "lon": 13.0
+          },
+          "score_calibration": {
+            "method": "softmax-rest-logit",
+            "rest_logit": 9.67
           }
         },
         {
@@ -3560,40 +3711,67 @@
           "group": "asia",
           "group_name": "Asia",
           "group_order": 1,
-          "classes": 976,
+          "classes": 1007,
           "model": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/china-north-central/perch_v2_china-north-central_no_dft_fp32.onnx",
-            "filename": "perch_v2_china-north-central_no_dft_fp32.onnx",
-            "sha256": "adb89e88eb8d670cee4d6596388931267a63f861ae01c7147b19cd187f1af9ba",
-            "size_bytes": 73335304
+            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/china-north-central/perch-v2-china-north-central-no-dft-fp32-b2.onnx",
+            "filename": "perch-v2-china-north-central-no-dft-fp32-b2.onnx",
+            "sha256": "a927ee6b51cb68965569c44b86769dbb1c05090d029258cac508ed95d922b184",
+            "size_bytes": 74097780
           },
           "labels": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/china-north-central/perch_v2_china-north-central_labels.txt",
-            "filename": "perch_v2_china-north-central_labels.txt"
+            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/china-north-central/perch-v2-china-north-central-labels-b2.txt",
+            "filename": "perch-v2-china-north-central-labels-b2.txt",
+            "sha256": "b154202fa544a97d446de68998f8374f4b94019c54d66be3595209a9df178bd8",
+            "size_bytes": 17966
           },
           "countries": {
             "core": [
               "China"
             ]
+          },
+          "build": 2,
+          "country_codes": {
+            "core": [
+              "CN"
+            ]
+          },
+          "tier": 50,
+          "bboxes": [
+            {
+              "lat_min": 33.0,
+              "lat_max": 42.0,
+              "lon_min": 106.0,
+              "lon_max": 122.0
+            }
+          ],
+          "centroid": {
+            "lat": 37.5,
+            "lon": 114.0
+          },
+          "score_calibration": {
+            "method": "softmax-rest-logit",
+            "rest_logit": 10.06
           }
         },
         {
-          "id": "int8-arm",
+          "id": "no-dft-fp32",
           "region": "china-northeast",
           "region_name": "China (Northeast)",
           "group": "asia",
           "group_name": "Asia",
           "group_order": 1,
-          "classes": 877,
+          "classes": 907,
           "model": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/china-northeast/perch_v2_china-northeast_int8_arm.onnx",
-            "filename": "perch_v2_china-northeast_int8_arm.onnx",
-            "sha256": "169c07f6004f8e5473170c8823ad2e84746c509115e0279425b8520972993d34",
-            "size_bytes": 46014228
+            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/china-northeast/perch-v2-china-northeast-no-dft-fp32-b2.onnx",
+            "filename": "perch-v2-china-northeast-no-dft-fp32-b2.onnx",
+            "sha256": "88cdc03b8b57ab751dc96afe0fbfc2752c22b4c4be5db19fcc2f3dc38bf6327a",
+            "size_bytes": 71638180
           },
           "labels": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/china-northeast/perch_v2_china-northeast_labels.txt",
-            "filename": "perch_v2_china-northeast_labels.txt"
+            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/china-northeast/perch-v2-china-northeast-labels-b2.txt",
+            "filename": "perch-v2-china-northeast-labels-b2.txt",
+            "sha256": "763664b9e7f2134c3a012d7e7793995a80401a59368a4d85df846d14e7e0e21d",
+            "size_bytes": 15761
           },
           "countries": {
             "core": [
@@ -3604,62 +3782,34 @@
             "partial": [
               "Mongolia"
             ]
-          }
-        },
-        {
-          "id": "no-dft-fp32",
-          "region": "china-northeast",
-          "region_name": "China (Northeast)",
-          "group": "asia",
-          "group_name": "Asia",
-          "group_order": 1,
-          "classes": 877,
-          "model": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/china-northeast/perch_v2_china-northeast_no_dft_fp32.onnx",
-            "filename": "perch_v2_china-northeast_no_dft_fp32.onnx",
-            "sha256": "139385aadb17dcd0e0724a047c8e99c73bc516680fbed8d659297c80798c890b",
-            "size_bytes": 70900300
           },
-          "labels": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/china-northeast/perch_v2_china-northeast_labels.txt",
-            "filename": "perch_v2_china-northeast_labels.txt"
-          },
-          "countries": {
+          "build": 2,
+          "country_codes": {
             "core": [
-              "China",
-              "North Korea",
-              "Russia"
+              "CN",
+              "KP",
+              "RU"
             ],
             "partial": [
-              "Mongolia"
+              "MN"
             ]
-          }
-        },
-        {
-          "id": "int8-arm",
-          "region": "china-southeast",
-          "region_name": "China (Southeast)",
-          "group": "asia",
-          "group_name": "Asia",
-          "group_order": 1,
-          "classes": 1373,
-          "model": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/china-southeast/perch_v2_china-southeast_int8_arm.onnx",
-            "filename": "perch_v2_china-southeast_int8_arm.onnx",
-            "sha256": "be17c31fae6974213a9f7ae525f27b4c65fa42a29f4e676b0773b7145464dca0",
-            "size_bytes": 49071575
           },
-          "labels": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/china-southeast/perch_v2_china-southeast_labels.txt",
-            "filename": "perch_v2_china-southeast_labels.txt"
+          "tier": 50,
+          "bboxes": [
+            {
+              "lat_min": 38.0,
+              "lat_max": 54.0,
+              "lon_min": 115.0,
+              "lon_max": 135.0
+            }
+          ],
+          "centroid": {
+            "lat": 46.0,
+            "lon": 125.0
           },
-          "countries": {
-            "core": [
-              "China",
-              "Hong Kong S.A.R.",
-              "Macao S.A.R",
-              "Taiwan"
-            ]
+          "score_calibration": {
+            "method": "softmax-rest-logit",
+            "rest_logit": 10.02
           }
         },
         {
@@ -3669,52 +3819,52 @@
           "group": "asia",
           "group_name": "Asia",
           "group_order": 1,
-          "classes": 1373,
+          "classes": 1398,
           "model": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/china-southeast/perch_v2_china-southeast_no_dft_fp32.onnx",
-            "filename": "perch_v2_china-southeast_no_dft_fp32.onnx",
-            "sha256": "a9c4acf8b47b44ac3858d8afa12d5d1dec8278315e410dd75d53c2ad1e2ce854",
-            "size_bytes": 83099918
+            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/china-southeast/perch-v2-china-southeast-no-dft-fp32-b2.onnx",
+            "filename": "perch-v2-china-southeast-no-dft-fp32-b2.onnx",
+            "sha256": "2d96bb03a57a1de445343d98791b367dc83e12e7102ec4a47aaf2985a375fdcb",
+            "size_bytes": 83714818
           },
           "labels": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/china-southeast/perch_v2_china-southeast_labels.txt",
-            "filename": "perch_v2_china-southeast_labels.txt"
+            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/china-southeast/perch-v2-china-southeast-labels-b2.txt",
+            "filename": "perch-v2-china-southeast-labels-b2.txt",
+            "sha256": "112e4a310277c35abe6488f162032ffd0c8a7da379d89f67f0fbdfcbcd85b9cf",
+            "size_bytes": 25851
           },
           "countries": {
             "core": [
               "China",
-              "Hong Kong S.A.R.",
-              "Macao S.A.R",
+              "Hong Kong SAR China",
+              "Macao SAR China",
               "Taiwan"
             ]
-          }
-        },
-        {
-          "id": "int8-arm",
-          "region": "china-southwest",
-          "region_name": "China (Southwest)",
-          "group": "asia",
-          "group_name": "Asia",
-          "group_order": 1,
-          "classes": 1409,
-          "model": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/china-southwest/perch_v2_china-southwest_int8_arm.onnx",
-            "filename": "perch_v2_china-southwest_int8_arm.onnx",
-            "sha256": "d214093463cc3fbf8c9dccbedd9c26e87575c87ed3839b19b3fda02085c4341d",
-            "size_bytes": 49293479
           },
-          "labels": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/china-southwest/perch_v2_china-southwest_labels.txt",
-            "filename": "perch_v2_china-southwest_labels.txt"
-          },
-          "countries": {
+          "build": 2,
+          "country_codes": {
             "core": [
-              "China"
-            ],
-            "partial": [
-              "Myanmar",
-              "Vietnam"
+              "CN",
+              "HK",
+              "MO",
+              "TW"
             ]
+          },
+          "tier": 50,
+          "bboxes": [
+            {
+              "lat_min": 20.0,
+              "lat_max": 31.0,
+              "lon_min": 106.0,
+              "lon_max": 122.0
+            }
+          ],
+          "centroid": {
+            "lat": 25.5,
+            "lon": 114.0
+          },
+          "score_calibration": {
+            "method": "softmax-rest-logit",
+            "rest_logit": 10.17
           }
         },
         {
@@ -3724,73 +3874,164 @@
           "group": "asia",
           "group_name": "Asia",
           "group_order": 1,
-          "classes": 1409,
+          "classes": 1445,
           "model": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/china-southwest/perch_v2_china-southwest_no_dft_fp32.onnx",
-            "filename": "perch_v2_china-southwest_no_dft_fp32.onnx",
-            "sha256": "11292464054e8c2b6b7d309a6518fe8c81f43b19f98e151b0ef3cbd21261ed0f",
-            "size_bytes": 83985374
+            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/china-southwest/perch-v2-china-southwest-no-dft-fp32-b2.onnx",
+            "filename": "perch-v2-china-southwest-no-dft-fp32-b2.onnx",
+            "sha256": "5cd5c2c049f376433bc01f31133349d9623f7a7fcc1ffddd421f648e6c414021",
+            "size_bytes": 84870830
           },
           "labels": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/china-southwest/perch_v2_china-southwest_labels.txt",
-            "filename": "perch_v2_china-southwest_labels.txt"
+            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/china-southwest/perch-v2-china-southwest-labels-b2.txt",
+            "filename": "perch-v2-china-southwest-labels-b2.txt",
+            "sha256": "ab6e922068a50a62a13937112ec6639ce59d19eecfe2c128988bec934e212111",
+            "size_bytes": 26936
           },
           "countries": {
             "core": [
               "China"
             ],
             "partial": [
-              "Myanmar",
+              "Myanmar (Burma)",
               "Vietnam"
             ]
-          }
-        },
-        {
-          "id": "int8-arm",
-          "region": "eastern-brazil",
-          "region_name": "Eastern Brazil",
-          "group": "south-america",
-          "group_name": "South America",
-          "group_order": 3,
-          "classes": 2184,
-          "model": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/eastern-brazil/perch_v2_eastern-brazil_int8_arm.onnx",
-            "filename": "perch_v2_eastern-brazil_int8_arm.onnx",
-            "sha256": "34736f02b138a64f9aef1e5bcffbe5d8bd6a9a5cb4226a052b9d2ff000c89cbc",
-            "size_bytes": 54070578
           },
-          "labels": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/eastern-brazil/perch_v2_eastern-brazil_labels.txt",
-            "filename": "perch_v2_eastern-brazil_labels.txt"
-          },
-          "countries": {
+          "build": 2,
+          "country_codes": {
             "core": [
-              "Brazil",
-              "Paraguay",
-              "Uruguay"
+              "CN"
             ],
             "partial": [
-              "Argentina"
+              "MM",
+              "VN"
             ]
+          },
+          "tier": 50,
+          "bboxes": [
+            {
+              "lat_min": 22.0,
+              "lat_max": 34.0,
+              "lon_min": 97.0,
+              "lon_max": 108.0
+            }
+          ],
+          "centroid": {
+            "lat": 28.0,
+            "lon": 102.5
+          },
+          "score_calibration": {
+            "method": "softmax-rest-logit",
+            "rest_logit": 10.19
           }
         },
         {
           "id": "no-dft-fp32",
-          "region": "eastern-brazil",
-          "region_name": "Eastern Brazil",
-          "group": "south-america",
-          "group_name": "South America",
-          "group_order": 3,
+          "region": "east-africa",
+          "region_name": "East Africa",
+          "group": "africa",
+          "group_name": "Africa",
+          "group_order": 4,
           "classes": 2184,
           "model": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/eastern-brazil/perch_v2_eastern-brazil_no_dft_fp32.onnx",
-            "filename": "perch_v2_eastern-brazil_no_dft_fp32.onnx",
-            "sha256": "89008391609eb31f5ece4d66fbea557f4b1bdde09ff3d79994302062812901ed",
+            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/east-africa/perch-v2-east-africa-no-dft-fp32-b2.onnx",
+            "filename": "perch-v2-east-africa-no-dft-fp32-b2.onnx",
+            "sha256": "2b0c959425bfbabd98b5112ef777cfae50a4ad5119c3b0d74bbff6c039faeb0b",
             "size_bytes": 103047274
           },
           "labels": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/eastern-brazil/perch_v2_eastern-brazil_labels.txt",
-            "filename": "perch_v2_eastern-brazil_labels.txt"
+            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/east-africa/perch-v2-east-africa-labels-b2.txt",
+            "filename": "perch-v2-east-africa-labels-b2.txt",
+            "sha256": "e8b59e2de6c1767887d8135f3579819cdccb79c8f7a5136c62cfb5c5deb7cbe4",
+            "size_bytes": 41465
+          },
+          "countries": {
+            "core": [
+              "Burundi",
+              "Djibouti",
+              "Eritrea",
+              "Ethiopia",
+              "Kenya",
+              "Comoros",
+              "Malawi",
+              "Mozambique",
+              "Rwanda",
+              "Somalia",
+              "South Sudan",
+              "Tanzania",
+              "Uganda",
+              "Yemen"
+            ],
+            "partial": [
+              "Congo - Kinshasa",
+              "Madagascar",
+              "Sudan",
+              "Zambia",
+              "Zimbabwe"
+            ]
+          },
+          "build": 2,
+          "country_codes": {
+            "core": [
+              "BI",
+              "DJ",
+              "ER",
+              "ET",
+              "KE",
+              "KM",
+              "MW",
+              "MZ",
+              "RW",
+              "SO",
+              "SS",
+              "TZ",
+              "UG",
+              "YE"
+            ],
+            "partial": [
+              "CD",
+              "MG",
+              "SD",
+              "ZM",
+              "ZW"
+            ]
+          },
+          "tier": 50,
+          "bboxes": [
+            {
+              "lat_min": -17.0,
+              "lat_max": 18.0,
+              "lon_min": 28.0,
+              "lon_max": 52.0
+            }
+          ],
+          "centroid": {
+            "lat": 0.5,
+            "lon": 40.0
+          },
+          "score_calibration": {
+            "method": "softmax-rest-logit",
+            "rest_logit": 9.98
+          }
+        },
+        {
+          "id": "no-dft-fp32",
+          "region": "eastern-brazil",
+          "region_name": "Eastern Brazil",
+          "group": "south-america",
+          "group_name": "South America",
+          "group_order": 3,
+          "classes": 2213,
+          "model": {
+            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/eastern-brazil/perch-v2-eastern-brazil-no-dft-fp32-b2.onnx",
+            "filename": "perch-v2-eastern-brazil-no-dft-fp32-b2.onnx",
+            "sha256": "759d22a0428d3e9bb513161422950134767b8448433a1cef802a936dd63db17c",
+            "size_bytes": 103760558
+          },
+          "labels": {
+            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/eastern-brazil/perch-v2-eastern-brazil-labels-b2.txt",
+            "filename": "perch-v2-eastern-brazil-labels-b2.txt",
+            "sha256": "1c1d695b5fe8c5b2999adb6b8d0730442d1a8ba23856e477d87f497b170ddcaa",
+            "size_bytes": 43711
           },
           "countries": {
             "core": [
@@ -3801,25 +4042,55 @@
             "partial": [
               "Argentina"
             ]
+          },
+          "build": 2,
+          "country_codes": {
+            "core": [
+              "BR",
+              "PY",
+              "UY"
+            ],
+            "partial": [
+              "AR"
+            ]
+          },
+          "tier": 50,
+          "bboxes": [
+            {
+              "lat_min": -33.0,
+              "lat_max": -2.0,
+              "lon_min": -60.0,
+              "lon_max": -34.0
+            }
+          ],
+          "centroid": {
+            "lat": -17.5,
+            "lon": -47.0
+          },
+          "score_calibration": {
+            "method": "softmax-rest-logit",
+            "rest_logit": 10.01
           }
         },
         {
-          "id": "int8-arm",
+          "id": "no-dft-fp32",
           "region": "eastern-europe",
           "region_name": "Eastern Europe",
           "group": "europe",
           "group_name": "Europe",
           "group_order": 0,
-          "classes": 739,
+          "classes": 765,
           "model": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/eastern-europe/perch_v2_eastern-europe_int8_arm.onnx",
-            "filename": "perch_v2_eastern-europe_int8_arm.onnx",
-            "sha256": "5c06c2639b2080f84d93896f1528ebb20962ff19986c09908bd498c41ebaa007",
-            "size_bytes": 45163596
+            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/eastern-europe/perch-v2-eastern-europe-no-dft-fp32-b2.onnx",
+            "filename": "perch-v2-eastern-europe-no-dft-fp32-b2.onnx",
+            "sha256": "94b18575d83197f4b522af03d1875796d67c71fb28b35dece5e66fb5fd2685a2",
+            "size_bytes": 68145548
           },
           "labels": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/eastern-europe/perch_v2_eastern-europe_labels.txt",
-            "filename": "perch_v2_eastern-europe_labels.txt"
+            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/eastern-europe/perch-v2-eastern-europe-labels-b2.txt",
+            "filename": "perch-v2-eastern-europe-labels-b2.txt",
+            "sha256": "85e1f77e9a63e8ee7f9c3b27abcea049b94ce434dff8039c4cdf2bfb3d6604ac",
+            "size_bytes": 12735
           },
           "countries": {
             "core": [
@@ -3832,61 +4103,36 @@
               "Belarus",
               "Poland"
             ]
-          }
-        },
-        {
-          "id": "no-dft-fp32",
-          "region": "eastern-europe",
-          "region_name": "Eastern Europe",
-          "group": "europe",
-          "group_name": "Europe",
-          "group_order": 0,
-          "classes": 739,
-          "model": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/eastern-europe/perch_v2_eastern-europe_no_dft_fp32.onnx",
-            "filename": "perch_v2_eastern-europe_no_dft_fp32.onnx",
-            "sha256": "d8a93f1ef28e26fddeda80833d865463656713471714c1f4cbf92dfb191e6b9b",
-            "size_bytes": 67506052
           },
-          "labels": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/eastern-europe/perch_v2_eastern-europe_labels.txt",
-            "filename": "perch_v2_eastern-europe_labels.txt"
-          },
-          "countries": {
+          "build": 2,
+          "country_codes": {
             "core": [
-              "Moldova",
-              "Romania",
-              "Russia",
-              "Ukraine"
+              "MD",
+              "RO",
+              "RU",
+              "UA"
             ],
             "partial": [
-              "Belarus",
-              "Poland"
+              "BY",
+              "PL"
             ]
-          }
-        },
-        {
-          "id": "int8-arm",
-          "region": "galapagos",
-          "region_name": "Galapagos",
-          "group": "south-america",
-          "group_name": "South America",
-          "group_order": 3,
-          "classes": 336,
-          "model": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/galapagos/perch_v2_galapagos_int8_arm.onnx",
-            "filename": "perch_v2_galapagos_int8_arm.onnx",
-            "sha256": "67ef0140c533e3e3658fe5d317ab64558d7d15353f1679650053397e91fbec73",
-            "size_bytes": 42679502
           },
-          "labels": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/galapagos/perch_v2_galapagos_labels.txt",
-            "filename": "perch_v2_galapagos_labels.txt"
+          "tier": 50,
+          "bboxes": [
+            {
+              "lat_min": 44.0,
+              "lat_max": 53.0,
+              "lon_min": 22.0,
+              "lon_max": 40.0
+            }
+          ],
+          "centroid": {
+            "lat": 48.5,
+            "lon": 31.0
           },
-          "countries": {
-            "core": [
-              "Ecuador"
-            ]
+          "score_calibration": {
+            "method": "softmax-rest-logit",
+            "rest_logit": 9.73
           }
         },
         {
@@ -3896,45 +4142,46 @@
           "group": "south-america",
           "group_name": "South America",
           "group_order": 3,
-          "classes": 336,
+          "classes": 369,
           "model": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/galapagos/perch_v2_galapagos_no_dft_fp32.onnx",
-            "filename": "perch_v2_galapagos_no_dft_fp32.onnx",
-            "sha256": "f80b3b91be5a589358609718acfa0d202c86d2b95c49cadb2d4f46e63ad8bff1",
-            "size_bytes": 57593864
+            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/galapagos/perch-v2-galapagos-no-dft-fp32-b2.onnx",
+            "filename": "perch-v2-galapagos-no-dft-fp32-b2.onnx",
+            "sha256": "d7cb825edfe71a498258eea49d7e34b98e17154f00c595de545bb609eeb803f1",
+            "size_bytes": 58405532
           },
           "labels": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/galapagos/perch_v2_galapagos_labels.txt",
-            "filename": "perch_v2_galapagos_labels.txt"
+            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/galapagos/perch-v2-galapagos-labels-b2.txt",
+            "filename": "perch-v2-galapagos-labels-b2.txt",
+            "sha256": "d26fb47436ef3c311b4f8f5cd803bd3242824a37c09f528ef52cd460d52709bd",
+            "size_bytes": 5605
           },
           "countries": {
             "core": [
               "Ecuador"
             ]
-          }
-        },
-        {
-          "id": "int8-arm",
-          "region": "hawaii",
-          "region_name": "Hawaii",
-          "group": "oceania",
-          "group_name": "Oceania",
-          "group_order": 5,
-          "classes": 478,
-          "model": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/hawaii/perch_v2_hawaii_int8_arm.onnx",
-            "filename": "perch_v2_hawaii_int8_arm.onnx",
-            "sha256": "f14cf802633c1e1ff4f1d71046faf49763211352901fd49038b8365d4fd60403",
-            "size_bytes": 43554792
           },
-          "labels": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/hawaii/perch_v2_hawaii_labels.txt",
-            "filename": "perch_v2_hawaii_labels.txt"
-          },
-          "countries": {
+          "build": 2,
+          "country_codes": {
             "core": [
-              "United States of America"
+              "EC"
             ]
+          },
+          "tier": 90,
+          "bboxes": [
+            {
+              "lat_min": -1.6,
+              "lat_max": 1.8,
+              "lon_min": -92.0,
+              "lon_max": -89.0
+            }
+          ],
+          "centroid": {
+            "lat": 0.1,
+            "lon": -90.5
+          },
+          "score_calibration": {
+            "method": "softmax-rest-logit",
+            "rest_logit": 10.14
           }
         },
         {
@@ -3944,52 +4191,46 @@
           "group": "oceania",
           "group_name": "Oceania",
           "group_order": 5,
-          "classes": 478,
+          "classes": 496,
           "model": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/hawaii/perch_v2_hawaii_no_dft_fp32.onnx",
-            "filename": "perch_v2_hawaii_no_dft_fp32.onnx",
-            "sha256": "c39a3654096e705f1c8888cac2e9f431c8dee1b92b543680b81eede29deb66df",
-            "size_bytes": 61086496
+            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/hawaii/perch-v2-hawaii-no-dft-fp32-b2.onnx",
+            "filename": "perch-v2-hawaii-no-dft-fp32-b2.onnx",
+            "sha256": "f8b2b31dfd01217741b4a5ffaa2126ce206230c1114d53d5f55c868074cba9e6",
+            "size_bytes": 61529224
           },
           "labels": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/hawaii/perch_v2_hawaii_labels.txt",
-            "filename": "perch_v2_hawaii_labels.txt"
+            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/hawaii/perch-v2-hawaii-labels-b2.txt",
+            "filename": "perch-v2-hawaii-labels-b2.txt",
+            "sha256": "af636fbbc5ed500c13d5f78e6fd6de71e92b9309424703218a09054b11da342c",
+            "size_bytes": 7994
           },
           "countries": {
             "core": [
-              "United States of America"
+              "United States"
             ]
-          }
-        },
-        {
-          "id": "int8-arm",
-          "region": "himalaya",
-          "region_name": "Himalaya",
-          "group": "asia",
-          "group_name": "Asia",
-          "group_order": 1,
-          "classes": 1407,
-          "model": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/himalaya/perch_v2_himalaya_int8_arm.onnx",
-            "filename": "perch_v2_himalaya_int8_arm.onnx",
-            "sha256": "3024a89395052e971f6f3dc14525020c174d964f53ebd43a5ad72cc8cf37da00",
-            "size_bytes": 49281151
           },
-          "labels": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/himalaya/perch_v2_himalaya_labels.txt",
-            "filename": "perch_v2_himalaya_labels.txt"
-          },
-          "countries": {
+          "build": 2,
+          "country_codes": {
             "core": [
-              "Bhutan",
-              "China",
-              "India",
-              "Nepal",
-              "Siachen Glacier"
-            ],
-            "partial": [
-              "Pakistan"
+              "US"
             ]
+          },
+          "tier": 90,
+          "bboxes": [
+            {
+              "lat_min": 18.0,
+              "lat_max": 23.0,
+              "lon_min": -161.0,
+              "lon_max": -154.0
+            }
+          ],
+          "centroid": {
+            "lat": 20.5,
+            "lon": -157.5
+          },
+          "score_calibration": {
+            "method": "softmax-rest-logit",
+            "rest_logit": 10.17
           }
         },
         {
@@ -3999,57 +4240,58 @@
           "group": "asia",
           "group_name": "Asia",
           "group_order": 1,
-          "classes": 1407,
+          "classes": 1443,
           "model": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/himalaya/perch_v2_himalaya_no_dft_fp32.onnx",
-            "filename": "perch_v2_himalaya_no_dft_fp32.onnx",
-            "sha256": "d30ee51f106712694f11940336a82621810789dd1237bcfed977d9095a102486",
-            "size_bytes": 83936182
+            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/himalaya/perch-v2-himalaya-no-dft-fp32-b2.onnx",
+            "filename": "perch-v2-himalaya-no-dft-fp32-b2.onnx",
+            "sha256": "d87ea997306f1cacab8c47a9b64a35cbab29ebb338303f12493b90578793e6b0",
+            "size_bytes": 84821638
           },
           "labels": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/himalaya/perch_v2_himalaya_labels.txt",
-            "filename": "perch_v2_himalaya_labels.txt"
+            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/himalaya/perch-v2-himalaya-labels-b2.txt",
+            "filename": "perch-v2-himalaya-labels-b2.txt",
+            "sha256": "e0e19bddcd8ed3209a1f718e1828b0907cf4e9a6497763b71fb0c850879c57e3",
+            "size_bytes": 26786
           },
           "countries": {
             "core": [
               "Bhutan",
               "China",
               "India",
-              "Nepal",
-              "Siachen Glacier"
+              "Nepal"
             ],
             "partial": [
               "Pakistan"
             ]
-          }
-        },
-        {
-          "id": "int8-arm",
-          "region": "iberia",
-          "region_name": "Iberia",
-          "group": "europe",
-          "group_name": "Europe",
-          "group_order": 0,
-          "classes": 856,
-          "model": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/iberia/perch_v2_iberia_int8_arm.onnx",
-            "filename": "perch_v2_iberia_int8_arm.onnx",
-            "sha256": "02e6756a3de2f661b7e612e1487800a3d8ac67dd1d10e21f3269547f4ecb21a5",
-            "size_bytes": 45884784
           },
-          "labels": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/iberia/perch_v2_iberia_labels.txt",
-            "filename": "perch_v2_iberia_labels.txt"
-          },
-          "countries": {
+          "build": 2,
+          "country_codes": {
             "core": [
-              "Andorra",
-              "Portugal",
-              "Spain"
+              "BT",
+              "CN",
+              "IN",
+              "NP"
             ],
             "partial": [
-              "France"
+              "PK"
             ]
+          },
+          "tier": 50,
+          "bboxes": [
+            {
+              "lat_min": 27.0,
+              "lat_max": 36.0,
+              "lon_min": 72.0,
+              "lon_max": 97.0
+            }
+          ],
+          "centroid": {
+            "lat": 31.5,
+            "lon": 84.5
+          },
+          "score_calibration": {
+            "method": "softmax-rest-logit",
+            "rest_logit": 9.9
           }
         },
         {
@@ -4059,50 +4301,56 @@
           "group": "europe",
           "group_name": "Europe",
           "group_order": 0,
-          "classes": 856,
+          "classes": 868,
           "model": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/iberia/perch_v2_iberia_no_dft_fp32.onnx",
-            "filename": "perch_v2_iberia_no_dft_fp32.onnx",
-            "sha256": "0a1f5717b91ceac3bd48378cecbbad1946cdfd3ad0ff72e2fe608c561198a638",
-            "size_bytes": 70383784
+            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/iberia/perch-v2-iberia-no-dft-fp32-b2.onnx",
+            "filename": "perch-v2-iberia-no-dft-fp32-b2.onnx",
+            "sha256": "294f3d93fee66bb65ff6ab0dcd92a1c95feea6a3d6d793c999ca5faa5398f316",
+            "size_bytes": 70678936
           },
           "labels": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/iberia/perch_v2_iberia_labels.txt",
-            "filename": "perch_v2_iberia_labels.txt"
+            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/iberia/perch-v2-iberia-labels-b2.txt",
+            "filename": "perch-v2-iberia-labels-b2.txt",
+            "sha256": "b698e2f030c1c38cc8edfd38ec84e9cba99020ceb731369300cd55a24d705e47",
+            "size_bytes": 14676
           },
           "countries": {
             "core": [
               "Andorra",
-              "Portugal",
-              "Spain"
+              "Spain",
+              "Portugal"
             ],
             "partial": [
               "France"
             ]
-          }
-        },
-        {
-          "id": "int8-arm",
-          "region": "iceland",
-          "region_name": "Iceland",
-          "group": "europe",
-          "group_name": "Europe",
-          "group_order": 0,
-          "classes": 591,
-          "model": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/iceland/perch_v2_iceland_int8_arm.onnx",
-            "filename": "perch_v2_iceland_int8_arm.onnx",
-            "sha256": "6757c6aba4a4eb26ac9ccc6cb195ee298be00a35c0d2beb5aed06b57b3bf82a4",
-            "size_bytes": 44251324
           },
-          "labels": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/iceland/perch_v2_iceland_labels.txt",
-            "filename": "perch_v2_iceland_labels.txt"
-          },
-          "countries": {
+          "build": 2,
+          "country_codes": {
             "core": [
-              "Iceland"
+              "AD",
+              "ES",
+              "PT"
+            ],
+            "partial": [
+              "FR"
             ]
+          },
+          "tier": 50,
+          "bboxes": [
+            {
+              "lat_min": 35.5,
+              "lat_max": 44.5,
+              "lon_min": -10.0,
+              "lon_max": 3.5
+            }
+          ],
+          "centroid": {
+            "lat": 40.0,
+            "lon": -3.25
+          },
+          "score_calibration": {
+            "method": "softmax-rest-logit",
+            "rest_logit": 9.73
           }
         },
         {
@@ -4112,40 +4360,67 @@
           "group": "europe",
           "group_name": "Europe",
           "group_order": 0,
-          "classes": 591,
+          "classes": 619,
           "model": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/iceland/perch_v2_iceland_no_dft_fp32.onnx",
-            "filename": "perch_v2_iceland_no_dft_fp32.onnx",
-            "sha256": "d6c41558e362a69e9e7dba65ad900cf53becf8420d9302b1f164a1f45876fd45",
-            "size_bytes": 63865844
+            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/iceland/perch-v2-iceland-no-dft-fp32-b2.onnx",
+            "filename": "perch-v2-iceland-no-dft-fp32-b2.onnx",
+            "sha256": "c663e8458903afddae5c5a38cc61afbe45578257cfd18144d6292c4be7f51748",
+            "size_bytes": 64554532
           },
           "labels": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/iceland/perch_v2_iceland_labels.txt",
-            "filename": "perch_v2_iceland_labels.txt"
+            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/iceland/perch-v2-iceland-labels-b2.txt",
+            "filename": "perch-v2-iceland-labels-b2.txt",
+            "sha256": "77d022d99670f0108d3198173a5f9ed9fc2e939aafa1209ab4093359d48bc35f",
+            "size_bytes": 10024
           },
           "countries": {
             "core": [
               "Iceland"
             ]
+          },
+          "build": 2,
+          "country_codes": {
+            "core": [
+              "IS"
+            ]
+          },
+          "tier": 90,
+          "bboxes": [
+            {
+              "lat_min": 63.0,
+              "lat_max": 67.0,
+              "lon_min": -25.0,
+              "lon_max": -13.0
+            }
+          ],
+          "centroid": {
+            "lat": 65.0,
+            "lon": -19.0
+          },
+          "score_calibration": {
+            "method": "softmax-rest-logit",
+            "rest_logit": 9.81
           }
         },
         {
-          "id": "int8-arm",
+          "id": "no-dft-fp32",
           "region": "indo-gangetic",
           "region_name": "Indo-Gangetic Plain",
           "group": "asia",
           "group_name": "Asia",
           "group_order": 1,
-          "classes": 1406,
+          "classes": 1436,
           "model": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/indo-gangetic/perch_v2_indo-gangetic_int8_arm.onnx",
-            "filename": "perch_v2_indo-gangetic_int8_arm.onnx",
-            "sha256": "3391d6be6c98637847be9936aa00b00a01dc66bf5d6ee2419690f4321374afeb",
-            "size_bytes": 49274987
+            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/indo-gangetic/perch-v2-indo-gangetic-no-dft-fp32-b2.onnx",
+            "filename": "perch-v2-indo-gangetic-no-dft-fp32-b2.onnx",
+            "sha256": "48687b93c2655042fa6e0595f713497bf4c9d90ee465f264bf36fdb33b67652e",
+            "size_bytes": 84649466
           },
           "labels": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/indo-gangetic/perch_v2_indo-gangetic_labels.txt",
-            "filename": "perch_v2_indo-gangetic_labels.txt"
+            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/indo-gangetic/perch-v2-indo-gangetic-labels-b2.txt",
+            "filename": "perch-v2-indo-gangetic-labels-b2.txt",
+            "sha256": "5f6585ba3b27e172b54a5851bd27f0d1a43c240cba1c84a447e01f8994df431e",
+            "size_bytes": 26624
           },
           "countries": {
             "core": [
@@ -4158,56 +4433,57 @@
             "partial": [
               "China"
             ]
+          },
+          "build": 2,
+          "country_codes": {
+            "core": [
+              "BD",
+              "BT",
+              "IN",
+              "NP",
+              "PK"
+            ],
+            "partial": [
+              "CN"
+            ]
+          },
+          "tier": 50,
+          "bboxes": [
+            {
+              "lat_min": 21.0,
+              "lat_max": 30.0,
+              "lon_min": 68.0,
+              "lon_max": 90.0
+            }
+          ],
+          "centroid": {
+            "lat": 25.5,
+            "lon": 79.0
+          },
+          "score_calibration": {
+            "method": "softmax-rest-logit",
+            "rest_logit": 10.02
           }
         },
         {
           "id": "no-dft-fp32",
-          "region": "indo-gangetic",
-          "region_name": "Indo-Gangetic Plain",
-          "group": "asia",
-          "group_name": "Asia",
-          "group_order": 1,
-          "classes": 1406,
-          "model": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/indo-gangetic/perch_v2_indo-gangetic_no_dft_fp32.onnx",
-            "filename": "perch_v2_indo-gangetic_no_dft_fp32.onnx",
-            "sha256": "e5a397ccfb8e803095147c239c5ee716065e3d8e5322b108f372dbde885d955f",
-            "size_bytes": 83911586
-          },
-          "labels": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/indo-gangetic/perch_v2_indo-gangetic_labels.txt",
-            "filename": "perch_v2_indo-gangetic_labels.txt"
-          },
-          "countries": {
-            "core": [
-              "Bangladesh",
-              "Bhutan",
-              "India",
-              "Nepal",
-              "Pakistan"
-            ],
-            "partial": [
-              "China"
-            ]
-          }
-        },
-        {
-          "id": "int8-arm",
           "region": "japan",
           "region_name": "Japan",
           "group": "asia",
           "group_name": "Asia",
           "group_order": 1,
-          "classes": 799,
+          "classes": 829,
           "model": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/japan/perch_v2_japan_int8_arm.onnx",
-            "filename": "perch_v2_japan_int8_arm.onnx",
-            "sha256": "5839117a9311d7ecf4772a262c8f5b2887debc7d13192d66f7d8d910990bcdeb",
-            "size_bytes": 45533436
+            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/japan/perch-v2-japan-no-dft-fp32-b2.onnx",
+            "filename": "perch-v2-japan-no-dft-fp32-b2.onnx",
+            "sha256": "636aa4608df8f28812d229c6bd0196cb82ceb44c2c0bd038f1ec527f36222352",
+            "size_bytes": 69719692
           },
           "labels": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/japan/perch_v2_japan_labels.txt",
-            "filename": "perch_v2_japan_labels.txt"
+            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/japan/perch-v2-japan-labels-b2.txt",
+            "filename": "perch-v2-japan-labels-b2.txt",
+            "sha256": "bc23c942229bf5260b8527893812cf395016dfe2f766c6b5a7903e0ec393a36b",
+            "size_bytes": 14288
           },
           "countries": {
             "core": [
@@ -4219,60 +4495,35 @@
               "North Korea",
               "Russia"
             ]
-          }
-        },
-        {
-          "id": "no-dft-fp32",
-          "region": "japan",
-          "region_name": "Japan",
-          "group": "asia",
-          "group_name": "Asia",
-          "group_order": 1,
-          "classes": 799,
-          "model": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/japan/perch_v2_japan_no_dft_fp32.onnx",
-            "filename": "perch_v2_japan_no_dft_fp32.onnx",
-            "sha256": "740778772ace4d8d6889ec7b890073518e915b457ee66180fc09cad1caf329f7",
-            "size_bytes": 68981812
           },
-          "labels": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/japan/perch_v2_japan_labels.txt",
-            "filename": "perch_v2_japan_labels.txt"
-          },
-          "countries": {
+          "build": 2,
+          "country_codes": {
             "core": [
-              "Japan",
-              "South Korea"
+              "JP",
+              "KR"
             ],
             "partial": [
-              "China",
-              "North Korea",
-              "Russia"
+              "CN",
+              "KP",
+              "RU"
             ]
-          }
-        },
-        {
-          "id": "int8-arm",
-          "region": "madeira",
-          "region_name": "Madeira",
-          "group": "europe",
-          "group_name": "Europe",
-          "group_order": 0,
-          "classes": 459,
-          "model": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/madeira/perch_v2_madeira_int8_arm.onnx",
-            "filename": "perch_v2_madeira_int8_arm.onnx",
-            "sha256": "598e826eacc21a3cea1a27c8aec1eca733e308517c63c0a24bd81222cc7ab138",
-            "size_bytes": 43437676
           },
-          "labels": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/madeira/perch_v2_madeira_labels.txt",
-            "filename": "perch_v2_madeira_labels.txt"
+          "tier": 50,
+          "bboxes": [
+            {
+              "lat_min": 30.0,
+              "lat_max": 46.0,
+              "lon_min": 128.0,
+              "lon_max": 146.0
+            }
+          ],
+          "centroid": {
+            "lat": 38.0,
+            "lon": 137.0
           },
-          "countries": {
-            "core": [
-              "Portugal"
-            ]
+          "score_calibration": {
+            "method": "softmax-rest-logit",
+            "rest_logit": 10.31
           }
         },
         {
@@ -4282,193 +4533,193 @@
           "group": "europe",
           "group_name": "Europe",
           "group_order": 0,
-          "classes": 459,
-          "model": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/madeira/perch_v2_madeira_no_dft_fp32.onnx",
-            "filename": "perch_v2_madeira_no_dft_fp32.onnx",
-            "sha256": "3b7f918d84f711485a6258b08dcfd216c727b99d7717b9b935d20a2e80a49ae2",
-            "size_bytes": 60619172
-          },
-          "labels": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/madeira/perch_v2_madeira_labels.txt",
-            "filename": "perch_v2_madeira_labels.txt"
-          },
-          "countries": {
-            "core": [
-              "Portugal"
-            ]
-          }
-        },
-        {
-          "id": "int8-arm",
-          "region": "mauritius",
-          "region_name": "Mauritius",
-          "group": "africa",
-          "group_name": "Africa",
-          "group_order": 4,
-          "classes": 272,
-          "model": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/mauritius/perch_v2_mauritius_int8_arm.onnx",
-            "filename": "perch_v2_mauritius_int8_arm.onnx",
-            "sha256": "0993bce471bfed702c56e808d8a1b8014b8e25a6905f9f79e0b5dbf2f27846e8",
-            "size_bytes": 42285006
-          },
-          "labels": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/mauritius/perch_v2_mauritius_labels.txt",
-            "filename": "perch_v2_mauritius_labels.txt"
-          },
-          "countries": {
-            "core": [
-              "Mauritius"
-            ]
-          }
-        },
-        {
-          "id": "no-dft-fp32",
-          "region": "mauritius",
-          "region_name": "Mauritius",
-          "group": "africa",
-          "group_name": "Africa",
-          "group_order": 4,
-          "classes": 272,
-          "model": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/mauritius/perch_v2_mauritius_no_dft_fp32.onnx",
-            "filename": "perch_v2_mauritius_no_dft_fp32.onnx",
-            "sha256": "03381abc5b75d2fb49c2f60fafa9c80e1f0e0ac0d9657b5842695f09baf1f4ca",
-            "size_bytes": 56019720
-          },
-          "labels": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/mauritius/perch_v2_mauritius_labels.txt",
-            "filename": "perch_v2_mauritius_labels.txt"
-          },
-          "countries": {
-            "core": [
-              "Mauritius"
-            ]
-          }
-        },
-        {
-          "id": "int8-arm",
-          "region": "new-caledonia",
-          "region_name": "New Caledonia",
-          "group": "oceania",
-          "group_name": "Oceania",
-          "group_order": 5,
-          "classes": 377,
-          "model": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/new-caledonia/perch_v2_new-caledonia_int8_arm.onnx",
-            "filename": "perch_v2_new-caledonia_int8_arm.onnx",
-            "sha256": "01787c1a20d7b0ebe1d1ec3e1c28803c97ab45fa2490f6ed8c5c338dde8b0751",
-            "size_bytes": 42932228
-          },
-          "labels": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/new-caledonia/perch_v2_new-caledonia_labels.txt",
-            "filename": "perch_v2_new-caledonia_labels.txt"
-          },
-          "countries": {
-            "core": [
-              "New Caledonia"
-            ]
-          }
-        },
-        {
-          "id": "no-dft-fp32",
-          "region": "new-caledonia",
-          "region_name": "New Caledonia",
-          "group": "oceania",
-          "group_name": "Oceania",
-          "group_order": 5,
-          "classes": 377,
-          "model": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/new-caledonia/perch_v2_new-caledonia_no_dft_fp32.onnx",
-            "filename": "perch_v2_new-caledonia_no_dft_fp32.onnx",
-            "sha256": "c103abcf0699889a17464ba5276ee270688cbf3daf9e125bc4ce63301ea588c0",
-            "size_bytes": 58602300
-          },
-          "labels": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/new-caledonia/perch_v2_new-caledonia_labels.txt",
-            "filename": "perch_v2_new-caledonia_labels.txt"
-          },
-          "countries": {
-            "core": [
-              "New Caledonia"
-            ]
-          }
-        },
-        {
-          "id": "int8-arm",
-          "region": "new-zealand",
-          "region_name": "New Zealand",
-          "group": "oceania",
-          "group_name": "Oceania",
-          "group_order": 5,
           "classes": 486,
           "model": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/new-zealand/perch_v2_new-zealand_int8_arm.onnx",
-            "filename": "perch_v2_new-zealand_int8_arm.onnx",
-            "sha256": "ebf3c3a7021c2f2c4ab53d1cd2caaf3f92e798483f7f86000e19f7f362e1ded5",
-            "size_bytes": 43604104
-          },
-          "labels": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/new-zealand/perch_v2_new-zealand_labels.txt",
-            "filename": "perch_v2_new-zealand_labels.txt"
-          },
-          "countries": {
-            "core": [
-              "New Zealand"
-            ]
-          }
-        },
-        {
-          "id": "no-dft-fp32",
-          "region": "new-zealand",
-          "region_name": "New Zealand",
-          "group": "oceania",
-          "group_name": "Oceania",
-          "group_order": 5,
-          "classes": 486,
-          "model": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/new-zealand/perch_v2_new-zealand_no_dft_fp32.onnx",
-            "filename": "perch_v2_new-zealand_no_dft_fp32.onnx",
-            "sha256": "a82854470d31363d410b1744ccec6c7c5d97c44d5041622e2c31acebfe0f2403",
+            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/madeira/perch-v2-madeira-no-dft-fp32-b2.onnx",
+            "filename": "perch-v2-madeira-no-dft-fp32-b2.onnx",
+            "sha256": "59c01d8abd3d265026d4b8f431c0e54ac0230d676b2e4735331b8afb8e81e5d0",
             "size_bytes": 61283264
           },
           "labels": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/new-zealand/perch_v2_new-zealand_labels.txt",
-            "filename": "perch_v2_new-zealand_labels.txt"
+            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/madeira/perch-v2-madeira-labels-b2.txt",
+            "filename": "perch-v2-madeira-labels-b2.txt",
+            "sha256": "ab3b8c6d074d7ce37fdab1a879ad014427edd619eb73677fe88cd3b3efd1e907",
+            "size_bytes": 7621
+          },
+          "countries": {
+            "core": [
+              "Portugal"
+            ]
+          },
+          "build": 2,
+          "country_codes": {
+            "core": [
+              "PT"
+            ]
+          },
+          "tier": 90,
+          "bboxes": [
+            {
+              "lat_min": 32.3,
+              "lat_max": 33.2,
+              "lon_min": -17.4,
+              "lon_max": -16.2
+            }
+          ],
+          "centroid": {
+            "lat": 32.75,
+            "lon": -16.8
+          },
+          "score_calibration": {
+            "method": "softmax-rest-logit",
+            "rest_logit": 10.06
+          }
+        },
+        {
+          "id": "no-dft-fp32",
+          "region": "mauritius",
+          "region_name": "Mauritius",
+          "group": "africa",
+          "group_name": "Africa",
+          "group_order": 4,
+          "classes": 306,
+          "model": {
+            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/mauritius/perch-v2-mauritius-no-dft-fp32-b2.onnx",
+            "filename": "perch-v2-mauritius-no-dft-fp32-b2.onnx",
+            "sha256": "7a2a5072411b245c21ef5e45f74967818eb1a9cbd7f368fd617b734fe3aff97d",
+            "size_bytes": 56855984
+          },
+          "labels": {
+            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/mauritius/perch-v2-mauritius-labels-b2.txt",
+            "filename": "perch-v2-mauritius-labels-b2.txt",
+            "sha256": "443e1a6a699cdd3d46e64060f2b87c1c11b28074128d4998f6e74fa82553a922",
+            "size_bytes": 4440
+          },
+          "countries": {
+            "core": [
+              "Mauritius"
+            ]
+          },
+          "build": 2,
+          "country_codes": {
+            "core": [
+              "MU"
+            ]
+          },
+          "tier": 90,
+          "bboxes": [
+            {
+              "lat_min": -20.6,
+              "lat_max": -19.9,
+              "lon_min": 57.2,
+              "lon_max": 57.9
+            }
+          ],
+          "centroid": {
+            "lat": -20.25,
+            "lon": 57.55
+          },
+          "score_calibration": {
+            "method": "softmax-rest-logit",
+            "rest_logit": 10.17
+          }
+        },
+        {
+          "id": "no-dft-fp32",
+          "region": "new-caledonia",
+          "region_name": "New Caledonia",
+          "group": "oceania",
+          "group_name": "Oceania",
+          "group_order": 5,
+          "classes": 410,
+          "model": {
+            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/new-caledonia/perch-v2-new-caledonia-no-dft-fp32-b2.onnx",
+            "filename": "perch-v2-new-caledonia-no-dft-fp32-b2.onnx",
+            "sha256": "2b0add06ea220de5deb560fcdd7eafe5b62d2811001081bcd8f4c26303a9e8bd",
+            "size_bytes": 59413968
+          },
+          "labels": {
+            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/new-caledonia/perch-v2-new-caledonia-labels-b2.txt",
+            "filename": "perch-v2-new-caledonia-labels-b2.txt",
+            "sha256": "13f5e59c8c6acbb5582a188b4aebddaa9223054774e41a91d90fd0484595a8ca",
+            "size_bytes": 6510
+          },
+          "countries": {
+            "core": [
+              "New Caledonia"
+            ]
+          },
+          "build": 2,
+          "country_codes": {
+            "core": [
+              "NC"
+            ]
+          },
+          "tier": 90,
+          "bboxes": [
+            {
+              "lat_min": -22.8,
+              "lat_max": -19.5,
+              "lon_min": 163.5,
+              "lon_max": 168.2
+            }
+          ],
+          "centroid": {
+            "lat": -21.15,
+            "lon": 165.85
+          },
+          "score_calibration": {
+            "method": "softmax-rest-logit",
+            "rest_logit": 10.14
+          }
+        },
+        {
+          "id": "no-dft-fp32",
+          "region": "new-zealand",
+          "region_name": "New Zealand",
+          "group": "oceania",
+          "group_name": "Oceania",
+          "group_order": 5,
+          "classes": 508,
+          "model": {
+            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/new-zealand/perch-v2-new-zealand-no-dft-fp32-b2.onnx",
+            "filename": "perch-v2-new-zealand-no-dft-fp32-b2.onnx",
+            "sha256": "a3b07fc8dffefe95cced82a51ecbd69c32412b35bc4884a7a69544443612c5e9",
+            "size_bytes": 61824376
+          },
+          "labels": {
+            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/new-zealand/perch-v2-new-zealand-labels-b2.txt",
+            "filename": "perch-v2-new-zealand-labels-b2.txt",
+            "sha256": "710ad6885d323112cc3fa4ea03dc4422472bff4f6db31b1f449117b2f45b4102",
+            "size_bytes": 8380
           },
           "countries": {
             "core": [
               "New Zealand"
             ]
-          }
-        },
-        {
-          "id": "int8-arm",
-          "region": "nordic",
-          "region_name": "Nordic",
-          "group": "europe",
-          "group_name": "Europe",
-          "group_order": 0,
-          "classes": 638,
-          "model": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/nordic/perch_v2_nordic_int8_arm.onnx",
-            "filename": "perch_v2_nordic_int8_arm.onnx",
-            "sha256": "1048a9a73aaa9838a68927148768dfcb46a9a765ac3a97cf62030f4a45d3b3bb",
-            "size_bytes": 44541032
           },
-          "labels": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/nordic/perch_v2_nordic_labels.txt",
-            "filename": "perch_v2_nordic_labels.txt"
-          },
-          "countries": {
+          "build": 2,
+          "country_codes": {
             "core": [
-              "Aland",
-              "Denmark",
-              "Finland",
-              "Norway",
-              "Sweden"
+              "NZ"
             ]
+          },
+          "tier": 50,
+          "bboxes": [
+            {
+              "lat_min": -48.0,
+              "lat_max": -34.0,
+              "lon_min": 166.0,
+              "lon_max": 179.0
+            }
+          ],
+          "centroid": {
+            "lat": -41.0,
+            "lon": 172.5
+          },
+          "score_calibration": {
+            "method": "softmax-rest-logit",
+            "rest_logit": 10.37
           }
         },
         {
@@ -4478,51 +4729,54 @@
           "group": "europe",
           "group_name": "Europe",
           "group_order": 0,
-          "classes": 638,
+          "classes": 668,
           "model": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/nordic/perch_v2_nordic_no_dft_fp32.onnx",
-            "filename": "perch_v2_nordic_no_dft_fp32.onnx",
-            "sha256": "14649846088e6156eb0b1d40d2e90362fcf60d466f9543b8834cdf0c78a15081",
-            "size_bytes": 65021856
+            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/nordic/perch-v2-nordic-no-dft-fp32-b2.onnx",
+            "filename": "perch-v2-nordic-no-dft-fp32-b2.onnx",
+            "sha256": "d55ebde07253153ede891697da1c94f0068c6124d81706752b409625e1022010",
+            "size_bytes": 65759736
           },
           "labels": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/nordic/perch_v2_nordic_labels.txt",
-            "filename": "perch_v2_nordic_labels.txt"
+            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/nordic/perch-v2-nordic-labels-b2.txt",
+            "filename": "perch-v2-nordic-labels-b2.txt",
+            "sha256": "7e2f0b5ff408d7dd6f089c7cdbe1fc846e23d11ec79c27dce03c452f622ad13e",
+            "size_bytes": 10848
           },
           "countries": {
             "core": [
-              "Aland",
+              "Åland Islands",
               "Denmark",
               "Finland",
               "Norway",
               "Sweden"
             ]
-          }
-        },
-        {
-          "id": "int8-arm",
-          "region": "north-america-east",
-          "region_name": "North America (East)",
-          "group": "north-america",
-          "group_name": "North America",
-          "group_order": 2,
-          "classes": 999,
-          "model": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/north-america-east/perch_v2_north-america-east_int8_arm.onnx",
-            "filename": "perch_v2_north-america-east_int8_arm.onnx",
-            "sha256": "5a64e006e1617ac22bc3e1d35012435d8b8db2e9b8b3e8d3298c3d04827abaa0",
-            "size_bytes": 46766237
           },
-          "labels": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/north-america-east/perch_v2_north-america-east_labels.txt",
-            "filename": "perch_v2_north-america-east_labels.txt"
-          },
-          "countries": {
+          "build": 2,
+          "country_codes": {
             "core": [
-              "Bermuda",
-              "Canada",
-              "United States of America"
+              "AX",
+              "DK",
+              "FI",
+              "NO",
+              "SE"
             ]
+          },
+          "tier": 50,
+          "bboxes": [
+            {
+              "lat_min": 53.1,
+              "lat_max": 72.66,
+              "lon_min": 3.32,
+              "lon_max": 32.05
+            }
+          ],
+          "centroid": {
+            "lat": 62.88,
+            "lon": 17.685
+          },
+          "score_calibration": {
+            "method": "softmax-rest-logit",
+            "rest_logit": 9.75
           }
         },
         {
@@ -4532,48 +4786,50 @@
           "group": "north-america",
           "group_name": "North America",
           "group_order": 2,
-          "classes": 999,
+          "classes": 1035,
           "model": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/north-america-east/perch_v2_north-america-east_no_dft_fp32.onnx",
-            "filename": "perch_v2_north-america-east_no_dft_fp32.onnx",
-            "sha256": "80d640c44e0775a7ef68967e5d9f073970d918486c7686ac4a14c77f3bab5d71",
-            "size_bytes": 73901012
+            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/north-america-east/perch-v2-north-america-east-no-dft-fp32-b2.onnx",
+            "filename": "perch-v2-north-america-east-no-dft-fp32-b2.onnx",
+            "sha256": "386c50992a2a6e7841805e1dc0bdb45a8c7d4b3a5d9713bc2fc60e013c43a9e4",
+            "size_bytes": 74786470
           },
           "labels": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/north-america-east/perch_v2_north-america-east_labels.txt",
-            "filename": "perch_v2_north-america-east_labels.txt"
+            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/north-america-east/perch-v2-north-america-east-labels-b2.txt",
+            "filename": "perch-v2-north-america-east-labels-b2.txt",
+            "sha256": "a5d679229f8fb387cb60c5af765e5b59f2c34469cab3d475f69cf7ac743782e7",
+            "size_bytes": 18489
           },
           "countries": {
             "core": [
               "Bermuda",
               "Canada",
-              "United States of America"
+              "United States"
             ]
-          }
-        },
-        {
-          "id": "int8-arm",
-          "region": "north-america-west",
-          "region_name": "North America (West)",
-          "group": "north-america",
-          "group_name": "North America",
-          "group_order": 2,
-          "classes": 1002,
-          "model": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/north-america-west/perch_v2_north-america-west_int8_arm.onnx",
-            "filename": "perch_v2_north-america-west_int8_arm.onnx",
-            "sha256": "deabb5e7192a110838356021d2ac78f3800e25783f61b99e6fdcd491db910915",
-            "size_bytes": 46784729
           },
-          "labels": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/north-america-west/perch_v2_north-america-west_labels.txt",
-            "filename": "perch_v2_north-america-west_labels.txt"
-          },
-          "countries": {
+          "build": 2,
+          "country_codes": {
             "core": [
-              "Canada",
-              "United States of America"
+              "BM",
+              "CA",
+              "US"
             ]
+          },
+          "tier": 50,
+          "bboxes": [
+            {
+              "lat_min": 25.0,
+              "lat_max": 50.0,
+              "lon_min": -95.0,
+              "lon_max": -60.0
+            }
+          ],
+          "centroid": {
+            "lat": 37.5,
+            "lon": -77.5
+          },
+          "score_calibration": {
+            "method": "softmax-rest-logit",
+            "rest_logit": 9.91
           }
         },
         {
@@ -4583,46 +4839,48 @@
           "group": "north-america",
           "group_name": "North America",
           "group_order": 2,
-          "classes": 1002,
+          "classes": 1037,
           "model": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/north-america-west/perch_v2_north-america-west_no_dft_fp32.onnx",
-            "filename": "perch_v2_north-america-west_no_dft_fp32.onnx",
-            "sha256": "50899fc74072a58d2da28c180e15d32282fef270982c21d67a04ebcd3f0b65f2",
-            "size_bytes": 73974800
+            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/north-america-west/perch-v2-north-america-west-no-dft-fp32-b2.onnx",
+            "filename": "perch-v2-north-america-west-no-dft-fp32-b2.onnx",
+            "sha256": "99945b32defc1610fe86fa5432317e1d02e68a746377488dab08d10a2ab43eeb",
+            "size_bytes": 74835662
           },
           "labels": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/north-america-west/perch_v2_north-america-west_labels.txt",
-            "filename": "perch_v2_north-america-west_labels.txt"
+            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/north-america-west/perch-v2-north-america-west-labels-b2.txt",
+            "filename": "perch-v2-north-america-west-labels-b2.txt",
+            "sha256": "aadc0835f289e6a03ebc4bddd0f4abe9b8db55c360071a1849436e0fbd5f5792",
+            "size_bytes": 18506
           },
           "countries": {
             "core": [
               "Canada",
-              "United States of America"
+              "United States"
             ]
-          }
-        },
-        {
-          "id": "int8-arm",
-          "region": "reunion",
-          "region_name": "Reunion",
-          "group": "africa",
-          "group_name": "Africa",
-          "group_order": 4,
-          "classes": 274,
-          "model": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/reunion/perch_v2_reunion_int8_arm.onnx",
-            "filename": "perch_v2_reunion_int8_arm.onnx",
-            "sha256": "2a9888cac580e55ec41771e5d27aae9c8a5766434569aa727264d5238525a4b5",
-            "size_bytes": 42297334
           },
-          "labels": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/reunion/perch_v2_reunion_labels.txt",
-            "filename": "perch_v2_reunion_labels.txt"
-          },
-          "countries": {
+          "build": 2,
+          "country_codes": {
             "core": [
-              "France"
+              "CA",
+              "US"
             ]
+          },
+          "tier": 50,
+          "bboxes": [
+            {
+              "lat_min": 31.0,
+              "lat_max": 55.0,
+              "lon_min": -125.0,
+              "lon_max": -100.0
+            }
+          ],
+          "centroid": {
+            "lat": 43.0,
+            "lon": -112.5
+          },
+          "score_calibration": {
+            "method": "softmax-rest-logit",
+            "rest_logit": 9.89
           }
         },
         {
@@ -4632,93 +4890,95 @@
           "group": "africa",
           "group_name": "Africa",
           "group_order": 4,
-          "classes": 274,
+          "classes": 308,
           "model": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/reunion/perch_v2_reunion_no_dft_fp32.onnx",
-            "filename": "perch_v2_reunion_no_dft_fp32.onnx",
-            "sha256": "cc0c2a3f511fb981a28a5d1d3515b5f98e7e42215a1bb6b32cfec1790b087857",
-            "size_bytes": 56068912
+            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/reunion/perch-v2-reunion-no-dft-fp32-b2.onnx",
+            "filename": "perch-v2-reunion-no-dft-fp32-b2.onnx",
+            "sha256": "087c26be8140bb69a5f6171b3dd8be288622c51fcf0c6ffaa6fd1b35f8dd66e7",
+            "size_bytes": 56905176
           },
           "labels": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/reunion/perch_v2_reunion_labels.txt",
-            "filename": "perch_v2_reunion_labels.txt"
+            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/reunion/perch-v2-reunion-labels-b2.txt",
+            "filename": "perch-v2-reunion-labels-b2.txt",
+            "sha256": "e329ecf36c193191d50444d1faebd38464c5c4ec61a1735074cbfb0105279c85",
+            "size_bytes": 4489
           },
           "countries": {
             "core": [
-              "France"
+              "Réunion"
             ]
+          },
+          "build": 2,
+          "country_codes": {
+            "core": [
+              "RE"
+            ]
+          },
+          "tier": 90,
+          "bboxes": [
+            {
+              "lat_min": -21.7,
+              "lat_max": -20.7,
+              "lon_min": 55.0,
+              "lon_max": 56.2
+            }
+          ],
+          "centroid": {
+            "lat": -21.2,
+            "lon": 55.6
+          },
+          "score_calibration": {
+            "method": "softmax-rest-logit",
+            "rest_logit": 10.17
           }
         },
         {
-          "id": "int8-arm",
+          "id": "no-dft-fp32",
           "region": "sao-tome-principe",
           "region_name": "Sao Tome & Principe",
           "group": "africa",
           "group_name": "Africa",
           "group_order": 4,
-          "classes": 324,
+          "classes": 358,
           "model": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/sao-tome-principe/perch_v2_sao-tome-principe_int8_arm.onnx",
-            "filename": "perch_v2_sao-tome-principe_int8_arm.onnx",
-            "sha256": "a9cd8bbe8ff608c97e38098349451766dd02f16acc7e9422a216c831970de99c",
-            "size_bytes": 42605534
+            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/sao-tome-principe/perch-v2-sao-tome-principe-no-dft-fp32-b2.onnx",
+            "filename": "perch-v2-sao-tome-principe-no-dft-fp32-b2.onnx",
+            "sha256": "0944de1b75ffa6e13cb3c134245a20eeac37327bfabee43b929456929a26889a",
+            "size_bytes": 58134976
           },
           "labels": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/sao-tome-principe/perch_v2_sao-tome-principe_labels.txt",
-            "filename": "perch_v2_sao-tome-principe_labels.txt"
+            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/sao-tome-principe/perch-v2-sao-tome-principe-labels-b2.txt",
+            "filename": "perch-v2-sao-tome-principe-labels-b2.txt",
+            "sha256": "c00451abdef39312ca3575a8e4bb332a1284e08c77bbf66a840210f8ee83751c",
+            "size_bytes": 5344
           },
           "countries": {
             "core": [
-              "São Tomé and Principe"
+              "São Tomé & Príncipe"
             ]
-          }
-        },
-        {
-          "id": "no-dft-fp32",
-          "region": "sao-tome-principe",
-          "region_name": "Sao Tome & Principe",
-          "group": "africa",
-          "group_name": "Africa",
-          "group_order": 4,
-          "classes": 324,
-          "model": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/sao-tome-principe/perch_v2_sao-tome-principe_no_dft_fp32.onnx",
-            "filename": "perch_v2_sao-tome-principe_no_dft_fp32.onnx",
-            "sha256": "e01153e0900fc9c1d971310ee25c7a0b9a0e6c4462670f43651cadc3cca4793d",
-            "size_bytes": 57298712
           },
-          "labels": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/sao-tome-principe/perch_v2_sao-tome-principe_labels.txt",
-            "filename": "perch_v2_sao-tome-principe_labels.txt"
-          },
-          "countries": {
+          "build": 2,
+          "country_codes": {
             "core": [
-              "São Tomé and Principe"
+              "ST"
             ]
-          }
-        },
-        {
-          "id": "int8-arm",
-          "region": "seychelles",
-          "region_name": "Seychelles",
-          "group": "africa",
-          "group_name": "Africa",
-          "group_order": 4,
-          "classes": 318,
-          "model": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/seychelles/perch_v2_seychelles_int8_arm.onnx",
-            "filename": "perch_v2_seychelles_int8_arm.onnx",
-            "sha256": "543a734df159e86c50f112d83d7bdb9cb6143442ac540ed1796725adb0b9b843",
-            "size_bytes": 42568550
           },
-          "labels": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/seychelles/perch_v2_seychelles_labels.txt",
-            "filename": "perch_v2_seychelles_labels.txt"
+          "tier": 90,
+          "bboxes": [
+            {
+              "lat_min": -0.7,
+              "lat_max": 2.0,
+              "lon_min": 6.2,
+              "lon_max": 7.7
+            }
+          ],
+          "centroid": {
+            "lat": 0.65,
+            "lon": 6.95
           },
-          "countries": {
-            "core": [
-              "Seychelles"
-            ]
+          "score_calibration": {
+            "method": "softmax-rest-logit",
+            "rest_logit": 10.17
           }
         },
         {
@@ -4728,100 +4988,97 @@
           "group": "africa",
           "group_name": "Africa",
           "group_order": 4,
-          "classes": 318,
+          "classes": 351,
           "model": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/seychelles/perch_v2_seychelles_no_dft_fp32.onnx",
-            "filename": "perch_v2_seychelles_no_dft_fp32.onnx",
-            "sha256": "c50ea0af5c068ae34cde58f3fa342ffefee498a1d3a1ba357b5487a5786861d3",
-            "size_bytes": 57151136
+            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/seychelles/perch-v2-seychelles-no-dft-fp32-b2.onnx",
+            "filename": "perch-v2-seychelles-no-dft-fp32-b2.onnx",
+            "sha256": "08195568678ffff48140bdda029b172cb427881df14b4937f789de35833a3953",
+            "size_bytes": 57962804
           },
           "labels": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/seychelles/perch_v2_seychelles_labels.txt",
-            "filename": "perch_v2_seychelles_labels.txt"
+            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/seychelles/perch-v2-seychelles-labels-b2.txt",
+            "filename": "perch-v2-seychelles-labels-b2.txt",
+            "sha256": "95febc24f1caed7bf49793b3df0e24dae03db812af380fdf9f3165db74317dfd",
+            "size_bytes": 5247
           },
           "countries": {
             "core": [
               "Seychelles"
             ]
+          },
+          "build": 2,
+          "country_codes": {
+            "core": [
+              "SC"
+            ]
+          },
+          "tier": 90,
+          "bboxes": [
+            {
+              "lat_min": -5.0,
+              "lat_max": -3.7,
+              "lon_min": 55.2,
+              "lon_max": 56.0
+            }
+          ],
+          "centroid": {
+            "lat": -4.35,
+            "lon": 55.6
+          },
+          "score_calibration": {
+            "method": "softmax-rest-logit",
+            "rest_logit": 10.17
           }
         },
         {
-          "id": "int8-arm",
+          "id": "no-dft-fp32",
           "region": "south-asia-peninsular",
           "region_name": "South India & Sri Lanka",
           "group": "asia",
           "group_name": "Asia",
           "group_order": 1,
-          "classes": 879,
+          "classes": 905,
           "model": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/south-asia-peninsular/perch_v2_south-asia-peninsular_int8_arm.onnx",
-            "filename": "perch_v2_south-asia-peninsular_int8_arm.onnx",
-            "sha256": "a84c872c56ddb5d5a76f6abb0c27926807b9da336de526c8bb91194c1c5bf4b9",
-            "size_bytes": 46026556
+            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/south-asia-peninsular/perch-v2-south-asia-peninsular-no-dft-fp32-b2.onnx",
+            "filename": "perch-v2-south-asia-peninsular-no-dft-fp32-b2.onnx",
+            "sha256": "c2c6df1d8b1d5e4391f0358f0451cc52ec6cdc2509cb9fc76091e025c9118b00",
+            "size_bytes": 71588988
           },
           "labels": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/south-asia-peninsular/perch_v2_south-asia-peninsular_labels.txt",
-            "filename": "perch_v2_south-asia-peninsular_labels.txt"
+            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/south-asia-peninsular/perch-v2-south-asia-peninsular-labels-b2.txt",
+            "filename": "perch-v2-south-asia-peninsular-labels-b2.txt",
+            "sha256": "f3d5f979fb04ef7ba51dbfa2e9c92e4f1876c4ef9d91ac9982a9dd9b7123b79e",
+            "size_bytes": 15943
           },
           "countries": {
             "core": [
               "India",
               "Sri Lanka"
             ]
-          }
-        },
-        {
-          "id": "no-dft-fp32",
-          "region": "south-asia-peninsular",
-          "region_name": "South India & Sri Lanka",
-          "group": "asia",
-          "group_name": "Asia",
-          "group_order": 1,
-          "classes": 879,
-          "model": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/south-asia-peninsular/perch_v2_south-asia-peninsular_no_dft_fp32.onnx",
-            "filename": "perch_v2_south-asia-peninsular_no_dft_fp32.onnx",
-            "sha256": "1ab0884a4986dadbeb74a906a8f33568b2856d014f02fc4cf9175ef8e20a2390",
-            "size_bytes": 70949492
           },
-          "labels": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/south-asia-peninsular/perch_v2_south-asia-peninsular_labels.txt",
-            "filename": "perch_v2_south-asia-peninsular_labels.txt"
-          },
-          "countries": {
+          "build": 2,
+          "country_codes": {
             "core": [
-              "India",
-              "Sri Lanka"
+              "IN",
+              "LK"
             ]
-          }
-        },
-        {
-          "id": "int8-arm",
-          "region": "southern-africa",
-          "region_name": "Southern Africa",
-          "group": "africa",
-          "group_name": "Africa",
-          "group_order": 4,
-          "classes": 1002,
-          "model": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/southern-africa/perch_v2_southern-africa_int8_arm.onnx",
-            "filename": "perch_v2_southern-africa_int8_arm.onnx",
-            "sha256": "d2e6ae6d660d717a53f93d3cacfae2c851c907f8c873e99739181017e7e39a73",
-            "size_bytes": 46784728
           },
-          "labels": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/southern-africa/perch_v2_southern-africa_labels.txt",
-            "filename": "perch_v2_southern-africa_labels.txt"
+          "tier": 50,
+          "bboxes": [
+            {
+              "lat_min": 5.5,
+              "lat_max": 21.0,
+              "lon_min": 72.0,
+              "lon_max": 88.0
+            }
+          ],
+          "centroid": {
+            "lat": 13.25,
+            "lon": 80.0
           },
-          "countries": {
-            "core": [
-              "Botswana",
-              "Lesotho",
-              "Namibia",
-              "South Africa",
-              "Zimbabwe",
-              "eSwatini"
-            ]
+          "score_calibration": {
+            "method": "softmax-rest-logit",
+            "rest_logit": 10.09
           }
         },
         {
@@ -4831,45 +5088,77 @@
           "group": "africa",
           "group_name": "Africa",
           "group_order": 4,
-          "classes": 1002,
+          "classes": 1037,
           "model": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/southern-africa/perch_v2_southern-africa_no_dft_fp32.onnx",
-            "filename": "perch_v2_southern-africa_no_dft_fp32.onnx",
-            "sha256": "4053c167196575495dbf34cb56914d64600ee19b54153931182f4c613983930e",
-            "size_bytes": 73974800
+            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/southern-africa/perch-v2-southern-africa-no-dft-fp32-b2.onnx",
+            "filename": "perch-v2-southern-africa-no-dft-fp32-b2.onnx",
+            "sha256": "42ed96382076e13823e831ad8c165c70181bf9ff15e651f6a1b00d4ef78a2142",
+            "size_bytes": 74835662
           },
           "labels": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/southern-africa/perch_v2_southern-africa_labels.txt",
-            "filename": "perch_v2_southern-africa_labels.txt"
+            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/southern-africa/perch-v2-southern-africa-labels-b2.txt",
+            "filename": "perch-v2-southern-africa-labels-b2.txt",
+            "sha256": "dcc11fa22086216a7355623588e03069ad85aeb91185a449911bbbb2a2386d58",
+            "size_bytes": 18735
           },
           "countries": {
             "core": [
               "Botswana",
               "Lesotho",
               "Namibia",
+              "Eswatini",
               "South Africa",
-              "Zimbabwe",
-              "eSwatini"
+              "Zimbabwe"
             ]
+          },
+          "build": 2,
+          "country_codes": {
+            "core": [
+              "BW",
+              "LS",
+              "NA",
+              "SZ",
+              "ZA",
+              "ZW"
+            ]
+          },
+          "tier": 50,
+          "bboxes": [
+            {
+              "lat_min": -35.0,
+              "lat_max": -17.0,
+              "lon_min": 15.0,
+              "lon_max": 33.0
+            }
+          ],
+          "centroid": {
+            "lat": -26.0,
+            "lon": 24.0
+          },
+          "score_calibration": {
+            "method": "softmax-rest-logit",
+            "rest_logit": 10.11
           }
         },
         {
-          "id": "int8-arm",
+          "id": "no-dft-fp32",
           "region": "southern-cone",
           "region_name": "Southern Cone",
           "group": "south-america",
           "group_name": "South America",
           "group_order": 3,
-          "classes": 1855,
+          "classes": 1875,
           "model": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/southern-cone/perch_v2_southern-cone_int8_arm.onnx",
-            "filename": "perch_v2_southern-cone_int8_arm.onnx",
-            "sha256": "e8584ffa2c7cd23e8a6dc9af2f85a2af6b02b9fe181555abb6c3f9143e353c22",
-            "size_bytes": 52042622
+            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/southern-cone/perch-v2-southern-cone-no-dft-fp32-b2.onnx",
+            "filename": "perch-v2-southern-cone-no-dft-fp32-b2.onnx",
+            "sha256": "14a66366903c2215679cc71e259b8754f5cca0836eaa9d754896fcdf2e93ce84",
+            "size_bytes": 95447110
           },
           "labels": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/southern-cone/perch_v2_southern-cone_labels.txt",
-            "filename": "perch_v2_southern-cone_labels.txt"
+            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/southern-cone/perch-v2-southern-cone-labels-b2.txt",
+            "filename": "perch-v2-southern-cone-labels-b2.txt",
+            "sha256": "08932c5f422f6517e5c5a448ce78e230b52ed43d5a8f0067e68f9666c400d2d3",
+            "size_bytes": 36571
           },
           "countries": {
             "core": [
@@ -4883,83 +5172,37 @@
               "Bolivia",
               "Brazil"
             ]
-          }
-        },
-        {
-          "id": "no-dft-fp32",
-          "region": "southern-cone",
-          "region_name": "Southern Cone",
-          "group": "south-america",
-          "group_name": "South America",
-          "group_order": 3,
-          "classes": 1855,
-          "model": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/southern-cone/perch_v2_southern-cone_no_dft_fp32.onnx",
-            "filename": "perch_v2_southern-cone_no_dft_fp32.onnx",
-            "sha256": "d6f782b9ea06c80a78b58f928b9276c92eedb4fbb2a8a2d596cf835b7722606b",
-            "size_bytes": 94955190
           },
-          "labels": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/southern-cone/perch_v2_southern-cone_labels.txt",
-            "filename": "perch_v2_southern-cone_labels.txt"
-          },
-          "countries": {
+          "build": 2,
+          "country_codes": {
             "core": [
-              "Argentina",
-              "Chile",
-              "Falkland Islands",
-              "Paraguay",
-              "Uruguay"
+              "AR",
+              "CL",
+              "FK",
+              "PY",
+              "UY"
             ],
             "partial": [
-              "Bolivia",
-              "Brazil"
+              "BO",
+              "BR"
             ]
-          }
-        },
-        {
-          "id": "int8-arm",
-          "region": "southern-europe",
-          "region_name": "Southern Europe",
-          "group": "europe",
-          "group_name": "Europe",
-          "group_order": 0,
-          "classes": 839,
-          "model": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/southern-europe/perch_v2_southern-europe_int8_arm.onnx",
-            "filename": "perch_v2_southern-europe_int8_arm.onnx",
-            "sha256": "6957554e294967aa26d72f332f62b68e8a6aa08ed6766791a28f0b4ff10d880c",
-            "size_bytes": 45779996
           },
-          "labels": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/southern-europe/perch_v2_southern-europe_labels.txt",
-            "filename": "perch_v2_southern-europe_labels.txt"
+          "tier": 50,
+          "bboxes": [
+            {
+              "lat_min": -56.0,
+              "lat_max": -20.0,
+              "lon_min": -77.0,
+              "lon_max": -53.0
+            }
+          ],
+          "centroid": {
+            "lat": -38.0,
+            "lon": -65.0
           },
-          "countries": {
-            "core": [
-              "Albania",
-              "Bosnia and Herzegovina",
-              "Bulgaria",
-              "Croatia",
-              "Greece",
-              "Italy",
-              "Kosovo",
-              "Malta",
-              "Monaco",
-              "Montenegro",
-              "North Macedonia",
-              "Republic of Serbia",
-              "Romania",
-              "San Marino",
-              "Slovenia",
-              "Vatican"
-            ],
-            "partial": [
-              "Hungary",
-              "Switzerland",
-              "Tunisia",
-              "Turkey"
-            ]
+          "score_calibration": {
+            "method": "softmax-rest-logit",
+            "rest_logit": 10.02
           }
         },
         {
@@ -4969,66 +5212,88 @@
           "group": "europe",
           "group_name": "Europe",
           "group_order": 0,
-          "classes": 839,
+          "classes": 863,
           "model": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/southern-europe/perch_v2_southern-europe_no_dft_fp32.onnx",
-            "filename": "perch_v2_southern-europe_no_dft_fp32.onnx",
-            "sha256": "9ba9cd864529efc506941c366c50e7dbf3f3a173adb3dce244e3a6e940ef9045",
-            "size_bytes": 69965652
+            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/southern-europe/perch-v2-southern-europe-no-dft-fp32-b2.onnx",
+            "filename": "perch-v2-southern-europe-no-dft-fp32-b2.onnx",
+            "sha256": "9569ef5e2bef21ee6549be7b23edae58e20f303f607901ee8f45cfbda6caf630",
+            "size_bytes": 70555956
           },
           "labels": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/southern-europe/perch_v2_southern-europe_labels.txt",
-            "filename": "perch_v2_southern-europe_labels.txt"
+            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/southern-europe/perch-v2-southern-europe-labels-b2.txt",
+            "filename": "perch-v2-southern-europe-labels-b2.txt",
+            "sha256": "1713bdab377d2331bf6b306dc06b737f2d168d591110ce0a5ec3647e579ac5f9",
+            "size_bytes": 14566
           },
           "countries": {
             "core": [
               "Albania",
-              "Bosnia and Herzegovina",
+              "Bosnia & Herzegovina",
               "Bulgaria",
-              "Croatia",
               "Greece",
+              "Croatia",
               "Italy",
-              "Kosovo",
-              "Malta",
               "Monaco",
               "Montenegro",
               "North Macedonia",
-              "Republic of Serbia",
+              "Malta",
               "Romania",
-              "San Marino",
+              "Serbia",
               "Slovenia",
-              "Vatican"
+              "San Marino",
+              "Vatican City",
+              "Kosovo"
             ],
             "partial": [
-              "Hungary",
               "Switzerland",
+              "Hungary",
               "Tunisia",
-              "Turkey"
+              "Türkiye"
             ]
-          }
-        },
-        {
-          "id": "int8-arm",
-          "region": "svalbard",
-          "region_name": "Svalbard",
-          "group": "europe",
-          "group_name": "Europe",
-          "group_order": 0,
-          "classes": 480,
-          "model": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/svalbard/perch_v2_svalbard_int8_arm.onnx",
-            "filename": "perch_v2_svalbard_int8_arm.onnx",
-            "sha256": "eb98b17da3822b356b3b53d152e8a087a4bb6d9cf58e72fcd1ecc7190cf3819d",
-            "size_bytes": 43567120
           },
-          "labels": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/svalbard/perch_v2_svalbard_labels.txt",
-            "filename": "perch_v2_svalbard_labels.txt"
-          },
-          "countries": {
+          "build": 2,
+          "country_codes": {
             "core": [
-              "Norway"
+              "AL",
+              "BA",
+              "BG",
+              "GR",
+              "HR",
+              "IT",
+              "MC",
+              "ME",
+              "MK",
+              "MT",
+              "RO",
+              "RS",
+              "SI",
+              "SM",
+              "VA",
+              "XK"
+            ],
+            "partial": [
+              "CH",
+              "HU",
+              "TN",
+              "TR"
             ]
+          },
+          "tier": 50,
+          "bboxes": [
+            {
+              "lat_min": 36.0,
+              "lat_max": 47.0,
+              "lon_min": 6.0,
+              "lon_max": 29.0
+            }
+          ],
+          "centroid": {
+            "lat": 41.5,
+            "lon": 17.5
+          },
+          "score_calibration": {
+            "method": "softmax-rest-logit",
+            "rest_logit": 9.71
           }
         },
         {
@@ -5038,48 +5303,46 @@
           "group": "europe",
           "group_name": "Europe",
           "group_order": 0,
-          "classes": 480,
+          "classes": 513,
           "model": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/svalbard/perch_v2_svalbard_no_dft_fp32.onnx",
-            "filename": "perch_v2_svalbard_no_dft_fp32.onnx",
-            "sha256": "01d30871ccf82c9f7a73aa3e5d7bbf61a6337fe8dd7584ebaa001cca30b7b563",
-            "size_bytes": 61135688
+            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/svalbard/perch-v2-svalbard-no-dft-fp32-b2.onnx",
+            "filename": "perch-v2-svalbard-no-dft-fp32-b2.onnx",
+            "sha256": "e357d35f05e652941eb14c80212e23208c30fd6ed3381c326178f3333445bc19",
+            "size_bytes": 61947356
           },
           "labels": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/svalbard/perch_v2_svalbard_labels.txt",
-            "filename": "perch_v2_svalbard_labels.txt"
+            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/svalbard/perch-v2-svalbard-labels-b2.txt",
+            "filename": "perch-v2-svalbard-labels-b2.txt",
+            "sha256": "fbdf32ac476f6728953d727e27e419651711b48bb50e7fad5fec38ad83fdb243",
+            "size_bytes": 7991
           },
           "countries": {
             "core": [
-              "Norway"
+              "Svalbard & Jan Mayen"
             ]
-          }
-        },
-        {
-          "id": "int8-arm",
-          "region": "tibet",
-          "region_name": "Tibetan Plateau",
-          "group": "asia",
-          "group_name": "Asia",
-          "group_order": 1,
-          "classes": 1407,
-          "model": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/tibet/perch_v2_tibet_int8_arm.onnx",
-            "filename": "perch_v2_tibet_int8_arm.onnx",
-            "sha256": "78daa7110aa3dec88aa2d5cb1587c7af7c59ce3c70f4c74fc8cdd8ff98c053d9",
-            "size_bytes": 49281151
           },
-          "labels": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/tibet/perch_v2_tibet_labels.txt",
-            "filename": "perch_v2_tibet_labels.txt"
-          },
-          "countries": {
+          "build": 2,
+          "country_codes": {
             "core": [
-              "China"
-            ],
-            "partial": [
-              "Nepal"
+              "SJ"
             ]
+          },
+          "tier": 90,
+          "bboxes": [
+            {
+              "lat_min": 74.0,
+              "lat_max": 81.0,
+              "lon_min": 9.0,
+              "lon_max": 34.0
+            }
+          ],
+          "centroid": {
+            "lat": 77.5,
+            "lon": 21.5
+          },
+          "score_calibration": {
+            "method": "softmax-rest-logit",
+            "rest_logit": 10.06
           }
         },
         {
@@ -5089,16 +5352,18 @@
           "group": "asia",
           "group_name": "Asia",
           "group_order": 1,
-          "classes": 1407,
+          "classes": 1443,
           "model": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/tibet/perch_v2_tibet_no_dft_fp32.onnx",
-            "filename": "perch_v2_tibet_no_dft_fp32.onnx",
-            "sha256": "d309474cdebccbd49c5d8c785e75058900060665e0ac624f9c7c67ab9ec3fb6e",
-            "size_bytes": 83936182
+            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/tibet/perch-v2-tibet-no-dft-fp32-b2.onnx",
+            "filename": "perch-v2-tibet-no-dft-fp32-b2.onnx",
+            "sha256": "f1ce245f332919f801fbdc5ca625edba73370d434af3e54e3c0fc98f02b2048c",
+            "size_bytes": 84821638
           },
           "labels": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/tibet/perch_v2_tibet_labels.txt",
-            "filename": "perch_v2_tibet_labels.txt"
+            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/tibet/perch-v2-tibet-labels-b2.txt",
+            "filename": "perch-v2-tibet-labels-b2.txt",
+            "sha256": "2dc2db3a81028a0400a8a8acc24d291a3e79289742648459dcfed647c1a2c7db",
+            "size_bytes": 26730
           },
           "countries": {
             "core": [
@@ -5107,106 +5372,216 @@
             "partial": [
               "Nepal"
             ]
+          },
+          "build": 2,
+          "country_codes": {
+            "core": [
+              "CN"
+            ],
+            "partial": [
+              "NP"
+            ]
+          },
+          "tier": 50,
+          "bboxes": [
+            {
+              "lat_min": 29.0,
+              "lat_max": 37.0,
+              "lon_min": 79.0,
+              "lon_max": 99.0
+            }
+          ],
+          "centroid": {
+            "lat": 33.0,
+            "lon": 89.0
+          },
+          "score_calibration": {
+            "method": "softmax-rest-logit",
+            "rest_logit": 9.9
           }
         },
         {
-          "id": "int8-arm",
+          "id": "no-dft-fp32",
+          "region": "west-africa",
+          "region_name": "West Africa",
+          "group": "africa",
+          "group_name": "Africa",
+          "group_order": 4,
+          "classes": 1332,
+          "model": {
+            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/west-africa/perch-v2-west-africa-no-dft-fp32-b2.onnx",
+            "filename": "perch-v2-west-africa-no-dft-fp32-b2.onnx",
+            "sha256": "95b3670bbbd042334ce23fc82f3761bea69b17f9980666b9cf003b292fa1ca10",
+            "size_bytes": 82091482
+          },
+          "labels": {
+            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/west-africa/perch-v2-west-africa-labels-b2.txt",
+            "filename": "perch-v2-west-africa-labels-b2.txt",
+            "sha256": "8f14887ce77ef291ec5a9522a6a79cb2bfff704453741bd140bad54506fc2f1f",
+            "size_bytes": 24517
+          },
+          "countries": {
+            "core": [
+              "Burkina Faso",
+              "Benin",
+              "Côte d’Ivoire",
+              "Cameroon",
+              "Ghana",
+              "Gambia",
+              "Guinea",
+              "Guinea-Bissau",
+              "Liberia",
+              "Mali",
+              "Niger",
+              "Nigeria",
+              "Sierra Leone",
+              "Senegal",
+              "Togo"
+            ],
+            "partial": [
+              "Mauritania"
+            ]
+          },
+          "build": 2,
+          "country_codes": {
+            "core": [
+              "BF",
+              "BJ",
+              "CI",
+              "CM",
+              "GH",
+              "GM",
+              "GN",
+              "GW",
+              "LR",
+              "ML",
+              "NE",
+              "NG",
+              "SL",
+              "SN",
+              "TG"
+            ],
+            "partial": [
+              "MR"
+            ]
+          },
+          "tier": 50,
+          "bboxes": [
+            {
+              "lat_min": 4.0,
+              "lat_max": 17.0,
+              "lon_min": -18.0,
+              "lon_max": 15.0
+            }
+          ],
+          "centroid": {
+            "lat": 10.5,
+            "lon": -1.5
+          },
+          "score_calibration": {
+            "method": "softmax-rest-logit",
+            "rest_logit": 10.1
+          }
+        },
+        {
+          "id": "no-dft-fp32",
           "region": "western-palearctic",
           "region_name": "Western Palearctic",
           "group": "europe",
           "group_name": "Europe",
           "group_order": 0,
-          "classes": 1599,
+          "classes": 1635,
           "model": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/western-palearctic/perch_v2_western-palearctic_int8_arm.onnx",
-            "filename": "perch_v2_western-palearctic_int8_arm.onnx",
-            "sha256": "5417cf33b6d7a195810e63c825e9108e73c30889a12da72130616297255c4154",
-            "size_bytes": 50464638
+            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/western-palearctic/perch-v2-western-palearctic-no-dft-fp32-b2.onnx",
+            "filename": "perch-v2-western-palearctic-no-dft-fp32-b2.onnx",
+            "sha256": "300ce27c072e4dfc1ddb758578bf914e801032b0572df5bc85ccef09597a8150",
+            "size_bytes": 89544070
           },
           "labels": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/western-palearctic/perch_v2_western-palearctic_labels.txt",
-            "filename": "perch_v2_western-palearctic_labels.txt"
+            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/western-palearctic/perch-v2-western-palearctic-labels-b2.txt",
+            "filename": "perch-v2-western-palearctic-labels-b2.txt",
+            "sha256": "63b459fa6e434d199e44c6c0db3b4d1fa39b49abaaf3e950747165f53d726925",
+            "size_bytes": 29589
           },
           "countries": {
             "core": [
-              "Aland",
-              "Albania",
-              "Algeria",
               "Andorra",
+              "United Arab Emirates",
+              "Albania",
               "Armenia",
               "Austria",
+              "Åland Islands",
               "Azerbaijan",
+              "Bosnia & Herzegovina",
+              "Belgium",
+              "Bulgaria",
               "Bahrain",
               "Belarus",
-              "Belgium",
-              "Bosnia and Herzegovina",
-              "Bulgaria",
-              "Chad",
-              "Croatia",
+              "Switzerland",
               "Cyprus",
               "Czechia",
-              "Denmark",
-              "Egypt",
-              "Eritrea",
-              "Estonia",
-              "Faroe Islands",
-              "Finland",
-              "France",
-              "Georgia",
               "Germany",
-              "Greece",
+              "Denmark",
+              "Algeria",
+              "Estonia",
+              "Egypt",
+              "Western Sahara",
+              "Eritrea",
+              "Spain",
+              "Finland",
+              "Faroe Islands",
+              "France",
+              "United Kingdom",
+              "Georgia",
               "Guernsey",
+              "Greece",
+              "Croatia",
               "Hungary",
-              "Iran",
-              "Iraq",
               "Ireland",
-              "Isle of Man",
               "Israel",
+              "Isle of Man",
+              "Iraq",
+              "Iran",
               "Italy",
               "Jersey",
               "Jordan",
-              "Kosovo",
               "Kuwait",
-              "Latvia",
               "Lebanon",
-              "Libya",
               "Liechtenstein",
               "Lithuania",
               "Luxembourg",
-              "Malta",
-              "Mauritania",
-              "Moldova",
-              "Monaco",
-              "Montenegro",
+              "Latvia",
+              "Libya",
               "Morocco",
-              "Netherlands",
-              "Niger",
+              "Monaco",
+              "Moldova",
+              "Montenegro",
               "North Macedonia",
-              "Northern Cyprus",
+              "Mauritania",
+              "Malta",
+              "Niger",
+              "Netherlands",
               "Norway",
               "Oman",
-              "Palestine",
               "Poland",
+              "Palestinian Territories",
               "Portugal",
               "Qatar",
-              "Republic of Serbia",
               "Romania",
-              "San Marino",
+              "Serbia",
               "Saudi Arabia",
-              "Slovakia",
-              "Slovenia",
-              "Spain",
               "Sudan",
               "Sweden",
-              "Switzerland",
+              "Slovenia",
+              "Slovakia",
+              "San Marino",
               "Syria",
+              "Chad",
               "Tunisia",
-              "Turkey",
+              "Türkiye",
               "Ukraine",
-              "United Arab Emirates",
-              "United Kingdom",
-              "Vatican",
-              "Western Sahara",
+              "Vatican City",
+              "Kosovo",
               "Yemen"
             ],
             "partial": [
@@ -5216,116 +5591,145 @@
               "Russia",
               "Turkmenistan"
             ]
-          }
-        },
-        {
-          "id": "no-dft-fp32",
-          "region": "western-palearctic",
-          "region_name": "Western Palearctic",
-          "group": "europe",
-          "group_name": "Europe",
-          "group_order": 0,
-          "classes": 1599,
-          "model": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/western-palearctic/perch_v2_western-palearctic_no_dft_fp32.onnx",
-            "filename": "perch_v2_western-palearctic_no_dft_fp32.onnx",
-            "sha256": "d3c329afbc2b614f17002dea45282698df879d3fb714cd070ab74cf4d7a13b67",
-            "size_bytes": 88658614
           },
-          "labels": {
-            "url": "https://huggingface.co/tphakala/Perch-v2-Models/resolve/main/regional/western-palearctic/perch_v2_western-palearctic_labels.txt",
-            "filename": "perch_v2_western-palearctic_labels.txt"
-          },
-          "countries": {
+          "build": 2,
+          "country_codes": {
             "core": [
-              "Aland",
-              "Albania",
-              "Algeria",
-              "Andorra",
-              "Armenia",
-              "Austria",
-              "Azerbaijan",
-              "Bahrain",
-              "Belarus",
-              "Belgium",
-              "Bosnia and Herzegovina",
-              "Bulgaria",
-              "Chad",
-              "Croatia",
-              "Cyprus",
-              "Czechia",
-              "Denmark",
-              "Egypt",
-              "Eritrea",
-              "Estonia",
-              "Faroe Islands",
-              "Finland",
-              "France",
-              "Georgia",
-              "Germany",
-              "Greece",
-              "Guernsey",
-              "Hungary",
-              "Iran",
-              "Iraq",
-              "Ireland",
-              "Isle of Man",
-              "Israel",
-              "Italy",
-              "Jersey",
-              "Jordan",
-              "Kosovo",
-              "Kuwait",
-              "Latvia",
-              "Lebanon",
-              "Libya",
-              "Liechtenstein",
-              "Lithuania",
-              "Luxembourg",
-              "Malta",
-              "Mauritania",
-              "Moldova",
-              "Monaco",
-              "Montenegro",
-              "Morocco",
-              "Netherlands",
-              "Niger",
-              "North Macedonia",
-              "Northern Cyprus",
-              "Norway",
-              "Oman",
-              "Palestine",
-              "Poland",
-              "Portugal",
-              "Qatar",
-              "Republic of Serbia",
-              "Romania",
-              "San Marino",
-              "Saudi Arabia",
-              "Slovakia",
-              "Slovenia",
-              "Spain",
-              "Sudan",
-              "Sweden",
-              "Switzerland",
-              "Syria",
-              "Tunisia",
-              "Turkey",
-              "Ukraine",
-              "United Arab Emirates",
-              "United Kingdom",
-              "Vatican",
-              "Western Sahara",
-              "Yemen"
+              "AD",
+              "AE",
+              "AL",
+              "AM",
+              "AT",
+              "AX",
+              "AZ",
+              "BA",
+              "BE",
+              "BG",
+              "BH",
+              "BY",
+              "CH",
+              "CY",
+              "CZ",
+              "DE",
+              "DK",
+              "DZ",
+              "EE",
+              "EG",
+              "EH",
+              "ER",
+              "ES",
+              "FI",
+              "FO",
+              "FR",
+              "GB",
+              "GE",
+              "GG",
+              "GR",
+              "HR",
+              "HU",
+              "IE",
+              "IL",
+              "IM",
+              "IQ",
+              "IR",
+              "IT",
+              "JE",
+              "JO",
+              "KW",
+              "LB",
+              "LI",
+              "LT",
+              "LU",
+              "LV",
+              "LY",
+              "MA",
+              "MC",
+              "MD",
+              "ME",
+              "MK",
+              "MR",
+              "MT",
+              "NE",
+              "NL",
+              "NO",
+              "OM",
+              "PL",
+              "PS",
+              "PT",
+              "QA",
+              "RO",
+              "RS",
+              "SA",
+              "SD",
+              "SE",
+              "SI",
+              "SK",
+              "SM",
+              "SY",
+              "TD",
+              "TN",
+              "TR",
+              "UA",
+              "VA",
+              "XK",
+              "YE"
             ],
             "partial": [
-              "Djibouti",
-              "Ethiopia",
-              "Mali",
-              "Russia",
-              "Turkmenistan"
+              "DJ",
+              "ET",
+              "ML",
+              "RU",
+              "TM"
             ]
+          },
+          "tier": 10,
+          "bboxes": [
+            {
+              "lat_min": 35.0,
+              "lat_max": 71.0,
+              "lon_min": -11.0,
+              "lon_max": 45.0
+            },
+            {
+              "lat_min": 26.0,
+              "lat_max": 40.0,
+              "lon_min": -32.0,
+              "lon_max": -13.0
+            },
+            {
+              "lat_min": 20.0,
+              "lat_max": 37.0,
+              "lon_min": -13.0,
+              "lon_max": 37.0
+            },
+            {
+              "lat_min": 30.0,
+              "lat_max": 42.0,
+              "lon_min": 34.0,
+              "lon_max": 50.0
+            },
+            {
+              "lat_min": 12.0,
+              "lat_max": 32.0,
+              "lon_min": 34.0,
+              "lon_max": 60.0
+            }
+          ],
+          "centroid": {
+            "lat": 41.5,
+            "lon": 14.0
+          },
+          "score_calibration": {
+            "method": "softmax-rest-logit",
+            "rest_logit": 9.6
           }
+        }
+      ],
+      "documents": [
+        {
+          "kind": "license",
+          "requires_agreement": false,
+          "url": "https://www.apache.org/licenses/LICENSE-2.0"
         }
       ],
       "recommended": false

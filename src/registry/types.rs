@@ -188,8 +188,8 @@ pub struct ModelEntry {
 /// One downloadable combination of region and hardware variant.
 ///
 /// A model family publishes the same weights as several files: a global slice
-/// and 39 regional ones, each in one or more hardware variants. The variant id
-/// is the publisher's own string (`fp32`, `fp16`, `int8-arm`, `no-dft-fp32`),
+/// and regional ones, each in one or more hardware variants. The variant id
+/// is the publisher's own string (`fp32`, `fp16`, `no-dft-fp32`),
 /// never reinterpreted here, because Perch's variants are not precisions and no
 /// precision vocabulary can name `no-dft-fp32`.
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
@@ -300,6 +300,20 @@ pub enum ScoreCalibration {
     },
 }
 
+impl ScoreCalibration {
+    /// The softmax rest logit as the `f32` the inference engines take.
+    ///
+    /// A value beyond `f32` range becomes infinite here, which config
+    /// validation rejects before the entry is saved.
+    #[must_use]
+    pub fn softmax_rest_logit(&self) -> f32 {
+        match self {
+            #[allow(clippy::cast_possible_truncation)]
+            Self::SoftmaxRestLogit { rest_logit } => *rest_logit as f32,
+        }
+    }
+}
+
 /// A licence or usage document published with a model family.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct ModelDocument {
@@ -367,10 +381,10 @@ impl ModelEntry {
     /// variant. The global model is not a region and is excluded.
     ///
     /// The representative is the default variant wherever the region publishes
-    /// one, not simply the first in manifest order. Those differ: Perch lists
-    /// `int8-arm` before `no-dft-fp32` for every region while the default is
-    /// `no-dft-fp32`, so taking the first would advertise a 41 MB download for
-    /// a tile whose default install actually fetches 57 MB.
+    /// one, not simply the first in manifest order. Those differ: Perch's
+    /// build 1 manifest listed `int8-arm` before `no-dft-fp32` for every region
+    /// while the default was `no-dft-fp32`, so taking the first advertised a
+    /// 41 MB download for a tile whose default install fetched 57 MB.
     #[must_use]
     pub fn regions(&self) -> Vec<&ModelVariant> {
         let default = self.default_variant.as_deref();
@@ -630,10 +644,10 @@ mod tests {
 
     #[test]
     fn test_regions_represents_each_tile_with_the_variant_an_install_would_pick() {
-        // Perch lists int8-arm before no-dft-fp32 for every region while the
-        // default is no-dft-fp32, so taking the first in manifest order made
-        // `models regions` advertise a 41 MB download for a tile whose default
-        // install actually fetches 57 MB.
+        // Perch's build 1 manifest listed int8-arm before no-dft-fp32 for every
+        // region while the default was no-dft-fp32, so taking the first in
+        // manifest order made `models regions` advertise a 41 MB download for a
+        // tile whose default install fetched 57 MB.
         let mut entry = variant_entry();
         entry.default_variant = Some("fp16".to_string());
 

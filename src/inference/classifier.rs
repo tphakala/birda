@@ -18,6 +18,7 @@ use std::path::PathBuf;
 use std::sync::Mutex;
 use tracing::{debug, error, info, warn};
 
+use super::calibration;
 use super::get_tensorrt_library_name;
 
 /// Refuse the inference options the `OpenVINO` engine cannot honour.
@@ -279,8 +280,11 @@ impl BirdClassifier {
         range_filter_config: Option<crate::inference::RangeFilterConfig>,
         species_list: Option<HashSet<String>>,
     ) -> Result<Self> {
+        // Both engines read the stored value from here, so they cannot disagree.
+        let rest_logit = model_config.softmax_rest_logit;
         let (inner, ep_status, uses_tensorrt) = if device == InferenceDevice::OpenVino {
-            let engine = OpenVinoEngine::new(model_config, openvino, top_k, min_confidence)?;
+            let engine =
+                OpenVinoEngine::new(model_config, openvino, top_k, min_confidence, rest_logit)?;
             info!(
                 "Loaded model: {:?}, sample_rate: {}, segment_duration: {}s, device: OpenVINO {}",
                 model_config.model_type,
@@ -291,7 +295,7 @@ impl BirdClassifier {
             let status = ExecutionProviderStatus::openvino();
             (Engine::OpenVino(Box::new(engine)), status, false)
         } else {
-            Self::build_ort(model_config, device, min_confidence, top_k)?
+            Self::build_ort(model_config, device, min_confidence, top_k, rest_logit)?
         };
 
         // Build the range filter and project its scores into this classifier's
@@ -356,6 +360,7 @@ impl BirdClassifier {
         device: InferenceDevice,
         min_confidence: f32,
         top_k: usize,
+        rest_logit: Option<f32>,
     ) -> Result<(Engine, ExecutionProviderStatus, bool)> {
         // Check available execution providers at compile-time
         let available_providers = available_execution_providers();
@@ -373,6 +378,10 @@ impl BirdClassifier {
             .labels_path(model_config.labels.to_string_lossy().to_string())
             .top_k(top_k)
             .min_confidence(min_confidence);
+        let builder = match rest_logit {
+            Some(rest_logit) => builder.softmax_rest_logit(rest_logit),
+            None => builder,
+        };
 
         let ProviderSelection {
             builder,
@@ -380,9 +389,9 @@ impl BirdClassifier {
             status: ep_status,
         } = select_execution_provider(builder, device, &available_providers)?;
 
-        let inner = builder.build().map_err(|e| Error::ClassifierBuild {
-            reason: e.to_string(),
-        })?;
+        let inner = builder
+            .build()
+            .map_err(|e| calibration::build_error(&model_config.path, e))?;
 
         // Get the requested provider from the classifier
         let requested_provider = inner.requested_provider();

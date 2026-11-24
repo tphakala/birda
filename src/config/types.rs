@@ -102,6 +102,14 @@ pub struct ModelConfig {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub variant: Option<String>,
 
+    /// Softmax rest logit of the installed regional file, from its registry
+    /// `score_calibration` (`softmax-rest-logit`). Written by `models install`
+    /// together with `path`, and replaced whenever the file is. Absent on a
+    /// global install, on models added by hand, and on regional installs made
+    /// before birda recorded it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub softmax_rest_logit: Option<f32>,
+
     /// Documents agreed to when this model was installed, for those its
     /// publisher marks as requiring agreement. Recorded for reference; birda
     /// does not yet compare it with the registry.

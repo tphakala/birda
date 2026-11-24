@@ -743,6 +743,36 @@ mod tests {
     }
 
     #[test]
+    fn test_a_registry_naming_an_unknown_score_calibration_method_fails_to_parse() {
+        // The loader replaces a registry that fails to parse with its bundled
+        // copy, which is how a birda that cannot apply a calibration avoids a
+        // registry that requires one.
+        let mut entry = variant_entry();
+        entry.variants[2].score_calibration =
+            Some(ScoreCalibration::SoftmaxRestLogit { rest_logit: -1.25 });
+        let registry = Registry {
+            schema_version: "2.0".to_string(),
+            registry_version: 1,
+            models: vec![entry],
+            range_filter: None,
+            bat: None,
+        };
+        let json = serde_json::to_string(&registry).unwrap();
+
+        // The valid registry parses, so the failure below comes from the method.
+        assert_eq!(serde_json::from_str::<Registry>(&json).unwrap(), registry);
+
+        let unknown = json.replace("softmax-rest-logit", "platt");
+        let error = serde_json::from_str::<Registry>(&unknown)
+            .unwrap_err()
+            .to_string();
+        assert!(
+            error.starts_with("unknown variant `platt`, expected `softmax-rest-logit` at line "),
+            "{error}"
+        );
+    }
+
+    #[test]
     fn test_a_variant_entry_round_trips() {
         let entry = variant_entry();
         let json = serde_json::to_string(&entry).unwrap();

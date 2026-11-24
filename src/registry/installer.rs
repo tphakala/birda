@@ -1001,8 +1001,20 @@ mod tests {
         std::thread::spawn(move || {
             for body in bodies {
                 let (mut stream, _) = listener.accept().unwrap();
-                let mut request = [0_u8; 2048];
-                let _ = stream.read(&mut request);
+                // Read the whole request head before replying, so closing the
+                // socket never leaves unread bytes behind (which can reset the
+                // connection). Stops at end of input, a size cap or a timeout.
+                stream
+                    .set_read_timeout(Some(std::time::Duration::from_secs(5)))
+                    .unwrap();
+                let mut request = Vec::new();
+                let mut chunk = [0_u8; 1024];
+                while !request.windows(4).any(|w| w == b"\r\n\r\n") && request.len() < 16_384 {
+                    match stream.read(&mut chunk) {
+                        Ok(0) | Err(_) => break,
+                        Ok(n) => request.extend_from_slice(&chunk[..n]),
+                    }
+                }
                 let head = format!(
                     "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
                     body.len()

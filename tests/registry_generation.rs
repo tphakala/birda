@@ -22,7 +22,7 @@
 )]
 #![cfg(feature = "gen-registry")]
 
-use birda::registry::Registry;
+use birda::registry::{BoundingBox, GeoPoint, Registry};
 
 fn generated() -> String {
     birda::gen_registry::generate_from_repo_root(env!("CARGO_MANIFEST_DIR"))
@@ -450,7 +450,39 @@ fn test_a_schema_2_family_generates_and_regenerates_unchanged() {
     assert_eq!(nordic.group.as_deref(), Some("europe"));
     assert_eq!(nordic.group_order, 0);
     assert_eq!(variant(Some("central-india")).group_order, 1);
-    assert_eq!(variant(Some("western-palearctic")).bboxes.len(), 5);
+    assert_eq!(nordic.tier, Some(50));
+    assert_eq!(
+        nordic.centroid,
+        Some(GeoPoint {
+            lat: 62.88,
+            lon: 17.685,
+        })
+    );
+    assert_eq!(
+        nordic.bboxes,
+        vec![BoundingBox {
+            lat_min: 53.1,
+            lat_max: 72.66,
+            lon_min: 3.32,
+            lon_max: 32.05,
+        }]
+    );
+    let western_palearctic = variant(Some("western-palearctic"));
+    assert_eq!(western_palearctic.tier, Some(10));
+    assert_eq!(western_palearctic.bboxes.len(), 5);
+    assert_eq!(
+        western_palearctic.bboxes[1],
+        BoundingBox {
+            lat_min: 26.0,
+            lat_max: 40.0,
+            lon_min: -32.0,
+            lon_max: -13.0,
+        }
+    );
+    // The global model is not a region, so it has no geometry.
+    assert_eq!(variant(None).tier, None);
+    assert_eq!(variant(None).centroid, None);
+    assert_eq!(variant(None).bboxes, Vec::<BoundingBox>::new());
 
     let documents: Vec<(&str, bool, &str)> = entry
         .documents

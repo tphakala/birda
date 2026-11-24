@@ -11,6 +11,7 @@
 //! Selecting the files is pure over a directory listing; opening them is the
 //! only code here that loads a library.
 
+use crate::constants::openvino as ov;
 use crate::utils::text::strip_prefix_ignore_ascii_case;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
@@ -39,7 +40,28 @@ pub struct Layout {
 }
 
 impl Layout {
-    fn same(&self, a: &str, b: &str) -> bool {
+    /// The Linux install layout.
+    pub const LINUX: Self = Self {
+        c_api: ov::LINUX_LIBRARY_FILE,
+        core: ov::LINUX_CORE_LIBRARY_FILE,
+        tbb: ov::LINUX_TBB_LIBRARY_FILE,
+        lib_dir: ov::LINUX_INSTALL_LIB_DIR,
+        tbb_dir: ov::LINUX_TBB_DIR,
+        ignore_case: false,
+    };
+
+    /// The Windows install layout.
+    pub const WINDOWS: Self = Self {
+        c_api: ov::WINDOWS_LIBRARY_FILE,
+        core: ov::WINDOWS_CORE_LIBRARY_FILE,
+        tbb: ov::WINDOWS_TBB_LIBRARY_FILE,
+        lib_dir: ov::WINDOWS_INSTALL_LIB_DIR,
+        tbb_dir: ov::WINDOWS_TBB_DIR,
+        ignore_case: true,
+    };
+
+    /// Whether two file or directory names are the same in this layout.
+    pub fn same(&self, a: &str, b: &str) -> bool {
         if self.ignore_case {
             a.eq_ignore_ascii_case(b)
         } else {
@@ -77,9 +99,11 @@ impl Layout {
             .iter()
             .zip(wanted.iter().rev())
             .all(|(have, want)| self.same(&have.as_os_str().to_string_lossy(), want));
-        matches
-            .then(|| lib_dir_path.ancestors().nth(wanted.len()))
-            .flatten()
+        if matches {
+            lib_dir_path.ancestors().nth(wanted.len())
+        } else {
+            None
+        }
     }
 }
 
@@ -114,9 +138,8 @@ pub fn dependency_files(library: &Path, layout: &Layout, list_dir: ListNames<'_>
             .find_map(|(dir, names)| layout.find(names, wanted).map(|listed| dir.join(listed)))
     };
     let core = layout.core_name(&file_name);
-    [Some(layout.tbb.to_string()), core]
-        .into_iter()
-        .flatten()
+    std::iter::once(layout.tbb.to_string())
+        .chain(core)
         .filter_map(|wanted| from_first_dir(&wanted))
         .collect()
 }
@@ -125,7 +148,7 @@ pub fn dependency_files(library: &Path, layout: &Layout, list_dir: ListNames<'_>
 ///
 /// A dependency that cannot be opened is not fatal here: the library that
 /// needs it is loaded next and its own error names what is missing.
-pub fn open_each<T, E: std::fmt::Display>(
+fn open_each<T, E: std::fmt::Display>(
     files: &[PathBuf],
     mut open: impl FnMut(&Path) -> Result<T, E>,
 ) -> Vec<T> {
@@ -177,25 +200,7 @@ pub fn preload(files: &[PathBuf]) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::constants::openvino as ov;
     use std::collections::HashMap;
-
-    const LINUX: Layout = Layout {
-        c_api: ov::LINUX_LIBRARY_FILE,
-        core: ov::LINUX_CORE_LIBRARY_FILE,
-        tbb: ov::LINUX_TBB_LIBRARY_FILE,
-        lib_dir: ov::LINUX_INSTALL_LIB_DIR,
-        tbb_dir: ov::LINUX_TBB_DIR,
-        ignore_case: false,
-    };
-    const WINDOWS: Layout = Layout {
-        c_api: ov::WINDOWS_LIBRARY_FILE,
-        core: ov::WINDOWS_CORE_LIBRARY_FILE,
-        tbb: ov::WINDOWS_TBB_LIBRARY_FILE,
-        lib_dir: ov::WINDOWS_INSTALL_LIB_DIR,
-        tbb_dir: ov::WINDOWS_TBB_DIR,
-        ignore_case: true,
-    };
 
     fn files(layout: &Layout, library: &str, fs: &[(&str, &[&str])]) -> Vec<String> {
         let fs: HashMap<PathBuf, Vec<String>> = fs
@@ -242,7 +247,7 @@ mod tests {
 
         // a. The unversioned C API link gives the unversioned core link.
         assert_eq!(
-            files(&LINUX, &format!("{lib}/libopenvino_c.so"), &archive),
+            files(&Layout::LINUX, &format!("{lib}/libopenvino_c.so"), &archive),
             [
                 format!("{tbb}/libtbb.so.12"),
                 format!("{lib}/libopenvino.so")
@@ -250,7 +255,11 @@ mod tests {
         );
         // b. A versioned C API file keeps its version on the core.
         assert_eq!(
-            files(&LINUX, &format!("{lib}/libopenvino_c.so.2630"), &archive),
+            files(
+                &Layout::LINUX,
+                &format!("{lib}/libopenvino_c.so.2630"),
+                &archive
+            ),
             [
                 format!("{tbb}/libtbb.so.12"),
                 format!("{lib}/libopenvino.so.2630")
@@ -259,7 +268,7 @@ mod tests {
         // c. A flat directory holding all three: the sibling is not needed.
         assert_eq!(
             files(
-                &LINUX,
+                &Layout::LINUX,
                 "/opt/birda/libopenvino_c.so",
                 &[(
                     "/opt/birda",
@@ -275,7 +284,7 @@ mod tests {
         // alone.
         assert_eq!(
             files(
-                &LINUX,
+                &Layout::LINUX,
                 &format!("{lib}/libopenvino_c.so"),
                 &[(&lib, &["libopenvino_c.so", "libopenvino.so"])]
             ),
@@ -300,13 +309,13 @@ mod tests {
             ),
         ];
         assert_eq!(
-            files(&WINDOWS, &format!("{lib}/OpenVINO_C.dll"), &fs),
+            files(&Layout::WINDOWS, &format!("{lib}/OpenVINO_C.dll"), &fs),
             [format!("{tbb}/TBB12.dll"), format!("{lib}/OPENVINO.DLL")]
         );
         // The same layout on Linux matches exact names only.
         assert_eq!(
             files(
-                &LINUX,
+                &Layout::LINUX,
                 "/opt/birda/libopenvino_c.so",
                 &[(
                     "/opt/birda",
@@ -321,7 +330,7 @@ mod tests {
     fn a_library_not_named_like_the_c_api_library_gets_no_core() {
         assert_eq!(
             files(
-                &LINUX,
+                &Layout::LINUX,
                 "/opt/x/libother.so",
                 &[("/opt/x", &["libother.so", "libopenvino.so", "libtbb.so.12"])]
             ),

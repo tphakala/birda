@@ -50,10 +50,7 @@ impl Os {
     /// File name of the C API library.
     #[must_use]
     pub const fn library_file(self) -> &'static str {
-        match self {
-            Self::Linux => ov::LINUX_LIBRARY_FILE,
-            Self::Windows => ov::WINDOWS_LIBRARY_FILE,
-        }
+        self.layout().c_api
     }
 
     /// Whether a bare library name may be handed to the system loader: only
@@ -63,39 +60,16 @@ impl Os {
     }
 
     const fn install_lib_dir(self) -> &'static str {
-        match self {
-            Self::Linux => ov::LINUX_INSTALL_LIB_DIR,
-            Self::Windows => ov::WINDOWS_INSTALL_LIB_DIR,
-        }
+        self.layout().lib_dir
     }
 
-    /// The names and directories of the libraries `open_library` opens before
-    /// the C API library.
-    const fn preload_layout(self) -> preload::Layout {
+    /// The names and directories of the install layout, which include the
+    /// libraries `open_library` opens before the C API library.
+    const fn layout(self) -> preload::Layout {
         match self {
-            Self::Linux => preload::Layout {
-                c_api: ov::LINUX_LIBRARY_FILE,
-                core: ov::LINUX_CORE_LIBRARY_FILE,
-                tbb: ov::LINUX_TBB_LIBRARY_FILE,
-                lib_dir: ov::LINUX_INSTALL_LIB_DIR,
-                tbb_dir: ov::LINUX_TBB_DIR,
-                ignore_case: false,
-            },
-            Self::Windows => preload::Layout {
-                c_api: ov::WINDOWS_LIBRARY_FILE,
-                core: ov::WINDOWS_CORE_LIBRARY_FILE,
-                tbb: ov::WINDOWS_TBB_LIBRARY_FILE,
-                lib_dir: ov::WINDOWS_INSTALL_LIB_DIR,
-                tbb_dir: ov::WINDOWS_TBB_DIR,
-                ignore_case: true,
-            },
+            Self::Linux => preload::Layout::LINUX,
+            Self::Windows => preload::Layout::WINDOWS,
         }
-    }
-
-    /// Whether file names compare without regard to ASCII case: NTFS does not
-    /// tell `OpenVINO_C.dll` from `openvino_c.dll`.
-    const fn ignores_case(self) -> bool {
-        matches!(self, Self::Windows)
     }
 
     const fn system_lib_dirs(self) -> &'static [&'static str] {
@@ -232,14 +206,7 @@ fn version_key(name: &str, base: &str) -> Option<Vec<u64>> {
 /// to ASCII case and the listed spelling is returned.
 fn pick_library(names: &[String], os: Os) -> Option<String> {
     let exact = os.library_file();
-    let is_exact = |name: &str| {
-        if os.ignores_case() {
-            name.eq_ignore_ascii_case(exact)
-        } else {
-            name == exact
-        }
-    };
-    if let Some(name) = names.iter().find(|name| is_exact(name)) {
+    if let Some(name) = names.iter().find(|name| os.layout().same(name, exact)) {
         return Some(name.clone());
     }
     if os != Os::Linux {
@@ -898,7 +865,7 @@ fn open_library(target: &Path, origin: Origin, os: Os) -> std::result::Result<()
         && origin == Origin::Located
         && preload::preload(&preload::dependency_files(
             target,
-            &os.preload_layout(),
+            &os.layout(),
             &list_dir_fs,
         ));
     let outcome = std::panic::catch_unwind(|| openvino_sys::library::load_from(target));

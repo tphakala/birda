@@ -20,8 +20,7 @@ pub type RegistryQuery<'a> = &'a dyn Fn() -> Option<String>;
 /// The resource id is not checked: a resource package has no library in it and
 /// is skipped by the caller's existence check. Component values above `u16`
 /// are refused, as a package version holds four 16-bit parts.
-#[must_use]
-pub fn openvino_package_version(full_name: &str) -> Option<[u16; ov::MSIX_VERSION_PARTS]> {
+fn openvino_package_version(full_name: &str) -> Option<[u16; ov::MSIX_VERSION_PARTS]> {
     let fields: Vec<&str> = full_name.split('_').collect();
     if fields.len() != ov::MSIX_FIELD_COUNT {
         return None;

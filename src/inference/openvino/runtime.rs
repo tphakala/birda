@@ -207,7 +207,7 @@ fn version_key(name: &str, base: &str) -> Option<Vec<u64>> {
 /// to ASCII case and the listed spelling is returned.
 fn pick_library(names: &[String], os: Os) -> Option<String> {
     let exact = os.library_file();
-    if let Some(name) = names.iter().find(|name| os.layout().same(name, exact)) {
+    if let Some(name) = os.layout().find(names, exact) {
         return Some(name.clone());
     }
     if os != Os::Linux {
@@ -313,7 +313,7 @@ fn resolve_explicit(
         .parent()
         .and_then(list_dir)
         .zip(file_name)
-        .is_some_and(|(names, file)| names.iter().any(|name| *name == *file));
+        .is_some_and(|(names, file)| os.layout().find(&names, &file).is_some());
     if listed {
         Ok(path.to_path_buf())
     } else {
@@ -1358,6 +1358,32 @@ mod tests {
         assert_eq!(
             pick_library(&strings(&["LIBOPENVINO_C.SO"]), Os::Linux),
             None
+        );
+    }
+
+    #[test]
+    fn a_configured_windows_file_matches_without_regard_to_case() {
+        let cwd = std::env::current_dir().unwrap();
+        let fs = HashMap::from([(cwd.clone(), strings(&["openvino_c.dll"]))]);
+        // The configured spelling is kept; NTFS opens the file either way.
+        assert_eq!(
+            locate_in(Some("OPENVINO_C.DLL"), &env_for(Os::Windows), &fs),
+            Ok(Located::File(cwd.join("OPENVINO_C.DLL")))
+        );
+        // Linux file names are case sensitive.
+        assert_eq!(
+            locate_in(Some("OPENVINO_C.DLL"), &env_for(Os::Linux), &fs),
+            Err(PathProblem {
+                reason: "it does not exist".to_string()
+            })
+        );
+    }
+
+    #[test]
+    fn a_listing_with_two_spellings_gives_the_exact_one() {
+        assert_eq!(
+            pick_library(&strings(&["OPENVINO_C.DLL", "openvino_c.dll"]), Os::Windows),
+            Some("openvino_c.dll".to_string())
         );
     }
 

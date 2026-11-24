@@ -61,7 +61,7 @@ impl Layout {
     };
 
     /// Whether two file or directory names are the same in this layout.
-    pub fn same(&self, a: &str, b: &str) -> bool {
+    fn same(&self, a: &str, b: &str) -> bool {
         if self.ignore_case {
             a.eq_ignore_ascii_case(b)
         } else {
@@ -69,9 +69,13 @@ impl Layout {
         }
     }
 
-    /// The listed name that matches `wanted`.
-    fn find<'a>(&self, names: &'a [String], wanted: &str) -> Option<&'a String> {
-        names.iter().find(|name| self.same(name, wanted))
+    /// The listed name that matches `wanted`: the exact spelling, else, when
+    /// this layout ignores case, the first spelling that differs only in case.
+    pub fn find<'a>(&self, names: &'a [String], wanted: &str) -> Option<&'a String> {
+        names
+            .iter()
+            .find(|name| *name == wanted)
+            .or_else(|| names.iter().find(|name| self.same(name, wanted)))
     }
 
     /// The core library's file name for a located C API file name: the C API
@@ -366,6 +370,28 @@ mod tests {
             Ok(vec![
                 format!("{tbb}/TBB12.dll"),
                 format!("{lib}/OPENVINO.DLL")
+            ])
+        );
+        // Two spellings of one file: the exact name wins over the earlier
+        // listed variant.
+        assert_eq!(
+            files(
+                &Layout::WINDOWS,
+                "/opt/birda/openvino_c.dll",
+                &[(
+                    "/opt/birda",
+                    &[
+                        "openvino_c.dll",
+                        "OPENVINO.DLL",
+                        "openvino.dll",
+                        "TBB12.DLL",
+                        "tbb12.dll"
+                    ]
+                )]
+            ),
+            Ok(vec![
+                "/opt/birda/tbb12.dll".to_string(),
+                "/opt/birda/openvino.dll".to_string()
             ])
         );
         // The same names are not found by the Linux layout, which matches

@@ -830,11 +830,6 @@ mod tests {
     fn test_require_model_names_the_replacement_of_a_retired_id() {
         const BUNDLED_REGISTRY: &str = include_str!("../../registry.json");
         let mut registry = serde_json::from_str::<Registry>(BUNDLED_REGISTRY).unwrap();
-        let entry = |id: &str| {
-            let mut entry = find_model(&registry, "birdnet-v24").unwrap().clone();
-            entry.id = id.to_string();
-            entry
-        };
 
         // A retired id with no entry names its replacement.
         assert_eq!(
@@ -853,7 +848,8 @@ mod tests {
         );
         // A registry entry wins over the table, so a future registry that
         // reuses the id serves it.
-        let reused = entry("birdnet-v30");
+        let mut reused = find_model(&registry, "birdnet-v24").unwrap().clone();
+        reused.id = "birdnet-v30".to_string();
         registry.models.push(reused.clone());
         assert_eq!(require_model(&registry, "birdnet-v30").ok(), Some(&reused));
     }

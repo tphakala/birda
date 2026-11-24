@@ -132,7 +132,7 @@ mod tests {
 
     #[test]
     fn package_names_give_a_version_only_for_x64_openvino_packages() {
-        let cases: [(&str, Option<[u16; 4]>); 8] = [
+        let cases: [(&str, Option<[u16; 4]>); 10] = [
             (
                 "Intel.OpenVINOToolkit.X_2026.3.0.0_x64__8wekyb3d8bbwe",
                 Some([2026, 3, 0, 0]),
@@ -152,6 +152,14 @@ mod tests {
                 None,
             ),
             ("Intel.OpenVINOToolkit.X_2026.3.0.0_x64_8wekyb3d8bbwe", None),
+            (
+                "Intel.OpenVINOToolkit.X_2026.3.0.0.1_x64__8wekyb3d8bbwe",
+                None,
+            ),
+            (
+                "Intel.OpenVINOToolkit.X_2026.3.0.0_x64__8wekyb3d8bbwe_extra",
+                None,
+            ),
             ("Deleted", None),
         ];
         for (name, expected) in cases {
@@ -199,13 +207,28 @@ mod tests {
             String::new(),
             format!("{key}\\Intel.OpenVINOToolkit.X_2026.4.0.0_x64__8wekyb3d8bbwe"),
             "    Path    REG_DWORD    0x1".to_string(),
+            // Not indented, so not a value of the key above.
+            "Path    REG_SZ    C:\\bogus".to_string(),
             String::new(),
-            "End of search: 4 match(es) found.".to_string(),
+            // Two packages of one version. The first has the repository key and
+            // the value name in lower case.
+            format!(
+                "HKEY_LOCAL_MACHINE{}\\Intel.OpenVINOToolkit.X_2026.5.0.0_x64__bbb",
+                key["HKEY_LOCAL_MACHINE".len()..].to_lowercase()
+            ),
+            "    path    REG_SZ    D:\\Lower Case\\bbb".to_string(),
+            String::new(),
+            format!("{key}\\Intel.OpenVINOToolkit.X_2026.5.0.0_x64__aaa"),
+            "    Path    REG_SZ    D:\\Store Apps\\aaa".to_string(),
+            String::new(),
+            "End of search: 6 match(es) found.".to_string(),
         ]
         .join("\r\n");
         assert_eq!(
             from_registry(&output),
             [
+                PathBuf::from("D:\\Lower Case\\bbb"),
+                PathBuf::from("D:\\Store Apps\\aaa"),
                 PathBuf::from(
                     "D:\\Store Apps\\Intel.OpenVINOToolkit.X_2026.3.0.0_x64__8wekyb3d8bbwe"
                 ),

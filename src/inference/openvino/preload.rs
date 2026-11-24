@@ -228,35 +228,36 @@ mod tests {
     use super::*;
     use std::collections::HashMap;
 
-    fn files(
-        layout: &Layout,
-        library: &str,
-        fs: &[(&str, &[&str])],
-    ) -> Result<Vec<String>, String> {
+    type Selection = Result<Vec<PathBuf>, String>;
+
+    fn files(layout: &Layout, library: &Path, fs: &[(&Path, &[&str])]) -> Selection {
         let fs: HashMap<PathBuf, Vec<String>> = fs
             .iter()
             .map(|(dir, names)| {
                 (
-                    PathBuf::from(dir),
+                    dir.to_path_buf(),
                     names.iter().map(ToString::to_string).collect(),
                 )
             })
             .collect();
-        dependency_files(Path::new(library), layout, &|dir| fs.get(dir).cloned()).map(|files| {
-            files
-                .iter()
-                .map(|path| path.display().to_string())
-                .collect()
-        })
+        dependency_files(library, layout, &|dir| fs.get(dir).cloned())
     }
 
-    const OV: &str = "/ov/openvino_2026.3";
+    fn ok(paths: &[&Path]) -> Vec<PathBuf> {
+        paths.iter().map(|path| path.to_path_buf()).collect()
+    }
+
+    fn missing(name: &str, dirs: &[&Path]) -> Selection {
+        let dirs: Vec<String> = dirs.iter().map(|dir| dir.display().to_string()).collect();
+        Err(format!("{name} not found in {}", dirs.join(", ")))
+    }
 
     #[test]
     fn dependencies_are_tbb_then_core_or_nothing() {
-        let lib = format!("{OV}/runtime/lib/intel64");
-        let tbb = format!("{OV}/runtime/3rdparty/tbb/lib");
-        let archive: [(&str, &[&str]); 2] = [
+        let root = Path::new("/ov/openvino_2026.3");
+        let lib = root.join("runtime/lib/intel64");
+        let tbb = root.join("runtime/3rdparty/tbb/lib");
+        let archive: [(&Path, &[&str]); 2] = [
             (
                 &lib,
                 &[
@@ -281,67 +282,81 @@ mod tests {
         // a. The unversioned C API link gives the unversioned core link. The
         // upper-case TBB name in the library directory is not taken on Linux.
         assert_eq!(
-            files(&Layout::LINUX, &format!("{lib}/libopenvino_c.so"), &archive),
-            Ok(vec![
-                format!("{tbb}/libtbb.so.12"),
-                format!("{lib}/libopenvino.so")
-            ])
+            files(&Layout::LINUX, &lib.join("libopenvino_c.so"), &archive),
+            Ok(ok(&[
+                &tbb.join("libtbb.so.12"),
+                &lib.join("libopenvino.so")
+            ]))
         );
         // b. A versioned C API file keeps its version on the core.
         assert_eq!(
-            files(
-                &Layout::LINUX,
-                &format!("{lib}/libopenvino_c.so.2630"),
-                &archive
-            ),
-            Ok(vec![
-                format!("{tbb}/libtbb.so.12"),
-                format!("{lib}/libopenvino.so.2630")
-            ])
+            files(&Layout::LINUX, &lib.join("libopenvino_c.so.2630"), &archive),
+            Ok(ok(&[
+                &tbb.join("libtbb.so.12"),
+                &lib.join("libopenvino.so.2630")
+            ]))
         );
         // c. A flat directory holding all three: the sibling is not needed.
+        let flat = Path::new("/opt/birda");
         assert_eq!(
             files(
                 &Layout::LINUX,
-                "/opt/birda/libopenvino_c.so",
+                &flat.join("libopenvino_c.so"),
                 &[(
-                    "/opt/birda",
+                    flat,
                     &["libopenvino_c.so", "libopenvino.so", "libtbb.so.12"]
                 )]
             ),
-            Ok(vec![
-                "/opt/birda/libtbb.so.12".to_string(),
-                "/opt/birda/libopenvino.so".to_string()
-            ])
+            Ok(ok(&[
+                &flat.join("libtbb.so.12"),
+                &flat.join("libopenvino.so")
+            ]))
+        );
+        // d. The library's own directory comes before the install's TBB
+        // directory, so a copy placed beside the library is the one used.
+        assert_eq!(
+            files(
+                &Layout::LINUX,
+                &lib.join("libopenvino_c.so"),
+                &[
+                    (
+                        &lib,
+                        &["libopenvino_c.so", "libopenvino.so", "libtbb.so.12"]
+                    ),
+                    (&tbb, &["libtbb.so.12"]),
+                ]
+            ),
+            Ok(ok(&[
+                &lib.join("libtbb.so.12"),
+                &lib.join("libopenvino.so")
+            ]))
         );
         // e. No TBB beside the library and no readable TBB directory: nothing is
         // preloaded, and the error names the file and the places looked at.
         assert_eq!(
             files(
                 &Layout::LINUX,
-                &format!("{lib}/libopenvino_c.so"),
+                &lib.join("libopenvino_c.so"),
                 &[(&lib, &["libopenvino_c.so", "libopenvino.so"])]
             ),
-            Err(format!("libtbb.so.12 not found in {lib}, {tbb}"))
+            missing("libtbb.so.12", &[&lib, &tbb])
         );
         // The core missing while TBB is present also preloads nothing.
         assert_eq!(
             files(
                 &Layout::LINUX,
-                &format!("{lib}/libopenvino_c.so"),
+                &lib.join("libopenvino_c.so"),
                 &[(&lib, &["libopenvino_c.so"]), (&tbb, &["libtbb.so.12"])]
             ),
-            Err(format!("libopenvino.so not found in {lib}, {tbb}"))
+            missing("libopenvino.so", &[&lib, &tbb])
         );
         // f. A file not named like the C API library has no core to derive.
+        let custom = Path::new("/opt/ov/lib");
         assert_eq!(
             files(
                 &Layout::LINUX,
-                "/opt/ov/lib/custom.so",
-                &[(
-                    "/opt/ov/lib",
-                    &["custom.so", "libopenvino.so", "libtbb.so.12"]
-                )]
+                &custom.join("custom.so"),
+                &[(custom, &["custom.so", "libopenvino.so", "libtbb.so.12"])]
             ),
             Err("custom.so is not named like libopenvino_c.so".to_string())
         );
@@ -352,8 +367,7 @@ mod tests {
         let root = Path::new("/ov/OpenVINO_2026.3");
         let lib = root.join("Runtime/Bin/Intel64/release");
         let tbb = root.join("runtime/3rdparty/tbb/bin");
-        let (lib, tbb) = (lib.display().to_string(), tbb.display().to_string());
-        let fs: [(&str, &[&str]); 2] = [
+        let fs: [(&Path, &[&str]); 2] = [
             (&lib, &["OpenVINO_C.dll", "OPENVINO.DLL"]),
             (
                 &tbb,
@@ -366,20 +380,18 @@ mod tests {
             ),
         ];
         assert_eq!(
-            files(&Layout::WINDOWS, &format!("{lib}/OpenVINO_C.dll"), &fs),
-            Ok(vec![
-                format!("{tbb}/TBB12.dll"),
-                format!("{lib}/OPENVINO.DLL")
-            ])
+            files(&Layout::WINDOWS, &lib.join("OpenVINO_C.dll"), &fs),
+            Ok(ok(&[&tbb.join("TBB12.dll"), &lib.join("OPENVINO.DLL")]))
         );
         // Two spellings of one file: the exact name wins over the earlier
         // listed variant.
+        let flat = Path::new("/opt/birda");
         assert_eq!(
             files(
                 &Layout::WINDOWS,
-                "/opt/birda/openvino_c.dll",
+                &flat.join("openvino_c.dll"),
                 &[(
-                    "/opt/birda",
+                    flat,
                     &[
                         "openvino_c.dll",
                         "OPENVINO.DLL",
@@ -389,23 +401,20 @@ mod tests {
                     ]
                 )]
             ),
-            Ok(vec![
-                "/opt/birda/tbb12.dll".to_string(),
-                "/opt/birda/openvino.dll".to_string()
-            ])
+            Ok(ok(&[&flat.join("tbb12.dll"), &flat.join("openvino.dll")]))
         );
         // The same names are not found by the Linux layout, which matches
         // exactly.
         assert_eq!(
             files(
                 &Layout::LINUX,
-                "/opt/birda/libopenvino_c.so",
+                &flat.join("libopenvino_c.so"),
                 &[(
-                    "/opt/birda",
+                    flat,
                     &["libopenvino_c.so", "LIBOPENVINO.SO", "LIBTBB.SO.12"]
                 )]
             ),
-            Err("libtbb.so.12 not found in /opt/birda".to_string())
+            missing("libtbb.so.12", &[flat])
         );
     }
 

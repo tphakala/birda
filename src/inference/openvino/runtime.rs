@@ -1388,6 +1388,66 @@ mod tests {
     }
 
     #[test]
+    fn a_readable_listing_without_a_usable_package_still_asks_the_registry() {
+        const PHOTOS: &str = "Microsoft.Photos_2030.1.0.0_x64__8wekyb3d8bbwe";
+        const OLD: &str = "Intel.OpenVINOToolkit.X_2026.9.0.0_x64__8wekyb3d8bbwe";
+        const NEW: &str = "Intel.OpenVINOToolkit.X_2026.10.0.0_x64__8wekyb3d8bbwe";
+        let env = windows_env("D:\\Apps", "D:\\Apps");
+        let apps = PathBuf::from("D:\\Apps").join(ov::WINDOWS_APPS_DIR);
+        let lib = |root: &Path| root.join(ov::WINDOWS_INSTALL_LIB_DIR);
+        let entry = |name: &str, folder: &str| {
+            format!(
+                "{}\\{name}\r\n    Path    REG_SZ    {folder}\r\n\r\n",
+                ov::PACKAGE_REPOSITORY_KEY
+            )
+        };
+
+        // A package on another drive: the listing is readable but holds no
+        // OpenVINO package, so the registry is what finds the install.
+        let elsewhere = PathBuf::from("E:\\Store").join(OLD);
+        let registry = entry(OLD, &elsewhere.display().to_string());
+        let fs: HashMap<PathBuf, Vec<String>> = HashMap::from([
+            (apps.clone(), strings(&[PHOTOS])),
+            (lib(&elsewhere), strings(&["openvino_c.dll"])),
+        ]);
+        assert_eq!(
+            locate(None, &env, &|dir| fs.get(dir).cloned(), &|| Some(
+                registry.clone()
+            )),
+            Ok(Located::File(lib(&elsewhere).join("openvino_c.dll")))
+        );
+
+        // A stale listed package that the registry also names, in another
+        // case, is checked once; the registry's other package follows it.
+        let listed = apps.join(OLD);
+        let gone = PathBuf::from("D:\\Gone").join(NEW);
+        let registry = format!(
+            "{}{}",
+            entry(OLD, &listed.display().to_string().to_lowercase()),
+            entry(NEW, &gone.display().to_string())
+        );
+        let fs: HashMap<PathBuf, Vec<String>> = HashMap::from([(apps, strings(&[OLD]))]);
+        let Ok(Located::NotFound { searched }) =
+            locate(None, &env, &|dir| fs.get(dir).cloned(), &|| {
+                Some(registry.clone())
+            })
+        else {
+            panic!("nothing is installed");
+        };
+        let store_lines: Vec<&String> = searched
+            .iter()
+            .filter(|line| line.starts_with("  Microsoft Store package"))
+            .collect();
+        assert_eq!(
+            store_lines,
+            [
+                &format!("  Microsoft Store package: {}", lib(&listed).display()),
+                &format!("  Microsoft Store package: {}", lib(&gone).display()),
+            ]
+        );
+    }
+
+    #[test]
     fn store_packages_come_last_and_fall_back_to_the_registry() {
         const OLD: &str = "Intel.OpenVINOToolkit.X_2026.9.0.0_x64__8wekyb3d8bbwe";
         const NEW: &str = "Intel.OpenVINOToolkit.X_2026.10.0.0_x64__8wekyb3d8bbwe";
@@ -1526,10 +1586,13 @@ mod tests {
         );
         assert_eq!(searched[2], "  loader path: /custom/lib");
         assert_eq!(searched[3], "  system library directory: /usr/lib");
-        let last = searched.last().map(String::as_str);
+        let empty_parent = Path::new("/opt/intel").join("openvino*");
         assert_eq!(
-            last,
-            Some("  install directory: /opt/intel/openvino* (none)")
+            searched.last(),
+            Some(&format!(
+                "  install directory: {} (none)",
+                empty_parent.display()
+            ))
         );
         // Executable directory, INTEL_OPENVINO_DIR, loader path, the system
         // directories, then the one empty install parent.

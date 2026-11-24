@@ -27,6 +27,24 @@ pub struct Config {
     pub output: OutputConfig,
 }
 
+/// A document the user agreed to when a model was installed.
+///
+/// Identifies the text by its publisher's kind, pinned revision and checksum.
+/// The URL is not kept: it follows `HF_ENDPOINT`, which can differ between runs.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AcceptedDocument {
+    /// The publisher's kind of document, for example `acceptable_use`.
+    pub kind: String,
+
+    /// Repository revision the document was pinned to, when the registry stated one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub revision: Option<String>,
+
+    /// SHA-256 of the document, when the registry stated one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sha256: Option<String>,
+}
+
 /// Configuration for a single model.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ModelConfig {
@@ -83,6 +101,12 @@ pub struct ModelConfig {
     /// Variant id installed.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub variant: Option<String>,
+
+    /// Documents agreed to when this model was installed, for those its
+    /// publisher marks as requiring agreement. Recorded for reference; birda
+    /// does not yet compare it with the registry.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub accepted_documents: Vec<AcceptedDocument>,
 }
 
 /// Default analysis settings.

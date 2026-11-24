@@ -249,6 +249,7 @@ mod tests {
             installed_build: None,
             region: Some("nordic".to_string()),
             variant: Some("fp16".to_string()),
+            accepted_documents: Vec::new(),
         };
         assert_eq!(
             unverified_variant_warning(&model, "birdnet-v30-nordic").as_deref(),

@@ -365,6 +365,59 @@ min_confidence = 0.25
     }
 
     #[test]
+    fn test_accepted_documents_survive_a_config_round_trip() {
+        use crate::config::{AcceptedDocument, ModelConfig, ModelType};
+
+        let model = |accepted_documents| ModelConfig {
+            path: PathBuf::from("/path/to/model.onnx"),
+            labels: PathBuf::from("/path/to/labels.txt"),
+            model_type: ModelType::BirdnetV24,
+            meta_model: None,
+            bsg_calibration: None,
+            bsg_migration: None,
+            bsg_distribution_maps: None,
+            registry_id: None,
+            installed_version: None,
+            installed_build: None,
+            region: None,
+            variant: None,
+            accepted_documents,
+        };
+        let accepted = vec![
+            AcceptedDocument {
+                kind: "acceptable_use".to_string(),
+                revision: Some("r1".to_string()),
+                sha256: Some("ab".repeat(32)),
+            },
+            AcceptedDocument {
+                kind: "terms".to_string(),
+                revision: None,
+                sha256: None,
+            },
+        ];
+        let mut config = Config::default();
+        config
+            .models
+            .insert("a".to_string(), model(accepted.clone()));
+        config.models.insert("b".to_string(), model(Vec::new()));
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        write_config_to_disk(&config, &path).unwrap();
+
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert_eq!(
+            text.matches("accepted_documents").count(),
+            accepted.len(),
+            "one table per recorded document and no key for the model without a record, \
+             got:\n{text}"
+        );
+        let loaded = load_config_file(&path).unwrap();
+        assert_eq!(loaded.models["a"].accepted_documents, accepted);
+        assert_eq!(loaded.models["b"].accepted_documents, Vec::new());
+    }
+
+    #[test]
     fn test_load_invalid_toml_returns_error() {
         let mut file = NamedTempFile::new().unwrap();
         writeln!(file, "this is not valid toml {{{{").unwrap();

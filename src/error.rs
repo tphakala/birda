@@ -395,6 +395,19 @@ pub enum Error {
         id: String,
     },
 
+    /// A model needs agreement to documents and no prompt can be shown.
+    #[error(
+        "installing {model} requires agreement to {documents}; no prompt can be shown \
+         without a terminal or under structured output, so read each one and run the \
+         install again with --yes to agree"
+    )]
+    AgreementRequired {
+        /// Display name of the model.
+        model: String,
+        /// The documents, each rendered as `<kind> (<url>)`, joined by ", ".
+        documents: String,
+    },
+
     /// Model publishes no translated label sets.
     #[error("model '{model_id}' has no label language variants")]
     ModelHasNoLanguages {

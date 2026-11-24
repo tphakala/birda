@@ -765,6 +765,8 @@ task build:macos-arm64
 
 Models can be installed automatically using `birda models install <model-id>`.
 
+The install shows the model's licence and asks you to type `accept`. When a model's publisher requires agreement to a document as well, such as an acceptable use policy, the install lists that document with its link before the licence. Without a terminal, or with `--output-mode json`, such a model installs only with `--yes`, which records your agreement. birda keeps the kind and revision of what you agreed to under the model in `config.toml` (`accepted_documents`).
+
 ### BirdNET v2.4 (Recommended)
 
 ```bash

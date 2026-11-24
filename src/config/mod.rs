@@ -17,7 +17,7 @@ pub use geomodel::{GeomodelRequest, GeomodelResolution, configured_paths, resolv
 pub use openvino::{OpenVinoDeviceSpec, OpenVinoSettings, PciAddress};
 pub use paths::{config_dir, config_file_path, data_dir, openvino_cache_dir, tensorrt_cache_dir};
 pub use types::{
-    Config, CsvColumnsConfig, DefaultsConfig, InferenceConfig, InferenceDevice, ModelConfig,
-    ModelType, OutputConfig, OutputFormat, OutputMode, UnmatchedPolicy,
+    AcceptedDocument, Config, CsvColumnsConfig, DefaultsConfig, InferenceConfig, InferenceDevice,
+    ModelConfig, ModelType, OutputConfig, OutputFormat, OutputMode, UnmatchedPolicy,
 };
 pub use validate::{get_model, validate_config, validate_model_config};

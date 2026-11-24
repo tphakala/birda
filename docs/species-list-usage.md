@@ -23,7 +23,7 @@ If you provide both `--lat`/`--lon` AND `--slist`, the species list file will be
 
 ## Dynamic Range Filtering
 
-Dynamic filtering uses the BirdNET Geomodel v3.0.2 to predict which species are likely to occur at a specific location and time. The geomodel covers 12,012 species across birds, mammals, insects, amphibians and reptiles, and is shared by every classifier: BirdNET v2.4, BirdNET v3.0 and Perch v2 all use the same one.
+Dynamic filtering uses the BirdNET Geomodel v3.0.2 to predict which species are likely to occur at a specific location and time. The geomodel covers 12,012 species across birds, mammals, insects, amphibians and reptiles, and is shared by every classifier: BirdNET v2.4, BirdNET+ V3.0 and Perch v2 all use the same one.
 
 ### Requirements
 
@@ -38,11 +38,14 @@ No classifier's species list is a subset of the geomodel's, so some species have
 | Model | Species | With geomodel coverage |
 |-------|---------|------------------------|
 | BirdNET v2.4 | 6,522 | 6,217 |
+| BirdNET+ V3.0 | 11,725 | 10,533 |
 | Perch v2 | 14,795 | 11,145 |
 
-The BirdNET v2.4 shortfall is mostly recent eBird taxonomic revisions, plus the ten non-species labels (`Dog`, `Engine`, `Fireworks`, `Gun`, `Human non-vocal`, `Human vocal`, `Human whistle`, `Noise`, `Power tools`, `Siren`). Perch's is mostly environmental sound classes, insects and amphibians.
+The BirdNET v2.4 shortfall is mostly recent eBird taxonomic revisions, plus the ten non-species labels (`Dog`, `Engine`, `Fireworks`, `Gun`, `Human non-vocal`, `Human vocal`, `Human whistle`, `Noise`, `Power tools`, `Siren`). Perch's is mostly environmental sound classes, insects and amphibians. BirdNET+ V3.0's unmatched labels include its 16 sound classes (`Gun`, `Engine`, `Siren` and so on) and Homo sapiens, which pass through by default.
 
-By default these species **pass through unfiltered**, so range filtering never silently loses a detection it has no evidence about. Use `--range-unmatched drop` to filter them out instead. birda prints the mapped and unmatched counts at startup, so coverage is visible rather than assumed.
+Matched species are filtered by their geomodel score, and that includes domestic animals. BirdNET+ V3.0 has dog, cat, cattle, horse, sheep, goat and chicken classes in every regional model, the geomodel has entries for them, and it scores them low (a barking dog in Helsinki in June scores 0.0094 against the default threshold of 0.01). With range filtering on, their detections can be dropped. Perch v2 has classes for the same seven animals and BirdNET v2.4 has chicken (`Gallus gallus`), so both are affected the same way. Labels that are sound classes, such as `Dog` in BirdNET v2.4, have no geomodel entry and pass through. This is tracked in [#455](https://github.com/tphakala/birda/issues/455).
+
+By default species with no geomodel entry **pass through unfiltered**, so range filtering never silently loses a detection it has no evidence about. Use `--range-unmatched drop` to filter them out instead. birda prints the mapped and unmatched counts at startup, so coverage is visible rather than assumed.
 
 ### Usage Examples
 

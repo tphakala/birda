@@ -9,7 +9,7 @@ A fast, cross-platform CLI tool for bird species detection using [BirdNET](https
 
 ## Features
 
-- **Multiple AI Models**: Support for BirdNET v2.4, BirdNET v3.0, Google Perch v2, BSG Finnish Birds, and BattyBirdNET bat classifiers
+- **Multiple AI Models**: Support for BirdNET v2.4, BirdNET+ V3.0, Google Perch v2, BSG Finnish Birds, and BattyBirdNET bat classifiers
 - **GPU Acceleration**: Optional CUDA support for faster inference on NVIDIA GPUs, and OpenVINO for Intel GPUs (Iris Xe, Arc)
 - **Species Filtering**: Dynamic range filtering by location/date or static species list files
 - **Multiple Output Formats**: CSV, Parquet, JSON, Raven selection tables, Audacity labels, Kaleidoscope CSV
@@ -843,50 +843,56 @@ birda models install perch-v2
 - **Range filtering**: Supported (BirdNET Geomodel v3.0.2, 11,145 of 14,795 species covered)
 - **Source**: [Perch-onnx on Hugging Face](https://huggingface.co/justinchuby/Perch-onnx) (ONNX conversion by Justin Chu)
 
-### BirdNET v3.0
+### BirdNET+ V3.0
 
 ```bash
-birda models install birdnet-v30
+birda models install birdnet-plus-v30
 ```
 
-> **Note**: these are **developer preview** weights (`3.0-preview3.1`), not a GA release. The repository's `TERMS_OF_USE.txt` adds restrictions beyond the licence.
-
-- **License**: CC BY-SA 4.0 (commercial use permitted, unlike v2.4)
+- **License**: Apache-2.0 (commercial use permitted)
+- **Acceptable use**: the publisher's [acceptable use policy](https://huggingface.co/tphakala/BirdNET-Plus-V3.0/resolve/f90c3ba818b179adf5f4c9eabf2e6f8b801e4c06/ACCEPTABLE_USE-v3.0.1.md), which `models install` shows and asks you to agree to (pass `--yes` to agree without a prompt)
 - **Vendor**: Cornell Lab of Ornithology & Chemnitz University of Technology
 - **Sample rate**: 32kHz
 - **Segment duration**: 5 seconds
-- **Species**: 11,560 classes globally, fewer per region
+- **Species**: 11,725 classes globally (11,709 species and 16 sound classes such as Gun, Engine and Siren), fewer per region
+- **Range filtering**: Supported (BirdNET Geomodel v3.0.2, 10,533 of 11,725 classes covered). Domestic animals (dog, cat, cattle, horse, sheep, goat, chicken) have geomodel entries with low occurrence scores, so with range filtering on their detections can be dropped; see [#455](https://github.com/tphakala/birda/issues/455), which tracks the fix. The sound classes and Homo sapiens have no geomodel entry and pass through by default
 - **Model type**: `birdnet-v30`
-- **Source**: [BirdNET-v3.0-Models on Hugging Face](https://huggingface.co/tphakala/BirdNET-v3.0-Models)
+- **Source**: [BirdNET-Plus-V3.0 on Hugging Face](https://huggingface.co/tphakala/BirdNET-Plus-V3.0)
+
+Powered by [BirdNET](https://birdnet.cornell.edu/).
+
+#### Upgrading from the BirdNET v3.0 preview
+
+BirdNET+ V3.0 replaces the BirdNET v3.0 developer preview, and `birdnet-v30` is no longer offered by `birda models install`. Preview models you installed keep working under their own keys (`birdnet-v30`, `birdnet-v30-<region>`). BirdNET+ installs under new keys (`birdnet-plus-v30`, `birdnet-plus-v30-<region>`), so select it with `-m` or set it as the default with `--default`. birda does not migrate or delete the preview files. To remove one, run `birda models remove birdnet-v30 --purge`, and the same for `birdnet-v30-<region>` for each regional install.
 
 ### Regional models
 
-BirdNET v3.0 and Perch v2 both publish 39 region-sliced models alongside the global one. A regional model scores only the species of that region, which cuts peak memory by roughly two thirds and latency by 15 to 30 percent. It is numerically identical to the global model on the species it keeps, so accuracy is unchanged for those species.
+BirdNET+ V3.0 and Perch v2 both publish region-sliced models alongside the global one. A regional model scores only the species of that region and needs less memory: on a Raspberry Pi 5 the publisher measured a peak of 198 MB for the BirdNET+ nordic model against 457 MB for the global model. It is numerically identical to the global model on the species it keeps, so accuracy is unchanged for those species. `birda models regions <id>` lists the regions each model publishes.
 
 ```bash
-birda models regions birdnet-v30              # browse the tiles, grouped by continent
-birda models install birdnet-v30 --region nordic
-birda -m birdnet-v30-nordic recording.wav
+birda models regions birdnet-plus-v30              # browse the tiles, grouped by continent
+birda models install birdnet-plus-v30 --region nordic
+birda -m birdnet-plus-v30-nordic recording.wav
 ```
 
 A regional install is registered under `<model-id>-<region>`, so a global and a regional model coexist and both stay selectable with `-m`.
 
 ### Choosing a variant
 
-Each model publishes several files for different hardware: `fp32` and `fp16` for BirdNET v3.0, `no-dft-fp32` and `int8-arm` for Perch v2. birda picks one at install time from the configured inference device and the GPU libraries present on the system, prints which it chose and why, and accepts an override:
+Some models publish several files for different hardware: `no-dft-fp32` and `int8-arm` for Perch v2. BirdNET+ V3.0 publishes `fp32` only, so there is nothing to choose. birda picks one at install time from the configured inference device and the GPU libraries present on the system, prints which it chose and why, and accepts an override:
 
 ```bash
-birda models install birdnet-v30 --variant fp16
+birda models install perch-v2 --variant no-dft-fp32
 ```
 
-Auto-selection is deliberately conservative. It picks a narrow variant only on a definite signal, and otherwise installs the family default, which every backend supports. On a memory-constrained CPU device prefer a regional `fp32` over a global `fp16`: fp16 is not a CPU memory saving.
+Auto-selection is deliberately conservative. It picks a narrow variant only on a definite signal, and otherwise installs the family default, which every backend supports. On a memory-constrained device prefer a regional model over the global one.
 
 ### Downloading through a mirror
 
 Set `HF_ENDPOINT` to use a Hugging Face mirror, for networks where huggingface.co is unreachable:
 
 ```bash
-HF_ENDPOINT=https://hf-mirror.com birda models install birdnet-v30
+HF_ENDPOINT=https://hf-mirror.com birda models install birdnet-plus-v30
 ```
 
 ### BirdNET Geomodel v3.0.2

@@ -209,6 +209,10 @@ pub struct OpenVinoSettings {
 /// startup check on every Intel GPU tested, with the command that installs the
 /// variant to use instead.
 ///
+/// When the model's registry id was retired, the command installs its
+/// replacement, which lands under a different config key, so the warning names
+/// that key too.
+///
 /// `None` for any other variant, and for a model that was not installed from
 /// the registry, since there is no install command to give for it.
 #[must_use]
@@ -218,15 +222,25 @@ pub fn unverified_variant_warning(model: &super::ModelConfig, model_name: &str) 
         return None;
     }
     let id = model.registry_id.as_deref()?;
-    let region = model
-        .region
-        .as_deref()
-        .map_or_else(String::new, |region| format!(" --region {region}"));
-    Some(format!(
+    let region = model.region.as_deref();
+    let region_flag = region.map_or_else(String::new, |region| format!(" --region {region}"));
+    let prefix = format!(
         "model '{model_name}' is the {UNVERIFIED_VARIANT} variant, which failed the OpenVINO \
          startup check on the Intel GPUs tested. If the check fails, install the \
-         {RECOMMENDED_VARIANT} variant: birda models install {id} --variant \
-         {RECOMMENDED_VARIANT}{region}"
+         {RECOMMENDED_VARIANT} variant"
+    );
+    let Some(replacement) = crate::registry::replacement_for(id) else {
+        return Some(format!(
+            "{prefix}: birda models install {id} --variant {RECOMMENDED_VARIANT}{region_flag}"
+        ));
+    };
+    let key = region.map_or_else(
+        || replacement.to_string(),
+        |region| format!("{replacement}-{region}"),
+    );
+    Some(format!(
+        "{prefix} of its replacement: birda models install {replacement} --variant \
+         {RECOMMENDED_VARIANT}{region_flag}; then run it with -m {key}"
     ))
 }
 
@@ -235,7 +249,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn an_fp16_install_gets_the_command_for_the_fp32_one() {
+    fn an_fp16_install_gets_the_fp32_command_naming_any_replacement() {
         let mut model = crate::config::ModelConfig {
             path: PathBuf::from("model.onnx"),
             labels: PathBuf::from("labels.txt"),
@@ -251,14 +265,40 @@ mod tests {
             variant: Some("fp16".to_string()),
             accepted_documents: Vec::new(),
         };
+        // The retired preview is no longer installable, so the hint names its
+        // replacement and the config key that install will occupy.
         assert_eq!(
             unverified_variant_warning(&model, "birdnet-v30-nordic").as_deref(),
             Some(
                 "model 'birdnet-v30-nordic' is the fp16 variant, which failed the OpenVINO \
                  startup check on the Intel GPUs tested. If the check fails, install the fp32 \
-                 variant: birda models install birdnet-v30 --variant fp32 --region nordic"
+                 variant of its replacement: birda models install birdnet-plus-v30 --variant \
+                 fp32 --region nordic; then run it with -m birdnet-plus-v30-nordic"
             )
         );
+        // A global install has no region in the command and the bare id as key.
+        model.region = None;
+        assert_eq!(
+            unverified_variant_warning(&model, "birdnet-v30").as_deref(),
+            Some(
+                "model 'birdnet-v30' is the fp16 variant, which failed the OpenVINO \
+                 startup check on the Intel GPUs tested. If the check fails, install the fp32 \
+                 variant of its replacement: birda models install birdnet-plus-v30 --variant \
+                 fp32; then run it with -m birdnet-plus-v30"
+            )
+        );
+        // An id that was never retired keeps the plain command.
+        model.region = Some("nordic".to_string());
+        model.registry_id = Some("example-v1".to_string());
+        assert_eq!(
+            unverified_variant_warning(&model, "example-v1-nordic").as_deref(),
+            Some(
+                "model 'example-v1-nordic' is the fp16 variant, which failed the OpenVINO \
+                 startup check on the Intel GPUs tested. If the check fails, install the fp32 \
+                 variant: birda models install example-v1 --variant fp32 --region nordic"
+            )
+        );
+        model.registry_id = Some("birdnet-v30".to_string());
         model.variant = Some("fp32".to_string());
         assert_eq!(
             unverified_variant_warning(&model, "birdnet-v30-nordic"),

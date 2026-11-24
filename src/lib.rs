@@ -2225,13 +2225,14 @@ fn handle_models_command(
 
                 // Human-readable output
                 if languages {
-                    registry::show_languages(&registry, &id)?;
+                    registry::show_languages(reg_model)?;
                 } else {
-                    registry::show_info(&registry, &id)?;
+                    registry::show_info(reg_model)?;
                 }
             } else {
                 // Fall back to configured model
-                let model = config::get_model(config, &id)?;
+                let model = config::get_model(config, &id)
+                    .map_err(|e| registry::replaced_model_error(&id).unwrap_or(e))?;
 
                 // JSON/NDJSON output
                 if output_mode.is_structured() {
@@ -2657,8 +2658,7 @@ fn handle_models_install(
         return handle_bat_install(&registry, region, interactive, assume_yes, output_mode);
     }
 
-    let model = registry::find_model(&registry, id)
-        .ok_or_else(|| Error::ModelNotFoundInRegistry { id: id.to_string() })?;
+    let model = registry::require_model(&registry, id)?;
 
     let config = load_default_config()?;
 

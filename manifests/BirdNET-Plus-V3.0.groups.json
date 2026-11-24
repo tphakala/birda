@@ -1,0 +1,90 @@
+{
+  "groups": [
+    {
+      "group": "europe",
+      "display": "Europe",
+      "order": 0,
+      "tiles": [
+        "nordic",
+        "british-isles",
+        "central-europe",
+        "baltics",
+        "iberia",
+        "southern-europe",
+        "eastern-europe",
+        "western-palearctic",
+        "iceland",
+        "svalbard",
+        "canary-islands",
+        "madeira",
+        "azores"
+      ]
+    },
+    {
+      "group": "asia",
+      "display": "Asia",
+      "order": 1,
+      "tiles": [
+        "south-asia-peninsular",
+        "central-india",
+        "indo-gangetic",
+        "himalaya",
+        "japan",
+        "china-northeast",
+        "china-north-central",
+        "china-southeast",
+        "china-southwest",
+        "tibet"
+      ]
+    },
+    {
+      "group": "north-america",
+      "display": "North America",
+      "order": 2,
+      "tiles": [
+        "north-america-east",
+        "north-america-west",
+        "canada-alaska"
+      ]
+    },
+    {
+      "group": "south-america",
+      "display": "South America",
+      "order": 3,
+      "tiles": [
+        "amazonia",
+        "andes",
+        "eastern-brazil",
+        "southern-cone",
+        "galapagos"
+      ]
+    },
+    {
+      "group": "africa",
+      "display": "Africa",
+      "order": 4,
+      "tiles": [
+        "southern-africa",
+        "reunion",
+        "mauritius",
+        "seychelles",
+        "cape-verde",
+        "sao-tome-principe",
+        "west-africa",
+        "central-africa",
+        "east-africa"
+      ]
+    },
+    {
+      "group": "oceania",
+      "display": "Oceania",
+      "order": 5,
+      "tiles": [
+        "australia-east",
+        "new-zealand",
+        "hawaii",
+        "new-caledonia"
+      ]
+    }
+  ]
+}

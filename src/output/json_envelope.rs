@@ -958,7 +958,7 @@ pub struct ModelManifestPayload {
 /// Payload for `birda models regions <id> --lat <lat> --lon <lon>`.
 ///
 /// The rule behind `region` and the order of `matches` is documented on
-/// `registry::region`; birda-gui reads this instead of restating it.
+/// `registry::region`; a client reads the pick from here instead of restating it.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RegionLookupPayload {
     /// Result type discriminator.

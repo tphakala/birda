@@ -44,9 +44,10 @@ type Tile = (
     u64,
 );
 
-// Geometry copied from the published BirdNET+ V3.0.1 regions of the bundled
-// registry (`birdnet-plus-v30`, registry version 9). Nordic and Baltics tie at
-// tier 50; Western Palearctic is the broader tier 10 region around both.
+// Geometry from the published BirdNET+ V3.0.1 regions of the bundled registry
+// (`birdnet-plus-v30`, registry version 10); Western Palearctic keeps two of its
+// five boxes. Nordic and Baltics tie at tier 50; Western Palearctic is the
+// broader tier 10 region around both.
 const TILES: &[Tile] = &[
     (
         "nordic",

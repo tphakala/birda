@@ -893,7 +893,7 @@ birda models install birdnet-plus-v30 --region auto --lat 60.17 --lon 24.94
 birda models install birdnet-plus-v30 --region global
 ```
 
-`--region auto` without `--lat` and `--lon` uses `defaults.latitude` and `defaults.longitude` from your configuration (`birda config set defaults.latitude 60.17`), and fails if neither is set. Put `--lat` and `--lon` after `models install`: before `models` they belong to the analyze command, and birda refuses to use them to pick a region. When several regions cover a point, the most specific one wins; ties go to the nearest region centre, and the choice is printed before anything is downloaded. To see the choice without installing, run `birda models regions birdnet-plus-v30 --lat 60.17 --lon 24.94`. Your location is only compared with the region boundaries in birda's registry; nothing is looked up over the network.
+`--region auto` without `--lat` and `--lon` uses `defaults.latitude` and `defaults.longitude` from your configuration (`birda config set defaults.latitude 60.17`), and fails unless both are set. Put `--lat` and `--lon` after `models install`: before `models` they belong to the analyze command, and birda refuses to use them to pick a region. When several regions cover a point, the most specific one wins; ties go to the nearest region centre, and the choice is printed before anything is downloaded. To see the choice without installing, run `birda models regions birdnet-plus-v30 --lat 60.17 --lon 24.94`. Your location is only compared with the region boundaries in birda's registry; nothing is looked up over the network.
 
 ### Choosing a variant
 

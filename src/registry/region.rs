@@ -1,9 +1,9 @@
 //! Picking a regional model from a location.
 //!
 //! One rule serves `birda models install --region auto` and
-//! `birda models regions <id> --lat --lon`, and birda-gui relies on it: the
-//! tiles whose boxes contain the point (edges included), then the highest
-//! `tier`, then the nearest `centroid` by great-circle distance rounded to whole
+//! `birda models regions <id> --lat --lon`, whose JSON result lets a client such
+//! as birda-gui show the same pick: the tiles whose boxes contain the point
+//! (edges included), then the highest `tier`, then the nearest `centroid` by great-circle distance rounded to whole
 //! kilometres, then the slug. A point no tile contains is answered by the global
 //! model. Nothing here reads the network or the host: the pick is a function of
 //! the point and the entry's region data.
@@ -462,7 +462,7 @@ pub(crate) mod test_fixtures {
     //! Entries for the lookup, resolver and prompt tests.
     //!
     //! `real_tiles` copies the geometry, tier and centroid of twelve `BirdNET+`
-    //! V3.0.1 regions from the bundled `registry.json` (registry version 9, the
+    //! V3.0.1 regions from the bundled `registry.json` (registry version 10, the
     //! `birdnet-plus-v30` entry). The country lists are trimmed to what the tests
     //! use, names and codes kept in step.
 

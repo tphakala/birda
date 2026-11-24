@@ -209,16 +209,16 @@ birda --output-mode json models list
         "registry_id": "birdnet-v24"
       },
       {
-        "id": "birdnet-v30-nordic",
+        "id": "birdnet-plus-v30-nordic",
         "model_type": "birdnet-v30",
         "is_default": false,
-        "path": "/home/user/.local/share/birda/models/birdnet-v3.0-preview3.1-nordic-fp16-b1.onnx",
-        "labels_path": "/home/user/.local/share/birda/models/birdnet-v3.0-preview3.1-nordic-labels-b1.txt",
-        "registry_id": "birdnet-v30",
-        "installed_version": "3.0-preview3.1",
-        "installed_build": 1,
+        "path": "/home/user/.local/share/birda/models/birdnet-plus-v3.0.1-nordic-fp32-b2.onnx",
+        "labels_path": "/home/user/.local/share/birda/models/birdnet-plus-v3.0.1-nordic-labels-b2.txt",
+        "registry_id": "birdnet-plus-v30",
+        "installed_version": "3.0.1",
+        "installed_build": 2,
         "region": "nordic",
-        "variant": "fp16"
+        "variant": "fp32"
       }
     ]
   }
@@ -286,7 +286,7 @@ A model whose publisher marks a document as requiring agreement (an acceptable u
 ### Model Manifest
 
 ```bash
-birda --output-mode json models manifest birdnet-v30
+birda --output-mode json models manifest birdnet-plus-v30
 ```
 
 A documented projection of one registry model, for building a region-aware model gallery. It lists every region and variant with class count, download size, resolved URLs, the countries each region covers, and, where the publisher gives them, region geometry, score calibration and the family's licence documents. A legacy single-file model (`birdnet-v24`) projects as one synthetic `global` variant, so a consumer never branches on an empty list.
@@ -299,28 +299,35 @@ A documented projection of one registry model, for building a region-aware model
   "payload": {
     "result_type": "model_manifest",
     "manifest": {
-      "id": "birdnet-v30",
-      "name": "BirdNET v3.0",
-      "version": "3.0-preview3.1",
+      "id": "birdnet-plus-v30",
+      "name": "BirdNET+ V3.0",
+      "version": "3.0.1",
       "build": 1,
       "model_type": "birdnet-v30",
       "license": {
-        "type": "CC-BY-SA-4.0",
-        "url": "https://creativecommons.org/licenses/by-sa/4.0/",
+        "type": "Apache-2.0",
+        "url": "https://www.apache.org/licenses/LICENSE-2.0",
         "commercial_use": true,
         "attribution_required": true,
-        "share_alike": true
+        "share_alike": false
       },
       "default_variant": "fp32",
-      "selection": { "cuda": "fp16", "tensorrt": "fp16" },
+      "selection": {
+        "aarch64/onnxruntime": "fp32",
+        "cuda": "fp32",
+        "tensorrt": "fp32",
+        "x86-64/onnxruntime": "fp32",
+        "x86-64/openvino-cpu": "fp32",
+        "x86-64/openvino-gpu": "fp32"
+      },
       "variants": [
         {
           "id": "fp32",
           "group_order": 0,
-          "classes": 11560,
-          "size_bytes": 123456789,
-          "model_url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/full/birdnet-v3.0-preview3.1-fp32-b1.onnx",
-          "labels_url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/full/birdnet-v3.0-preview3.1-labels-b1.txt",
+          "classes": 11725,
+          "size_bytes": 344606647,
+          "model_url": "https://huggingface.co/tphakala/BirdNET-Plus-V3.0/resolve/main/full/birdnet-plus-v3.0.1-fp32-b1.onnx",
+          "labels_url": "https://huggingface.co/tphakala/BirdNET-Plus-V3.0/resolve/main/full/birdnet-plus-v3.0.1-labels-b1.txt",
           "build": 1
         },
         {
@@ -330,15 +337,38 @@ A documented projection of one registry model, for building a region-aware model
           "group": "south-america",
           "group_name": "South America",
           "group_order": 3,
-          "classes": 809,
-          "size_bytes": 156000000,
-          "model_url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/amazonia/birdnet-v3.0-preview3.1-amazonia-fp32-b1.onnx",
-          "labels_url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/regional/amazonia/birdnet-v3.0-preview3.1-amazonia-labels-b1.txt",
+          "classes": 3196,
+          "size_bytes": 161028440,
+          "model_url": "https://huggingface.co/tphakala/BirdNET-Plus-V3.0/resolve/main/regional/amazonia/birdnet-plus-v3.0.1-amazonia-fp32-b2.onnx",
+          "labels_url": "https://huggingface.co/tphakala/BirdNET-Plus-V3.0/resolve/main/regional/amazonia/birdnet-plus-v3.0.1-amazonia-labels-b2.txt",
           "countries": {
-            "core": ["Brazil", "Colombia", "Ecuador", "Peru", "Venezuela"],
+            "core": ["Brazil", "Colombia", "Ecuador", "Guyana", "Peru", "Suriname", "Trinidad & Tobago", "Venezuela"],
             "partial": ["Bolivia", "Panama"]
           },
-          "build": 1
+          "build": 2,
+          "country_codes": {
+            "core": ["BR", "CO", "EC", "GY", "PE", "SR", "TT", "VE"],
+            "partial": ["BO", "PA"]
+          },
+          "tier": 50,
+          "bboxes": [{ "lat_min": -13.0, "lat_max": 10.0, "lon_min": -79.0, "lon_max": -44.0 }],
+          "centroid": { "lat": -1.5, "lon": -61.5 }
+        }
+      ],
+      "documents": [
+        {
+          "kind": "license",
+          "requires_agreement": false,
+          "url": "https://huggingface.co/tphakala/BirdNET-Plus-V3.0/resolve/f90c3ba818b179adf5f4c9eabf2e6f8b801e4c06/LICENSE-v3.0.1.md",
+          "revision": "f90c3ba818b179adf5f4c9eabf2e6f8b801e4c06",
+          "sha256": "ec0c349bd674520989b4df63afd50601695bd99a01768b8e46a04694573afd47"
+        },
+        {
+          "kind": "acceptable_use",
+          "requires_agreement": true,
+          "url": "https://huggingface.co/tphakala/BirdNET-Plus-V3.0/resolve/f90c3ba818b179adf5f4c9eabf2e6f8b801e4c06/ACCEPTABLE_USE-v3.0.1.md",
+          "revision": "f90c3ba818b179adf5f4c9eabf2e6f8b801e4c06",
+          "sha256": "4495ebf9a088a83f902bbbef95ec17f635b51c94ade5d95b5d248646ea70a04e"
         }
       ]
     }

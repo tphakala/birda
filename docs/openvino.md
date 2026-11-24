@@ -18,7 +18,7 @@ birda does not ship OpenVINO. Install it yourself:
 - **The Intel GPU driver and compute runtime.** On Linux that is the `intel-opencl-icd` package. GPUs older than Tiger Lake (Skylake to Ice Lake, which includes Kaby Lake Iris Plus) need `intel-opencl-icd-legacy1` instead, because the current packages dropped them.
 - **Access to the GPU.** On Linux your user needs access to the render node, which normally means membership of the `render` group: `sudo usermod -aG render $USER`, then log in again. Arc cards want Linux kernel 6.2 or newer.
 - **An ONNX Runtime**, as for every birda run. birda still loads it, because the startup check compares the GPU's output with ONNX Runtime on the CPU.
-- **The fp32 file of BirdNET v3.0.** The `fp16` file failed the startup check on both Intel GPUs tested, even though birda compiles it at 32-bit precision. `birda models install` picks the `fp32` file when the configured device is `openvino`, but `--openvino` runs whichever file is installed, and an install made for CUDA or TensorRT gets the `fp16` file. birda warns when it finds one. To switch, run `birda models install birdnet-v30 --variant fp32`, with `--region <region>` for a regional model.
+- **An fp32 file.** The `fp16` file of the BirdNET v3.0 preview failed the startup check on both Intel GPUs tested, even though birda compiles it at 32-bit precision. BirdNET+ V3.0, which replaces the preview, publishes `fp32` only, so `birda models install` always installs that. `--openvino` runs whichever file is installed, and birda warns when it finds a preview `fp16` one. To switch, install BirdNET+ with `birda models install birdnet-plus-v30 --variant fp32`, with `--region <region>` for a regional model, and select it with `-m`.
 
 Platforms: Linux (tested) and Windows (**untested**, see below). macOS is not supported: `--openvino` reports an error there.
 
@@ -70,7 +70,7 @@ On a computer with more than one GPU, pin the one you want with `pci:` or `uuid:
 
 ## What birda guarantees
 
-- **Float32.** The compiled model runs at 32-bit float precision, which is not the GPU default (16-bit). At 16 bits the detections of BirdNET v2.4 and v3.0 change. birda reads the precision back from the compiled model and stops if the device did not honour it.
+- **Float32.** The compiled model runs at 32-bit float precision, which is not the GPU default (16-bit). At 16 bits the detections of BirdNET v2.4 and the BirdNET v3.0 preview change. birda reads the precision back from the compiled model and stops if the device did not honour it.
 - **Checked against ONNX Runtime.** The first time each batch shape is compiled in a run, birda feeds the same deterministic test signal (a different one in every batch row) through ONNX Runtime on the CPU and through the GPU and compares the raw scores and embeddings. If they differ by more than 0.01 anywhere, the run stops with an `OpenVINO ... gives different results from ONNX Runtime` error. This also covers GPUs, drivers and runtime versions nobody has tested.
 - **Two compiled shapes.** One for a single segment and one for the run's batch size (default 8, `-b` to change it). A file whose length is known up front and that has at most half a batch of segments is run as single segments; any other partial batch is padded to the batch size.
 
@@ -100,14 +100,14 @@ Throughput depends on the model and on the GPU, and an integrated GPU does not a
 | Model | Iris Plus 640 (Gen9, 4-core i5, idle host) | Iris Xe (Gen12, 12-thread i7, shared host) |
 |-------|--------------------------------------------|---------------------------------------------|
 | BirdNET v2.4 | 1.4 to 1.6 times the CPU | about 1.3 times the CPU |
-| BirdNET v3.0 | about the same | slower than the CPU |
+| BirdNET v3.0 preview | about the same | slower than the CPU |
 | Perch v2 | about 1.2 times the CPU | about the same as the CPU |
 
 The Iris Xe host was shared with other workloads, so its CPU figures varied by a factor of up to three between runs. Treat the table as indicative and measure on your own hardware. The batch size changes little on these GPUs: the default of 8 is within a few percent of 1, 4, 16 and 32. A discrete GPU may want a larger batch; that has not been measured.
 
 OpenVINO is therefore mostly worth using when the GPU is idle and the CPU is not: BirdNET v2.4 on a busy computer, or a CPU that is needed for other work. birda never selects it automatically.
 
-Memory: the process holds two compiled shapes of the model, and ONNX Runtime loads its own copy while the startup check runs. Peak resident memory measured at batch size 8: BirdNET v2.4 (67 MB model) 0.5 GB, the BirdNET v3.0 Nordic model (135 MB) 0.9 GB, Perch v2 Nordic (65 MB) 0.8 GB, and the full BirdNET v3.0 model (557 MB) 1.7 GB, which is the figure to compare with your free memory on a small computer.
+Memory: the process holds two compiled shapes of the model, and ONNX Runtime loads its own copy while the startup check runs. Peak resident memory measured at batch size 8: BirdNET v2.4 (67 MB model) 0.5 GB, the BirdNET v3.0 preview Nordic model (135 MB) 0.9 GB, Perch v2 Nordic (65 MB) 0.8 GB, and the full BirdNET v3.0 preview model (557 MB) 1.7 GB, which is the figure to compare with your free memory on a small computer.
 
 ## Measured platforms
 

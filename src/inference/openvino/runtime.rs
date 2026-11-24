@@ -750,11 +750,11 @@ enum Origin {
 
 /// Open the runtime library for a search result, through `open`.
 ///
-/// Returns the file that was opened, or `None` when the system loader found
-/// the bare library name. `open` is a parameter so the decisions here can be
-/// tested without a runtime:
+/// Returns the located file, or `None` when the system loader found the bare
+/// library name. `open` is a parameter so the decisions here can be tested
+/// without a runtime:
 ///
-/// * a located file is opened as it is, and a failure is final on every OS: a
+/// * a located file is opened, and a failure is final on every OS: a
 ///   path the search or the user chose never falls back to another runtime.
 ///   Only a located file has its dependencies preloaded (see
 ///   [`Origin::Located`]);
@@ -1957,6 +1957,27 @@ mod tests {
         assert_eq!(preloads, Vec::<PathBuf>::new());
         assert_eq!(loads, [PathBuf::from("libopenvino_c.so")]);
         assert_eq!(loaded, Some(PathBuf::from("libopenvino_c.so")));
+    }
+
+    #[test]
+    fn a_repeat_load_through_a_relative_path_is_the_runtime_already_held() {
+        // The guard compares the absolute path, so a relative INTEL_OPENVINO_DIR
+        // or PATH entry naming the held runtime is not refused as a second one.
+        let held = std::env::current_dir()
+            .unwrap()
+            .join("rel")
+            .join("libopenvino_c.so");
+        let (result, preloads, loads, loaded) = guarded(
+            Some(held.to_str().unwrap()),
+            "rel/libopenvino_c.so",
+            Origin::Located,
+            Err("the preload must not run"),
+            None,
+        );
+        assert_eq!(result, Ok(()));
+        assert_eq!(preloads, Vec::<PathBuf>::new());
+        assert_eq!(loads, std::slice::from_ref(&held));
+        assert_eq!(loaded, Some(held));
     }
 
     #[test]

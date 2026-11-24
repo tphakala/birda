@@ -282,9 +282,10 @@ pub enum Error {
     /// The `OpenVINO` runtime was found but could not be loaded.
     #[error(
         "could not load the OpenVINO runtime: {reason}\n\
-         birda loads the runtime's TBB and core libraries from its own directory \
-         and from the install's runtime/3rdparty/tbb directory. Check that the \
-         OpenVINO install is complete, or run OpenVINO's setupvars script first \
+         birda loads the TBB and core libraries of a runtime it located from that \
+         install. On Linux, a runtime found only through the system loader needs \
+         its TBB directory on LD_LIBRARY_PATH or in ld.so.conf.d (then run \
+         ldconfig). Check that the OpenVINO install is complete \
          (see docs/openvino.md)"
     )]
     OpenVinoRuntimeLoadFailed {

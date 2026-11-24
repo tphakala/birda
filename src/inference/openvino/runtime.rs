@@ -1593,9 +1593,10 @@ mod tests {
             .to_string(),
             "could not load the OpenVINO runtime: the shared library at libopenvino_c.so could not be \
              opened: libtbb.so.12: cannot open shared object file: No such file or directory\n\
-             birda loads the runtime's TBB and core libraries from its own directory \
-             and from the install's runtime/3rdparty/tbb directory. Check that the \
-             OpenVINO install is complete, or run OpenVINO's setupvars script first \
+             birda loads the TBB and core libraries of a runtime it located from that \
+             install. On Linux, a runtime found only through the system loader needs \
+             its TBB directory on LD_LIBRARY_PATH or in ld.so.conf.d (then run \
+             ldconfig). Check that the OpenVINO install is complete \
              (see docs/openvino.md)"
         );
 

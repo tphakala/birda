@@ -3,7 +3,7 @@
 //! `openvino-sys` opens the C API library with `libloading::Library::new`
 //! (`openvino-sys` 0.11.1 `src/linking/runtime.rs:108`), and the system loader
 //! then looks for that library's own imports, the core library and oneTBB,
-//! only on the loader path (`LD_LIBRARY_PATH`, `PATH`). A runtime found through
+//! on the loader path (`LD_LIBRARY_PATH`, `PATH`). A runtime found through
 //! `INTEL_OPENVINO_DIR`, an install root or a Store package is not on that
 //! path. Opening the two dependencies first, by absolute path, makes the loader
 //! satisfy the import from the already loaded module instead of searching.

@@ -29,7 +29,7 @@ birda does not bundle OpenVINO. Install these yourself:
 
 If you installed OpenVINO from Debian/Ubuntu packages or Intel's APT repository, the libraries are already on the system loader path and birda finds them automatically.
 
-If you extracted an Intel OpenVINO archive, birda finds it without `setupvars.sh` or `ld.so.conf.d` when you set `INTEL_OPENVINO_DIR` to its root, set `inference.openvino_path`, extract it under `/opt/intel` (for example `/opt/intel/openvino_2026`), or copy its libraries next to the `birda` executable. birda loads the runtime's oneTBB library (`libtbb.so.12`) and core library (`libopenvino.so`) from the same install before the C API library, so none of their directories need to be on `LD_LIBRARY_PATH`. If you would rather have the system loader find the runtime, register its directories in `/etc/ld.so.conf.d/openvino.conf` and run `sudo ldconfig`, or source `setupvars.sh` in your shell:
+If you extracted an Intel OpenVINO archive, birda finds it without `setupvars.sh` or `ld.so.conf.d` when you set `INTEL_OPENVINO_DIR` to its root, set `inference.openvino_path`, extract it under `/opt/intel` (for example `/opt/intel/openvino_2026`), or copy the contents of `runtime/lib/intel64` (resolving symlinks) and `runtime/3rdparty/tbb/lib/libtbb.so.12` next to the `birda` executable. birda loads the runtime's oneTBB library (`libtbb.so.12`) and core library (`libopenvino.so`) from the same install before the C API library, so none of their directories need to be on `LD_LIBRARY_PATH`. If you would rather have the system loader find the runtime, register its directories in `/etc/ld.so.conf.d/openvino.conf` and run `sudo ldconfig`, or source `setupvars.sh` in your shell:
 
 ```text
 /opt/intel/openvino_2026/runtime/lib/intel64
@@ -47,7 +47,7 @@ birda finds Store and `winget` installs and archives extracted under `Program Fi
 
 **Option 2: Microsoft Store / winget (WindowsApps MSIX package)**
 
-OpenVINO installed through the Microsoft Store or `winget` is placed under `C:\Program Files\WindowsApps\Intel.OpenVINOToolkit.*`. birda lists that directory and, when Windows refuses the listing to a standard user, reads the package folders from the registry with `reg.exe`. It uses the newest package that holds `openvino_c.dll`.
+OpenVINO installed through the Microsoft Store or `winget` is placed under `C:\Program Files\WindowsApps\Intel.OpenVINOToolkit.*`. birda lists that directory and, when that listing gives no package holding `openvino_c.dll` (a standard user is often refused it), reads the package folders from the registry with `reg.exe`. It uses the newest package that holds `openvino_c.dll`.
 
 ### Search Order
 
@@ -112,7 +112,7 @@ openvino_device = "dgpu"  # optional: auto, igpu, dgpu, pci:..., uuid:...
 |---------------------|------------|
 | `OpenVINO runtime not found` | Install OpenVINO 2025.1+, set `INTEL_OPENVINO_DIR` to its install root, or set `inference.openvino_path`. The error lists every place birda looked. |
 | `inference.openvino_path is set to ...` | Check that the configured path exists and points to `openvino_c`, its directory, or an OpenVINO install root. |
-| `could not load the OpenVINO runtime` | Check that the install is complete: birda loads the TBB and core libraries from the runtime's own directory and from `runtime/3rdparty/tbb`. Reinstall or re-extract OpenVINO, or run OpenVINO's setupvars script first. |
+| `could not load the OpenVINO runtime` | Check that the install is complete: for a runtime birda located, it loads the TBB and core libraries from the runtime's own directory and from `runtime/3rdparty/tbb`. On Linux, a runtime found only through the system loader needs its TBB directory on `LD_LIBRARY_PATH` or in `ld.so.conf.d` (then run `sudo ldconfig`). |
 | `OpenVINO could not list its devices` | Check that the Intel GPU driver and compute runtime (`intel-opencl-icd` on Linux) are installed. |
 | `OpenVINO runtime ... is too old` | Upgrade OpenVINO to 2025.1 or newer. |
 | `no permission to use the Intel GPU render node` | On Linux, add your user to the `render` group and log in again. |

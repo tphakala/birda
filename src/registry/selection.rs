@@ -145,8 +145,7 @@ fn device_key(device: InferenceDevice, probe: &dyn HardwareProbe) -> Option<Stri
         // Runtime by 1.9e-2 on an Intel Iris Xe GPU at the backend's forced f32
         // precision (nordic region, batch 8, tolerance 1e-2), so the startup
         // check refuses it; its `openvino-cpu` key named the fp32 file. The
-        // bundled BirdNET+ V3.0 entry maps both keys to fp32. Using the cpu key
-        // keeps selection on fp32 for any manifest that maps the gpu key to fp16.
+        // bundled BirdNET+ V3.0 entry maps both keys to fp32.
         InferenceDevice::OpenVino => Some(format!("{arch}/openvino-cpu")),
         InferenceDevice::CoreMl => Some(format!("{arch}/coreml")),
         InferenceDevice::Xnnpack => Some(format!("{arch}/xnnpack")),

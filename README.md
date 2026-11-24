@@ -867,7 +867,7 @@ BirdNET+ V3.0 replaces the BirdNET v3.0 developer preview, and `birdnet-v30` is 
 
 ### Regional models
 
-BirdNET+ V3.0 and Perch v2 both publish region-sliced models alongside the global one. A regional model scores only the species of that region, which cuts peak memory by roughly two thirds and latency by 15 to 30 percent. It is numerically identical to the global model on the species it keeps, so accuracy is unchanged for those species. `birda models regions <id>` lists the regions each model publishes.
+BirdNET+ V3.0 and Perch v2 both publish region-sliced models alongside the global one. A regional model scores only the species of that region and needs less memory: on a Raspberry Pi 5 the publisher measured a peak of 198 MB for the BirdNET+ nordic model against 457 MB for the global model. It is numerically identical to the global model on the species it keeps, so accuracy is unchanged for those species. `birda models regions <id>` lists the regions each model publishes.
 
 ```bash
 birda models regions birdnet-plus-v30              # browse the tiles, grouped by continent

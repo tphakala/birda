@@ -1,10 +1,8 @@
 //! License display and acceptance prompts.
 
-#![allow(clippy::print_stdout)]
-
 use super::types::{LicenseInfo, ModelDocument};
 use crate::error::{Error, Result};
-use std::io::{self, Write};
+use std::io::{self, BufRead, Write};
 
 /// Identity of a downloadable asset, for the licence prompt.
 ///
@@ -68,21 +66,40 @@ pub fn prompt_license_acceptance(
         return Ok(true);
     }
 
-    print!("{}", terms_text(asset));
+    confirm_terms(
+        asset,
+        assume_yes,
+        &mut io::stdin().lock(),
+        &mut io::stdout(),
+    )
+}
+
+/// The interactive half of [`prompt_license_acceptance`], over the streams it
+/// talks to so a test can read what the user is shown.
+fn confirm_terms(
+    asset: LicensedAsset<'_>,
+    assume_yes: bool,
+    input: &mut impl BufRead,
+    out: &mut impl Write,
+) -> Result<bool> {
+    write!(out, "{}", terms_text(asset))?;
 
     if assume_yes {
-        println!("Accepted via --yes.");
+        writeln!(out, "Accepted via --yes.")?;
         return Ok(true);
     }
 
-    println!();
-    print!("Type 'accept' to continue, or anything else to cancel: ");
-    io::stdout().flush()?;
+    writeln!(out)?;
+    write!(
+        out,
+        "Type 'accept' to continue, or anything else to cancel: "
+    )?;
+    out.flush()?;
 
-    let mut input = String::new();
-    io::stdin().read_line(&mut input)?;
+    let mut answer = String::new();
+    input.read_line(&mut answer)?;
 
-    Ok(input.trim().eq_ignore_ascii_case("accept"))
+    Ok(answer.trim().eq_ignore_ascii_case("accept"))
 }
 
 impl From<&LicenseInfo> for crate::output::LicenseDetails {
@@ -396,6 +413,43 @@ mod tests {
              under structured output, so read each one and run the install again with \
              --yes to agree"
         );
+    }
+
+    #[test]
+    fn test_interactive_prompt_lists_agreement_documents_before_asking() {
+        let license = geomodel_license();
+        let documents = [
+            document("license", false, "https://example.org/LICENSE.md"),
+            document("acceptable_use", true, "https://example.org/aup.md"),
+        ];
+        let asset = geomodel_asset(&license, &documents);
+        let shown = format!(
+            "Model: BirdNET Geomodel v3.0.2\nVendor: Cornell Lab of Ornithology\nVersion: 3.0.2\n\n\
+             This model requires agreement to:\n  acceptable_use: https://example.org/aup.md\n\n{}",
+            license_summary(&license, "Cornell Lab of Ornithology")
+        );
+
+        // `--yes` shows the terms, accepts, and never reads the answer.
+        let mut input: &[u8] = b"no\n";
+        let mut out = Vec::new();
+        assert!(confirm_terms(asset, true, &mut input, &mut out).unwrap());
+        assert_eq!(
+            String::from_utf8(out).unwrap(),
+            format!("{shown}Accepted via --yes.\n")
+        );
+        assert_eq!(input, b"no\n", "--yes must not consume input");
+
+        // Without it the terms come first, then the question, and the answer decides.
+        let question = "\nType 'accept' to continue, or anything else to cancel: ";
+        for (answer, accepted) in [(" Accept \n", true), ("no\n", false), ("", false)] {
+            let mut out = Vec::new();
+            let result = confirm_terms(asset, false, &mut answer.as_bytes(), &mut out).unwrap();
+            assert_eq!(result, accepted, "answer {answer:?}");
+            assert_eq!(
+                String::from_utf8(out).unwrap(),
+                format!("{shown}{question}")
+            );
+        }
     }
 
     #[test]

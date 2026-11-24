@@ -139,6 +139,10 @@ pub mod regions {
     /// `--region` value that picks the region covering a location.
     pub const AUTO: &str = "auto";
 
+    /// How install output refers to the location it resolved, in place of the
+    /// coordinates ("Region for this location: ...").
+    pub const INSTALL_LOCATION_SUBJECT: &str = "this location";
+
     /// Config key of the configured latitude, as `birda config set` names it.
     pub const CONFIG_LATITUDE_KEY: &str = "defaults.latitude";
 

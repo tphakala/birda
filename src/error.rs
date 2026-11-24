@@ -667,8 +667,9 @@ pub enum Error {
 
     /// A configured coordinate is out of range.
     ///
-    /// Names the config key but not the value: the value is the user's own
-    /// location, and install output often ends up in logs.
+    /// Names the config key but not the value. An out-of-range value is often
+    /// a mistyped location that is still close to the real one (6017 for
+    /// 60.17), and install output often ends up in logs.
     #[error(
         "{key} in config.toml is out of range (must be {min:.1} to {max:.1}); fix it with birda config set {key} <value>"
     )]

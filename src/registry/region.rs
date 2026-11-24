@@ -346,10 +346,13 @@ pub enum RegionResolution<'a> {
     },
 }
 
-/// Range-check a configured coordinate, reporting it as the config route does.
-fn checked(value: Option<f64>, min: f64, max: f64, error: fn(f64) -> Error) -> Result<Option<f64>> {
+/// Range-check the configured coordinate stored under `key`, reporting a value
+/// outside `min..=max` as [`Error::ConfiguredCoordinateOutOfRange`].
+fn checked(value: Option<f64>, min: f64, max: f64, key: &'static str) -> Result<Option<f64>> {
     match value {
-        Some(v) if !(min..=max).contains(&v) => Err(error(v)),
+        Some(v) if !(min..=max).contains(&v) => {
+            Err(Error::ConfiguredCoordinateOutOfRange { key, min, max })
+        }
         other => Ok(other),
     }
 }
@@ -359,20 +362,13 @@ fn checked(value: Option<f64>, min: f64, max: f64, error: fn(f64) -> Error) -> R
 /// `models` commands skip config validation, so a hand-edited out-of-range value
 /// reaches this point and would otherwise fail only when the install is saved.
 fn configured_point(lat: Option<f64>, lon: Option<f64>) -> Result<Option<GeoPoint>> {
-    let lat = checked(lat, LATITUDE_MIN, LATITUDE_MAX, |_| {
-        Error::ConfiguredCoordinateOutOfRange {
-            key: consts::CONFIG_LATITUDE_KEY,
-            min: LATITUDE_MIN,
-            max: LATITUDE_MAX,
-        }
-    })?;
-    let lon = checked(lon, LONGITUDE_MIN, LONGITUDE_MAX, |_| {
-        Error::ConfiguredCoordinateOutOfRange {
-            key: consts::CONFIG_LONGITUDE_KEY,
-            min: LONGITUDE_MIN,
-            max: LONGITUDE_MAX,
-        }
-    })?;
+    let lat = checked(lat, LATITUDE_MIN, LATITUDE_MAX, consts::CONFIG_LATITUDE_KEY)?;
+    let lon = checked(
+        lon,
+        LONGITUDE_MIN,
+        LONGITUDE_MAX,
+        consts::CONFIG_LONGITUDE_KEY,
+    )?;
     Ok(lat.zip(lon).map(|(lat, lon)| GeoPoint { lat, lon }))
 }
 
@@ -487,7 +483,7 @@ pub fn located_summary(point: GeoPoint, matches: &[&ModelVariant]) -> String {
 /// location, if one does, but never the point.
 #[must_use]
 pub fn install_location_summary(matches: &[&ModelVariant]) -> String {
-    coverage_summary("this location", matches)
+    coverage_summary(consts::INSTALL_LOCATION_SUBJECT, matches)
 }
 
 /// The coverage lines for `subject`, the point as the caller describes it.

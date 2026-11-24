@@ -25,8 +25,8 @@ pub use license::{
 };
 pub use loader::{find_model, load_registry, replaced_model_error, replacement_for, require_model};
 pub use region::{
-    InstallRegion, RegionInputs, RegionRequest, RegionResolution, located_summary, regions_at,
-    resolve_region,
+    InstallRegion, RegionInputs, RegionRequest, RegionResolution, install_location_summary,
+    located_summary, regions_at, resolve_region,
 };
 // Only what callers outside this module actually name. `HardwareProbe`,
 // `VariantChoice` and `SelectionReason` stay reachable as

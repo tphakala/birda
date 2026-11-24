@@ -462,7 +462,7 @@ fn test_install_resolves_the_region_before_any_download() {
     assert_eq!(a.status, 1);
     assert_eq!(
         a.stdout,
-        "Region for 59.44, 24.75: baltics (Baltics).\n\
+        "Region for this location: baltics (Baltics).\n\
          Also equally specific here: nordic.\n\
          Installing baltics.\n\
          \n\
@@ -478,7 +478,7 @@ fn test_install_resolves_the_region_before_any_download() {
     assert_eq!(b.status, 1);
     assert_eq!(
         b.stdout,
-        "Region for 60.17, 24.94: nordic (Nordic).\n\
+        "Region for this location: nordic (Nordic).\n\
          Installing nordic.\n\
          \n\
          Selected variant fp32 (default, supported on every backend).\n\
@@ -642,7 +642,7 @@ fn test_install_refuses_a_location_it_would_not_use() {
     assert!(
         after
             .stdout
-            .starts_with("No regional model covers 30, -40.\n"),
+            .starts_with("No regional model covers this location.\n"),
         "{}",
         after.stdout
     );

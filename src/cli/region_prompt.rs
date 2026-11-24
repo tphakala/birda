@@ -12,7 +12,7 @@ use crate::config::geomodel::human_size;
 use crate::constants::regions::{COORDINATE_SEPARATOR, PROMPT_ATTEMPTS};
 use crate::error::Result;
 use crate::registry::region::{
-    global_variant, has_geometry, located_summary, regions_at, regions_for_country,
+    global_variant, has_geometry, install_location_summary, regions_at, regions_for_country,
 };
 use crate::registry::{GeoPoint, ModelEntry, ModelVariant, species_count_label};
 
@@ -119,7 +119,7 @@ fn propose(
     out: &mut dyn Write,
 ) -> Result<Option<PromptedRegion>> {
     let matches = regions_at(entry, point);
-    writeln!(out, "{}", located_summary(point, &matches))?;
+    writeln!(out, "{}", install_location_summary(&matches))?;
     let (question, accepted) = if let Some(best) = matches.first() {
         let slug = best.region.clone().unwrap_or_default();
         writeln!(out, "{slug}: {}", size_line(best))?;
@@ -190,7 +190,7 @@ fn ask_location(
             }
             LocationInput::Point(point) => {
                 let tiles = regions_at(entry, point);
-                writeln!(out, "{}", located_summary(point, &tiles))?;
+                writeln!(out, "{}", install_location_summary(&tiles))?;
                 tiles
             }
             LocationInput::Country(name) => {
@@ -317,7 +317,7 @@ mod tests {
         assert_eq!(outcome, region("baltics"));
         assert_eq!(
             shown,
-            "Region for 59.44, 24.75: baltics (Baltics).\n\
+            "Region for this location: baltics (Baltics).\n\
              Also equally specific here: nordic.\n\
              baltics: 479 species, 97.8 MB\n\
              Install baltics? [Y/n]: "
@@ -335,7 +335,7 @@ mod tests {
         assert_eq!(outcome, PromptedRegion::Global);
         assert_eq!(
             shown,
-            "No regional model covers 30, -40.\n\
+            "No regional model covers this location.\n\
              Global model: 11000 species, 190.7 MB\n\
              Install the global model? [Y/n]: "
         );
@@ -348,7 +348,7 @@ mod tests {
         assert_eq!(outcome, region("western-palearctic"));
         assert_eq!(
             shown,
-            "Region for 60.17, 24.94: nordic (Nordic).\n\
+            "Region for this location: nordic (Nordic).\n\
              nordic: 464 species, 97.5 MB\n\
              Install nordic? [Y/n]: \
              Where do you record? Enter a country (name or ISO code) or coordinates as lat,lon. \

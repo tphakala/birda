@@ -459,14 +459,32 @@ pub fn resolve_region<'a>(
 
 /// Coverage facts for a point, one or two lines: the pick and any tile equally
 /// specific, or that nothing covers it. The caller adds its own action sentence.
+///
+/// Names the point, so it is for `birda models regions <id> --lat --lon`,
+/// where the coordinates are the user's own query. An install uses
+/// [`install_location_summary`] instead.
 #[must_use]
 pub fn located_summary(point: GeoPoint, matches: &[&ModelVariant]) -> String {
     let GeoPoint { lat, lon } = point;
+    coverage_summary(&format!("{lat}, {lon}"), matches)
+}
+
+/// The same coverage facts as [`located_summary`], without the coordinates.
+///
+/// Install output often ends up in provisioning logs, and where a recorder
+/// sits can be sensitive, so an install names the region but not the point.
+#[must_use]
+pub fn install_location_summary(matches: &[&ModelVariant]) -> String {
+    coverage_summary("this location", matches)
+}
+
+/// The coverage lines for `subject`, the point as the caller describes it.
+fn coverage_summary(subject: &str, matches: &[&ModelVariant]) -> String {
     let Some(best) = matches.first() else {
-        return format!("No regional model covers {lat}, {lon}.");
+        return format!("No regional model covers {subject}.");
     };
     let mut text = format!(
-        "Region for {lat}, {lon}: {} ({}).",
+        "Region for {subject}: {} ({}).",
         slug_of(best),
         best.region_name.as_deref().unwrap_or_default()
     );
@@ -1386,6 +1404,21 @@ mod tests {
         assert_eq!(
             located_summary(sea, &regions_at(&entry, sea)),
             "No regional model covers 30, -40."
+        );
+    }
+
+    #[test]
+    fn test_install_location_summary_names_the_region_but_never_the_point() {
+        let entry = real_entry();
+        let tallinn = point(59.44, 24.75);
+        assert_eq!(
+            install_location_summary(&regions_at(&entry, tallinn)),
+            "Region for this location: baltics (Baltics).\nAlso equally specific here: nordic."
+        );
+        let sea = point(30.0, -40.0);
+        assert_eq!(
+            install_location_summary(&regions_at(&entry, sea)),
+            "No regional model covers this location."
         );
     }
 

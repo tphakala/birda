@@ -2745,7 +2745,7 @@ fn handle_models_install(
         registry::RegionResolution::Located { point, matches } => {
             let picked = matches.first().and_then(|best| best.region.clone());
             if !output_mode.is_structured() {
-                println!("{}", registry::located_summary(point, &matches));
+                println!("{}", registry::install_location_summary(&matches));
                 match &picked {
                     Some(slug) => println!("Installing {slug}."),
                     None => println!("Installing the global model."),

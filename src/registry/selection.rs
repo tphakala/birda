@@ -7,9 +7,9 @@
 //!
 //! Auto-selection deliberately refuses to pick a narrow variant on a weak
 //! signal. Choosing `int8-arm` merely because the host is aarch64 would strand
-//! a user who later runs with `OpenVINO`, which the Perch manifest marks
-//! unsupported for that file, so a host with nothing better to go on gets the
-//! family default, which every backend supports.
+//! a user who later runs with `OpenVINO`, which Perch's manifest marked
+//! unsupported for that file before it was withdrawn, so a host with nothing
+//! better to go on gets the family default, which every backend supports.
 
 use super::types::{ModelEntry, ModelVariant};
 use crate::config::InferenceDevice;
@@ -233,9 +233,10 @@ pub fn select_variant<'a>(
     // architecture rungs would answer a different question than the user asked:
     // on aarch64 with OpenVINO configured, the manifest key `aarch64/openvino-cpu`
     // can miss (Perch publishes `aarch64-a76/openvino`), and the architecture
-    // rung would then hand back `int8-arm`, which that same manifest marks
-    // unsupported on OpenVINO. Better to fall straight through to the family
-    // default, which every backend supports.
+    // rung would then hand back whatever `aarch64/onnxruntime` maps to. For
+    // Perch that was `int8-arm`, which its manifest marked unsupported on
+    // OpenVINO before the file was withdrawn. Better to fall straight through
+    // to the family default, which every backend supports.
     let mut candidates: Vec<(String, SelectionReason)> = Vec::new();
     if let Some(key) = device_key(device, probe) {
         candidates.push((key, SelectionReason::ConfiguredDevice));
@@ -559,11 +560,12 @@ mod tests {
 
     #[test]
     fn test_a_configured_device_never_falls_through_to_the_architecture_rung() {
-        // The Perch shape on an aarch64 host with OpenVINO configured. The
-        // configured key misses, because the manifest publishes
-        // aarch64-a76/openvino. Falling through to aarch64/onnxruntime would
-        // hand back int8-arm, which the same manifest marks unsupported on
-        // OpenVINO, so the install would succeed and then fail at inference.
+        // The shape Perch had while it published int8-arm, on an aarch64 host
+        // with OpenVINO configured. The configured key misses, because the
+        // manifest publishes aarch64-a76/openvino. Falling through to
+        // aarch64/onnxruntime would hand back int8-arm, which that manifest
+        // marked unsupported on OpenVINO, so the install would succeed and
+        // then fail at inference.
         let e = entry(
             "no-dft-fp32",
             &[

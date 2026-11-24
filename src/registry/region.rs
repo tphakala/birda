@@ -210,6 +210,11 @@ pub fn regions_for_country<'a>(entry: &'a ModelEntry, query: &str) -> Vec<&'a Mo
     }
 
     let folded = fold(query);
+    // A query of only combining marks folds to nothing, and an empty needle
+    // would start a word in every name.
+    if folded.is_empty() {
+        return Vec::new();
+    }
     let by_name = ranked(&tiles, |v| {
         let names = v.countries.as_ref();
         country_rank(
@@ -1133,6 +1138,8 @@ mod tests {
         assert_eq!(by("man"), ["mansion"]);
         // A word-start occurrence that overlaps an earlier mid-word one.
         assert_eq!(by("a a"), ["overlap"]);
+        // Only combining marks: folds to nothing, so it matches nothing.
+        assert_eq!(by("\u{0301}"), Vec::<String>::new());
     }
 
     #[test]

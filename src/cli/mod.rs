@@ -3,6 +3,7 @@
 mod args;
 pub mod clip;
 pub mod help;
+pub mod region_prompt;
 pub mod species;
 // Crate-visible rather than private so a sibling that restates one of these
 // rules can be tested against it directly. `clipper::command` re-applies the

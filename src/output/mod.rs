@@ -27,8 +27,8 @@ pub use json_envelope::{
     ModelInfoPayload, ModelInstalledPayload, ModelListPayload, ModelManifest, ModelManifestPayload,
     ModelRemovedPayload, OpenVinoDeviceEntry, OpenVinoDevicesPayload, OutputFiles,
     PipelineCompletedPayload, PipelineStartedPayload, PipelineStatus, ProgressPayload,
-    ProviderInfo, ProvidersPayload, RangeFilterInfo, ResultType, SPEC_VERSION, SpeciesEntry,
-    SpeciesListPayload, VersionPayload,
+    ProviderInfo, ProvidersPayload, RangeFilterInfo, RegionLookupMatch, RegionLookupPayload,
+    ResultType, SPEC_VERSION, SpeciesEntry, SpeciesListPayload, VersionPayload,
 };
 pub use kaleidoscope::KaleidoscopeWriter;
 pub use parquet::ParquetWriter;

@@ -6,6 +6,7 @@ pub mod cleanup;
 pub mod installer;
 pub mod license;
 pub mod loader;
+pub mod region;
 pub mod selection;
 pub mod types;
 
@@ -23,6 +24,10 @@ pub use license::{
     prompt_license_acceptance, side_install_notice,
 };
 pub use loader::{find_model, load_registry, replaced_model_error, replacement_for, require_model};
+pub use region::{
+    InstallRegion, RegionInputs, RegionRequest, RegionResolution, located_summary, regions_at,
+    resolve_region,
+};
 // Only what callers outside this module actually name. `HardwareProbe`,
 // `VariantChoice` and `SelectionReason` stay reachable as
 // `registry::selection::*` rather than crowding the root: they are the shape of
@@ -563,11 +568,19 @@ fn print_manifest_human(manifest: &crate::output::ModelManifest) {
     println!("including per-region country coverage and resolved download URLs.");
 }
 
-/// List the regional tiles a model publishes, grouped by continent.
+/// List the regional tiles a model publishes, grouped by continent, or, with a
+/// `point`, the ones that cover it.
 ///
 /// Regions are what a user picks; the variant is picked for them, so this lists
-/// each tile once rather than once per hardware variant.
-pub fn show_regions(registry: &Registry, id: &str) -> Result<()> {
+/// each tile once rather than once per hardware variant. With a point the
+/// answer follows [`region`]'s rule, as a `region_lookup` result under
+/// structured output.
+pub fn show_regions(
+    registry: &Registry,
+    id: &str,
+    point: Option<GeoPoint>,
+    output_mode: crate::config::OutputMode,
+) -> Result<()> {
     let model = require_model(registry, id)?;
 
     let regions = model.regions();
@@ -575,6 +588,10 @@ pub fn show_regions(registry: &Registry, id: &str) -> Result<()> {
         return Err(Error::RegionsNotSupported {
             model_id: id.to_string(),
         });
+    }
+
+    if let Some(point) = point {
+        return show_region_lookup(model, point, output_mode);
     }
 
     println!("Regional variants of {}:", model.name);
@@ -604,6 +621,76 @@ pub fn show_regions(registry: &Registry, id: &str) -> Result<()> {
     println!();
     println!("To install: birda models install {id} --region <slug>");
 
+    Ok(())
+}
+
+/// Print the regions that cover `point`.
+fn show_region_lookup(
+    model: &ModelEntry,
+    point: GeoPoint,
+    output_mode: crate::config::OutputMode,
+) -> Result<()> {
+    if !region::has_geometry(model) {
+        return Err(Error::RegionGeometryMissing {
+            model_id: model.id.clone(),
+        });
+    }
+
+    let matches = regions_at(model, point);
+    let picked = matches.first().and_then(|v| v.region.clone());
+
+    if output_mode.is_structured() {
+        use crate::output::{RegionLookupMatch, RegionLookupPayload, ResultType, emit_json_result};
+        let payload = RegionLookupPayload {
+            result_type: ResultType::RegionLookup,
+            model_id: model.id.clone(),
+            lat: point.lat,
+            lon: point.lon,
+            region: picked,
+            matches: matches
+                .iter()
+                .filter_map(|v| {
+                    Some(RegionLookupMatch {
+                        region: v.region.clone()?,
+                        region_name: v.region_name.clone(),
+                        tier: v.tier,
+                        classes: v.classes,
+                        size_bytes: v.model.size_bytes,
+                    })
+                })
+                .collect(),
+        };
+        emit_json_result(&payload);
+        return Ok(());
+    }
+
+    println!(
+        "Regions of {} covering {}, {}:",
+        model.name, point.lat, point.lon
+    );
+    for variant in &matches {
+        println!(
+            "  {:<24} {:>8} {:>28}   {}",
+            variant.region.as_deref().unwrap_or_default(),
+            variant
+                .tier
+                .map_or_else(String::new, |t| format!("tier {t}")),
+            species_count_label(variant.classes),
+            crate::config::geomodel::human_size(variant.model.size_bytes),
+        );
+    }
+    if !matches.is_empty() {
+        println!();
+    }
+    println!("{}", located_summary(point, &matches));
+    println!();
+    println!(
+        "To install: birda models install {} --region {}",
+        model.id,
+        picked
+            .as_deref()
+            .unwrap_or(crate::constants::regions::GLOBAL)
+    );
     Ok(())
 }
 

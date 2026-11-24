@@ -556,6 +556,11 @@ pub fn run() -> Result<()> {
     // whichever side of the subcommand name they were written on.
     if let Some(command) = cli.command {
         let geomodel_request = cli.analyze.geomodel_request();
+        // `--lat`/`--lon` before the subcommand (and their environment variables)
+        // are the analyze command's. `models install --region auto` must not
+        // read them as the install location, so it is told whether they are set
+        // and refuses.
+        let analyze_location_set = cli.analyze.lat.is_some() || cli.analyze.lon.is_some();
         return handle_command(
             command,
             &config,
@@ -563,6 +568,7 @@ pub fn run() -> Result<()> {
             &reporter,
             geomodel_request,
             cli.analyze.openvino_device.clone(),
+            analyze_location_set,
         );
     }
 
@@ -1499,12 +1505,17 @@ fn handle_command(
     _reporter: &Arc<dyn ProgressReporter>,
     geomodel_request: config::GeomodelRequest<'_>,
     openvino_device: Option<OpenVinoDeviceSpec>,
+    analyze_location_set: bool,
 ) -> Result<()> {
     match command {
         Command::Config { action } => handle_config_command(action, output_mode),
-        Command::Models { action } => {
-            handle_models_command(action, config, output_mode, geomodel_request)
-        }
+        Command::Models { action } => handle_models_command(
+            action,
+            config,
+            output_mode,
+            geomodel_request,
+            analyze_location_set,
+        ),
         Command::Providers => {
             handle_providers_command(output_mode);
             Ok(())
@@ -2013,6 +2024,7 @@ fn handle_models_command(
     config: &config::Config,
     output_mode: OutputMode,
     geomodel_request: config::GeomodelRequest<'_>,
+    analyze_location_set: bool,
 ) -> Result<()> {
     use cli::ModelsAction;
 
@@ -2288,20 +2300,31 @@ fn handle_models_command(
             id,
             language,
             region,
+            lat,
+            lon,
             variant,
             default,
         } => handle_models_install(
             &id,
             language.as_deref(),
-            region.as_deref(),
+            registry::InstallRegion {
+                region: region.as_deref(),
+                point: lat
+                    .zip(lon)
+                    .map(|(lat, lon)| registry::GeoPoint { lat, lon }),
+                analyze_location_set,
+            },
             variant.as_deref(),
             default,
             output_mode,
             geomodel_request,
         ),
-        ModelsAction::Regions { id } => {
+        ModelsAction::Regions { id, lat, lon } => {
             let registry = registry::load_registry()?;
-            registry::show_regions(&registry, &id)
+            let point = lat
+                .zip(lon)
+                .map(|(lat, lon)| registry::GeoPoint { lat, lon });
+            registry::show_regions(&registry, &id, point, output_mode)
         }
         ModelsAction::Manifest { id } => {
             let registry = registry::load_registry()?;
@@ -2635,7 +2658,7 @@ fn handle_models_remove(
 fn handle_models_install(
     id: &str,
     language: Option<&str>,
-    region: Option<&str>,
+    install_region: registry::InstallRegion<'_>,
     variant: Option<&str>,
     set_default: bool,
     output_mode: OutputMode,
@@ -2657,6 +2680,16 @@ fn handle_models_install(
 
     // Load registry
     let registry = registry::load_registry()?;
+
+    // The geomodel and the bat models have no regional tiles to pick, so a region
+    // or a location here would be silently dropped. Say so instead.
+    if (id == registry::GEOMODEL_INSTALL_ID || id.starts_with(registry::BAT_INSTALL_PREFIX))
+        && (install_region.region.is_some() || install_region.point.is_some())
+    {
+        return Err(Error::RegionsNotSupported {
+            model_id: id.to_string(),
+        });
+    }
 
     // The shared range filter asset is installable under its own id, since it
     // is used by every classifier rather than belonging to any one of them.
@@ -2685,17 +2718,79 @@ fn handle_models_install(
 
     let config = load_default_config()?;
 
+    // Decide the region before anything else: variant selection, then the
+    // licence prompt, follow from it. Only `Auto` and a question read the
+    // configured location, so a plain non-interactive install stays what it was.
+    let mut offer_regions = false;
+    let region: Option<String> = match registry::resolve_region(
+        model,
+        registry::RegionInputs {
+            request: registry::RegionRequest::from_arg(install_region.region),
+            point: install_region.point,
+            configured_lat: config.defaults.latitude,
+            configured_lon: config.defaults.longitude,
+            analyze_location_set: install_region.analyze_location_set,
+            interactive,
+            assume_yes,
+            variant,
+        },
+    )? {
+        registry::RegionResolution::DefaultGlobal => {
+            offer_regions = !model.regions().is_empty();
+            None
+        }
+        registry::RegionResolution::Global => None,
+        registry::RegionResolution::Named(slug) => Some(slug),
+        registry::RegionResolution::Located { point, matches } => {
+            let picked = matches.first().and_then(|best| best.region.clone());
+            if !output_mode.is_structured() {
+                println!("{}", registry::located_summary(point, &matches));
+                match &picked {
+                    Some(slug) => println!("Installing {slug}."),
+                    None => println!("Installing the global model."),
+                }
+                println!();
+            }
+            picked
+        }
+        registry::RegionResolution::Ask { configured } => {
+            // The lock is a temporary of this one statement, so it is released
+            // before the licence prompt reads from the same stream.
+            let prompted = cli::region_prompt::ask_region(
+                model,
+                configured,
+                &mut std::io::stdin().lock(),
+                &mut std::io::stdout(),
+            )?;
+            match prompted {
+                cli::region_prompt::PromptedRegion::Region(slug) => Some(slug),
+                cli::region_prompt::PromptedRegion::Global => None,
+                cli::region_prompt::PromptedRegion::Cancelled => {
+                    println!("Installation cancelled.");
+                    return Ok(());
+                }
+            }
+        }
+    };
+
     // Resolve the variant before the licence prompt, so a typo in --region
     // fails immediately rather than after the user has accepted a licence for a
     // download that was never going to start.
     let choice = if model.is_variant_based() {
         let choice = registry::select_variant(
             model,
-            region,
+            region.as_deref(),
             variant,
             config.inference.device,
             &registry::SystemProbe,
         )?;
+
+        if offer_regions && !output_mode.is_structured() {
+            println!(
+                "This model also publishes regional models: birda models regions {id}, or \
+                 --region auto."
+            );
+        }
 
         if !output_mode.is_structured() {
             println!(
@@ -2713,13 +2808,8 @@ fn handle_models_install(
 
         Some(choice)
     } else {
-        // Silently ignoring these would install the global model and leave the
-        // user believing they had a regional one.
-        if region.is_some() {
-            return Err(Error::RegionsNotSupported {
-                model_id: id.to_string(),
-            });
-        }
+        // A region on a single-file model was refused by `resolve_region`, so
+        // none reaches here.
         if let Some(requested) = variant {
             return Err(Error::VariantNotFound {
                 model_id: id.to_string(),

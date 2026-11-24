@@ -118,6 +118,7 @@ The `result` event includes a `result_type` field:
 | `available_models` | `birda models list-available` |
 | `model_info` | `birda models info <id>` |
 | `model_manifest` | `birda models manifest <id>` |
+| `region_lookup` | `birda models regions <id> --lat <lat> --lon <lon>` |
 | `model_check` | `birda models check` |
 | `model_installed` | `birda models install <id>` (classifiers, `geomodel` and `bat-<region>`) |
 | `model_removed` | `birda models remove <id>` (classifiers, `geomodel` and `bat-<region>`) |
@@ -277,7 +278,7 @@ birda --output-mode json models check
 
 ### Install and Remove
 
-`model_installed` carries `id`, `set_as_default`, `model_path` and `labels_path`, and `region`, `variant` and `selection_reason` when they apply. `models install geomodel` emits it with `id` `geomodel`; the two paths are the files it recorded in `defaults.geomodel` and `defaults.geomodel_labels`.
+`model_installed` carries `id`, `set_as_default`, `model_path` and `labels_path`, and `region`, `variant` and `selection_reason` when they apply. `region` is the region that was installed, whether it came from `--region <slug>`, from `--region auto` or from the question birda asks at a terminal; it is absent for the global model. A non-interactive install without `--region` is always the global model. `models install geomodel` emits it with `id` `geomodel`; the two paths are the files it recorded in `defaults.geomodel` and `defaults.geomodel_labels`.
 
 `model_removed` carries `id`, `purge_requested` and `new_default`. `models remove geomodel` clears `defaults.geomodel` and `defaults.geomodel_labels`; with `--purge` it also deletes the recorded files and the copy at birda's own install location, only when they are inside birda's models directory. A plain remove leaves the files, and while they are in that directory `analyze` still uses them; the result does not say so, so birda logs a warning on stderr. A geomodel installed alongside a classifier is not recorded in the configuration: `models remove geomodel` fails for it, and `models remove geomodel --purge` deletes it.
 
@@ -386,6 +387,43 @@ Notes:
 - `score_calibration` is present only on files the publisher calibrates. It is an object whose `method` names how to apply it. The only method is `softmax-rest-logit`, with a number `rest_logit`. A cached registry naming any other method fails to load, and birda replaces it with its bundled registry, so a consumer never sees one.
 - `documents` lists the licence and usage documents of the family, each with `kind`, `requires_agreement`, a resolved `url`, and `revision` and `sha256` when the publisher pins them. It is omitted when the family has none.
 - `selection` maps a hardware key to a variant id. A consumer need not evaluate these keys against the host: `models install` echoes the variant it resolved (`region`, `variant`, `selection_reason`) once the download completes.
+
+### Region Lookup
+
+```bash
+birda --output-mode json models regions birdnet-plus-v30 --lat 59.44 --lon 24.75
+```
+
+The regions of one model that cover a location, best first, so a client shows the same pick as `birda models install <id> --region auto` without restating the rule.
+
+```json
+{
+  "spec_version": "1.1",
+  "timestamp": "2026-11-24T12:34:56.789Z",
+  "event": "result",
+  "payload": {
+    "result_type": "region_lookup",
+    "model_id": "birdnet-plus-v30",
+    "lat": 59.44,
+    "lon": 24.75,
+    "region": "baltics",
+    "matches": [
+      { "region": "baltics", "region_name": "Baltics", "tier": 50, "classes": 479, "size_bytes": 102547724 },
+      { "region": "nordic", "region_name": "Nordic", "tier": 50, "classes": 464, "size_bytes": 102224864 },
+      { "region": "western-palearctic", "region_name": "Western Palearctic", "tier": 10, "classes": 1446, "size_bytes": 123361440 }
+    ]
+  }
+}
+```
+
+Notes:
+
+- The rule: a region covers the point when one of its `bboxes` contains it (edges included, and longitudes -180 and 180 are the same meridian). Among those, the highest `tier` wins, then the nearest `centroid` by great-circle distance rounded to whole kilometres, then the region slug in alphabetical order. `matches` is in that order and `region` is its first entry.
+- `region` is absent when no region covers the point. The answer is then the global model (`--region global`), and `matches` is an empty array.
+- `region_name`, `tier`, `classes` and `size_bytes` are omitted when the registry does not state them. `size_bytes` is the download size of the region's default model file.
+- The command fails with exit code 1 and a message on stderr, and no result, when the model publishes no regions or no region boundaries. Run `birda models manifest <id>` to see which models carry `bboxes`.
+- Without `--lat` and `--lon` the command prints its region list as text. The lookup reads the registry only; no location leaves the machine.
+- A new result type is an additive change, so `spec_version` stays `1.1`.
 
 ### Providers
 

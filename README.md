@@ -881,6 +881,20 @@ birda -m birdnet-plus-v30-nordic recording.wav
 
 A regional install is registered under `<model-id>-<region>`, so a global and a regional model coexist and both stay selectable with `-m`.
 
+#### Picking a region at install time
+
+At a terminal, `birda models install birdnet-plus-v30` asks where you record. If you have set a location, it proposes the region that covers it and asks you to confirm. Otherwise, or if you decline, it asks for a country (a name or an ISO code) or coordinates as `lat,lon`, lists the matching regions with their species count and download size, and offers the global model as the last choice. Without a terminal, or with `--yes`, birda asks nothing and installs the global model, as before.
+
+To skip the question, name the region, ask for the one that covers a location, or pin the global model:
+
+```bash
+birda models install birdnet-plus-v30 --region nordic
+birda models install birdnet-plus-v30 --region auto --lat 60.17 --lon 24.94
+birda models install birdnet-plus-v30 --region global
+```
+
+`--region auto` without `--lat` and `--lon` uses `defaults.latitude` and `defaults.longitude` from your configuration (`birda config set defaults.latitude 60.17`), and fails if neither is set. Put `--lat` and `--lon` after `models install`: before `models` they belong to the analyze command, and birda refuses to use them to pick a region. When several regions cover a point, the most specific one wins; ties go to the nearest region centre, and the choice is printed before anything is downloaded. To see the choice without installing, run `birda models regions birdnet-plus-v30 --lat 60.17 --lon 24.94`. Your location is only compared with the region boundaries in birda's registry; nothing is looked up over the network.
+
 ### Choosing a variant
 
 Some models publish several files for different hardware: `fp32` and `no-dft-fp32` for Perch v2 (every Perch regional model is `no-dft-fp32`). BirdNET+ V3.0 publishes `fp32` only, so there is nothing to choose. birda picks one at install time from the configured inference device and the GPU libraries present on the system, prints which it chose and why, and accepts an override:

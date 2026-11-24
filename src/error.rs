@@ -478,6 +478,41 @@ pub enum Error {
         model_id: String,
     },
 
+    /// `--region auto` was given and no location is known.
+    #[error(
+        "--region auto needs a location for '{model_id}': pass --lat and --lon after \
+         'models install', or set defaults.latitude and defaults.longitude with 'birda config set'"
+    )]
+    RegionLocationMissing {
+        /// Registry id of the model.
+        model_id: String,
+    },
+
+    /// The model publishes regions without the boundaries a location lookup needs.
+    #[error(
+        "model '{model_id}' publishes no region boundaries, so a region cannot be picked from a \
+         location; choose one with --region <slug> (see 'birda models regions {model_id}')"
+    )]
+    RegionGeometryMissing {
+        /// Registry id of the model.
+        model_id: String,
+    },
+
+    /// `--lat`/`--lon` were given with a `--region` other than `auto`.
+    #[error("--lat and --lon pick a region only with --region auto")]
+    LocationNeedsRegionAuto,
+
+    /// `--region auto` found a location only among the analyze options.
+    ///
+    /// `--lat`/`--lon` before `models` (and `BIRDA_LATITUDE`/`BIRDA_LONGITUDE`)
+    /// belong to the analyze command. Using them here would pick an install
+    /// from a location chosen for something else, so the install refuses.
+    #[error(
+        "--lat and --lon before 'models' (or BIRDA_LATITUDE/BIRDA_LONGITUDE) are analyze \
+         options; pass --lat and --lon after 'models install' to pick a region"
+    )]
+    RegionLocationBeforeModels,
+
     /// Language not available for model.
     #[error("language '{code}' not available for model '{model_id}'")]
     LanguageNotFound {

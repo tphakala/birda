@@ -1,10 +1,8 @@
 //! License display and acceptance prompts.
 
-#![allow(clippy::print_stdout)]
-
-use super::types::LicenseInfo;
-use crate::error::Result;
-use std::io::{self, Write};
+use super::types::{LicenseInfo, ModelDocument};
+use crate::error::{Error, Result};
+use std::io::{self, BufRead, Write};
 
 /// Identity of a downloadable asset, for the licence prompt.
 ///
@@ -20,57 +18,88 @@ pub struct LicensedAsset<'a> {
     pub version: &'a str,
     /// License terms.
     pub license: &'a LicenseInfo,
+    /// Documents the publisher ships with the asset. Those marked
+    /// `requires_agreement` are listed before the licence and gate a
+    /// non-interactive install.
+    pub documents: &'a [ModelDocument],
 }
 
 /// Display license information and prompt for acceptance.
 ///
-/// `interactive` is checked first and dominates. When it is `false` this
-/// returns `Ok(true)` immediately, printing nothing at all: that is the non-TTY
-/// and structured-output path, where no human is present to read the terms and
-/// blocking on a prompt would hang a pipeline.
+/// `interactive` is checked first and dominates. When it is `false` nothing is
+/// printed: that is the non-TTY and structured-output path, where no human is
+/// present to read the terms and blocking on a prompt would hang a pipeline. It
+/// accepts, with one exception: an asset with a document its publisher marks
+/// `requires_agreement` is refused with [`Error::AgreementRequired`] unless
+/// `assume_yes` is set, so that agreement is never given on a user's behalf
+/// without the flag.
 ///
-/// `assume_yes` therefore only has an effect when `interactive` is `true`, and
+/// Otherwise `assume_yes` only has an effect when `interactive` is `true`, and
 /// there it skips the QUESTION while still displaying the terms. Suppressing
 /// the display as well would mean a user at a terminal accepts a licence they
 /// were never shown, which is worse than the non-TTY case above because someone
 /// is there to read it. The classifiers are CC BY-NC-SA (non-commercial) and
 /// the geomodel is CC BY-SA (share-alike), so what is being agreed to differs
-/// by asset and is worth printing.
+/// by asset and is worth printing. Documents that require agreement are listed
+/// ahead of the licence.
 ///
-/// In short: `!interactive` shows nothing and accepts; `interactive &&
-/// assume_yes` shows the terms and accepts; `interactive && !assume_yes` shows
-/// the terms and asks.
+/// In short: `!interactive` shows nothing and accepts (or refuses, as above);
+/// `interactive && assume_yes` shows the terms and accepts; `interactive &&
+/// !assume_yes` shows the terms and asks.
 ///
 /// Returns `Ok(true)` if user accepts, `Ok(false)` if user declines.
+///
+/// # Errors
+///
+/// [`Error::AgreementRequired`] when `interactive` and `assume_yes` are both
+/// `false` and the asset has a document that requires agreement; I/O errors
+/// from the prompt.
 pub fn prompt_license_acceptance(
     asset: LicensedAsset<'_>,
     interactive: bool,
     assume_yes: bool,
 ) -> Result<bool> {
     if !interactive {
+        if !assume_yes && let Some(refusal) = agreement_required(asset) {
+            return Err(refusal);
+        }
         return Ok(true);
     }
 
-    println!("Model: {}", asset.name);
-    println!("Vendor: {}", asset.vendor);
-    println!("Version: {}", asset.version);
-    println!();
+    confirm_terms(
+        asset,
+        assume_yes,
+        &mut io::stdin().lock(),
+        &mut io::stdout(),
+    )
+}
 
-    display_license_summary(asset.license, asset.vendor);
+/// The interactive half of [`prompt_license_acceptance`], over the streams it
+/// talks to so a test can read what the user is shown.
+fn confirm_terms(
+    asset: LicensedAsset<'_>,
+    assume_yes: bool,
+    input: &mut impl BufRead,
+    out: &mut impl Write,
+) -> Result<bool> {
+    write!(out, "{}", terms_text(asset))?;
 
     if assume_yes {
-        println!("Accepted via --yes.");
+        writeln!(out, "Accepted via --yes.")?;
         return Ok(true);
     }
 
-    println!();
-    print!("Type 'accept' to continue, or anything else to cancel: ");
-    io::stdout().flush()?;
+    writeln!(out)?;
+    write!(
+        out,
+        "Type 'accept' to continue, or anything else to cancel: "
+    )?;
+    out.flush()?;
 
-    let mut input = String::new();
-    io::stdin().read_line(&mut input)?;
+    let mut answer = String::new();
+    input.read_line(&mut answer)?;
 
-    Ok(input.trim().eq_ignore_ascii_case("accept"))
+    Ok(answer.trim().eq_ignore_ascii_case("accept"))
 }
 
 impl From<&LicenseInfo> for crate::output::LicenseDetails {
@@ -184,9 +213,83 @@ pub fn side_install_notice(asset: LicensedAsset<'_>) -> String {
     )
 }
 
-/// Display license summary with key restrictions.
-fn display_license_summary(license: &LicenseInfo, vendor: &str) {
-    print!("{}", license_summary(license, vendor));
+/// The documents the user has to agree to, as `(kind, url)` pairs in registry
+/// order.
+///
+/// The URL goes through [`super::installer::resolve_url`], so a user of an
+/// `HF_ENDPOINT` mirror sees the address the document is fetched from, as in
+/// `models manifest`.
+fn agreements(asset: LicensedAsset<'_>) -> impl Iterator<Item = (&str, String)> {
+    asset
+        .documents
+        .iter()
+        .filter(|document| document.requires_agreement)
+        .map(|document| {
+            (
+                document.kind.as_str(),
+                super::installer::resolve_url(&document.url),
+            )
+        })
+}
+
+/// The refusal for a non-interactive install of an asset with documents that
+/// need agreement, or `None` when it has none.
+fn agreement_required(asset: LicensedAsset<'_>) -> Option<Error> {
+    let documents = agreements(asset)
+        .map(|(kind, url)| format!("{kind} ({url})"))
+        .collect::<Vec<_>>();
+    if documents.is_empty() {
+        return None;
+    }
+    Some(Error::AgreementRequired {
+        model: asset.name.to_string(),
+        documents: documents.join(", "),
+    })
+}
+
+/// The documents an install recorded the user's agreement to, in registry
+/// order.
+///
+/// Only documents that require agreement are recorded, and the caller has
+/// already passed the prompt. The URL is left out: it follows `HF_ENDPOINT`,
+/// while the revision and checksum identify the text.
+#[must_use]
+pub fn accepted_documents(documents: &[ModelDocument]) -> Vec<crate::config::AcceptedDocument> {
+    documents
+        .iter()
+        .filter(|document| document.requires_agreement)
+        .map(|document| crate::config::AcceptedDocument {
+            kind: document.kind.clone(),
+            revision: document.revision.clone(),
+            sha256: document.sha256.clone(),
+        })
+        .collect()
+}
+
+/// Render what an interactive install shows before it asks: the asset's
+/// identity, the documents that require agreement (when there are any), then
+/// its licence summary.
+///
+/// Split from the printing so it can be asserted on, like [`license_summary`].
+fn terms_text(asset: LicensedAsset<'_>) -> String {
+    use std::fmt::Write as _;
+
+    let mut out = format!(
+        "Model: {}\nVendor: {}\nVersion: {}\n\n",
+        asset.name, asset.vendor, asset.version
+    );
+
+    let mut documents = agreements(asset).peekable();
+    if documents.peek().is_some() {
+        let _ = writeln!(out, "This model requires agreement to:");
+        for (kind, url) in documents {
+            let _ = writeln!(out, "  {kind}: {url}");
+        }
+        let _ = writeln!(out);
+    }
+
+    out.push_str(&license_summary(asset.license, asset.vendor));
+    out
 }
 
 /// Render the license summary.
@@ -257,17 +360,123 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_prompt_auto_accepts_when_not_interactive() {
-        let license = geomodel_license();
-        let asset = LicensedAsset {
+    fn document(kind: &str, requires_agreement: bool, url: &str) -> ModelDocument {
+        ModelDocument {
+            kind: kind.into(),
+            requires_agreement,
+            url: url.into(),
+            revision: None,
+            sha256: None,
+        }
+    }
+
+    fn geomodel_asset<'a>(
+        license: &'a LicenseInfo,
+        documents: &'a [ModelDocument],
+    ) -> LicensedAsset<'a> {
+        LicensedAsset {
             name: "BirdNET Geomodel v3.0.2",
             vendor: "Cornell Lab of Ornithology",
             version: "3.0.2",
-            license: &license,
-        };
+            license,
+            documents,
+        }
+    }
 
-        assert!(prompt_license_acceptance(asset, false, false).unwrap());
+    #[test]
+    fn test_non_interactive_prompt_refuses_only_unagreed_documents() {
+        let license = geomodel_license();
+        let licence_doc = document("license", false, "https://example.org/LICENSE.md");
+        let aup = document("acceptable_use", true, "https://example.org/aup.md");
+        let both = [licence_doc.clone(), aup];
+
+        // No documents: today's silent acceptance.
+        let none = geomodel_asset(&license, &[]);
+        assert!(prompt_license_acceptance(none, false, false).unwrap());
+
+        // A document that does not require agreement must not gate: gating on
+        // "has documents" would break Perch, which carries only a licence.
+        let only_licence = [licence_doc];
+        let ungated = geomodel_asset(&license, &only_licence);
+        assert!(prompt_license_acceptance(ungated, false, false).unwrap());
+
+        // `--yes` lifts the gate.
+        let gated = geomodel_asset(&license, &both);
+        assert!(prompt_license_acceptance(gated, false, true).unwrap());
+
+        // Without it the refusal names only the document that needs agreement.
+        let err = prompt_license_acceptance(gated, false, false).unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            "installing BirdNET Geomodel v3.0.2 requires agreement to acceptable_use \
+             (https://example.org/aup.md); no prompt can be shown without a terminal or \
+             under structured output, so read each one and run the install again with \
+             --yes to agree"
+        );
+    }
+
+    #[test]
+    fn test_interactive_prompt_lists_agreement_documents_before_asking() {
+        let license = geomodel_license();
+        let documents = [
+            document("license", false, "https://example.org/LICENSE.md"),
+            document("acceptable_use", true, "https://example.org/aup.md"),
+        ];
+        let asset = geomodel_asset(&license, &documents);
+        let shown = format!(
+            "Model: BirdNET Geomodel v3.0.2\nVendor: Cornell Lab of Ornithology\nVersion: 3.0.2\n\n\
+             This model requires agreement to:\n  acceptable_use: https://example.org/aup.md\n\n{}",
+            license_summary(&license, "Cornell Lab of Ornithology")
+        );
+
+        // `--yes` shows the terms, accepts, and never reads the answer.
+        let mut input: &[u8] = b"no\n";
+        let mut out = Vec::new();
+        assert!(confirm_terms(asset, true, &mut input, &mut out).unwrap());
+        assert_eq!(
+            String::from_utf8(out).unwrap(),
+            format!("{shown}Accepted via --yes.\n")
+        );
+        assert_eq!(input, b"no\n", "--yes must not consume input");
+
+        // Without it the terms come first, then the question, and the answer decides.
+        let question = "\nType 'accept' to continue, or anything else to cancel: ";
+        for (answer, accepted) in [(" Accept \n", true), ("no\n", false), ("", false)] {
+            let mut out = Vec::new();
+            let result = confirm_terms(asset, false, &mut answer.as_bytes(), &mut out).unwrap();
+            assert_eq!(result, accepted, "answer {answer:?}");
+            assert_eq!(
+                String::from_utf8(out).unwrap(),
+                format!("{shown}{question}")
+            );
+        }
+    }
+
+    #[test]
+    fn test_terms_list_agreement_documents_before_the_licence_summary() {
+        let license = geomodel_license();
+        let head = "Model: BirdNET Geomodel v3.0.2\nVendor: Cornell Lab of Ornithology\nVersion: 3.0.2\n\n";
+        let summary = license_summary(&license, "Cornell Lab of Ornithology");
+
+        let documents = [
+            document("license", false, "https://example.org/LICENSE.md"),
+            document("acceptable_use", true, "https://example.org/aup.md"),
+        ];
+        assert_eq!(
+            terms_text(geomodel_asset(&license, &documents)),
+            format!(
+                "{head}This model requires agreement to:\n  acceptable_use: \
+                 https://example.org/aup.md\n\n{summary}"
+            )
+        );
+
+        // Perch's shape: a document, but none that needs agreement. The text is
+        // today's text.
+        let only_licence = [document("license", false, "https://example.org/LICENSE.md")];
+        assert_eq!(
+            terms_text(geomodel_asset(&license, &only_licence)),
+            format!("{head}{summary}")
+        );
     }
 
     #[test]
@@ -407,6 +616,7 @@ mod tests {
             vendor: "Cornell Lab of Ornithology",
             version: "3.0.2",
             license: &licence,
+            documents: &[],
         });
 
         assert_eq!(

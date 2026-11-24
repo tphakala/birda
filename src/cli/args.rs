@@ -534,8 +534,12 @@ pub struct AnalyzeArgs {
     // Every prompt this flag can reach must read it. See `handle_models_install`
     // and `handle_models_remove`: a prompt that ignores `--yes`, or answers it
     // backwards, is the same defect as a flag that does not reach the command.
+    // `prompt_license_acceptance` is one more: without a prompt it refuses a
+    // model that requires agreement to a document unless this flag is set.
     /// Assume yes for prompts: the geomodel download offer, licence acceptance,
     /// setting an installed model as default, and `models remove --purge`.
+    /// Without a terminal or with JSON output, it is also how you agree to a
+    /// model's usage documents, which `models install` otherwise refuses.
     #[arg(short = 'y', long, global = true)]
     pub yes: bool,
 

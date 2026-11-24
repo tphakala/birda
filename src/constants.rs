@@ -289,7 +289,7 @@ pub const COMBINE_DEPRECATED_WARNING: &str =
 /// Output file name stem used when an input path has no file name.
 pub const FALLBACK_OUTPUT_NAME: &str = "output";
 
-/// Per-file error codes reported in the JSON envelope's `error.code` field.
+/// Error codes reported in the JSON envelope's `error.code` field.
 pub mod error_codes {
     /// A file failed while it was being processed.
     pub const PROCESSING_ERROR: &str = "processing_error";
@@ -297,6 +297,8 @@ pub mod error_codes {
     pub const OUTPUT_PATH_COLLISION: &str = "output_path_collision";
     /// An existing output holds results recorded for a different input.
     pub const OUTPUT_OWNED_BY_OTHER_INPUT: &str = "output_owned_by_other_input";
+    /// A model install needs agreement to documents and no prompt could be shown.
+    pub const AGREEMENT_REQUIRED: &str = "agreement_required";
 }
 
 /// Names of the columns that record which input a result file came from.

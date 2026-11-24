@@ -60,7 +60,7 @@ use output::{
     ConfigPathPayload, ConfigPayload, FileStatus, ModelCheckEntry, ModelCheckPayload, ModelDetails,
     ModelEntry, ModelInfoPayload, ModelInstalledPayload, ModelListPayload, ModelRemovedPayload,
     PipelineSummary, ProgressReporter, ProviderInfo, ProvidersPayload, ResultType, create_reporter,
-    emit_json_result,
+    emit_json_error, emit_json_result,
 };
 use pipeline::{
     OutputTarget, ProcessCheck, ProcessingConfig, collect_input_files, plan_output_targets,
@@ -126,6 +126,7 @@ fn resolve_model_config(args: &AnalyzeArgs, config: &Config) -> Result<(ModelCon
             bsg_calibration: None,
             bsg_migration: None,
             bsg_distribution_maps: None,
+            accepted_documents: Vec::new(),
         };
 
         return Ok((model_config, ADHOC_MODEL_NAME.to_string()));
@@ -229,6 +230,7 @@ fn resolve_bat_backbone_config(args: &AnalyzeArgs) -> Result<(ModelConfig, Strin
                 bsg_calibration: None,
                 bsg_migration: None,
                 bsg_distribution_maps: None,
+                accepted_documents: Vec::new(),
             };
             return Ok((model_config, ADHOC_MODEL_NAME.to_string()));
         }
@@ -260,6 +262,7 @@ fn resolve_bat_backbone_config(args: &AnalyzeArgs) -> Result<(ModelConfig, Strin
         bsg_calibration: None,
         bsg_migration: None,
         bsg_distribution_maps: None,
+        accepted_documents: Vec::new(),
     };
     Ok((model_config, backbone.id.clone()))
 }
@@ -2306,7 +2309,34 @@ fn geomodel_side_install_notice(
         vendor: &asset.vendor,
         version: &asset.version,
         license: &asset.license,
+        documents: &[],
     }))
+}
+
+/// The licence prompt for an install, with a refusal for want of agreement
+/// also reported as a JSON `error` event under structured output.
+///
+/// The registry layer has no [`OutputMode`], so the event is emitted here and
+/// the error still propagates: `main` prints it to stderr and exits 1 as for
+/// any failed command.
+fn accept_install_terms(
+    asset: registry::LicensedAsset<'_>,
+    interactive: bool,
+    assume_yes: bool,
+    output_mode: OutputMode,
+) -> Result<bool> {
+    let accepted = registry::prompt_license_acceptance(asset, interactive, assume_yes);
+    if let Err(e @ Error::AgreementRequired { .. }) = &accepted
+        && output_mode.is_structured()
+    {
+        emit_json_error(
+            constants::error_codes::AGREEMENT_REQUIRED,
+            output::ErrorSeverity::Fatal,
+            &e.to_string(),
+            None,
+        );
+    }
+    accepted
 }
 
 /// Describe a half-configured geomodel pair, if `defaults` holds one.
@@ -2375,6 +2405,7 @@ fn handle_models_add(
                 bsg_calibration: None,
                 bsg_migration: None,
                 bsg_distribution_maps: None,
+                accepted_documents: Vec::new(),
             },
         );
 
@@ -2682,8 +2713,9 @@ fn handle_models_install(
         vendor: &model.vendor,
         version: &model.version,
         license: &model.license,
+        documents: &model.documents,
     };
-    if !registry::prompt_license_acceptance(asset, interactive, assume_yes)? {
+    if !accept_install_terms(asset, interactive, assume_yes, output_mode)? {
         if !output_mode.is_structured() {
             println!("Installation cancelled.");
         }
@@ -2834,6 +2866,7 @@ fn handle_models_install(
                 bsg_calibration: installed.bsg_calibration,
                 bsg_migration: installed.bsg_migration,
                 bsg_distribution_maps: installed.bsg_distribution_maps,
+                accepted_documents: registry::accepted_documents(&model.documents),
             },
         );
 
@@ -3011,8 +3044,9 @@ fn handle_geomodel_install(
         vendor: &asset.vendor,
         version: &asset.version,
         license: &asset.license,
+        documents: &[],
     };
-    if !registry::prompt_license_acceptance(licensed, interactive, assume_yes)? {
+    if !accept_install_terms(licensed, interactive, assume_yes, output_mode)? {
         if !output_mode.is_structured() {
             println!("Installation cancelled.");
         }
@@ -3079,8 +3113,9 @@ fn handle_bat_install(
         vendor,
         version: &catalog.version,
         license: &catalog.license,
+        documents: &[],
     };
-    if !registry::prompt_license_acceptance(licensed, interactive, assume_yes)? {
+    if !accept_install_terms(licensed, interactive, assume_yes, output_mode)? {
         if !output_mode.is_structured() {
             println!("Installation cancelled.");
         }
@@ -3978,6 +4013,7 @@ mod tests {
                 bsg_calibration: None,
                 bsg_migration: None,
                 bsg_distribution_maps: None,
+                accepted_documents: Vec::new(),
             },
         );
         Config {
@@ -4273,6 +4309,7 @@ mod tests {
             bsg_calibration: None,
             bsg_migration: None,
             bsg_distribution_maps: None,
+            accepted_documents: Vec::new(),
         };
 
         assert!(validate_model_files(&config).is_ok());
@@ -4298,6 +4335,7 @@ mod tests {
             bsg_calibration: None,
             bsg_migration: None,
             bsg_distribution_maps: None,
+            accepted_documents: Vec::new(),
         };
 
         let err = validate_model_files(&config).unwrap_err();
@@ -4324,6 +4362,7 @@ mod tests {
             bsg_calibration: None,
             bsg_migration: None,
             bsg_distribution_maps: None,
+            accepted_documents: Vec::new(),
         };
 
         let err = validate_model_files(&config).unwrap_err();
@@ -4353,6 +4392,7 @@ mod tests {
             bsg_calibration: None,
             bsg_migration: None,
             bsg_distribution_maps: None,
+            accepted_documents: Vec::new(),
         };
 
         assert!(validate_model_files(&config).is_ok());

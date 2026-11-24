@@ -281,6 +281,8 @@ birda --output-mode json models check
 
 `model_removed` carries `id`, `purge_requested` and `new_default`. `models remove geomodel` clears `defaults.geomodel` and `defaults.geomodel_labels`; with `--purge` it also deletes the recorded files and the copy at birda's own install location, only when they are inside birda's models directory. A plain remove leaves the files, and while they are in that directory `analyze` still uses them; the result does not say so, so birda logs a warning on stderr. A geomodel installed alongside a classifier is not recorded in the configuration: `models remove geomodel` fails for it, and `models remove geomodel --purge` deletes it.
 
+A model whose publisher marks a document as requiring agreement (an acceptable use policy, for example) cannot be agreed to without a prompt. Without a terminal or under structured output, and without `--yes`, `models install` for such a model installs nothing, emits one `error` event with `code` `agreement_required` and severity `fatal`, and exits 1. The `message` names the kind and URL of each document that needs agreement. The same documents are listed under `documents` in `models manifest`. Show them to the user, then run the install again with `--yes` to agree. A model without such a document installs as before.
+
 ### Model Manifest
 
 ```bash
@@ -657,6 +659,7 @@ Error severities:
 A command that fails outright is not reported as a JSON event. birda prints `error: <message>` to stderr and exits non-zero: 1 for a failed command, 2 for a command-line usage error. An interrupt exits 130 without an error line. Treat every non-zero exit as a failure and show stderr. Most failures leave stdout empty, but a result written before the failure describes what completed, so read it when it is there:
 
 - `birda clip` emits its `clip_extraction` result, with the failures under `failed_files`, and then exits 1 when every file failed.
+- `models install` of a model that requires agreement to a document, run without a terminal or under structured output and without `--yes`, emits an `error` event with `code` `agreement_required` and exits 1 (see Install and Remove).
 - `models remove --purge` on a configured model or the geomodel emits its `model_removed` result and then exits 1 when a file cannot be deleted after the configuration change was saved. When the geomodel was not recorded in the configuration there is no such change, and nothing is emitted.
 
 Warnings such as "Range filtering disabled" also go to stderr, not into the JSON envelope. A `null` `range_filter` in a detections payload therefore does not say whether range filtering was never requested or was requested and skipped; check stderr for the reason.

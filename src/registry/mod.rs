@@ -19,8 +19,8 @@ pub use installer::{
     range_filter_needs_download, resolve_url,
 };
 pub use license::{
-    LicensedAsset, disclosure_line, license_details, license_line, prompt_license_acceptance,
-    side_install_notice,
+    LicensedAsset, accepted_documents, disclosure_line, license_details, license_line,
+    prompt_license_acceptance, side_install_notice,
 };
 pub use loader::{find_model, load_registry};
 // Only what callers outside this module actually name. `HardwareProbe`,

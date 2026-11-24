@@ -259,8 +259,9 @@ pub enum Error {
     /// No `OpenVINO` runtime library was found.
     #[error(
         "OpenVINO runtime not found. Searched:\n{searched}\n\
-         Install OpenVINO 2025.1 or newer (see docs/openvino.md) or set \
-         inference.openvino_path in the config file to the directory holding {library}"
+         Install OpenVINO 2025.1 or newer (see docs/openvino.md), set \
+         INTEL_OPENVINO_DIR to its install root, or set inference.openvino_path \
+         in the config file to the directory holding {library}"
     )]
     OpenVinoRuntimeNotFound {
         /// One line per place that was searched.
@@ -281,8 +282,11 @@ pub enum Error {
     /// The `OpenVINO` runtime was found but could not be loaded.
     #[error(
         "could not load the OpenVINO runtime: {reason}\n\
-         The runtime and its TBB library directories must be on the loader path \
-         (LD_LIBRARY_PATH, or PATH on Windows), as OpenVINO's setupvars script does \
+         birda tries to load the TBB and core libraries of a runtime it located from \
+         that install when it finds both there. On Linux, a runtime found only \
+         through the system loader needs \
+         its TBB directory on LD_LIBRARY_PATH or in ld.so.conf.d (then run \
+         ldconfig). Check that the OpenVINO install is complete \
          (see docs/openvino.md)"
     )]
     OpenVinoRuntimeLoadFailed {

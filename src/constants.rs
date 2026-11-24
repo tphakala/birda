@@ -750,9 +750,88 @@ pub mod openvino {
     /// Directories searched for install roots on Linux.
     pub const LINUX_INSTALL_PARENTS: &[&str] = &["/opt/intel"];
 
-    /// Directories searched for install roots on Windows.
-    pub const WINDOWS_INSTALL_PARENTS: &[&str] =
-        &["C:\\Program Files\\Intel", "C:\\Program Files (x86)\\Intel"];
+    /// Environment variable holding the 64-bit Program Files directory.
+    pub const PROGRAM_FILES_ENV: &str = "ProgramFiles";
+
+    /// Environment variable holding the 32-bit Program Files directory.
+    pub const PROGRAM_FILES_X86_ENV: &str = "ProgramFiles(x86)";
+
+    /// The 64-bit Program Files directory when [`PROGRAM_FILES_ENV`] is unset.
+    pub const DEFAULT_PROGRAM_FILES: &str = "C:\\Program Files";
+
+    /// The 32-bit Program Files directory when [`PROGRAM_FILES_X86_ENV`] is unset.
+    pub const DEFAULT_PROGRAM_FILES_X86: &str = "C:\\Program Files (x86)";
+
+    /// Directory under each Program Files directory that holds Intel's install
+    /// roots on Windows.
+    pub const WINDOWS_INSTALL_VENDOR_DIR: &str = "Intel";
+
+    /// Directory under Program Files that holds Microsoft Store packages.
+    pub const WINDOWS_APPS_DIR: &str = "WindowsApps";
+
+    /// Prefix of the Microsoft Store package name of the `OpenVINO` toolkit.
+    ///
+    /// The 2026.3.0 winget package is named `Intel.OpenVINOToolkit.2026.3.0`
+    /// (the `Identity` element in the `AppxManifest.xml` of
+    /// `openvino_toolkit_2026.3.0.0.msix`).
+    pub const MSIX_NAME_PREFIX: &str = "Intel.OpenVINOToolkit";
+
+    /// Architecture field of the Store package birda loads.
+    pub const MSIX_ARCHITECTURE: &str = "x64";
+
+    /// Number of `_`-separated fields in a package full name:
+    /// name, version, architecture, resource id, publisher id.
+    pub const MSIX_FIELD_COUNT: usize = 5;
+
+    /// Number of dot-separated parts in a package version.
+    pub const MSIX_VERSION_PARTS: usize = 4;
+
+    /// Environment variable holding the Windows directory.
+    pub const SYSTEM_ROOT_ENV: &str = "SystemRoot";
+
+    /// The Windows directory when [`SYSTEM_ROOT_ENV`] is unset.
+    pub const DEFAULT_SYSTEM_ROOT: &str = "C:\\Windows";
+
+    /// Directory under the Windows directory that holds `reg.exe`.
+    pub const SYSTEM32_DIR: &str = "System32";
+
+    /// File name of the registry command-line tool.
+    pub const REG_EXE: &str = "reg.exe";
+
+    /// Registry key listing the installed Store packages, one subkey per
+    /// package full name.
+    pub const PACKAGE_REPOSITORY_KEY: &str = "HKEY_LOCAL_MACHINE\\SOFTWARE\\Classes\\Local Settings\\Software\\Microsoft\\Windows\\CurrentVersion\\AppModel\\PackageRepository\\Packages";
+
+    /// Registry value under a package subkey that holds the package folder.
+    pub const PACKAGE_PATH_VALUE: &str = "Path";
+
+    /// Registry type `reg.exe` prints for a string value.
+    pub const REGISTRY_STRING_TYPE: &str = "REG_SZ";
+
+    /// Linux file name of the `OpenVINO` core library, which the C API library
+    /// imports. Measured on Intel's 2026.3 archive: `libopenvino_c` lists
+    /// `libopenvino.so.2630` as NEEDED.
+    pub const LINUX_CORE_LIBRARY_FILE: &str = "libopenvino.so";
+
+    /// Windows file name of the `OpenVINO` core library, which the C API library
+    /// imports. Measured on Intel's 2026.3 archive: `openvino_c.dll` imports
+    /// `openvino.dll`.
+    pub const WINDOWS_CORE_LIBRARY_FILE: &str = "openvino.dll";
+
+    /// Linux file name of the oneTBB library the core library imports.
+    /// Measured on Intel's 2026.3 archive: `libopenvino` lists `libtbb.so.12`
+    /// as NEEDED, and that file's SONAME is `libtbb.so.12`.
+    pub const LINUX_TBB_LIBRARY_FILE: &str = "libtbb.so.12";
+
+    /// Windows file name of the oneTBB library the core library imports.
+    /// Measured on Intel's 2026.3 archive: `openvino.dll` imports `tbb12.dll`.
+    pub const WINDOWS_TBB_LIBRARY_FILE: &str = "tbb12.dll";
+
+    /// Install-root subdirectory holding oneTBB on Linux.
+    pub const LINUX_TBB_DIR: &str = "runtime/3rdparty/tbb/lib";
+
+    /// Install-root subdirectory holding oneTBB on Windows.
+    pub const WINDOWS_TBB_DIR: &str = "runtime/3rdparty/tbb/bin";
 
     /// System library directories searched on Linux.
     pub const LINUX_SYSTEM_LIB_DIRS: &[&str] = &[

@@ -8,7 +8,9 @@ pub mod cache;
 pub mod device;
 pub mod engine;
 pub mod listing;
+pub mod msix;
 pub mod parity;
+pub mod preload;
 pub mod runtime;
 
 pub use device::{DeviceKind, GpuClass, OvDevice, ResolveError, resolve, selectors_for};

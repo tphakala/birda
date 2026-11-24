@@ -98,7 +98,7 @@ birda --tensorrt -b 32 your_recording.wav
 
 ## Intel GPU Support (OpenVINO)
 
-Birda can also run models on Intel integrated (UHD, Iris Xe) and discrete (Arc) GPUs using Intel's OpenVINO runtime (2025.1 or newer). OpenVINO is not bundled: install the Intel Graphics Driver and OpenVINO separately, put both `runtime\bin\intel64\Release` and `runtime\3rdparty\tbb\bin` on your `PATH` (or run `setupvars.bat`), then verify and run:
+Birda can also run models on Intel integrated (UHD, Iris Xe) and discrete (Arc) GPUs using Intel's OpenVINO runtime (2025.1 or newer). OpenVINO is not bundled: install the Intel Graphics Driver and OpenVINO separately. birda finds Microsoft Store installs and archives under `Program Files\Intel` itself; for an archive elsewhere, set `INTEL_OPENVINO_DIR` to its root. Then verify and run:
 
 ```powershell
 birda openvino devices

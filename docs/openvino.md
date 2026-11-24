@@ -29,44 +29,38 @@ birda does not bundle OpenVINO. Install these yourself:
 
 If you installed OpenVINO from Debian/Ubuntu packages or Intel's APT repository, the libraries are already on the system loader path and birda finds them automatically.
 
-If you extracted an Intel OpenVINO archive (for example under `/opt/intel/openvino_2026`), either source its `setupvars.sh` in your shell before running birda, or register the runtime and TBB directories permanently in `/etc/ld.so.conf.d/openvino.conf`:
+If you extracted an Intel OpenVINO archive, birda finds it without `setupvars.sh` or `ld.so.conf.d` when you set `INTEL_OPENVINO_DIR` to its root, set `inference.openvino_path`, extract it under `/opt/intel` (for example `/opt/intel/openvino_2026`), or copy the contents of `runtime/lib/intel64` (resolving symlinks) and `runtime/3rdparty/tbb/lib/libtbb.so.12` next to the `birda` executable. birda loads the runtime's oneTBB library (`libtbb.so.12`) and core library (`libopenvino.so`) from the same install before the C API library when both are there, so none of their directories need to be on `LD_LIBRARY_PATH`. If you would rather have the system loader find the runtime, register its directories in `/etc/ld.so.conf.d/openvino.conf` and run `sudo ldconfig`, or source `setupvars.sh` in your shell:
 
 ```text
 /opt/intel/openvino_2026/runtime/lib/intel64
 /opt/intel/openvino_2026/runtime/3rdparty/tbb/lib
 ```
 
-Then run `sudo ldconfig`.
-
-birda searches for `libopenvino_c.so` in this order and uses the first match:
-
-1. `inference.openvino_path` in `config.toml` (a library file, directory holding it, or install root). If set and invalid, birda stops with an error instead of searching further.
-2. `INTEL_OPENVINO_DIR` (install root).
-3. `LD_LIBRARY_PATH`.
-4. Standard system library directories.
-5. The newest `/opt/intel/openvino*` directory.
-6. The system dynamic loader search (including `ld.so.conf.d`).
-
 ### Windows
 
-Windows requires both the OpenVINO runtime DLL directory (`runtime\bin\intel64\Release`) and its TBB dependency directory (`runtime\3rdparty\tbb\bin`) to be on `PATH`. Setting `INTEL_OPENVINO_DIR` or `inference.openvino_path` alone is not enough on Windows, because Windows will fail to resolve `tbb12.dll` and plugin DLLs unless both directories are on `PATH`.
+birda finds Store and `winget` installs and archives extracted under `Program Files\Intel` on its own. For an archive anywhere else, set `INTEL_OPENVINO_DIR` to its root or `inference.openvino_path` to the root or to `runtime\bin\intel64\Release`. birda loads `tbb12.dll` and `openvino.dll` from that install before `openvino_c.dll` when both are there, so nothing needs to be on `PATH` and `setupvars.bat` is not required.
 
 **Option 1: Intel OpenVINO archive**
 
-1. Extract the OpenVINO archive (for example to `C:\Program Files\Intel\openvino_2026`).
-2. Either run `setupvars.bat` in your terminal before running birda, or add both directories to your user `PATH`:
-   - `C:\Program Files\Intel\openvino_2026\runtime\bin\intel64\Release`
-   - `C:\Program Files\Intel\openvino_2026\runtime\3rdparty\tbb\bin`
+1. Extract the OpenVINO archive (for example to `C:\Program Files\Intel\openvino_2026`, or anywhere, and then set `INTEL_OPENVINO_DIR` or `inference.openvino_path`).
+2. Run `birda openvino devices`.
 
 **Option 2: Microsoft Store / winget (WindowsApps MSIX package)**
 
-OpenVINO installed through the Microsoft Store or `winget` is placed under `C:\Program Files\WindowsApps\Intel.OpenVINOToolkit.*`, which birda does not auto-discover yet. Add its runtime and TBB folders to `PATH` in PowerShell before running birda:
+OpenVINO installed through the Microsoft Store or `winget` is placed under `C:\Program Files\WindowsApps\Intel.OpenVINOToolkit.*` by default. birda lists that directory and uses the newest listed package that holds `openvino_c.dll`. Only when no listed package holds it (a standard user is often refused the listing) does birda read the package folders from the registry with `reg.exe`, and then it uses the newest of those that holds `openvino_c.dll`.
 
-```powershell
-$ov = (Get-ChildItem "C:\Program Files\WindowsApps" -Directory -Filter "Intel.OpenVINOToolkit.*" | Sort-Object Name -Descending | Select-Object -First 1).FullName
-$env:PATH = "$ov\runtime\bin\intel64\Release;$ov\runtime\3rdparty\tbb\bin;$env:PATH"
-birda openvino devices
-```
+### Search Order
+
+birda looks for the C API library (`libopenvino_c.so` on Linux, `openvino_c.dll` on Windows) in this order and uses the first match:
+
+1. `inference.openvino_path` in `config.toml` (a library file, directory holding it, or install root). If set and invalid, birda stops with an error instead of searching further.
+2. The directory of the `birda` executable, holding the library directly. This comes before `INTEL_OPENVINO_DIR`, so a runtime copied next to birda is used even when a `setupvars` environment is active; set `inference.openvino_path` to override it.
+3. `INTEL_OPENVINO_DIR` (install root).
+4. `LD_LIBRARY_PATH` (Linux) or `PATH` (Windows).
+5. Standard system library directories (Linux).
+6. The newest `openvino*` directory under `/opt/intel` (Linux). On Windows, `Program Files\Intel` is searched before `Program Files (x86)\Intel`, and birda takes the newest usable `openvino*` directory of the first of the two that has one, so a newer version in the second is not used; set `inference.openvino_path` to choose it.
+7. Microsoft Store packages (Windows).
+8. The system dynamic loader search, including `ld.so.conf.d` (Linux).
 
 ### Verifying Setup
 
@@ -116,9 +110,9 @@ openvino_device = "dgpu"  # optional: auto, igpu, dgpu, pci:..., uuid:...
 
 | Message starts with | What to do |
 |---------------------|------------|
-| `OpenVINO runtime not found` | Install OpenVINO 2025.1+, add its runtime/TBB folders to `PATH`/`LD_LIBRARY_PATH`, or set `inference.openvino_path`. |
+| `OpenVINO runtime not found` | Install OpenVINO 2025.1+, set `INTEL_OPENVINO_DIR` to its install root, or set `inference.openvino_path`. The error lists every place birda looked. |
 | `inference.openvino_path is set to ...` | Check that the configured path exists and points to `openvino_c`, its directory, or an OpenVINO install root. |
-| `could not load the OpenVINO runtime` | Add both the OpenVINO runtime library directory and its `3rdparty/tbb` directory to `PATH` (Windows) or `LD_LIBRARY_PATH` / `ld.so.conf.d` (Linux). |
+| `could not load the OpenVINO runtime` | Check that the install is complete: for a runtime birda located, it tries to load the TBB and core libraries from the runtime's own directory and from `runtime/3rdparty/tbb`, and only when it finds both. On Linux, a runtime found only through the system loader needs its TBB directory on `LD_LIBRARY_PATH` or in `ld.so.conf.d` (then run `sudo ldconfig`). |
 | `OpenVINO could not list its devices` | Check that the Intel GPU driver and compute runtime (`intel-opencl-icd` on Linux) are installed. |
 | `OpenVINO runtime ... is too old` | Upgrade OpenVINO to 2025.1 or newer. |
 | `no permission to use the Intel GPU render node` | On Linux, add your user to the `render` group and log in again. |

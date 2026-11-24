@@ -8,7 +8,7 @@ Birda is a Rust CLI tool for analyzing audio files using BirdNET and Google Perc
 
 - **Language:** Rust, edition 2024. The minimum supported version is `rust-version` in `Cargo.toml`, and the CI MSRV job builds on exactly that toolchain.
 - **Inference:** `birdnet-onnx` (source: `tphakala/rust-birdnet-onnx`), on top of `ort`. ONNX Runtime is loaded at run time, because both dependencies are declared with `load-dynamic`.
-- **Intel GPUs:** the `openvino` and `openvino-sys` crates, built with `runtime-linking`, drive the user's own OpenVINO runtime (`src/inference/openvino/`). OpenVINO is not an ONNX Runtime provider in birda, and the OpenVINO CPU device is never used: CPU inference stays on ONNX Runtime.
+- **Intel GPUs:** the `openvino` and `openvino-sys` crates, built with `runtime-linking`, drive the user's own OpenVINO runtime (`src/inference/openvino/`). OpenVINO is not an ONNX Runtime provider in birda, and the OpenVINO CPU device is never used: CPU inference stays on ONNX Runtime. The runtime's oneTBB and core libraries are preloaded by absolute path with `libloading` (`src/inference/openvino/preload.rs`).
 - **Audio decoding:** `symphonia`, pinned to the `feature/rf64-support` branch of the `tphakala/Symphonia` fork
 - **Resampling:** `rubato`, fed through `audioadapter-buffers`
 - **CLI:** `clap` with derive
@@ -213,6 +213,7 @@ Don't hand-edit these:
 ## Dependencies
 
 - `ort` and `ort-sys` move only together with `ONNXRUNTIME_VERSION` in `.github/workflows/release.yml`, which pins the native runtime and the CUDA and cuDNN set shipped with every release. Because of `load-dynamic`, an ABI mismatch compiles and passes CI, then fails when a released binary loads the library. Dependabot ignores both crates (`.github/dependabot.yml`). Keep them at their current version in routine `cargo update` sweeps (check with `cargo update --dry-run --verbose`), and bump them in a change of their own that updates `release.yml` and runs real inference.
+- `libloading` is a direct dependency on the major `openvino-sys` uses (0.8 for 0.11.1); move it with an `openvino-sys` bump.
 - `openvino` and `openvino-sys` are pinned to each other with `=`. Bump both in one change, re-check the load-error strings that `src/inference/openvino/runtime.rs` classifies (they come from `openvino-sys`), and rerun the hardware recipe on an Intel GPU (`birda openvino devices`, then the same file with `--cpu` and `--openvino`, comparing the CSV) before merging: the tests cannot exercise a real runtime.
 - `rubato` and `audioadapter-buffers` must resolve to the same major version: `src/audio/resample.rs` builds `audioadapter_buffers::direct::SequentialSlice` and hands it to rubato. Bump both in one change; `cargo tree -i audioadapter-buffers` should show a single copy.
 - `arrow` and `parquet` must share a major version, since `parquet` depends on the `arrow-*` crates of its own major and `src/output/parquet.rs` passes values between them. Bump both in one change.

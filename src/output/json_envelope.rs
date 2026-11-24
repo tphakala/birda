@@ -962,7 +962,8 @@ pub struct ModelManifest {
     pub name: String,
     /// Upstream version string.
     pub version: String,
-    /// Our conversion revision of those weights.
+    /// Our conversion revision of the entry's first published file. Each variant
+    /// states the build of its own file in [`ManifestVariant::build`].
     #[serde(skip_serializing_if = "Option::is_none")]
     pub build: Option<u32>,
     /// Model type identifier.
@@ -983,6 +984,10 @@ pub struct ModelManifest {
     /// A legacy single-file model is projected as one synthetic `global`
     /// variant so a consumer sees one uniform shape across old and new models.
     pub variants: Vec<ManifestVariant>,
+    /// Licence and usage documents the publisher ships with the family, with
+    /// `HF_ENDPOINT`-resolved URLs.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub documents: Vec<crate::registry::ModelDocument>,
 }
 
 /// One projected variant: registry fields plus resolved URLs and countries.
@@ -1017,6 +1022,25 @@ pub struct ManifestVariant {
     /// Countries this region covers, for a country-name search over the list.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub countries: Option<crate::registry::Countries>,
+    /// Build of this variant's file.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub build: Option<u32>,
+    /// ISO 3166-1 alpha-2 codes for the same coverage as `countries`, when the
+    /// publisher gave codes.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub country_codes: Option<crate::registry::Countries>,
+    /// How specific this region is; a higher tier is a more specific region.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tier: Option<u32>,
+    /// Boxes the region covers, in degrees. Never cross the antimeridian.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub bboxes: Vec<crate::registry::BoundingBox>,
+    /// Representative point of the region.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub centroid: Option<crate::registry::GeoPoint>,
+    /// How to turn this file's raw scores into the publisher's calibrated ones.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub score_calibration: Option<crate::registry::ScoreCalibration>,
 }
 
 /// Payload for species list result.

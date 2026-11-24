@@ -74,7 +74,7 @@ pub struct InstallProvenance {
     pub registry_id: String,
     /// Exact upstream version installed.
     pub version: String,
-    /// Our conversion revision.
+    /// Our conversion revision of the installed file.
     pub build: Option<u32>,
     /// Region slug, `None` for the global model.
     pub region: Option<String>,
@@ -83,6 +83,22 @@ pub struct InstallProvenance {
 }
 
 impl InstallProvenance {
+    /// What installing `variant` of `entry` records.
+    ///
+    /// The build is the variant's own ([`ModelEntry::build_for`]): the entry's
+    /// build names only its first published file, and regions of one model can
+    /// be published at different builds.
+    #[must_use]
+    pub fn for_variant(entry: &ModelEntry, variant: &ModelVariant) -> Self {
+        Self {
+            registry_id: entry.id.clone(),
+            version: entry.version.clone(),
+            build: entry.build_for(variant),
+            region: variant.region.clone(),
+            variant: Some(variant.id.clone()),
+        }
+    }
+
     /// Key this install occupies in `config.models`.
     ///
     /// Regional installs get an `<id>-<region>` key so a global and a regional
@@ -926,13 +942,7 @@ pub async fn install_variant(entry: &ModelEntry, variant: &ModelVariant) -> Resu
         bsg_calibration: None,
         bsg_migration: None,
         bsg_distribution_maps: None,
-        provenance: Some(InstallProvenance {
-            registry_id: entry.id.clone(),
-            version: entry.version.clone(),
-            build: entry.build,
-            region: variant.region.clone(),
-            variant: Some(variant.id.clone()),
-        }),
+        provenance: Some(InstallProvenance::for_variant(entry, variant)),
     })
 }
 
@@ -981,6 +991,104 @@ mod tests {
             variant: Some("fp16".to_string()),
         };
         assert_eq!(provenance.config_key(), "birdnet-v30");
+    }
+
+    /// Serve each body in `bodies` to one connection, in order, on a loopback
+    /// port, and return the base URL.
+    fn serve_once_each(bodies: Vec<&'static [u8]>) -> String {
+        use std::io::{Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        std::thread::spawn(move || {
+            for body in bodies {
+                let (mut stream, _) = listener.accept().unwrap();
+                let mut request = [0_u8; 2048];
+                let _ = stream.read(&mut request);
+                let head = format!(
+                    "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                    body.len()
+                );
+                stream.write_all(head.as_bytes()).unwrap();
+                stream.write_all(body).unwrap();
+            }
+        });
+        base
+    }
+
+    #[test]
+    #[serial]
+    fn test_install_variant_records_the_build_of_the_variant_it_installed() {
+        // Regions of one model can be published at different builds, so what
+        // `install_variant` records must be the downloaded file's build, not the
+        // entry's. Goes through `install_variant` itself, so it fails if the
+        // call site stops taking the variant's build.
+        let base = serve_once_each(vec![b"model", b"labels", b"model", b"labels"]);
+        let file = |name: &str| FileInfo {
+            url: format!("{base}/{name}"),
+            filename: name.to_string(),
+            sha256: None,
+            size_bytes: None,
+        };
+        let variant = |region: Option<&str>, build: Option<u32>| ModelVariant {
+            id: "fp32".to_string(),
+            region: region.map(str::to_string),
+            region_name: None,
+            group: None,
+            group_name: None,
+            group_order: 0,
+            classes: None,
+            model: file(&format!("{}-m.onnx", region.unwrap_or("global"))),
+            labels: file(&format!("{}-l.txt", region.unwrap_or("global"))),
+            countries: None,
+            build,
+            country_codes: None,
+            tier: None,
+            bboxes: Vec::new(),
+            centroid: None,
+            score_calibration: None,
+        };
+        let entry = ModelEntry {
+            id: "birdnet-plus".to_string(),
+            name: "n".to_string(),
+            description: "d".to_string(),
+            vendor: "v".to_string(),
+            version: "3.0.1".to_string(),
+            model_type: "birdnet-v30".to_string(),
+            license: LicenseInfo {
+                r#type: "MIT".to_string(),
+                url: "https://example.com".to_string(),
+                commercial_use: true,
+                attribution_required: false,
+                share_alike: false,
+            },
+            files: None,
+            build: Some(1),
+            default_variant: None,
+            selection: std::collections::BTreeMap::new(),
+            variants: Vec::new(),
+            documents: Vec::new(),
+            recommended: false,
+        };
+
+        let root = tempfile::TempDir::new().unwrap();
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let installed =
+            temp_env::with_var(crate::constants::CONFIG_DIR_ENV, Some(root.path()), || {
+                runtime.block_on(async {
+                    let nordic = install_variant(&entry, &variant(Some("nordic"), Some(2)))
+                        .await
+                        .unwrap();
+                    let global = install_variant(&entry, &variant(None, None)).await.unwrap();
+                    (nordic, global)
+                })
+            });
+
+        let build_of = |m: &InstalledModel| m.provenance.as_ref().unwrap().build;
+        assert_eq!(build_of(&installed.0), Some(2));
+        assert_eq!(build_of(&installed.1), Some(1));
     }
 
     #[test]

@@ -1,0 +1,702 @@
+{
+  "schema": 2,
+  "repo": "tphakala/BirdNET-Plus-V3.0",
+  "family": "birdnet-plus",
+  "updated": "2026-11-21",
+  "family_meta": {
+    "display_name": "BirdNET+ V3.0.1",
+    "description": "BirdNET+ V3.0.1 global wildlife classifier (11,725 classes: 11,709 species, birds and other fauna, and 16 non-animal sound classes; scientific and common names).",
+    "author": "Cornell Lab of Ornithology & Chemnitz University of Technology",
+    "license": "Apache-2.0",
+    "commercial_use": true,
+    "documents": [
+      {
+        "kind": "license",
+        "requires_agreement": false,
+        "path": "LICENSE-v3.0.1.md",
+        "revision": "f90c3ba818b179adf5f4c9eabf2e6f8b801e4c06",
+        "sha256": "ec0c349bd674520989b4df63afd50601695bd99a01768b8e46a04694573afd47"
+      },
+      {
+        "kind": "acceptable_use",
+        "requires_agreement": true,
+        "path": "ACCEPTABLE_USE-v3.0.1.md",
+        "revision": "f90c3ba818b179adf5f4c9eabf2e6f8b801e4c06",
+        "sha256": "4495ebf9a088a83f902bbbef95ec17f635b51c94ade5d95b5d248646ea70a04e"
+      }
+    ],
+    "channel": "stable",
+    "upstream_url": "https://doi.org/10.5281/zenodo.24362980",
+    "species_count": 11725,
+    "current_version": "3.0.1",
+    "versions": {
+      "3.0.1": {
+        "display_name": "BirdNET+ V3.0.1",
+        "description": "BirdNET+ V3.0.1 global wildlife classifier (11,725 classes: 11,709 species, birds and other fauna, and 16 non-animal sound classes; scientific and common names).",
+        "species_count": 11725,
+        "released": "2026-11-19",
+        "channel": "stable",
+        "license": "Apache-2.0",
+        "commercial_use": true,
+        "documents": [
+          {
+            "kind": "license",
+            "requires_agreement": false,
+            "path": "LICENSE-v3.0.1.md",
+            "revision": "f90c3ba818b179adf5f4c9eabf2e6f8b801e4c06",
+            "sha256": "ec0c349bd674520989b4df63afd50601695bd99a01768b8e46a04694573afd47"
+          },
+          {
+            "kind": "acceptable_use",
+            "requires_agreement": true,
+            "path": "ACCEPTABLE_USE-v3.0.1.md",
+            "revision": "f90c3ba818b179adf5f4c9eabf2e6f8b801e4c06",
+            "sha256": "4495ebf9a088a83f902bbbef95ec17f635b51c94ade5d95b5d248646ea70a04e"
+          }
+        ],
+        "upstream_source": "https://github.com/birdnet-team/model-converter/tree/8c1b6ef4ee3d8c0eb51fbe859550380bed5595df/models/02_BirdNET%2B_V3.0_Global_12K",
+        "current_build": 3
+      }
+    }
+  },
+  "requirements_note": "requirements.min_ram_mb is a conservative, high-biased RAM floor: measured peak RSS + 15% where a benchmark exists, else a size-derived estimate biased high (a too-low floor risks OOM; a too-high floor only over-excludes on the smallest devices). Measured values will replace the estimates over time.",
+  "naming": "<family>-<upstream>[-<region>]-<variant>-b<build>.<ext>",
+  "selection": {
+    "x86-64/onnxruntime": "full/birdnet-plus-v3.0.1-fp32-b1.onnx",
+    "x86-64/openvino-cpu": "full/birdnet-plus-v3.0.1-fp32-b1.onnx",
+    "x86-64/openvino-gpu": "full/birdnet-plus-v3.0.1-fp32-b1.onnx",
+    "aarch64/onnxruntime": "full/birdnet-plus-v3.0.1-fp32-b1.onnx",
+    "cuda": "full/birdnet-plus-v3.0.1-fp32-b1.onnx",
+    "tensorrt": "full/birdnet-plus-v3.0.1-fp32-b1.onnx"
+  },
+  "selection_notes": "Regional models are the low-RAM choice: a region slice is numerically identical to the global model on the species it keeps and needs less memory than it; each entry's requirements.min_ram_mb gives its floor (measured on RPi5: 198 MB peak RSS for nordic, 457 MB for the global model). This release ships FP32 only, so every backend selects FP32. OpenVINO runs at f32 only and is recommended on Intel GPUs; on CPUs ONNX Runtime is recommended.",
+  "builds": {
+    "birdnet-plus-v3.0.1-b1": {
+      "date": "2026-11-20",
+      "upstream_version": "3.0.1",
+      "build": 1,
+      "changes": "GPU-native export of the BirdNET+ V3.0.1 release checkpoint (EfficientNetV2-S backbone, 11,725 classes: 11,709 species and 16 non-animal sound classes) from upstream model-converter tag v1.1.0 (commit 8c1b6ef), the same checkpoint and class sets as 3.0: the log-mel front end is a two-stage DFT written as MatMuls with each frame's mean removed before the window (3.0 used one Conv with a 2050 x 2048 weight, which returns a wrong result on a constant input at 0.9 of full scale or more under ONNX Runtime), folded with onnxsim, predictions output dimension pinned to the class count; fp32 only; 43 regional slices on the Perch v2 region tiles with the same class sets as 3.0. 5 s @ 32 kHz window."
+    },
+    "birdnet-plus-v3.0.1-b2": {
+      "date": "2026-11-21",
+      "upstream_version": "3.0.1",
+      "build": 2,
+      "built_at": "2026-11-21T15:56:14Z",
+      "reason": "Every regional model now includes the domestic dog and all other domestic animals, which some regions were missing.",
+      "notes": [
+        "Every regional model now includes the domestic dog, cat, horse, cattle, sheep, goat, chicken and pigeon, and other pets and farmed animals such as rabbit, donkey, goldfish, carp, budgerigar and canary.",
+        "Before this build the domestic dog was missing from 17 regional models, including the Nordic one, so barking dogs could not be reported there. Cat, horse, cattle, sheep, goat and chicken were missing from many regions as well.",
+        "Six regions with a species limit gained between 4 and 24 more wild species each, for example Corn Crake and Asian Elephant in the Himalaya region and Fieldfare in western North America.",
+        "Regional models grow by 5 to 28 classes and no regional model lost a class.",
+        "The global model and the sound classes are unchanged."
+      ],
+      "upstream_commit": "8c1b6ef4ee3d8c0eb51fbe859550380bed5595df",
+      "changes": "All 43 regional tiles are rebuilt as build 2 of release 3.0.1. Only wildlife is selected by region now: every non-wildlife class (45 classes) is in every tile and does not use the species limit, which freed room for 83 wild species in the six capped tiles. Each tile's scores differ from the global model by less than 1e-4 on the validation inputs of the build."
+    },
+    "birdnet-plus-v3.0.1-b3": {
+      "date": "2026-11-21",
+      "upstream_version": "3.0.1",
+      "build": 3,
+      "built_at": "2026-11-21T17:56:29Z",
+      "reason": "Adds a regional model for Central India, where the existing Indian regional models do not fit.",
+      "notes": [
+        "New regional model for Central India: the Deccan plateau and the Narmada and Godavari basins, roughly Madhya Pradesh, Maharashtra, Chhattisgarh and Telangana.",
+        "It covers 656 wild species of the region, for example Indian Roller, Sarus Crane, Indian Peafowl and Painted Spurfowl, and it includes the domestic dog and all other domestic animals and sound classes like every other regional model.",
+        "All other regional models and the global model are unchanged."
+      ],
+      "upstream_commit": "8c1b6ef4ee3d8c0eb51fbe859550380bed5595df",
+      "changes": "One new regional tile, central-india, as build 3 of release 3.0.1 (708 classes: 656 wild species in range, 7 cosmopolitan core species and the 45 non-wildlife classes). The sampling box is 16 to 26 degrees north and 73 to 86.5 degrees east. The other 43 tiles keep their files and builds. The tile's scores differ from the global model by less than 1e-4 on the validation inputs of the build."
+    }
+  },
+  "models": [
+    {
+      "path": "full/birdnet-plus-v3.0.1-fp32-b1.onnx",
+      "family": "birdnet-plus",
+      "upstream_version": "3.0.1",
+      "channel": "stable",
+      "upstream_source": "https://github.com/birdnet-team/model-converter/tree/8c1b6ef4ee3d8c0eb51fbe859550380bed5595df/models/02_BirdNET%2B_V3.0_Global_12K",
+      "build": 1,
+      "variant": "fp32",
+      "precision": "fp32",
+      "region": null,
+      "classes": 11725,
+      "labels": "full/birdnet-plus-v3.0.1-labels-b1.txt",
+      "labels_sha256": "ab212fdd39cc0f8be920308fbe7e793abad17d3dca07310b1590d032c36e4dc3",
+      "labels_size_bytes": 470040,
+      "input": {
+        "sample_rate": 32000,
+        "window_seconds": 5,
+        "samples": 160000,
+        "shape": [
+          "batch",
+          160000
+        ],
+        "dtype": "float32"
+      },
+      "outputs": [
+        {
+          "name": "predictions",
+          "shape": [
+            "batch",
+            11725
+          ],
+          "activation": "sigmoid",
+          "multi_label": true
+        },
+        {
+          "name": "embeddings",
+          "shape": [
+            "batch",
+            1280
+          ]
+        }
+      ],
+      "backends": {
+        "onnxruntime-cpu": {
+          "supported": true,
+          "recommended": true,
+          "verified_on": [
+            "rpi5-a76",
+            "x86-i7-1260P"
+          ]
+        },
+        "openvino-cpu": {
+          "supported": true,
+          "recommended": false,
+          "verified_on": [
+            "rpi5-a76",
+            "x86-i7-1260P"
+          ],
+          "precision_hint": "f32",
+          "note": "run at f32 only: the default f16 hint gives wrong scores on the Cortex-A76 and Intel GPUs; on the Raspberry Pi 5 at 4 threads it is slower than ONNX Runtime on the global model (290 ms against 260 ms) and about the same on the nordic tile (202 ms against 218 ms), at about 1.8 times the memory"
+        },
+        "openvino-gpu": {
+          "supported": true,
+          "recommended": true,
+          "verified_on": [
+            "x86-i5-7260U-iris-plus-640"
+          ],
+          "precision_hint": "f32",
+          "note": "run at f32 only: the default f16 hint gives wrong scores on Intel GPUs; 63 ms against 97 ms for ONNX Runtime CPU on an Intel Iris Plus Graphics 640 (global model; nordic tile 45 ms against 85 ms); a transient error of up to 4e-2 on isolated inputs was seen in a few runs on that GPU"
+        },
+        "cuda": {
+          "supported": true,
+          "recommended": true,
+          "note": "not run for this release"
+        },
+        "tensorrt": {
+          "supported": true,
+          "recommended": true,
+          "note": "not run for this release"
+        }
+      },
+      "graph": {
+        "gpu_native": true,
+        "has_stft_op": false,
+        "dynamic_batch": true,
+        "notes": "the log-mel front end is plain tensor arithmetic: framing by reshape, each frame's mean removed before the Hann window, a two-stage DFT as MatMuls on constant matrices and the mel matrix as MatMul or Einsum, folded with onnxsim; no STFT or DFT op. Run on ONNX Runtime CPU and on OpenVINO CPU and Intel GPU; CUDA and TensorRT were not run"
+      },
+      "benchmarks": [
+        {
+          "device": "rpi5-a76",
+          "backend": "onnxruntime-cpu",
+          "threads": 4,
+          "batch": 1,
+          "latency_ms": 260,
+          "rss_mb": 457
+        },
+        {
+          "device": "x86-i5-7260U-iris-plus-640",
+          "backend": "onnxruntime-cpu",
+          "threads": 4,
+          "batch": 1,
+          "latency_ms": 97
+        },
+        {
+          "device": "x86-i5-7260U-iris-plus-640",
+          "backend": "openvino-gpu",
+          "batch": 1,
+          "latency_ms": 63
+        }
+      ],
+      "sha256": "835efeb33c84c5ac8c1591d33dd99c61cdb306d5bc273e811290de625a19b88e",
+      "size_bytes": 344606647,
+      "legacy": false,
+      "superseded_by": null,
+      "requirements": {
+        "min_ram_mb": 550
+      }
+    },
+    {
+      "path": "regional/nordic/birdnet-plus-v3.0.1-nordic-fp32-b2.onnx",
+      "family": "birdnet-plus",
+      "upstream_version": "3.0.1",
+      "channel": "stable",
+      "upstream_source": "https://github.com/birdnet-team/model-converter/tree/8c1b6ef4ee3d8c0eb51fbe859550380bed5595df/models/02_BirdNET%2B_V3.0_Global_12K",
+      "build": 2,
+      "build_info": {
+        "tag": "birdnet-plus-v3.0.1-b2",
+        "built_at": "2026-11-21T15:56:14Z",
+        "source_commit": "22fa353b9877c86b7bde2fc146adb338e0c921d8",
+        "slicing": {
+          "cap": 800,
+          "classes_non_wildlife": 45,
+          "classes_wildlife": 419,
+          "cut_by_cap": 0,
+          "effective_floor": 0.0512,
+          "floor": 0.05,
+          "geomodel": "3.0.2",
+          "policy_sha256": "8c6256c73a415ecae781d3bd8238fc17a7da0113cc3f6afa8d7aabe13cdebb88"
+        }
+      },
+      "variant": "fp32",
+      "precision": "fp32",
+      "region": "nordic",
+      "classes": 464,
+      "labels": "regional/nordic/birdnet-plus-v3.0.1-nordic-labels-b2.txt",
+      "labels_sha256": "5f18020e5c3dc5af6f8961da6b37afd9e7ace033f764fc1a2c8c988088e8e71a",
+      "labels_size_bytes": 15388,
+      "input": {
+        "sample_rate": 32000,
+        "window_seconds": 5,
+        "samples": 160000,
+        "shape": [
+          "batch",
+          160000
+        ],
+        "dtype": "float32"
+      },
+      "outputs": [
+        {
+          "name": "predictions",
+          "shape": [
+            "batch",
+            464
+          ],
+          "activation": "sigmoid",
+          "multi_label": true
+        },
+        {
+          "name": "embeddings",
+          "shape": [
+            "batch",
+            1280
+          ]
+        }
+      ],
+      "backends": {
+        "onnxruntime-cpu": {
+          "supported": true,
+          "recommended": true,
+          "verified_on": [
+            "rpi5-a76",
+            "x86-i7-1260P"
+          ]
+        },
+        "openvino-cpu": {
+          "supported": true,
+          "recommended": false,
+          "verified_on": [
+            "rpi5-a76",
+            "x86-i7-1260P"
+          ],
+          "precision_hint": "f32",
+          "note": "run at f32 only: the default f16 hint gives wrong scores on the Cortex-A76 and Intel GPUs; on the Raspberry Pi 5 at 4 threads it is slower than ONNX Runtime on the global model (290 ms against 260 ms) and about the same on the nordic tile (202 ms against 218 ms), at about 1.8 times the memory"
+        },
+        "openvino-gpu": {
+          "supported": true,
+          "recommended": true,
+          "verified_on": [
+            "x86-i5-7260U-iris-plus-640"
+          ],
+          "precision_hint": "f32",
+          "note": "run at f32 only: the default f16 hint gives wrong scores on Intel GPUs; 63 ms against 97 ms for ONNX Runtime CPU on an Intel Iris Plus Graphics 640 (global model; nordic tile 45 ms against 85 ms); a transient error of up to 5e-2 on isolated inputs was seen in a few runs on that GPU"
+        },
+        "cuda": {
+          "supported": true,
+          "recommended": true,
+          "note": "not run for this release"
+        },
+        "tensorrt": {
+          "supported": true,
+          "recommended": true,
+          "note": "not run for this release"
+        }
+      },
+      "graph": {
+        "gpu_native": true,
+        "has_stft_op": false,
+        "dynamic_batch": true,
+        "notes": "the log-mel front end is plain tensor arithmetic: framing by reshape, each frame's mean removed before the Hann window, a two-stage DFT as MatMuls on constant matrices and the mel matrix as MatMul or Einsum, folded with onnxsim; no STFT or DFT op. Run on ONNX Runtime CPU and on OpenVINO CPU and Intel GPU; CUDA and TensorRT were not run"
+      },
+      "benchmarks": [],
+      "sha256": "5b9e8d4292bde2d4e74dd70fef0880585e7b19b4b6036895590d4ab92c9d5d36",
+      "size_bytes": 102224864,
+      "legacy": false,
+      "superseded_by": null,
+      "indices": "regional/nordic/birdnet-plus-v3.0.1-nordic-indices-b2.txt",
+      "validation": {
+        "max_abs_diff_vs_global": 3.379210829734802e-05,
+        "numerically_identical_on_kept_classes": true
+      },
+      "requirements": {
+        "min_ram_mb": 300
+      }
+    },
+    {
+      "path": "regional/nordic/birdnet-plus-v3.0.1-nordic-fp32-b1.onnx",
+      "family": "birdnet-plus",
+      "upstream_version": "3.0.1",
+      "channel": "stable",
+      "upstream_source": "https://github.com/birdnet-team/model-converter/tree/8c1b6ef4ee3d8c0eb51fbe859550380bed5595df/models/02_BirdNET%2B_V3.0_Global_12K",
+      "build": 1,
+      "variant": "fp32",
+      "precision": "fp32",
+      "region": "nordic",
+      "classes": 443,
+      "labels": "regional/nordic/birdnet-plus-v3.0.1-nordic-labels-b1.txt",
+      "labels_sha256": "64cf30aa5e2b5f1b84a47ab8c5e651953e753b59344a5b6f82efeb063ca67db2",
+      "labels_size_bytes": 14748,
+      "input": {
+        "sample_rate": 32000,
+        "window_seconds": 5,
+        "samples": 160000,
+        "shape": [
+          "batch",
+          160000
+        ],
+        "dtype": "float32"
+      },
+      "outputs": [
+        {
+          "name": "predictions",
+          "shape": [
+            "batch",
+            443
+          ],
+          "activation": "sigmoid",
+          "multi_label": true
+        },
+        {
+          "name": "embeddings",
+          "shape": [
+            "batch",
+            1280
+          ]
+        }
+      ],
+      "backends": {
+        "onnxruntime-cpu": {
+          "supported": true,
+          "recommended": true,
+          "verified_on": [
+            "rpi5-a76",
+            "x86-i7-1260P"
+          ]
+        },
+        "openvino-cpu": {
+          "supported": true,
+          "recommended": false,
+          "verified_on": [
+            "rpi5-a76",
+            "x86-i7-1260P"
+          ],
+          "precision_hint": "f32",
+          "note": "run at f32 only: the default f16 hint gives wrong scores on the Cortex-A76 and Intel GPUs; on the Raspberry Pi 5 at 4 threads it is slower than ONNX Runtime on the global model (290 ms against 260 ms) and about the same on the nordic tile (202 ms against 218 ms), at about 1.8 times the memory"
+        },
+        "openvino-gpu": {
+          "supported": true,
+          "recommended": true,
+          "verified_on": [
+            "x86-i5-7260U-iris-plus-640"
+          ],
+          "precision_hint": "f32",
+          "note": "run at f32 only: the default f16 hint gives wrong scores on Intel GPUs; 63 ms against 97 ms for ONNX Runtime CPU on an Intel Iris Plus Graphics 640 (global model; nordic tile 45 ms against 85 ms); a transient error of up to 4e-2 on isolated inputs was seen in a few runs on that GPU"
+        },
+        "cuda": {
+          "supported": true,
+          "recommended": true,
+          "note": "not run for this release"
+        },
+        "tensorrt": {
+          "supported": true,
+          "recommended": true,
+          "note": "not run for this release"
+        }
+      },
+      "graph": {
+        "gpu_native": true,
+        "has_stft_op": false,
+        "dynamic_batch": true,
+        "notes": "the log-mel front end is plain tensor arithmetic: framing by reshape, each frame's mean removed before the Hann window, a two-stage DFT as MatMuls on constant matrices and the mel matrix as MatMul or Einsum, folded with onnxsim; no STFT or DFT op. Run on ONNX Runtime CPU and on OpenVINO CPU and Intel GPU; CUDA and TensorRT were not run"
+      },
+      "benchmarks": [
+        {
+          "device": "rpi5-a76",
+          "backend": "onnxruntime-cpu",
+          "threads": 4,
+          "batch": 1,
+          "latency_ms": 218,
+          "rss_mb": 198
+        },
+        {
+          "device": "x86-i5-7260U-iris-plus-640",
+          "backend": "onnxruntime-cpu",
+          "threads": 4,
+          "batch": 1,
+          "latency_ms": 85
+        },
+        {
+          "device": "x86-i5-7260U-iris-plus-640",
+          "backend": "openvino-gpu",
+          "batch": 1,
+          "latency_ms": 45
+        }
+      ],
+      "sha256": "5bbe1c763676c271d0f9c061a6ec5fb2139d3e3220a20f19f0d5c7cf0a5d3de9",
+      "size_bytes": 101772860,
+      "legacy": false,
+      "superseded_by": "regional/nordic/birdnet-plus-v3.0.1-nordic-fp32-b2.onnx",
+      "indices": "regional/nordic/birdnet-plus-v3.0.1-nordic-indices-b1.txt",
+      "validation": {
+        "max_abs_diff_vs_global": 3.379210829734802e-05,
+        "numerically_identical_on_kept_classes": true
+      },
+      "requirements": {
+        "min_ram_mb": 250
+      }
+    },
+    {
+      "path": "regional/western-palearctic/birdnet-plus-v3.0.1-western-palearctic-fp32-b2.onnx",
+      "family": "birdnet-plus",
+      "upstream_version": "3.0.1",
+      "channel": "stable",
+      "upstream_source": "https://github.com/birdnet-team/model-converter/tree/8c1b6ef4ee3d8c0eb51fbe859550380bed5595df/models/02_BirdNET%2B_V3.0_Global_12K",
+      "build": 2,
+      "build_info": {
+        "tag": "birdnet-plus-v3.0.1-b2",
+        "built_at": "2026-11-21T15:56:14Z",
+        "source_commit": "22fa353b9877c86b7bde2fc146adb338e0c921d8",
+        "slicing": {
+          "cap": 1400,
+          "classes_non_wildlife": 45,
+          "classes_wildlife": 1401,
+          "cut_by_cap": 107,
+          "effective_floor": 0.0915,
+          "floor": 0.05,
+          "geomodel": "3.0.2",
+          "policy_sha256": "8c6256c73a415ecae781d3bd8238fc17a7da0113cc3f6afa8d7aabe13cdebb88"
+        }
+      },
+      "variant": "fp32",
+      "precision": "fp32",
+      "region": "western-palearctic",
+      "classes": 1446,
+      "labels": "regional/western-palearctic/birdnet-plus-v3.0.1-western-palearctic-labels-b2.txt",
+      "labels_sha256": "0225321c63eb314bca409d6b07f3fd717ec99da0032b2adebbd034051eacd8ff",
+      "labels_size_bytes": 52800,
+      "input": {
+        "sample_rate": 32000,
+        "window_seconds": 5,
+        "samples": 160000,
+        "shape": [
+          "batch",
+          160000
+        ],
+        "dtype": "float32"
+      },
+      "outputs": [
+        {
+          "name": "predictions",
+          "shape": [
+            "batch",
+            1446
+          ],
+          "activation": "sigmoid",
+          "multi_label": true
+        },
+        {
+          "name": "embeddings",
+          "shape": [
+            "batch",
+            1280
+          ]
+        }
+      ],
+      "backends": {
+        "onnxruntime-cpu": {
+          "supported": true,
+          "recommended": true,
+          "verified_on": [
+            "rpi5-a76",
+            "x86-i7-1260P"
+          ]
+        },
+        "openvino-cpu": {
+          "supported": true,
+          "recommended": false,
+          "verified_on": [
+            "rpi5-a76",
+            "x86-i7-1260P"
+          ],
+          "precision_hint": "f32",
+          "note": "run at f32 only: the default f16 hint gives wrong scores on the Cortex-A76 and Intel GPUs; on the Raspberry Pi 5 at 4 threads it is slower than ONNX Runtime on the global model (290 ms against 260 ms) and about the same on the nordic tile (202 ms against 218 ms), at about 1.8 times the memory"
+        },
+        "openvino-gpu": {
+          "supported": true,
+          "recommended": true,
+          "verified_on": [
+            "x86-i5-7260U-iris-plus-640"
+          ],
+          "precision_hint": "f32",
+          "note": "run at f32 only: the default f16 hint gives wrong scores on Intel GPUs; 63 ms against 97 ms for ONNX Runtime CPU on an Intel Iris Plus Graphics 640 (global model; nordic tile 45 ms against 85 ms); a transient error of up to 5e-2 on isolated inputs was seen in a few runs on that GPU"
+        },
+        "cuda": {
+          "supported": true,
+          "recommended": true,
+          "note": "not run for this release"
+        },
+        "tensorrt": {
+          "supported": true,
+          "recommended": true,
+          "note": "not run for this release"
+        }
+      },
+      "graph": {
+        "gpu_native": true,
+        "has_stft_op": false,
+        "dynamic_batch": true,
+        "notes": "the log-mel front end is plain tensor arithmetic: framing by reshape, each frame's mean removed before the Hann window, a two-stage DFT as MatMuls on constant matrices and the mel matrix as MatMul or Einsum, folded with onnxsim; no STFT or DFT op. Run on ONNX Runtime CPU and on OpenVINO CPU and Intel GPU; CUDA and TensorRT were not run"
+      },
+      "benchmarks": [],
+      "sha256": "b794795941bfd780e04899b6e6a0e0ba2c7d9db0fd3235d5bd03c55b302889d5",
+      "size_bytes": 123361440,
+      "legacy": false,
+      "superseded_by": null,
+      "indices": "regional/western-palearctic/birdnet-plus-v3.0.1-western-palearctic-indices-b2.txt",
+      "validation": {
+        "max_abs_diff_vs_global": 3.379210829734802e-05,
+        "numerically_identical_on_kept_classes": true
+      },
+      "requirements": {
+        "min_ram_mb": 350
+      }
+    },
+    {
+      "path": "regional/central-india/birdnet-plus-v3.0.1-central-india-fp32-b3.onnx",
+      "family": "birdnet-plus",
+      "upstream_version": "3.0.1",
+      "channel": "stable",
+      "upstream_source": "https://github.com/birdnet-team/model-converter/tree/8c1b6ef4ee3d8c0eb51fbe859550380bed5595df/models/02_BirdNET%2B_V3.0_Global_12K",
+      "build": 3,
+      "build_info": {
+        "tag": "birdnet-plus-v3.0.1-b3",
+        "built_at": "2026-11-21T17:56:29Z",
+        "source_commit": "7e277003a74254aa7af36f7fe3802a4cac740dbe",
+        "slicing": {
+          "cap": 1200,
+          "classes_non_wildlife": 45,
+          "classes_wildlife": 663,
+          "cut_by_cap": 0,
+          "effective_floor": 0.0505,
+          "floor": 0.05,
+          "geomodel": "3.0.2",
+          "policy_sha256": "8c6256c73a415ecae781d3bd8238fc17a7da0113cc3f6afa8d7aabe13cdebb88"
+        }
+      },
+      "variant": "fp32",
+      "precision": "fp32",
+      "region": "central-india",
+      "classes": 708,
+      "labels": "regional/central-india/birdnet-plus-v3.0.1-central-india-labels-b3.txt",
+      "labels_sha256": "a49c2f57c8631340ac0ac0bb0f859b08ddda8aa54ebdecd75c938c9fa1060a13",
+      "labels_size_bytes": 26012,
+      "input": {
+        "sample_rate": 32000,
+        "window_seconds": 5,
+        "samples": 160000,
+        "shape": [
+          "batch",
+          160000
+        ],
+        "dtype": "float32"
+      },
+      "outputs": [
+        {
+          "name": "predictions",
+          "shape": [
+            "batch",
+            708
+          ],
+          "activation": "sigmoid",
+          "multi_label": true
+        },
+        {
+          "name": "embeddings",
+          "shape": [
+            "batch",
+            1280
+          ]
+        }
+      ],
+      "backends": {
+        "onnxruntime-cpu": {
+          "supported": true,
+          "recommended": true,
+          "verified_on": [
+            "rpi5-a76",
+            "x86-i7-1260P"
+          ]
+        },
+        "openvino-cpu": {
+          "supported": true,
+          "recommended": false,
+          "verified_on": [
+            "rpi5-a76",
+            "x86-i7-1260P"
+          ],
+          "precision_hint": "f32",
+          "note": "run at f32 only: the default f16 hint gives wrong scores on the Cortex-A76 and Intel GPUs; on the Raspberry Pi 5 at 4 threads it is slower than ONNX Runtime on the global model (290 ms against 260 ms) and about the same on the nordic tile (202 ms against 218 ms), at about 1.8 times the memory"
+        },
+        "openvino-gpu": {
+          "supported": true,
+          "recommended": true,
+          "verified_on": [
+            "x86-i5-7260U-iris-plus-640"
+          ],
+          "precision_hint": "f32",
+          "note": "run at f32 only: the default f16 hint gives wrong scores on Intel GPUs; 63 ms against 97 ms for ONNX Runtime CPU on an Intel Iris Plus Graphics 640 (global model; nordic tile 45 ms against 85 ms); a transient error of up to 5e-2 on isolated inputs was seen in a few runs on that GPU"
+        },
+        "cuda": {
+          "supported": true,
+          "recommended": true,
+          "note": "not run for this release"
+        },
+        "tensorrt": {
+          "supported": true,
+          "recommended": true,
+          "note": "not run for this release"
+        }
+      },
+      "graph": {
+        "gpu_native": true,
+        "has_stft_op": false,
+        "dynamic_batch": true,
+        "notes": "the log-mel front end is plain tensor arithmetic: framing by reshape, each frame's mean removed before the Hann window, a two-stage DFT as MatMuls on constant matrices and the mel matrix as MatMul or Einsum, folded with onnxsim; no STFT or DFT op. Run on ONNX Runtime CPU and on OpenVINO CPU and Intel GPU; CUDA and TensorRT were not run"
+      },
+      "benchmarks": [],
+      "sha256": "4dae3fab00e9beb0ce39a9a3737f555cd6a36d13db3d3811efdd1f3fded58748",
+      "size_bytes": 107476728,
+      "legacy": false,
+      "superseded_by": null,
+      "indices": "regional/central-india/birdnet-plus-v3.0.1-central-india-indices-b3.txt",
+      "validation": {
+        "max_abs_diff_vs_global": 2.4285633116960526e-05,
+        "numerically_identical_on_kept_classes": true
+      },
+      "requirements": {
+        "min_ram_mb": 300
+      }
+    }
+  ]
+}

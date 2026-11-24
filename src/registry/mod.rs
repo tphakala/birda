@@ -29,8 +29,9 @@ pub use loader::{find_model, load_registry};
 // how a variant is chosen, not part of the gallery's surface.
 pub use selection::{SystemProbe, select_variant};
 pub use types::{
-    BatBackbone, BatCatalog, BatRegionEntry, Countries, FileInfo, LabelsInfo, LanguageVariant,
-    LicenseInfo, ModelEntry, ModelFiles, ModelVariant, RangeFilterAsset, Registry,
+    BatBackbone, BatCatalog, BatRegionEntry, BoundingBox, Countries, FileInfo, GeoPoint,
+    LabelsInfo, LanguageVariant, LicenseInfo, ModelDocument, ModelEntry, ModelFiles, ModelVariant,
+    RangeFilterAsset, Registry, ScoreCalibration,
 };
 
 use crate::error::{Error, Result};
@@ -402,7 +403,11 @@ pub fn show_manifest(
 /// old and new models.
 fn project_manifest(model: &ModelEntry) -> crate::output::ModelManifest {
     let variants = if model.is_variant_based() {
-        model.variants.iter().map(project_variant).collect()
+        model
+            .variants
+            .iter()
+            .map(|v| project_variant(model, v))
+            .collect()
     } else {
         legacy_variant(model).into_iter().collect()
     };
@@ -417,17 +422,27 @@ fn project_manifest(model: &ModelEntry) -> crate::output::ModelManifest {
         default_variant: model.default_variant.clone(),
         selection: model.selection.clone(),
         variants,
+        documents: model
+            .documents
+            .iter()
+            .map(|d| ModelDocument {
+                url: resolve_url(&d.url),
+                ..d.clone()
+            })
+            .collect(),
     }
 }
 
 /// Project one variant, resolving both URLs through `HF_ENDPOINT` once here so a
-/// consumer never reimplements mirror rewriting.
+/// consumer never reimplements mirror rewriting. `build` is the variant's
+/// effective build ([`ModelEntry::build_for`]), so a consumer never sees the
+/// registry's override form.
 ///
 /// `ModelVariant` is destructured exhaustively on purpose: a field added to the
 /// registry type then fails to compile here until someone decides whether the
 /// projection should carry it, rather than silently dropping it from the public
 /// contract.
-fn project_variant(variant: &ModelVariant) -> crate::output::ManifestVariant {
+fn project_variant(entry: &ModelEntry, variant: &ModelVariant) -> crate::output::ManifestVariant {
     let ModelVariant {
         id,
         region,
@@ -439,6 +454,13 @@ fn project_variant(variant: &ModelVariant) -> crate::output::ManifestVariant {
         model,
         labels,
         countries,
+        // Not read directly: the projection reports `entry.build_for(variant)`.
+        build: _,
+        country_codes,
+        tier,
+        bboxes,
+        centroid,
+        score_calibration,
     } = variant;
 
     crate::output::ManifestVariant {
@@ -453,6 +475,12 @@ fn project_variant(variant: &ModelVariant) -> crate::output::ManifestVariant {
         model_url: resolve_url(&model.url),
         labels_url: resolve_url(&labels.url),
         countries: countries.clone(),
+        build: entry.build_for(variant),
+        country_codes: country_codes.clone(),
+        tier: *tier,
+        bboxes: bboxes.clone(),
+        centroid: *centroid,
+        score_calibration: score_calibration.clone(),
     }
 }
 
@@ -484,6 +512,12 @@ fn legacy_variant(model: &ModelEntry) -> Option<crate::output::ManifestVariant> 
         model_url: resolve_url(&files.model.url),
         labels_url,
         countries: None,
+        build: model.build,
+        country_codes: None,
+        tier: None,
+        bboxes: Vec::new(),
+        centroid: None,
+        score_calibration: None,
     })
 }
 
@@ -650,6 +684,28 @@ mod tests {
                 core: vec!["Brazil".to_string()],
                 partial: Vec::new(),
             }),
+            build: None,
+            country_codes: region.map(|_| Countries {
+                core: vec!["BR".to_string()],
+                partial: vec!["BO".to_string()],
+            }),
+            tier: region.map(|_| 50),
+            bboxes: if region.is_some() {
+                vec![BoundingBox {
+                    lat_min: -10.5,
+                    lat_max: 5.25,
+                    lon_min: -75.0,
+                    lon_max: -50.5,
+                }]
+            } else {
+                Vec::new()
+            },
+            centroid: region.map(|_| GeoPoint {
+                lat: -2.5,
+                lon: -62.75,
+            }),
+            score_calibration: region
+                .map(|_| ScoreCalibration::SoftmaxRestLogit { rest_logit: -1.25 }),
         }
     }
 
@@ -672,6 +728,7 @@ mod tests {
                 projection_variant("fp32", Some("nordic")),
                 projection_variant("fp16", Some("nordic")),
             ],
+            documents: Vec::new(),
             recommended: true,
         }
     }
@@ -713,10 +770,11 @@ mod tests {
                 bsg_migration: None,
                 bsg_distribution_maps: None,
             }),
-            build: None,
+            build: Some(3),
             default_variant: None,
             selection: std::collections::BTreeMap::new(),
             variants: Vec::new(),
+            documents: Vec::new(),
             recommended: false,
         }
     }
@@ -736,6 +794,116 @@ mod tests {
         // filename stem survives the rewrite either way.
         assert!(manifest.variants[0].model_url.contains("fp32"));
         assert!(manifest.variants[0].labels_url.contains("labels"));
+    }
+
+    /// Run `f` with `HF_ENDPOINT` set to `endpoint`, or unset when `None`.
+    fn with_hf_endpoint<T>(endpoint: Option<&str>, f: impl FnOnce() -> T) -> T {
+        temp_env::with_var(crate::constants::download::HF_ENDPOINT_ENV, endpoint, f)
+    }
+
+    fn entry_with_document() -> (ModelEntry, ModelDocument) {
+        let mut entry = projection_entry();
+        // The registry stores a variant's build only when it differs from the
+        // entry's, so the global variants hold `None` and nordic fp32 holds 2.
+        entry.variants[2].build = Some(2);
+        let document = ModelDocument {
+            kind: "license".to_string(),
+            requires_agreement: true,
+            url: "https://huggingface.co/o/r/resolve/abc/LICENSE.md".to_string(),
+            revision: Some("abc".to_string()),
+            sha256: Some("dd".to_string()),
+        };
+        entry.documents = vec![document.clone()];
+        (entry, document)
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn test_project_manifest_reports_each_variant_build() {
+        let (entry, _) = entry_with_document();
+
+        let manifest = with_hf_endpoint(None, || project_manifest(&entry));
+
+        // The projection reports the effective build, never the override form:
+        // a global variant shows the entry's build rather than `None`.
+        let builds: Vec<(&str, Option<&str>, Option<u32>)> = manifest
+            .variants
+            .iter()
+            .map(|v| (v.id.as_str(), v.region.as_deref(), v.build))
+            .collect();
+        assert_eq!(
+            builds,
+            vec![
+                ("fp32", None, Some(1)),
+                ("fp16", None, Some(1)),
+                ("fp32", Some("nordic"), Some(2)),
+                ("fp16", Some("nordic"), Some(1)),
+            ]
+        );
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn test_project_manifest_resolves_document_urls_through_hf_endpoint() {
+        let (entry, document) = entry_with_document();
+
+        let direct = with_hf_endpoint(None, || project_manifest(&entry));
+        let mirrored =
+            with_hf_endpoint(Some("https://mirror.example/"), || project_manifest(&entry));
+
+        assert_eq!(direct.documents, vec![document.clone()]);
+        assert_eq!(
+            mirrored.documents,
+            vec![ModelDocument {
+                url: "https://mirror.example/o/r/resolve/abc/LICENSE.md".to_string(),
+                ..document
+            }]
+        );
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn test_project_manifest_carries_geometry_and_calibration_into_the_json() {
+        // Through the registry's own serialization first: a registry that
+        // forgets `score_calibration` on write would reach the projection empty.
+        let entry: ModelEntry =
+            serde_json::from_str(&serde_json::to_string(&projection_entry()).unwrap()).unwrap();
+
+        let manifest = with_hf_endpoint(None, || project_manifest(&entry));
+        let json = serde_json::to_value(&manifest.variants).unwrap();
+
+        let regional = &json[2];
+        assert_eq!(regional["tier"], 50);
+        assert_eq!(
+            regional["bboxes"],
+            serde_json::json!([
+                {"lat_min": -10.5, "lat_max": 5.25, "lon_min": -75.0, "lon_max": -50.5}
+            ])
+        );
+        assert_eq!(
+            regional["centroid"],
+            serde_json::json!({"lat": -2.5, "lon": -62.75})
+        );
+        assert_eq!(
+            regional["country_codes"],
+            serde_json::json!({"core": ["BR"], "partial": ["BO"]})
+        );
+        assert_eq!(
+            regional["score_calibration"],
+            serde_json::json!({"method": "softmax-rest-logit", "rest_logit": -1.25})
+        );
+
+        // The global variant is not a region: none of these keys appear.
+        let global = json[0].as_object().unwrap();
+        for key in [
+            "tier",
+            "bboxes",
+            "centroid",
+            "country_codes",
+            "score_calibration",
+        ] {
+            assert!(!global.contains_key(key), "global variant carries {key}");
+        }
     }
 
     #[test]
@@ -769,6 +937,9 @@ mod tests {
         assert!(only.region.is_none());
         assert!(only.countries.is_none());
         assert!(only.classes.is_none());
+        // A legacy entry has no per-file build, so its variant reports the
+        // entry's.
+        assert_eq!(only.build, Some(3));
         // The default-language labels file, not simply the first listed.
         assert!(
             only.labels_url.contains("labels-en"),

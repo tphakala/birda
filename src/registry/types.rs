@@ -4,7 +4,9 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
 /// Registry schema version and model entries.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+///
+/// Not `Eq`: [`ModelVariant`] carries floating-point geometry and calibration.
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub struct Registry {
     /// Schema version string (e.g., "1.0").
     pub schema_version: String,
@@ -133,7 +135,7 @@ pub struct BatRegionEntry {
 }
 
 /// Single model entry in registry.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub struct ModelEntry {
     /// Unique identifier (kebab-case, matches `model_type`).
     pub id: String,
@@ -155,12 +157,15 @@ pub struct ModelEntry {
     /// [`ModelEntry::is_variant_based`].
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub files: Option<ModelFiles>,
-    /// Our conversion revision of the upstream weights.
+    /// Our conversion revision of the upstream weights, as of the entry's first
+    /// published file.
     ///
     /// [`ModelEntry::version`] says whose weights these are; this says which of
     /// our exports of them. Both are needed: upstream alone cannot express "we
     /// improved the conversion", and build alone cannot express "the weights
-    /// changed underneath".
+    /// changed underneath". A variant published at a different build states its
+    /// own in [`ModelVariant::build`]; read the build of a file through
+    /// [`ModelEntry::build_for`].
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub build: Option<u32>,
     /// Variant id to install when no signal identifies a better one.
@@ -172,6 +177,9 @@ pub struct ModelEntry {
     /// Every downloadable region and variant combination.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub variants: Vec<ModelVariant>,
+    /// Licence and usage documents the publisher ships with the family.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub documents: Vec<ModelDocument>,
     /// Show as recommended to users.
     #[serde(default)]
     pub recommended: bool,
@@ -184,7 +192,7 @@ pub struct ModelEntry {
 /// is the publisher's own string (`fp32`, `fp16`, `int8-arm`, `no-dft-fp32`),
 /// never reinterpreted here, because Perch's variants are not precisions and no
 /// precision vocabulary can name `no-dft-fp32`.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub struct ModelVariant {
     /// Publisher's variant identifier.
     pub id: String,
@@ -222,9 +230,103 @@ pub struct ModelVariant {
     /// deserializes.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub countries: Option<Countries>,
+    /// This file's build, written only when it differs from [`ModelEntry::build`].
+    ///
+    /// Kept as an override so a registry whose files all share one build stays
+    /// byte for byte what it was before per-file builds existed. Read it through
+    /// [`ModelEntry::build_for`], never directly.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub build: Option<u32>,
+    /// ISO 3166-1 alpha-2 codes for the same coverage as `countries`.
+    ///
+    /// Present only when the publisher gave codes; `countries` then holds their
+    /// English names, in the same order.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub country_codes: Option<Countries>,
+    /// How specific this region is; a higher tier is a more specific region.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tier: Option<u32>,
+    /// Boxes the region covers. Empty on the global model and on regions whose
+    /// publisher gave no geometry.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub bboxes: Vec<BoundingBox>,
+    /// Representative point of the region.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub centroid: Option<GeoPoint>,
+    /// How to turn this file's raw scores into the publisher's calibrated ones.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub score_calibration: Option<ScoreCalibration>,
+}
+
+/// A latitude and longitude box in degrees.
+///
+/// Never crosses the antimeridian: `lon_min <= lon_max` always holds, so a
+/// region that spans it is published as two boxes.
+#[derive(Debug, Clone, Copy, PartialEq, Deserialize, Serialize)]
+pub struct BoundingBox {
+    /// Southern edge.
+    pub lat_min: f64,
+    /// Northern edge.
+    pub lat_max: f64,
+    /// Western edge.
+    pub lon_min: f64,
+    /// Eastern edge.
+    pub lon_max: f64,
+}
+
+/// A point in degrees.
+#[derive(Debug, Clone, Copy, PartialEq, Deserialize, Serialize)]
+pub struct GeoPoint {
+    /// Latitude.
+    pub lat: f64,
+    /// Longitude.
+    pub lon: f64,
+}
+
+/// How a file's scores are calibrated, by the publisher's method name.
+///
+/// Closed on purpose: a birda that cannot apply a calibration should not use a
+/// registry that requires one, and an unknown method makes the registry fail to
+/// parse, which sends the loader to its bundled copy.
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+#[serde(tag = "method", rename_all = "kebab-case")]
+pub enum ScoreCalibration {
+    /// Softmax over the scores plus one implicit "rest" class held at a constant
+    /// logit.
+    SoftmaxRestLogit {
+        /// The constant logit of the implicit rest class.
+        rest_logit: f64,
+    },
+}
+
+/// A licence or usage document published with a model family.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct ModelDocument {
+    /// The publisher's kind of document, for example `license` or
+    /// `acceptable_use`. A string so a new kind never makes the registry
+    /// unparsable.
+    pub kind: String,
+    /// Whether the user has to agree to the document before using the model.
+    pub requires_agreement: bool,
+    /// Where to read the document.
+    pub url: String,
+    /// Repository revision the document is pinned to, when it is published
+    /// inside the model repository.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub revision: Option<String>,
+    /// SHA-256 of the document, when the publisher states one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sha256: Option<String>,
 }
 
 impl ModelEntry {
+    /// The build of the file behind `variant`: its own when it states one,
+    /// otherwise the entry's.
+    #[must_use]
+    pub fn build_for(&self, variant: &ModelVariant) -> Option<u32> {
+        variant.build.or(self.build)
+    }
+
     /// Whether this entry publishes regional and hardware variants.
     ///
     /// Variant-based entries omit `files` on purpose. `registry.json` is cached
@@ -345,9 +447,12 @@ pub struct FileInfo {
 /// Countries a regional model covers, split by how completely.
 ///
 /// Vendored per region in `manifests/<family>.regions.json` as
-/// `countries.core` / `countries.partial`. Carried through unchanged so a
+/// `countries.core` / `countries.partial`. Holds English country names, so a
 /// consumer can offer a country-name search over the region list: region slugs
-/// like `nordic` are not what a user with Finnish recordings would type.
+/// like `nordic` are not what a user with Finnish recordings would type. A
+/// regions file that lists ISO 3166-1 alpha-2 codes is translated to names when
+/// the registry is generated, and the same type carries the codes in
+/// [`ModelVariant::country_codes`].
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct Countries {
     /// Countries wholly inside this region's coverage.
@@ -409,6 +514,12 @@ mod tests {
                 core: vec!["Testland".to_string()],
                 partial: Vec::new(),
             }),
+            build: None,
+            country_codes: None,
+            tier: None,
+            bboxes: Vec::new(),
+            centroid: None,
+            score_calibration: None,
         }
     }
 
@@ -437,6 +548,7 @@ mod tests {
                 variant("fp32", Some("nordic"), 422),
                 variant("fp16", Some("nordic"), 422),
             ],
+            documents: Vec::new(),
             recommended: true,
         }
     }

@@ -357,3 +357,134 @@ fn test_no_hardware_key_from_a_manifest_is_silently_dropped() {
         }
     }
 }
+
+/// Generate from a temp root holding the schema 2 fixture family (wrapped
+/// regions, a groups file, documents, per-file builds, labels checksums) and
+/// the real country table, with `registry.json` as given.
+fn generate_schema_2_family(registry_json: &str) -> String {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    let temp = tempfile::tempdir().unwrap();
+    let manifests = temp.path().join("manifests");
+    std::fs::create_dir(&manifests).unwrap();
+
+    let fixtures = root.join("tests/fixtures/registry-schema2");
+    for name in [
+        "BirdNET-Plus-V3.0.models.json",
+        "BirdNET-Plus-V3.0.regions.json",
+        "BirdNET-Plus-V3.0.groups.json",
+    ] {
+        std::fs::copy(fixtures.join(name), manifests.join(name)).unwrap();
+    }
+    std::fs::copy(
+        root.join("manifests/iso3166-1-alpha2.json"),
+        manifests.join("iso3166-1-alpha2.json"),
+    )
+    .unwrap();
+    std::fs::write(
+        temp.path().join("registry-sources.toml"),
+        r#"schema_version = "2.0"
+
+[[model]]
+id = "birdnet-plus"
+manifest = "BirdNET-Plus-V3.0.models.json"
+regions = "BirdNET-Plus-V3.0.regions.json"
+groups = "BirdNET-Plus-V3.0.groups.json"
+name = "BirdNET+ V3.0"
+description = "fixture"
+vendor = "fixture"
+model_type = "birdnet-v30"
+default_variant = "fp32"
+
+[model.license]
+type = "Apache-2.0"
+url = "https://www.apache.org/licenses/LICENSE-2.0"
+commercial_use = true
+attribution_required = true
+share_alike = false
+"#,
+    )
+    .unwrap();
+    std::fs::write(temp.path().join("registry.json"), registry_json).unwrap();
+
+    birda::gen_registry::generate_from_repo_root(temp.path().to_str().unwrap())
+        .expect("the schema 2 fixture generates")
+}
+
+#[test]
+fn test_a_schema_2_family_generates_and_regenerates_unchanged() {
+    let first =
+        generate_schema_2_family(r#"{"schema_version":"2.0","registry_version":1,"models":[]}"#);
+    let registry: Registry = serde_json::from_str(&first).unwrap();
+    // New content over a registry at version 1 bumps exactly once.
+    assert_eq!(registry.registry_version, 2);
+    let entry = &registry.models[0];
+    let variant = |region: Option<&str>| {
+        entry
+            .variants
+            .iter()
+            .find(|v| v.region.as_deref() == region)
+            .unwrap_or_else(|| panic!("no variant for {region:?}"))
+    };
+
+    // The superseded nordic b1 file is dropped, so the first publishable file
+    // is the global b1 and the regions state a build only where it differs.
+    assert_eq!(entry.build, Some(1));
+    assert_eq!(variant(None).build, None);
+    assert_eq!(variant(Some("nordic")).build, Some(2));
+    assert_eq!(variant(Some("central-india")).build, Some(3));
+    assert_eq!(entry.variants.len(), 4);
+
+    let nordic = variant(Some("nordic"));
+    assert_eq!(
+        nordic.countries.as_ref().unwrap().core,
+        vec!["Åland Islands", "Denmark", "Finland", "Norway", "Sweden"]
+    );
+    assert_eq!(
+        nordic.country_codes.as_ref().unwrap().core,
+        vec!["AX", "DK", "FI", "NO", "SE"]
+    );
+    assert_eq!(
+        nordic.labels.sha256.as_deref(),
+        Some("5f18020e5c3dc5af6f8961da6b37afd9e7ace033f764fc1a2c8c988088e8e71a")
+    );
+    assert_eq!(nordic.group.as_deref(), Some("europe"));
+    assert_eq!(nordic.group_order, 0);
+    assert_eq!(variant(Some("central-india")).group_order, 1);
+    assert_eq!(variant(Some("western-palearctic")).bboxes.len(), 5);
+
+    let documents: Vec<(&str, bool, &str)> = entry
+        .documents
+        .iter()
+        .map(|d| (d.kind.as_str(), d.requires_agreement, d.url.as_str()))
+        .collect();
+    assert_eq!(
+        documents,
+        vec![
+            (
+                "license",
+                false,
+                "https://huggingface.co/tphakala/BirdNET-Plus-V3.0/resolve/\
+                 f90c3ba818b179adf5f4c9eabf2e6f8b801e4c06/LICENSE-v3.0.1.md"
+            ),
+            (
+                "acceptable_use",
+                true,
+                "https://huggingface.co/tphakala/BirdNET-Plus-V3.0/resolve/\
+                 f90c3ba818b179adf5f4c9eabf2e6f8b801e4c06/ACCEPTABLE_USE-v3.0.1.md"
+            ),
+        ]
+    );
+
+    // Feed the output back in as the registry on disk. The fixture carries
+    // floating-point geometry, which the vendored files do not, so this is the
+    // run that proves the version stays put once the content stops changing
+    // (a float that did not survive parse and print would bump it forever).
+    let second = generate_schema_2_family(&first);
+    assert_eq!(second, first);
+    assert_eq!(
+        serde_json::from_str::<Registry>(&second)
+            .unwrap()
+            .registry_version,
+        2
+    );
+}

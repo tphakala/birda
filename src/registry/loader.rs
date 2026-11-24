@@ -700,6 +700,7 @@ mod tests {
                     default_variant: None,
                     selection: std::collections::BTreeMap::new(),
                     variants: Vec::new(),
+                    documents: Vec::new(),
                     recommended: false,
                 },
                 ModelEntry {
@@ -740,6 +741,7 @@ mod tests {
                     default_variant: None,
                     selection: std::collections::BTreeMap::new(),
                     variants: Vec::new(),
+                    documents: Vec::new(),
                     recommended: true,
                 },
             ],

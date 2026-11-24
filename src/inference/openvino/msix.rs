@@ -31,7 +31,7 @@ fn openvino_package_version(full_name: &str) -> Option<[u16; ov::MSIX_VERSION_PA
     }
     let parts: Vec<u16> = fields[1]
         .split('.')
-        .map(|part| part.parse().ok())
+        .map(|part| part.parse::<u16>().ok())
         .collect::<Option<_>>()?;
     parts.try_into().ok()
 }

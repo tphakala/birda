@@ -1411,8 +1411,8 @@ mod tests {
             Some(ScoreCalibration::SoftmaxRestLogit { rest_logit: -1.25 })
         );
 
-        // An unknown method must stop generation: a registry carrying a
-        // calibration this birda cannot apply would score wrongly.
+        // An unknown method must stop generation, because `ScoreCalibration`
+        // is closed and the registry could not carry it.
         let unknown = message(parse_manifest(
             MANIFEST_FILE,
             &calibrated(r#""method":"platt","a":1"#),

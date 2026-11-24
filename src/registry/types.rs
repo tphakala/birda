@@ -285,9 +285,10 @@ pub struct GeoPoint {
 
 /// How a file's scores are calibrated, by the publisher's method name.
 ///
-/// Closed on purpose: a birda that cannot apply a calibration should not use a
-/// registry that requires one, and an unknown method makes the registry fail to
-/// parse, which sends the loader to its bundled copy.
+/// Closed on purpose: an unknown method makes the registry fail to parse, which
+/// sends the loader to its bundled copy, so a registry never carries a method
+/// birda cannot name. Reading the value calibrates nothing; the code that runs
+/// the model has to apply it.
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "method", rename_all = "kebab-case")]
 pub enum ScoreCalibration {
@@ -745,8 +746,8 @@ mod tests {
     #[test]
     fn test_a_registry_naming_an_unknown_score_calibration_method_fails_to_parse() {
         // The loader replaces a registry that fails to parse with its bundled
-        // copy, which is how a birda that cannot apply a calibration avoids a
-        // registry that requires one.
+        // copy (`src/registry/loader.rs`, the `RegistryParse` arm), so a method
+        // this birda cannot name never reaches it.
         let mut entry = variant_entry();
         entry.variants[2].score_calibration =
             Some(ScoreCalibration::SoftmaxRestLogit { rest_logit: -1.25 });

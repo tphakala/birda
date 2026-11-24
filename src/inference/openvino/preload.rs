@@ -167,7 +167,8 @@ pub fn dependency_files(
     Ok(vec![from_first_dir(layout.tbb)?, from_first_dir(&core)?])
 }
 
-/// Open each file with `open`, continuing past a failure. Returns what opened.
+/// Open each file with `open`, continuing past a failure. Returns what opened
+/// and the first failure.
 ///
 /// A dependency that cannot be opened is not fatal here: the library that
 /// needs it is loaded next. The first failure is returned as `<file>: <error>`
@@ -468,6 +469,36 @@ mod tests {
         assert_eq!(
             first_failure.as_deref(),
             Some("/a/libtbb.so.12: file too short")
+        );
+
+        // When both fail, oneTBB's reason is kept: the core library's failure
+        // is usually only a symptom of it.
+        let (opened, first_failure) = open_each(&paths, |path| {
+            Err::<PathBuf, _>(if path == paths[0] {
+                "tbb refused"
+            } else {
+                "core refused"
+            })
+        });
+        assert_eq!(opened, Vec::<PathBuf>::new());
+        assert_eq!(
+            first_failure.as_deref(),
+            Some("/a/libtbb.so.12: tbb refused")
+        );
+    }
+
+    #[test]
+    fn a_preload_where_nothing_opens_reports_nothing_resident() {
+        // Nothing opened, so the one-runtime guard must not hold the target.
+        let missing = std::env::temp_dir()
+            .join("birda-no-such-dir")
+            .join("libtbb.so.12");
+        let outcome = preload(std::slice::from_ref(&missing));
+        assert!(!outcome.opened_any);
+        let failure = outcome.first_failure.unwrap();
+        assert!(
+            failure.starts_with(&missing.display().to_string()),
+            "{failure}"
         );
     }
 }

@@ -875,9 +875,10 @@ fn open_library(target: &Path, origin: Origin, os: Os) -> std::result::Result<()
 
 /// Load `target` under the one-runtime rule, through two injected steps.
 ///
-/// `preload` opens the dependencies of a path and returns whether any opened,
-/// or why none were selected. `load` runs the real load and returns how it
-/// failed. A located target is made absolute first, so a relative
+/// `preload` opens the dependencies of a path and returns what it did (whether
+/// any opened, and the first that did not), or why none were selected. Either
+/// reason is added to the error of a refused load. `load` runs the real load
+/// and returns how it failed. A located target is made absolute first, so a relative
 /// `INTEL_OPENVINO_DIR` or `PATH` entry never reaches the loader as a relative
 /// path, and that one path is used for the preload, the load and the record.
 fn guarded_load(
@@ -2091,6 +2092,19 @@ mod tests {
             )))
         );
         assert_eq!(loaded, None);
+
+        // Only a library the loader could not open gets the note: any other
+        // failure already says what is wrong with the library itself.
+        let other = LoadFailure::Other(format!("{shown} lacks a function"));
+        let mut loaded = None;
+        let result = guarded_load(
+            &mut loaded,
+            &library,
+            Origin::Located,
+            &mut |_| Ok(outcome(Some("ov/libtbb.so.12: refused"))),
+            &mut |_| Some(other.clone()),
+        );
+        assert_eq!(result, Err(other.clone()));
 
         // A load that succeeds despite the failed preload says nothing about it.
         let mut loaded = None;

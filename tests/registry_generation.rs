@@ -478,7 +478,8 @@ fn test_a_schema_2_family_generates_and_regenerates_unchanged() {
     // Feed the output back in as the registry on disk. The fixture carries
     // floating-point geometry, which the vendored files do not, so this is the
     // run that proves the version stays put once the content stops changing
-    // (a float that did not survive parse and print would bump it forever).
+    // with geometry present (`test_manifest_floats_parse_to_the_nearest_double`
+    // pins the float parsing itself).
     let second = generate_schema_2_family(&first);
     assert_eq!(second, first);
     assert_eq!(

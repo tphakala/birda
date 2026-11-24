@@ -893,10 +893,9 @@ pub async fn install_model(model: &ModelEntry, language: Option<&str>) -> Result
 ///
 /// A file is checked against its declared checksum before it replaces anything
 /// at its destination, so a bad download is discarded rather than published.
-/// Only the model file carries one today: the published manifests record a
-/// checksum per model but reference their labels by path alone, so the labels
-/// file is accepted on the transport's word. `download_verified` will start
-/// checking it the moment the registry declares one.
+/// The labels file is checked the same way when the registry declares a
+/// checksum for it (`labels_sha256` in a schema 2 manifest), and accepted on
+/// the transport's word when it does not.
 ///
 /// If the labels step fails after the model file landed, the model file is
 /// removed, but only when this install is what created it. The install never

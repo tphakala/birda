@@ -615,9 +615,9 @@ fn validate_point(file_name: &str, region: &str, raw: [f64; 2]) -> Result<GeoPoi
 
 /// Turn the manifest's `family_meta` documents into registry documents.
 ///
-/// A `path` document resolves to the repository file at its pinned revision, so
-/// the text a user agrees to cannot change under them; a `url` document is
-/// passed through as the publisher wrote it, keeping a `revision` it states.
+/// A `path` document resolves to the repository file at the revision the
+/// publisher states; a `url` document is passed through as the publisher wrote
+/// it, keeping a `revision` it states.
 fn resolve_documents(
     manifest_file: &str,
     repo: &str,

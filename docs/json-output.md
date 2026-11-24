@@ -225,7 +225,7 @@ birda --output-mode json models list
 }
 ```
 
-Install provenance (`registry_id`, `installed_version`, `installed_build`, `region`, `variant`) lets a consumer recover what a model was installed from, and detect when a newer build has superseded it, without parsing the id string. `installed_build` is the build of the installed file, which can differ between regions of one model. Each field is omitted when it does not apply: a model added with `models add` has no `registry_id`, and a global install has no `region` or `variant`. Feature-detect by field presence.
+Install provenance (`registry_id`, `installed_version`, `installed_build`, `region`, `variant`) lets a consumer recover what a model was installed from, and detect when a newer build has superseded it, without parsing the id string. `installed_build` is the build of the installed file, which can differ between regions of one model. To tell whether a newer file is published, look up `registry_id` in `models manifest` and compare `installed_version` with its `version`, and `installed_build` with the `build` of the variant whose `region` and `id` equal the installed `region` and `variant`, not with the manifest's own `build`. Each field is omitted when it does not apply: a model added with `models add` has no `registry_id`, a legacy single-file install has no `installed_version`, `installed_build` or `variant`, and a global install has no `region`. Feature-detect by field presence.
 
 ### Available Models
 

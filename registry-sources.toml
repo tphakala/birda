@@ -11,6 +11,13 @@
 #
 # Entries not listed here are carried through from the existing registry.json
 # untouched, which is how the frozen legacy entries survive regeneration.
+#
+# An entry's `regions` file is either flat (country names and its own group
+# order) or wrapped (ISO 3166-1 alpha-2 codes, no group order). A wrapped file
+# needs `groups`, the family's groups.json under manifests/, which supplies each
+# tile's group and the order the groups are shown in; a flat file must not have
+# it. Codes become English names through manifests/iso3166-1-alpha2.json, which
+# is shared by every entry.
 
 schema_version = "2.0"
 # registry_version is not set here: the generator (gen-registry) manages it,

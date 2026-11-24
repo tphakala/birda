@@ -333,6 +333,12 @@ mod tests {
             model: file(&format!("{id}.onnx")),
             labels: file("labels.txt"),
             countries: None,
+            build: None,
+            country_codes: None,
+            tier: None,
+            bboxes: Vec::new(),
+            centroid: None,
+            score_calibration: None,
         }
     }
 
@@ -363,6 +369,7 @@ mod tests {
                 .map(|(k, v)| ((*k).to_string(), (*v).to_string()))
                 .collect(),
             variants,
+            documents: Vec::new(),
             recommended: false,
         }
     }

@@ -1,0 +1,199 @@
+{
+  "schema": 1,
+  "repo": "tphakala/BirdNET-Plus-V3.0",
+  "updated": "2026-11-21",
+  "regions": {
+    "nordic": {
+      "name": "Nordic",
+      "group": "europe",
+      "group_display": "Europe",
+      "realm": "palearctic",
+      "tier": 50,
+      "bboxes": [
+        [
+          53.1,
+          72.66,
+          3.32,
+          32.05
+        ]
+      ],
+      "centroid": [
+        62.88,
+        17.685
+      ],
+      "countries": {
+        "core": [
+          "AX",
+          "DK",
+          "FI",
+          "NO",
+          "SE"
+        ],
+        "partial": []
+      },
+      "classes": 464,
+      "map": "regional/nordic/coverage.svg"
+    },
+    "western-palearctic": {
+      "name": "Western Palearctic",
+      "group": "europe",
+      "group_display": "Europe",
+      "realm": "palearctic",
+      "tier": 10,
+      "bboxes": [
+        [
+          35.0,
+          71.0,
+          -11.0,
+          45.0
+        ],
+        [
+          26.0,
+          40.0,
+          -32.0,
+          -13.0
+        ],
+        [
+          20.0,
+          37.0,
+          -13.0,
+          37.0
+        ],
+        [
+          30.0,
+          42.0,
+          34.0,
+          50.0
+        ],
+        [
+          12.0,
+          32.0,
+          34.0,
+          60.0
+        ]
+      ],
+      "centroid": [
+        41.5,
+        14.0
+      ],
+      "countries": {
+        "core": [
+          "AD",
+          "AE",
+          "AL",
+          "AM",
+          "AT",
+          "AX",
+          "AZ",
+          "BA",
+          "BE",
+          "BG",
+          "BH",
+          "BY",
+          "CH",
+          "CY",
+          "CZ",
+          "DE",
+          "DK",
+          "DZ",
+          "EE",
+          "EG",
+          "EH",
+          "ER",
+          "ES",
+          "FI",
+          "FO",
+          "FR",
+          "GB",
+          "GE",
+          "GG",
+          "GR",
+          "HR",
+          "HU",
+          "IE",
+          "IL",
+          "IM",
+          "IQ",
+          "IR",
+          "IT",
+          "JE",
+          "JO",
+          "KW",
+          "LB",
+          "LI",
+          "LT",
+          "LU",
+          "LV",
+          "LY",
+          "MA",
+          "MC",
+          "MD",
+          "ME",
+          "MK",
+          "MR",
+          "MT",
+          "NE",
+          "NL",
+          "NO",
+          "OM",
+          "PL",
+          "PS",
+          "PT",
+          "QA",
+          "RO",
+          "RS",
+          "SA",
+          "SD",
+          "SE",
+          "SI",
+          "SK",
+          "SM",
+          "SY",
+          "TD",
+          "TN",
+          "TR",
+          "UA",
+          "VA",
+          "XK",
+          "YE"
+        ],
+        "partial": [
+          "DJ",
+          "ET",
+          "ML",
+          "RU",
+          "TM"
+        ]
+      },
+      "classes": 1446,
+      "map": "regional/western-palearctic/coverage.svg"
+    },
+    "central-india": {
+      "name": "Central India",
+      "group": "asia",
+      "group_display": "Asia",
+      "realm": "indomalayan",
+      "tier": 90,
+      "bboxes": [
+        [
+          16.0,
+          26.0,
+          73.0,
+          86.5
+        ]
+      ],
+      "centroid": [
+        21.0,
+        79.75
+      ],
+      "countries": {
+        "core": [
+          "IN"
+        ],
+        "partial": []
+      },
+      "classes": 708,
+      "map": "regional/central-india/coverage.svg"
+    }
+  }
+}

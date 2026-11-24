@@ -225,7 +225,7 @@ birda --output-mode json models list
 }
 ```
 
-Install provenance (`registry_id`, `installed_version`, `installed_build`, `region`, `variant`) lets a consumer recover what a model was installed from, and detect when a newer build has superseded it, without parsing the id string. Each field is omitted when it does not apply: a model added with `models add` has no `registry_id`, and a global install has no `region` or `variant`. Feature-detect by field presence.
+Install provenance (`registry_id`, `installed_version`, `installed_build`, `region`, `variant`) lets a consumer recover what a model was installed from, and detect when a newer build has superseded it, without parsing the id string. `installed_build` is the build of the installed file, which can differ between regions of one model. To tell whether a newer file is published, look up `registry_id` in `models manifest` and compare `installed_version` with its `version`, and `installed_build` with the `build` of the variant whose `region` and `id` equal the installed `region` and `variant`, not with the manifest's own `build`. Each field is omitted when it does not apply: a model added with `models add` has no `registry_id`, a legacy single-file install has no `installed_version`, `installed_build` or `variant`, and a global install has no `region`. Feature-detect by field presence.
 
 ### Available Models
 
@@ -287,7 +287,7 @@ birda --output-mode json models check
 birda --output-mode json models manifest birdnet-v30
 ```
 
-A documented projection of one registry model, for building a region-aware model gallery. It lists every region and variant with class count, download size, resolved URLs, and the countries each region covers. A legacy single-file model (`birdnet-v24`) projects as one synthetic `global` variant, so a consumer never branches on an empty list.
+A documented projection of one registry model, for building a region-aware model gallery. It lists every region and variant with class count, download size, resolved URLs, the countries each region covers, and, where the publisher gives them, region geometry, score calibration and the family's licence documents. A legacy single-file model (`birdnet-v24`) projects as one synthetic `global` variant, so a consumer never branches on an empty list.
 
 ```json
 {
@@ -303,9 +303,9 @@ A documented projection of one registry model, for building a region-aware model
       "build": 1,
       "model_type": "birdnet-v30",
       "license": {
-        "type": "CC-BY-NC-SA-4.0",
-        "url": "https://creativecommons.org/licenses/by-nc-sa/4.0/",
-        "commercial_use": false,
+        "type": "CC-BY-SA-4.0",
+        "url": "https://creativecommons.org/licenses/by-sa/4.0/",
+        "commercial_use": true,
         "attribution_required": true,
         "share_alike": true
       },
@@ -318,7 +318,8 @@ A documented projection of one registry model, for building a region-aware model
           "classes": 11560,
           "size_bytes": 123456789,
           "model_url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/full/birdnet-v3.0-preview3.1-fp32-b1.onnx",
-          "labels_url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/full/birdnet-v3.0-preview3.1-labels-b1.txt"
+          "labels_url": "https://huggingface.co/tphakala/BirdNET-v3.0-Models/resolve/main/full/birdnet-v3.0-preview3.1-labels-b1.txt",
+          "build": 1
         },
         {
           "id": "fp32",
@@ -334,7 +335,8 @@ A documented projection of one registry model, for building a region-aware model
           "countries": {
             "core": ["Brazil", "Colombia", "Ecuador", "Peru", "Venezuela"],
             "partial": ["Bolivia", "Panama"]
-          }
+          },
+          "build": 1
         }
       ]
     }
@@ -346,6 +348,11 @@ Notes:
 
 - `model_url` and `labels_url` are resolved through `HF_ENDPOINT`, so a mirror rewrite happens once in birda rather than being reimplemented by every consumer. The per-region coverage map lives beside the model in the same directory, as `regional/<region>/coverage.png`.
 - `region`, `region_name`, `group`, `group_name`, and `countries` are absent on the global model, which is not a region. `countries` splits into `core` (wholly covered) and `partial`, each omitted when empty.
+- `build` on a variant is the build of that variant's file, so regions of one model can sit at different builds. The `build` on the manifest itself is the build of the first published file. `build` is absent when the registry does not state one.
+- `country_codes` has the same `core` and `partial` shape as `countries`, as ISO 3166-1 alpha-2 codes in the same order, and is present only for regions whose publisher gives codes. `countries` then holds their English names.
+- `tier` (a whole number; higher is a more specific region), `bboxes` and `centroid` are present only for regions whose publisher gives geometry. Each `bboxes` entry is `{ "lat_min", "lat_max", "lon_min", "lon_max" }` in degrees and never crosses the antimeridian (`lon_min` is not greater than `lon_max`), so a region that spans it is listed as two boxes. `centroid` is `{ "lat", "lon" }`.
+- `score_calibration` is present only on files the publisher calibrates. It is an object whose `method` names how to apply it. The only method is `softmax-rest-logit`, with a number `rest_logit`. A cached registry naming any other method fails to load, and birda replaces it with its bundled registry, so a consumer never sees one.
+- `documents` lists the licence and usage documents of the family, each with `kind`, `requires_agreement`, a resolved `url`, and `revision` and `sha256` when the publisher pins them. It is omitted when the family has none.
 - `selection` maps a hardware key to a variant id. A consumer need not evaluate these keys against the host: `models install` echoes the variant it resolved (`region`, `variant`, `selection_reason`) once the download completes.
 
 ### Providers

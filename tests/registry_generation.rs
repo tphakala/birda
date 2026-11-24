@@ -521,3 +521,50 @@ fn test_a_schema_2_family_generates_and_regenerates_unchanged() {
         2
     );
 }
+
+#[test]
+fn test_a_family_removed_from_the_sources_leaves_the_registry() {
+    // A single-file legacy entry, as the frozen ones in the bundled registry.
+    let bundled: Registry =
+        serde_json::from_str(include_str!("../registry.json")).expect("registry.json parses");
+    let legacy = bundled
+        .models
+        .iter()
+        .find(|m| m.id == "birdnet-v24")
+        .expect("the bundled registry has birdnet-v24")
+        .clone();
+    assert!(!legacy.is_variant_based());
+    let seed = Registry {
+        schema_version: "2.0".to_string(),
+        registry_version: 1,
+        models: vec![legacy],
+        range_filter: None,
+        bat: None,
+    };
+
+    let baseline_json = generate_schema_2_family(&serde_json::to_string(&seed).unwrap());
+    let mut baseline: Registry = serde_json::from_str(&baseline_json).unwrap();
+    assert_eq!(baseline.registry_version, 2);
+
+    // A variant-based entry the sources no longer list, as after deleting its
+    // `[[model]]`. Nothing else differs from the baseline, so the version can
+    // only move because of the removal.
+    let mut retired = baseline
+        .models
+        .iter()
+        .find(|m| m.id == "birdnet-plus")
+        .expect("the fixture family is generated")
+        .clone();
+    assert!(retired.is_variant_based());
+    retired.id = "retired-family".to_string();
+    baseline.models.push(retired);
+
+    let after_json = generate_schema_2_family(&serde_json::to_string(&baseline).unwrap());
+    let after: Registry = serde_json::from_str(&after_json).unwrap();
+    let ids: Vec<&str> = after.models.iter().map(|m| m.id.as_str()).collect();
+    assert_eq!(ids, vec!["birdnet-plus", "birdnet-v24"]);
+    assert_eq!(after.registry_version, baseline.registry_version + 1);
+
+    let again = generate_schema_2_family(&after_json);
+    assert_eq!(again, after_json);
+}

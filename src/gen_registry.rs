@@ -293,9 +293,10 @@ pub fn generate_from_repo_root(root: &str) -> Result<String> {
             }
         })?;
 
-    // The entries this generator does not own are preserved byte for byte from
-    // the registry being replaced. That is what keeps the frozen legacy entries
-    // and the range filter asset alive across a regeneration.
+    // The entries this generator does not own (single-file legacy entries, the
+    // range filter, the bat catalog) are preserved byte for byte from the
+    // registry being replaced. A variant-based entry is generator-owned, so
+    // removing its `[[model]]` from the sources removes it from the registry.
     let existing: Registry = serde_json::from_str(&read_to_string(&root.join(REGISTRY_FILE))?)
         .map_err(|e| Error::Internal {
             message: format!("{REGISTRY_FILE} is not valid JSON: {e}"),
@@ -314,7 +315,7 @@ pub fn generate_from_repo_root(root: &str) -> Result<String> {
         existing
             .models
             .iter()
-            .filter(|m| !generated_ids.contains(&m.id.as_str()))
+            .filter(|m| !generated_ids.contains(&m.id.as_str()) && !m.is_variant_based())
             .cloned(),
     );
 

@@ -9,8 +9,10 @@
 # Regenerate after editing:
 #   cargo run --features gen-registry --bin gen-registry
 #
-# Entries not listed here are carried through from the existing registry.json
-# untouched, which is how the frozen legacy entries survive regeneration.
+# Single-file entries not listed here are carried through from the existing
+# registry.json untouched, which is how the frozen legacy entries survive
+# regeneration. A variant-based entry belongs to the generator: removing its
+# [[model]] removes it from registry.json.
 #
 # An entry's `regions` file is either flat (country names and its own group
 # order) or wrapped (ISO 3166-1 alpha-2 codes, no group order). A wrapped file

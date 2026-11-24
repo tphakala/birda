@@ -55,7 +55,7 @@ cargo install --path .
 # List available models
 birda models list-available
 
-# Install BirdNET v2.4 (recommended starting point; also downloads the shared geomodel)
+# Install BirdNET v2.4 (also downloads the shared geomodel)
 birda models install birdnet-v24
 ```
 
@@ -90,7 +90,7 @@ Install models from the built-in registry with `birda models install <id>`. See 
 
 | Model | Install ID | Classes | Sample Rate / Window | Regional Tiles | License |
 |-------|------------|---------|----------------------|----------------|---------|
-| BirdNET v2.4 (recommended) | `birdnet-v24` | 6,522 | 48 kHz / 3 s | No | CC-BY-NC-SA-4.0 |
+| BirdNET v2.4 | `birdnet-v24` | 6,522 | 48 kHz / 3 s | No | CC-BY-NC-SA-4.0 |
 | BirdNET+ V3.0 | `birdnet-plus-v30` | 11,725 | 32 kHz / 5 s | 44 regions | Apache-2.0 (+ AUP) |
 | Google Perch v2 | `perch-v2` | 14,795 | 32 kHz / 5 s | 44 regions | Apache-2.0 |
 | BSG Finnish Birds v4.4 | `bsg-fi-v44` | 265 | 48 kHz / 3 s | Finland | BSG-NC-1.0 |

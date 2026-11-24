@@ -426,8 +426,11 @@ fn project_manifest(model: &ModelEntry) -> crate::output::ModelManifest {
             .documents
             .iter()
             .map(|d| ModelDocument {
+                kind: d.kind.clone(),
+                requires_agreement: d.requires_agreement,
                 url: resolve_url(&d.url),
-                ..d.clone()
+                revision: d.revision.clone(),
+                sha256: d.sha256.clone(),
             })
             .collect(),
     }

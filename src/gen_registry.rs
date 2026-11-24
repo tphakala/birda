@@ -165,12 +165,20 @@ struct GroupsFile {
 }
 
 /// One continental group of a `groups.json`.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Deserialize)]
 struct GroupEntry {
     group: String,
     display: String,
     order: u32,
     tiles: Vec<String>,
+}
+
+/// Where a tile sits: its group's slug and display name, and the group's order.
+#[derive(Debug)]
+struct Placement {
+    group: String,
+    display: String,
+    order: u32,
 }
 
 /// ISO 3166-1 alpha-2 code to English country name.
@@ -504,13 +512,13 @@ fn parse_flat_regions(
 ///
 /// A tile listed here but absent from the regions file is fine: one groups file
 /// serves every family, and a family publishes only some of its tiles.
-fn parse_groups(file_name: &str, text: &str) -> Result<BTreeMap<String, GroupEntry>> {
+fn parse_groups(file_name: &str, text: &str) -> Result<BTreeMap<String, Placement>> {
     let file: GroupsFile = serde_json::from_str(text).map_err(|e| Error::Internal {
         message: format!("{file_name} is not a valid groups file: {e}"),
     })?;
 
     let mut order_owner: BTreeMap<u32, &str> = BTreeMap::new();
-    let mut tile_groups: BTreeMap<String, GroupEntry> = BTreeMap::new();
+    let mut tile_groups: BTreeMap<String, Placement> = BTreeMap::new();
     for group in &file.groups {
         if let Some(other) = order_owner.insert(group.order, &group.group) {
             return Err(Error::Internal {
@@ -521,7 +529,12 @@ fn parse_groups(file_name: &str, text: &str) -> Result<BTreeMap<String, GroupEnt
             });
         }
         for tile in &group.tiles {
-            if let Some(other) = tile_groups.insert(tile.clone(), group.clone()) {
+            let placement = Placement {
+                group: group.group.clone(),
+                display: group.display.clone(),
+                order: group.order,
+            };
+            if let Some(other) = tile_groups.insert(tile.clone(), placement) {
                 return Err(Error::Internal {
                     message: format!(
                         "{file_name}: tile {tile} is in both group {} and group {}",
@@ -622,10 +635,7 @@ fn resolve_documents(
                         .revision
                         .as_ref()
                         .ok_or_else(|| fail("has a path but no revision"))?;
-                    (
-                        format!("{HF_ORIGIN}/{repo}/resolve/{revision}/{path}"),
-                        Some(revision.clone()),
-                    )
+                    (url_at(repo, revision, path), Some(revision.clone()))
                 }
                 (None, Some(url)) => (url.clone(), doc.revision.clone()),
                 (Some(_), Some(_)) => return Err(fail("has both a path and a url")),
@@ -821,9 +831,14 @@ fn translate_selection(
     Ok(selection)
 }
 
-/// Download URL for a path inside a Hugging Face repository.
+/// Download URL for a path inside a Hugging Face repository at `revision`.
+fn url_at(repo: &str, revision: &str, path: &str) -> String {
+    format!("{HF_ORIGIN}/{repo}/resolve/{revision}/{path}")
+}
+
+/// Download URL for a published file, resolved from the branch.
 fn file_url(repo: &str, path: &str) -> String {
-    format!("{HF_ORIGIN}/{repo}/resolve/{HF_REVISION}/{path}")
+    url_at(repo, HF_REVISION, path)
 }
 
 /// Final path component, which is what the file is called once downloaded.
@@ -1242,26 +1257,16 @@ mod tests {
                 lon_max: 180.0,
             }]
         );
-        assert_eq!(
-            regions["nordic"].centroid,
-            Some(GeoPoint {
-                lat: 90.0,
-                lon: 180.0,
-            })
-        );
-        let south_west = parse_wrapped(&wrapped(&region_json(
-            "nordic",
-            "[[0,10,0,10]]",
-            "[-90,-180]",
-        )))
-        .unwrap();
-        assert_eq!(
-            south_west["nordic"].centroid,
-            Some(GeoPoint {
-                lat: -90.0,
-                lon: -180.0,
-            })
-        );
+        for (centroid, lat, lon) in [
+            ("[90,180]", 90.0, 180.0),
+            ("[-90,-180]", -90.0, -180.0),
+            ("[-90,180]", -90.0, 180.0),
+            ("[90,-180]", 90.0, -180.0),
+        ] {
+            let regions =
+                parse_wrapped(&wrapped(&region_json("nordic", "[[0,10,0,10]]", centroid))).unwrap();
+            assert_eq!(regions["nordic"].centroid, Some(GeoPoint { lat, lon }));
+        }
     }
 
     #[test]

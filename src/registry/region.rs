@@ -172,8 +172,11 @@ fn ranked<'a>(
 ///
 /// 1. A two-letter query that some tile lists as an ISO code (case ignored).
 /// 2. A folded query equal to a folded country name.
-/// 3. A folded query contained in a region name (rank 0), a core country (1), a
-///    partial country (2) or a group name (3), the order birda-gui's search uses.
+/// 3. A folded query found at the start of a word of a region name (rank 0), a
+///    core country (1), a partial country (2) or a group name (3), the rank
+///    order birda-gui's search uses. A word starts the text or follows a
+///    character that is not a letter or a digit, so "aland" finds "Åland
+///    Islands" and not "New Zealand".
 ///
 /// Rules 1 and 2 put tiles that cover the country wholly before partial ones.
 /// Within a rank the order is that of [`ModelEntry::regions`]. A two-letter
@@ -219,10 +222,22 @@ pub fn regions_for_country<'a>(entry: &'a ModelEntry, query: &str) -> Vec<&'a Mo
     ranked(&tiles, |v| search_rank(v, &folded))
 }
 
-/// birda-gui's search rank for a folded query: region name 0, core country 1,
-/// partial country 2, group name 3.
+/// Whether `needle` occurs in `haystack` starting at a word: at the start of the
+/// text, or right after a character that is not a letter or a digit.
+fn starts_a_word(haystack: &str, needle: &str) -> bool {
+    haystack.match_indices(needle).any(|(at, _)| {
+        haystack[..at]
+            .chars()
+            .next_back()
+            .is_none_or(|before| !before.is_alphanumeric())
+    })
+}
+
+/// The rank of a folded query among a tile's texts, with birda-gui's order:
+/// region name 0, core country 1, partial country 2, group name 3. A text
+/// counts only where the query starts a word of it.
 fn search_rank(variant: &ModelVariant, folded: &str) -> Option<u8> {
-    let has = |text: &str| fold(text).contains(folded);
+    let has = |text: &str| starts_a_word(&fold(text), folded);
     if variant.region_name.as_deref().is_some_and(has) {
         return Some(0);
     }
@@ -1042,19 +1057,41 @@ mod tests {
     #[test]
     fn test_regions_for_country_ranks_search_hits_name_core_partial_group() {
         // Alphabetical order of names is the reverse of the rank order, so only
-        // ranking puts these right.
+        // ranking puts these right. Each hit starts a word, as the search needs.
         let mut alpha = tile("alpha", "Alpha", 0);
-        alpha.group_name = Some("Wetland".to_string());
+        alpha.group_name = Some("New World".to_string());
         let mut beta = tile("beta", "Beta", 0);
-        beta.countries = Some(countries(&[], &["Ireland"]));
+        beta.countries = Some(countries(&[], &["Papua New Guinea"]));
         let mut gamma = tile("gamma", "Gamma", 0);
-        gamma.countries = Some(countries(&["Finland"], &[]));
-        let delta = tile("delta", "Highlands", 0);
+        gamma.countries = Some(countries(&["New Zealand"], &[]));
+        let delta = tile("delta", "New Highlands", 0);
         let entry = entry_with(vec![alpha, beta, gamma, delta]);
         assert_eq!(
-            slugs(&regions_for_country(&entry, "land")),
+            slugs(&regions_for_country(&entry, "new")),
             ["delta", "gamma", "beta", "alpha"]
         );
+    }
+
+    #[test]
+    fn test_regions_for_country_matches_only_at_word_starts() {
+        let mut new_zealand = tile("new-zealand", "New Zealand", 0);
+        new_zealand.countries = Some(countries(&["New Zealand"], &[]));
+        let mut nordic = tile("nordic", "Nordic", 0);
+        nordic.countries = Some(countries(&["Åland Islands", "Finland"], &[]));
+        let mut palearctic = tile("western-palearctic", "Western Palearctic", 1);
+        palearctic.countries = Some(countries(&["Åland Islands"], &[]));
+        let entry = entry_with(vec![new_zealand, nordic, palearctic]);
+        let by = |query: &str| slugs(&regions_for_country(&entry, query));
+
+        // "aland" sits inside "zealand" and starts "Åland Islands": only the
+        // tiles where it starts a word.
+        assert_eq!(by("Aland"), ["nordic", "western-palearctic"]);
+        // A fragment that starts a word still matches; one that does not, never.
+        assert_eq!(by("zealand"), ["new-zealand"]);
+        assert_eq!(by("ealand"), Vec::<String>::new());
+        assert_eq!(by("land"), Vec::<String>::new());
+        // A later word of a name starts a word too.
+        assert_eq!(by("islands"), ["nordic", "western-palearctic"]);
     }
 
     #[test]

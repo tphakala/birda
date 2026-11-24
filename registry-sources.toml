@@ -55,6 +55,7 @@ share_alike = false
 id = "perch-v2"
 manifest = "Perch-v2-Models.models.json"
 regions = "Perch-v2-Models.regions.json"
+groups = "Perch-v2-Models.groups.json"
 name = "Google Perch v2"
 description = "General bird sound classification model"
 vendor = "Google Research"

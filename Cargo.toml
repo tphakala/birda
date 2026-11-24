@@ -63,7 +63,6 @@ arrow = "60"
 semver = "1"
 sha2 = "0.11"
 tar = "0.4"
-self-replace = "1"
 flate2 = "1"
 zip = { version = "9", default-features = false, features = ["deflate"] }
 
@@ -74,6 +73,11 @@ tempfile = "3"
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
+
+# Replaces the running executable during self-update; only the Windows path
+# (`src/update/replace.rs`) calls it.
+[target.'cfg(windows)'.dependencies]
+self-replace = "1"
 
 [dev-dependencies]
 assert_cmd = "2"

@@ -39,7 +39,7 @@ openvino = { version = "=0.11.1", features = ["runtime-linking"] }
 openvino-sys = { version = "=0.11.1", features = ["runtime-linking"] }
 # Opens the OpenVINO core and oneTBB libraries ahead of the C API library
 # (src/inference/openvino/preload.rs). Keep it on the major `openvino-sys` uses.
-libloading = "0.8"
+libloading = "0.9"
 ort = { version = "2.0.0-rc.12", default-features = false, features = ["load-dynamic"] }
 symphonia = { git = "https://github.com/tphakala/Symphonia", branch = "feature/rf64-support", features = ["aac", "mp3", "flac", "wav", "pcm"] }
 rubato = "5.0"
